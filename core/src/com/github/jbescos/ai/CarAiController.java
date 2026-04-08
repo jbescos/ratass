@@ -30,11 +30,10 @@ public final class CarAiController {
     private static final float DISENGAGE_TURN_GAIN_MULTIPLIER = 1.18f;
     private static final float CHARGE_TURN_GAIN_MULTIPLIER = 1.20f;
     private static final float STUCK_RESET_DURATION = 1.1f;
+    private static final float NAVIGATION_MARGIN = 0.52f;
     private static final float POWER_PICKUP_EDGE_MARGIN = 1.05f;
-    private static final float POINT_PICKUP_MAX_CHASE_DISTANCE_SQ = 92f;
-    private static final float BOOSTED_POINT_PICKUP_MAX_CHASE_DISTANCE_SQ = 52f;
-    private static final float POINT_PICKUP_TARGET_DISTANCE_FACTOR = 0.72f;
     private static final float POINT_PICKUP_TARGET_EDGE_OVERRIDE_DISTANCE = 2.35f;
+    private static final float POINT_PICKUP_ATTACK_OVERRIDE_DISTANCE_SQ = 12f;
     private static final float BOOSTED_TARGET_BONUS = 1.85f;
     private static final float EDGE_ATTACK_COMMIT_DISTANCE = 2.55f;
     private static final float EDGE_VULNERABILITY_DISTANCE = 2.9f;
@@ -127,22 +126,13 @@ public final class CarAiController {
 
         float targetDistanceSq = Float.MAX_VALUE;
         if (chasePointPickup) {
-            float pointPickupDistanceSq = position.dst2(pointPickupPosition);
-            float maxChaseDistanceSq =
-                    self.hasGrowthBoost()
-                            ? BOOSTED_POINT_PICKUP_MAX_CHASE_DISTANCE_SQ
-                            : POINT_PICKUP_MAX_CHASE_DISTANCE_SQ;
-            if (pointPickupDistanceSq > maxChaseDistanceSq) {
-                chasePointPickup = false;
-            } else if (targetBody != null) {
+            if (targetBody != null) {
                 targetDistanceSq = position.dst2(targetBody.getPosition());
                 float targetEdgeDistance = arenaMap.distanceToHazard(targetBody.getPosition());
                 boolean targetPrime =
                         target.hasGrowthBoost()
                                 || targetEdgeDistance < POINT_PICKUP_TARGET_EDGE_OVERRIDE_DISTANCE;
-                if (targetPrime
-                        || targetDistanceSq
-                        < pointPickupDistanceSq * POINT_PICKUP_TARGET_DISTANCE_FACTOR) {
+                if (targetPrime && targetDistanceSq <= POINT_PICKUP_ATTACK_OVERRIDE_DISTANCE_SQ) {
                     chasePointPickup = false;
                 }
             }
@@ -244,6 +234,7 @@ public final class CarAiController {
             arenaMap.clampToPlayable(desiredVector, INTERCEPT_CLAMP_MARGIN);
         }
 
+        arenaMap.findDriveTarget(position, desiredVector, NAVIGATION_MARGIN, desiredVector);
         desiredVector.sub(position);
         if (desiredVector.isZero(EPSILON)) {
             desiredVector.set(arenaFocus).sub(position);

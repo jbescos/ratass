@@ -1,5 +1,6 @@
 package com.github.jbescos.gameplay;
 
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
@@ -16,6 +17,7 @@ public final class ArenaMap {
     private final Vector2 scratchCandidate = new Vector2();
     private final Vector2 scratchAdjusted = new Vector2();
     private final Vector2 scratchBest = new Vector2();
+    private final Vector2 scratchGoal = new Vector2();
 
     private ArenaMap(
             String id,
@@ -243,6 +245,76 @@ public final class ArenaMap {
         }
 
         findRecoveryPoint(point, point);
+    }
+
+    public void findDriveTarget(Vector2 from, Vector2 goal, float margin, Vector2 out) {
+        if (goal == null) {
+            findRecoveryPoint(from, out);
+            return;
+        }
+
+        scratchGoal.set(goal);
+        clampToPlayable(scratchGoal, margin);
+        if (isPathPlayable(from, scratchGoal, margin)) {
+            out.set(scratchGoal);
+            return;
+        }
+
+        boolean found = false;
+        float bestScore = Float.MAX_VALUE;
+
+        for (int i = 0; i < recoveryPoints.size; i++) {
+            scratchCandidate.set(recoveryPoints.get(i));
+            if (distanceToHazard(scratchCandidate) < margin) {
+                continue;
+            }
+            if (!isPathPlayable(from, scratchCandidate, margin)) {
+                continue;
+            }
+
+            float score = scratchCandidate.dst2(scratchGoal) + from.dst2(scratchCandidate) * 0.22f;
+            if (isPathPlayable(scratchCandidate, scratchGoal, margin)) {
+                score *= 0.35f;
+            }
+
+            if (!found || score < bestScore) {
+                bestScore = score;
+                scratchBest.set(scratchCandidate);
+                found = true;
+            }
+        }
+
+        if (found) {
+            out.set(scratchBest);
+            return;
+        }
+
+        findRecoveryPoint(from, out);
+    }
+
+    private boolean isPathPlayable(Vector2 from, Vector2 to, float margin) {
+        if (from == null || to == null) {
+            return false;
+        }
+        if (distanceToHazard(to) < margin) {
+            return false;
+        }
+
+        float distance = from.dst(to);
+        if (distance <= 0.0001f) {
+            return distanceToHazard(from) > 0f;
+        }
+
+        int steps = Math.max(2, MathUtils.ceil(distance / Math.max(0.28f, margin * 0.85f)));
+        for (int i = 1; i <= steps; i++) {
+            float alpha = (float) i / steps;
+            scratchAdjusted.set(from).lerp(to, alpha);
+            if (distanceToHazard(scratchAdjusted) < margin) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void moveOutsideHoles(Vector2 point, float margin, Vector2 out) {
