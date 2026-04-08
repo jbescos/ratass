@@ -1729,6 +1729,7 @@ public class RatassGame extends ApplicationAdapter {
         private static final float FIXTURE_FRICTION = 0.32f;
         private static final float FIXTURE_RESTITUTION = 0.12f;
         private static final float GROWTH_SCALE = 1.40f;
+        private static final float GROWTH_MASS_MULTIPLIER = 10f;
         private static final float DRIVE_FORCE = 96f;
         private static final float REVERSE_FORCE = 74f;
         private static final float PLAYER_TURN_TORQUE = 48f;
@@ -1737,13 +1738,16 @@ public class RatassGame extends ApplicationAdapter {
         private static final float ANGULAR_GRIP = 0.23f;
         private static final float FORWARD_DRAG = 1.55f;
         private static final float MAX_SPEED = 15.2f;
-        private static final float GROWTH_DRIVE_MULTIPLIER = 1.18f;
         private static final float GROWTH_TURN_MULTIPLIER = 0.90f;
         private static final float MAX_GROWTH_SPEED_MULTIPLIER = 1.06f;
         private static final float MIN_COLLISION_RESPONSE_IMPULSE = 4.5f;
         private static final float MIN_COLLISION_RESPONSE_SPEED = 1.1f;
-        private static final float COLLISION_PUSH_FACTOR = 0.085f;
-        private static final float MAX_COLLISION_PUSH = 4.6f;
+        private static final float COLLISION_FORCE_FACTOR = 4.8f;
+        private static final float MAX_COLLISION_FORCE = 74f;
+        private static final float COLLISION_FORWARD_TRANSFER = 1f;
+        private static final float COLLISION_SIDEWAYS_TRANSFER = 0.44f;
+        private static final float MAX_STORED_COLLISION_FORCE = 96f;
+        private static final float IMPACT_FORCE_DURATION = 0.18f;
         private static final float IMPACT_SLIDE_DURATION = 0.34f;
         private static final float IMPACT_SLIDE_REFERENCE = 26f;
 
@@ -1755,13 +1759,14 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 forwardAxis = new Vector2();
         private final Vector2 sidewaysAxis = new Vector2();
         private final Vector2 working = new Vector2();
-        private final Vector2 pendingImpactImpulse = new Vector2();
+        private final Vector2 pendingImpactForce = new Vector2();
 
         private Body body;
         private boolean active = true;
         private boolean growthBoosted;
         private boolean pendingElimination;
         private float sizeScale = 1f;
+        private float impactForceTimer;
         private float impactSlideTimer;
         private float impactSlideStrength;
 
@@ -1788,7 +1793,7 @@ public class RatassGame extends ApplicationAdapter {
                 return;
             }
 
-            applyPendingImpact();
+            applyPendingImpactForce(delta);
             float impactSlideFactor = advanceImpactSlide(delta);
             applyGrip(impactSlideFactor);
 
@@ -1806,13 +1811,24 @@ public class RatassGame extends ApplicationAdapter {
             drive(decision.throttle, decision.turn);
         }
 
-        private void applyPendingImpact() {
-            if (pendingImpactImpulse.isZero(0.0001f)) {
+        private void updateAxes() {
+            forwardAxis.set(body.getWorldVector(working.set(0f, 1f)));
+            sidewaysAxis.set(body.getWorldVector(working.set(1f, 0f)));
+        }
+
+        private void applyPendingImpactForce(float delta) {
+            if (impactForceTimer <= 0f || pendingImpactForce.isZero(0.0001f)) {
                 return;
             }
 
-            body.applyLinearImpulse(pendingImpactImpulse, body.getWorldCenter(), true);
-            pendingImpactImpulse.setZero();
+            float forceScale = MathUtils.clamp(impactForceTimer / IMPACT_FORCE_DURATION, 0.35f, 1f);
+            working.set(pendingImpactForce).scl(forceScale);
+            body.applyForceToCenter(working, true);
+
+            impactForceTimer = Math.max(0f, impactForceTimer - delta);
+            if (impactForceTimer == 0f) {
+                pendingImpactForce.setZero();
+            }
         }
 
         private float advanceImpactSlide(float delta) {
@@ -1829,11 +1845,11 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private void applyGrip(float impactSlideFactor) {
-            forwardAxis.set(body.getWorldVector(working.set(0f, 1f)));
-            sidewaysAxis.set(body.getWorldVector(working.set(1f, 0f)));
+            updateAxes();
 
             float gripMultiplier = MathUtils.clamp(1f - 0.62f * impactSlideFactor, 0.24f, 1f);
             float dragMultiplier = MathUtils.clamp(1f - 0.52f * impactSlideFactor, 0.30f, 1f);
+            float longitudinalForceMultiplier = getMassMultiplier();
 
             float lateralSpeed = sidewaysAxis.dot(body.getLinearVelocity());
             working.set(sidewaysAxis).scl(-lateralSpeed * body.getMass() * LATERAL_GRIP * gripMultiplier);
@@ -1844,20 +1860,20 @@ public class RatassGame extends ApplicationAdapter {
                     true);
 
             float forwardSpeed = forwardAxis.dot(body.getLinearVelocity());
-            working.set(forwardAxis).scl(-forwardSpeed * FORWARD_DRAG * dragMultiplier);
+            working.set(forwardAxis).scl(-forwardSpeed * FORWARD_DRAG * dragMultiplier * longitudinalForceMultiplier);
             body.applyForceToCenter(working, true);
         }
 
         private void drive(float throttle, float turn) {
-            forwardAxis.set(body.getWorldVector(working.set(0f, 1f)));
+            updateAxes();
             float signedForwardSpeed = forwardAxis.dot(body.getLinearVelocity());
-            float growthDriveMultiplier = growthBoosted ? GROWTH_DRIVE_MULTIPLIER : 1f;
+            float longitudinalForceMultiplier = getMassMultiplier();
 
             float engineForce = 0f;
             if (throttle > 0f) {
-                engineForce = throttle * DRIVE_FORCE * growthDriveMultiplier;
+                engineForce = throttle * DRIVE_FORCE * longitudinalForceMultiplier;
             } else if (throttle < 0f) {
-                engineForce = throttle * REVERSE_FORCE * growthDriveMultiplier;
+                engineForce = throttle * REVERSE_FORCE * longitudinalForceMultiplier;
             }
 
             if (engineForce != 0f) {
@@ -1879,6 +1895,7 @@ public class RatassGame extends ApplicationAdapter {
                 steeringStrength = MathUtils.clamp(steeringStrength * 0.96f, 0.30f, 1.3f);
                 turnTorque *= GROWTH_TURN_MULTIPLIER;
             }
+            turnTorque *= getSteeringInertiaCompensation();
 
             float steeringDirection = 1f;
             if (signedForwardSpeed < -0.25f) {
@@ -1901,18 +1918,29 @@ public class RatassGame extends ApplicationAdapter {
                 return;
             }
 
-            float extraPush = MathUtils.clamp(
-                    (impactStrength - MIN_COLLISION_RESPONSE_IMPULSE) * COLLISION_PUSH_FACTOR,
+            float collisionForce = MathUtils.clamp(
+                    (impactStrength - MIN_COLLISION_RESPONSE_IMPULSE) * COLLISION_FORCE_FACTOR,
                     0f,
-                    MAX_COLLISION_PUSH);
-            if (extraPush <= 0f) {
+                    MAX_COLLISION_FORCE);
+            if (collisionForce <= 0f) {
                 return;
             }
 
-            pendingImpactImpulse.mulAdd(normal, direction * extraPush);
+            updateAxes();
+
+            float forwardShare = forwardAxis.dot(normal) * direction;
+            float sidewaysShare = sidewaysAxis.dot(normal) * direction;
+            working.set(forwardAxis).scl(forwardShare * collisionForce * COLLISION_FORWARD_TRANSFER);
+            working.mulAdd(sidewaysAxis, sidewaysShare * collisionForce * COLLISION_SIDEWAYS_TRANSFER);
+            pendingImpactForce.add(working);
+            if (pendingImpactForce.len2() > MAX_STORED_COLLISION_FORCE * MAX_STORED_COLLISION_FORCE) {
+                pendingImpactForce.setLength(MAX_STORED_COLLISION_FORCE);
+            }
+            impactForceTimer = Math.max(impactForceTimer, IMPACT_FORCE_DURATION);
+
             impactSlideStrength = Math.max(
                     impactSlideStrength,
-                    MathUtils.clamp(impactStrength / IMPACT_SLIDE_REFERENCE, 0f, 1f));
+                    MathUtils.clamp(Math.abs(sidewaysShare) * impactStrength / IMPACT_SLIDE_REFERENCE, 0f, 1f));
             impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION);
         }
 
@@ -1939,12 +1967,20 @@ public class RatassGame extends ApplicationAdapter {
 
             FixtureDef fixtureDef = new FixtureDef();
             fixtureDef.shape = shape;
-            fixtureDef.density = FIXTURE_DENSITY;
+            fixtureDef.density = FIXTURE_DENSITY * getMassMultiplier() / (sizeScale * sizeScale);
             fixtureDef.friction = FIXTURE_FRICTION;
             fixtureDef.restitution = FIXTURE_RESTITUTION;
             body.createFixture(fixtureDef);
             shape.dispose();
             body.resetMassData();
+        }
+
+        private float getMassMultiplier() {
+            return growthBoosted ? GROWTH_MASS_MULTIPLIER : 1f;
+        }
+
+        private float getSteeringInertiaCompensation() {
+            return getMassMultiplier() * sizeScale * sizeScale;
         }
 
         private float getWidth() {
@@ -1996,7 +2032,8 @@ public class RatassGame extends ApplicationAdapter {
             growthBoosted = false;
             pendingElimination = false;
             sizeScale = 1f;
-            pendingImpactImpulse.setZero();
+            pendingImpactForce.setZero();
+            impactForceTimer = 0f;
             impactSlideTimer = 0f;
             impactSlideStrength = 0f;
             world.destroyBody(body);
