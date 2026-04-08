@@ -69,11 +69,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float SUDDEN_DEATH_TIE_SPEED_MARGIN = 0.08f;
-    private static final float HUD_SIDEBAR_RATIO = 0.26f;
-    private static final float HUD_SIDEBAR_MIN_WIDTH = 180f;
-    private static final float HUD_SIDEBAR_PREFERRED_MIN_WIDTH = 240f;
-    private static final float HUD_SIDEBAR_MAX_WIDTH = 360f;
+    private static final float HUD_SIDEBAR_RATIO = 0.29f;
+    private static final float HUD_SIDEBAR_MIN_WIDTH = 200f;
+    private static final float HUD_SIDEBAR_PREFERRED_MIN_WIDTH = 260f;
+    private static final float HUD_SIDEBAR_MAX_WIDTH = 420f;
     private static final float HUD_MIN_PLAYFIELD_WIDTH = 320f;
+    private static final float HUD_FONT_SCALE = 1.18f;
+    private static final float TITLE_FONT_SCALE = 2.25f;
+    private static final float LEADERBOARD_FONT_SCALE = 0.96f;
+    private static final float LABEL_FONT_SCALE = 0.86f;
     private static final float IMPACT_SOUND_COOLDOWN = 0.06f;
     private static final float DESTRUCTION_SOUND_COOLDOWN = 0.08f;
     private static final String[] ENEMY_NAMES = new String[] {
@@ -237,18 +241,19 @@ public class RatassGame extends ApplicationAdapter {
 
         hudFont = new BitmapFont();
         hudFont.setUseIntegerPositions(false);
+        hudFont.getData().setScale(HUD_FONT_SCALE);
 
         titleFont = new BitmapFont();
         titleFont.setUseIntegerPositions(false);
-        titleFont.getData().setScale(1.9f);
+        titleFont.getData().setScale(TITLE_FONT_SCALE);
 
         leaderboardFont = new BitmapFont();
         leaderboardFont.setUseIntegerPositions(false);
-        leaderboardFont.getData().setScale(0.82f);
+        leaderboardFont.getData().setScale(LEADERBOARD_FONT_SCALE);
 
         labelFont = new BitmapFont();
         labelFont.setUseIntegerPositions(false);
-        labelFont.getData().setScale(0.74f);
+        labelFont.getData().setScale(LABEL_FONT_SCALE);
 
         loadSounds();
         Gdx.input.setCatchKey(Input.Keys.BACK, true);
@@ -1398,18 +1403,21 @@ public class RatassGame extends ApplicationAdapter {
 
         spriteBatch.begin();
 
+        float topHudLineY = hudHeight - 20f;
+        float topHudLineStep = Math.max(26f, hudFont.getLineHeight() + 4f);
+
         hudFont.setColor(0.96f, 0.92f, 0.82f, 1f);
-        hudFont.draw(spriteBatch, "RATASS  |  Roof Sumo", 22f, hudHeight - 20f);
+        hudFont.draw(spriteBatch, "RATASS  |  Roof Sumo", 22f, topHudLineY);
 
         hudFont.setColor(0.82f, 0.88f, 0.93f, 1f);
         hudFont.draw(
                 spriteBatch,
                 "Map " + mapProgression.getCurrentMapNumber() + ": " + currentMap.getName(),
                 22f,
-                hudHeight - 44f);
+                topHudLineY - topHudLineStep);
 
         hudFont.setColor(0.74f, 0.82f, 0.88f, 1f);
-        hudFont.draw(spriteBatch, buildControlsText(), 22f, hudHeight - 68f);
+        hudFont.draw(spriteBatch, buildControlsText(), 22f, topHudLineY - topHudLineStep * 2f);
 
         drawSidebarSummary(sidebarX, sidebarWidth, hudHeight);
         drawLeaderboard(sidebarX, sidebarWidth, hudHeight);
@@ -1475,7 +1483,7 @@ public class RatassGame extends ApplicationAdapter {
                 spriteBatch,
                 subline,
                 centerX - glyphLayout.width * 0.5f,
-                hudHeight * headlineYFactor - 34f);
+                hudHeight * headlineYFactor - Math.max(36f, titleFont.getLineHeight() * 0.52f));
     }
 
     private void drawSidebarPanel(float sidebarX, float sidebarWidth, float hudHeight) {
@@ -1497,9 +1505,12 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.setColor(1f, 1f, 1f, 0.06f);
         shapeRenderer.rect(sidebarX, 0f, 2f, hudHeight);
 
+        float summaryCardHeight = getSidebarSummaryCardHeight();
+        float footerCardHeight = getSidebarFooterCardHeight();
+
         shapeRenderer.setColor(0.10f, 0.13f, 0.17f, 0.95f);
-        shapeRenderer.rect(sidebarX + 12f, hudHeight - 92f, sidebarWidth - 24f, 70f);
-        shapeRenderer.rect(sidebarX + 12f, 10f, sidebarWidth - 24f, 66f);
+        shapeRenderer.rect(sidebarX + 12f, hudHeight - 22f - summaryCardHeight, sidebarWidth - 24f, summaryCardHeight);
+        shapeRenderer.rect(sidebarX + 12f, 10f, sidebarWidth - 24f, footerCardHeight);
         shapeRenderer.end();
 
         Gdx.gl.glDisable(GL20.GL_BLEND);
@@ -1512,30 +1523,37 @@ public class RatassGame extends ApplicationAdapter {
 
         float x = sidebarX + 18f;
         float contentWidth = sidebarWidth - 36f;
+        float y = hudHeight - 24f;
+        float hudLineStep = Math.max(24f, hudFont.getLineHeight() + 3f);
+        float leaderboardLineStep = Math.max(17f, leaderboardFont.getLineHeight() + 2f);
 
         hudFont.setColor(0.98f, 0.95f, 0.84f, 1f);
-        hudFont.draw(spriteBatch, "Classification", x, hudHeight - 24f);
+        hudFont.draw(spriteBatch, "Classification", x, y);
 
         leaderboardFont.setColor(0.76f, 0.84f, 0.90f, 1f);
+        y -= hudLineStep;
         leaderboardFont.draw(
                 spriteBatch,
                 "Map " + mapProgression.getCurrentMapNumber() + "/" + mapProgression.getMapCount()
                         + "  |  Round " + roundNumber,
                 x,
-                hudHeight - 46f);
-        leaderboardFont.draw(spriteBatch, currentMap.getName(), x, hudHeight - 60f);
+                y);
+        y -= leaderboardLineStep;
+        leaderboardFont.draw(spriteBatch, currentMap.getName(), x, y);
+        y -= leaderboardLineStep;
         leaderboardFont.draw(
                 spriteBatch,
                 "Cars " + getAliveCarCount() + "/" + cars.size + "  |  You " + roster.first().totalPoints + " pts",
                 x,
-                hudHeight - 74f);
+                y);
 
         leaderboardFont.setColor(0.94f, 0.84f, 0.50f, 1f);
+        y -= leaderboardLineStep;
         leaderboardFont.draw(
                 spriteBatch,
                 buildSidebarStateText(),
                 x,
-                hudHeight - 88f,
+                y,
                 contentWidth,
                 Align.left,
                 true);
@@ -1548,13 +1566,15 @@ public class RatassGame extends ApplicationAdapter {
 
         float x = sidebarX + 18f;
         float rightX = sidebarX + sidebarWidth - 18f;
-        float y = hudHeight - 110f;
+        float y = hudHeight - 22f - getSidebarSummaryCardHeight() - 16f;
+        float headingStep = Math.max(18f, leaderboardFont.getLineHeight() + 2f);
+        float rowStep = Math.max(16f, leaderboardFont.getLineHeight() + 1f);
 
         leaderboardFont.setColor(0.98f, 0.95f, 0.84f, 1f);
         leaderboardFont.draw(spriteBatch, "Rank", x, y);
         glyphLayout.setText(leaderboardFont, "Points");
         leaderboardFont.draw(spriteBatch, "Points", rightX - glyphLayout.width, y);
-        y -= 16f;
+        y -= headingStep;
 
         for (int i = 0; i < leaderboardEntries.size; i++) {
             CarTemplate template = leaderboardEntries.get(i);
@@ -1577,7 +1597,7 @@ public class RatassGame extends ApplicationAdapter {
             leaderboardFont.draw(spriteBatch, left, x, y);
             glyphLayout.setText(leaderboardFont, right);
             leaderboardFont.draw(spriteBatch, right, rightX - glyphLayout.width, y);
-            y -= 14f;
+            y -= rowStep;
         }
     }
 
@@ -1604,7 +1624,7 @@ public class RatassGame extends ApplicationAdapter {
                 spriteBatch,
                 buildObjectiveText(),
                 sidebarX + 18f,
-                64f,
+                10f + getSidebarFooterCardHeight() - 12f,
                 sidebarWidth - 36f,
                 Align.left,
                 true);
@@ -1619,7 +1639,7 @@ public class RatassGame extends ApplicationAdapter {
 
             carLabelProjection.set(
                     car.body.getPosition().x,
-                    car.body.getPosition().y + car.getHeight() * 0.82f,
+                    car.body.getPosition().y + car.getHeight() * 0.92f,
                     0f);
             worldViewport.project(carLabelProjection);
             carLabelProjection.y = Gdx.graphics.getHeight() - carLabelProjection.y;
@@ -1649,6 +1669,14 @@ public class RatassGame extends ApplicationAdapter {
             return "Touch: steer left, gas top-right, reverse bottom-right.";
         }
         return "WASD or Arrow Keys: drive and steer   Esc: quit";
+    }
+
+    private float getSidebarSummaryCardHeight() {
+        return Math.max(86f, hudFont.getLineHeight() + leaderboardFont.getLineHeight() * 5f);
+    }
+
+    private float getSidebarFooterCardHeight() {
+        return Math.max(82f, leaderboardFont.getLineHeight() * 4.3f);
     }
 
     private int getAliveCarCount() {
