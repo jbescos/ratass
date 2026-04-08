@@ -60,6 +60,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final int TOTAL_CARS = 20;
     private static final float ROUND_START_COUNTDOWN = 3f;
     private static final float ROUND_TIME_LIMIT = 30f;
+    private static final float ROUND_TIMEOUT_LIMIT = 60f;
     private static final float CAMERA_HORIZONTAL_PADDING = 4f;
     private static final float CAMERA_VERTICAL_PADDING = 3f;
     private static final int ROUND_SPAWN_ATTEMPTS = 3200;
@@ -188,10 +189,13 @@ public class RatassGame extends ApplicationAdapter {
     private boolean growthPickupActive;
     private boolean hasLastGrowthPickupPosition;
     private boolean roundOver;
+    private boolean roundTimedOut;
     private boolean suddenDeathActive;
     private int roundNumber;
     private int playerWins;
     private int finishPositionCounter;
+    private int timeoutSharedPoints;
+    private int timeoutSurvivorCount;
     private Car boostedCar;
     private Car playerCar;
     private Car winner;
@@ -334,7 +338,9 @@ public class RatassGame extends ApplicationAdapter {
             updateRoundState();
             if (!roundOver && allowControl) {
                 updateRoundTimer(delta);
-                updateGrowthPickup(delta);
+                if (!roundOver) {
+                    updateGrowthPickup(delta);
+                }
             }
         }
     }
@@ -370,11 +376,18 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
+        finishRound(lastAlive);
+    }
+
+    private void finishRound(Car roundWinner) {
         roundOver = true;
         roundOverTimer = 0f;
-        winner = lastAlive;
+        winner = roundWinner;
         finalizeRoundResults();
+        stopCars();
+    }
 
+    private void stopCars() {
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
             if (car.body != null) {
@@ -411,8 +424,11 @@ public class RatassGame extends ApplicationAdapter {
         roundTimer = 0f;
         roundOver = false;
         roundOverTimer = 0f;
+        roundTimedOut = false;
         suddenDeathActive = false;
         winner = null;
+        timeoutSharedPoints = 0;
+        timeoutSurvivorCount = 0;
         playerCar = null;
         finishPositionCounter = 0;
         roundNumber++;
@@ -457,14 +473,39 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void updateRoundTimer(float delta) {
-        if (suddenDeathActive) {
-            return;
-        }
-
-        roundTimer = Math.min(ROUND_TIME_LIMIT, roundTimer + delta);
-        if (roundTimer >= ROUND_TIME_LIMIT) {
+        roundTimer = Math.min(ROUND_TIMEOUT_LIMIT, roundTimer + delta);
+        if (!suddenDeathActive && roundTimer >= ROUND_TIME_LIMIT) {
             suddenDeathActive = true;
         }
+        if (roundTimer >= ROUND_TIMEOUT_LIMIT) {
+            triggerRoundTimeout();
+        }
+    }
+
+    private void triggerRoundTimeout() {
+        Array<Car> survivors = new Array<Car>();
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (car.active && car.body != null) {
+                survivors.add(car);
+            }
+        }
+
+        roundTimedOut = true;
+        timeoutSurvivorCount = survivors.size;
+        if (survivors.size > 0) {
+            timeoutSharedPoints = roster.size - survivors.size + 1;
+            for (int i = 0; i < survivors.size; i++) {
+                survivors.get(i).template.roundFinishPosition = timeoutSharedPoints;
+            }
+            for (int i = 0; i < survivors.size; i++) {
+                eliminateCar(survivors.get(i));
+            }
+        } else {
+            timeoutSharedPoints = 0;
+        }
+
+        finishRound(null);
     }
 
     private void finalizeRoundResults() {
@@ -1288,7 +1329,7 @@ public class RatassGame extends ApplicationAdapter {
         } else if (suddenDeathActive) {
             drawCenteredOverlay(
                     "SUDDEN DEATH",
-                    buildSuddenDeathRuleText(),
+                    buildSuddenDeathOverlayText(),
                     hudWidth,
                     hudHeight,
                     new Color(1f, 0.42f, 0.30f, 1f),
@@ -1427,10 +1468,14 @@ public class RatassGame extends ApplicationAdapter {
 
         if (preRoundCountdownTimer > 0f) {
             builder.append("  |  Starts in ").append(MathUtils.ceil(preRoundCountdownTimer)).append("s");
+        } else if (roundTimedOut) {
+            builder.append("  |  TIME UP");
+        } else if (roundOver) {
+            builder.append("  |  ROUND OVER");
         } else if (suddenDeathActive) {
-            builder.append("  |  SUDDEN DEATH");
+            builder.append("  |  SUDDEN DEATH  |  Wipe ").append(getRoundTimeoutSecondsLeft()).append("s");
         } else {
-            builder.append("  |  Time ").append(MathUtils.ceil(Math.max(0f, ROUND_TIME_LIMIT - roundTimer))).append("s");
+            builder.append("  |  Sudden death ").append(getSuddenDeathSecondsLeft()).append("s");
         }
 
         return builder.toString();
@@ -1438,11 +1483,19 @@ public class RatassGame extends ApplicationAdapter {
 
     private String buildObjectiveText() {
         if (preRoundCountdownTimer > 0f) {
-            return "Prepare for the horn. First car out gets 1 point, the winner gets 20.";
+            return "Prepare for the horn. First car out gets 1 point. Sudden death starts at 30s and the arena wipes at 60s.";
+        }
+
+        if (roundOver) {
+            if (roundTimedOut) {
+                return buildTimeoutAwardText();
+            }
+            return "Standings updated. Next arena in a moment.";
         }
 
         if (suddenDeathActive) {
-            return "Sudden death is live: " + buildSuddenDeathRuleText();
+            return "Sudden death is live: " + buildSuddenDeathRuleText()
+                    + " Arena wipe in " + getRoundTimeoutSecondsLeft() + "s.";
         }
 
         if (boostedCar != null && boostedCar.active) {
@@ -1451,18 +1504,26 @@ public class RatassGame extends ApplicationAdapter {
                     : boostedCar.name + " has the mass core for ")
                     + MathUtils.ceil(growthBoostTimer)
                     + " more seconds. Sudden death in "
-                    + MathUtils.ceil(Math.max(0f, ROUND_TIME_LIMIT - roundTimer))
+                    + getSuddenDeathSecondsLeft()
+                    + "s, wipe in "
+                    + getRoundTimeoutSecondsLeft()
                     + "s.";
         }
 
         if (growthPickupActive) {
             return currentMap.getName()
-                    + ": mass core live. Grab it before sudden death in "
-                    + MathUtils.ceil(Math.max(0f, ROUND_TIME_LIMIT - roundTimer))
+                    + ": mass core live. Sudden death in "
+                    + getSuddenDeathSecondsLeft()
+                    + "s, wipe in "
+                    + getRoundTimeoutSecondsLeft()
                     + "s.";
         }
 
-        return currentMap.getName() + ": stay alive, score high, and outlast the pack.";
+        return currentMap.getName() + ": stay alive. Sudden death in "
+                + getSuddenDeathSecondsLeft()
+                + "s, wipe in "
+                + getRoundTimeoutSecondsLeft()
+                + "s.";
     }
 
     private String buildSuddenDeathRuleText() {
@@ -1473,9 +1534,37 @@ public class RatassGame extends ApplicationAdapter {
         return "The slower car in every hit is destroyed.";
     }
 
+    private String buildSuddenDeathOverlayText() {
+        return buildSuddenDeathRuleText() + " Arena wipe in " + getRoundTimeoutSecondsLeft() + "s.";
+    }
+
+    private String buildTimeoutAwardText() {
+        if (timeoutSurvivorCount <= 0) {
+            return "Time is up. The arena wipes everyone out.";
+        }
+        String pointLabel = timeoutSharedPoints == 1 ? " point" : " points";
+        if (timeoutSurvivorCount == 1) {
+            return "Time is up. The last survivor still banks " + timeoutSharedPoints + pointLabel + ".";
+        }
+        return "Time is up. " + timeoutSurvivorCount + " survivors each bank "
+                + timeoutSharedPoints + pointLabel + ".";
+    }
+
+    private int getSuddenDeathSecondsLeft() {
+        return MathUtils.ceil(Math.max(0f, ROUND_TIME_LIMIT - roundTimer));
+    }
+
+    private int getRoundTimeoutSecondsLeft() {
+        return MathUtils.ceil(Math.max(0f, ROUND_TIMEOUT_LIMIT - roundTimer));
+    }
+
     private String buildHeadline() {
         if (!roundOver) {
             return "OUT";
+        }
+
+        if (roundTimedOut) {
+            return "TIME UP";
         }
 
         if (winner == null) {
@@ -1492,6 +1581,10 @@ public class RatassGame extends ApplicationAdapter {
     private String buildSubline() {
         if (!roundOver) {
             return "You are out. Watch the finish and the leaderboard.";
+        }
+
+        if (roundTimedOut) {
+            return buildTimeoutAwardText() + " Next arena in a moment.";
         }
 
         if (winner == null) {
