@@ -8,6 +8,7 @@ import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -78,6 +79,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float TITLE_FONT_SCALE = 2.25f;
     private static final float LEADERBOARD_FONT_SCALE = 0.96f;
     private static final float LABEL_FONT_SCALE = 0.86f;
+    private static final float CAR_SPRITE_WIDTH_SCALE = 1.16f;
+    private static final float CAR_SPRITE_HEIGHT_SCALE = 1.14f;
     private static final float IMPACT_SOUND_COOLDOWN = 0.06f;
     private static final float DESTRUCTION_SOUND_COOLDOWN = 0.08f;
     private static final String[] ENEMY_NAMES = new String[] {
@@ -133,6 +136,29 @@ public class RatassGame extends ApplicationAdapter {
                     new Color(0.25f, 0.33f, 0.22f, 1f),
                     new Color(0.56f, 0.74f, 0.46f, 1f),
                     new Color(0.38f, 0.58f, 0.31f, 1f))
+    };
+
+    private static final CarVisual[] CAR_VISUALS = new CarVisual[] {
+            new CarVisual("cars/player.png", Color.valueOf("3279df")),
+            new CarVisual("cars/cinder.png", Color.valueOf("c54730")),
+            new CarVisual("cars/frost.png", Color.valueOf("7bc6f0")),
+            new CarVisual("cars/moss.png", Color.valueOf("5d7d3e")),
+            new CarVisual("cars/volt.png", Color.valueOf("ead537")),
+            new CarVisual("cars/riot.png", Color.valueOf("c63b78")),
+            new CarVisual("cars/slate.png", Color.valueOf("6d7684")),
+            new CarVisual("cars/tango.png", Color.valueOf("df7b46")),
+            new CarVisual("cars/brick.png", Color.valueOf("a64438")),
+            new CarVisual("cars/blitz.png", Color.valueOf("14a8d8")),
+            new CarVisual("cars/orbit.png", Color.valueOf("7f63c8")),
+            new CarVisual("cars/knurl.png", Color.valueOf("6b7078")),
+            new CarVisual("cars/viper.png", Color.valueOf("45a03b")),
+            new CarVisual("cars/torque.png", Color.valueOf("cb7034")),
+            new CarVisual("cars/crush.png", Color.valueOf("a92f32")),
+            new CarVisual("cars/rivet.png", Color.valueOf("b8892e")),
+            new CarVisual("cars/dune.png", Color.valueOf("c7a14d")),
+            new CarVisual("cars/glitch.png", Color.valueOf("5d53d6")),
+            new CarVisual("cars/piston.png", Color.valueOf("bf4336")),
+            new CarVisual("cars/grit.png", Color.valueOf("866640"))
     };
 
     private final Array<Car> cars = new Array<Car>();
@@ -258,6 +284,7 @@ public class RatassGame extends ApplicationAdapter {
         loadSounds();
         Gdx.input.setCatchKey(Input.Keys.BACK, true);
         createRoster();
+        loadCarSprites();
         mapProgression = new MapProgression(ArenaMaps.createDefaultSet());
 
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
@@ -266,23 +293,46 @@ public class RatassGame extends ApplicationAdapter {
 
     private void createRoster() {
         roster.clear();
-        roster.add(new CarTemplate("You", true, new Color(0.90f, 0.25f, 0.20f, 1f), null));
+        CarVisual playerVisual = getCarVisual(0);
+        roster.add(new CarTemplate(
+                "You",
+                true,
+                new Color(playerVisual.color),
+                null,
+                playerVisual.spritePath));
 
         for (int i = 0; i < ENEMY_NAMES.length && roster.size < TOTAL_CARS; i++) {
+            CarVisual visual = getCarVisual(i + 1);
             roster.add(new CarTemplate(
                     ENEMY_NAMES[i],
                     false,
-                    createEnemyColor(i),
-                    ENEMY_PERSONALITIES[i % ENEMY_PERSONALITIES.length]));
+                    new Color(visual.color),
+                    ENEMY_PERSONALITIES[i % ENEMY_PERSONALITIES.length],
+                    visual.spritePath));
         }
 
         while (roster.size < TOTAL_CARS) {
             int enemyIndex = roster.size - 1;
+            int rosterIndex = roster.size;
+            CarVisual visual = getCarVisual(rosterIndex);
             roster.add(new CarTemplate(
                     "Rival " + roster.size,
                     false,
-                    createEnemyColor(enemyIndex),
-                    ENEMY_PERSONALITIES[enemyIndex % ENEMY_PERSONALITIES.length]));
+                    new Color(visual.color),
+                    ENEMY_PERSONALITIES[enemyIndex % ENEMY_PERSONALITIES.length],
+                    visual.spritePath));
+        }
+    }
+
+    private CarVisual getCarVisual(int rosterIndex) {
+        return CAR_VISUALS[rosterIndex % CAR_VISUALS.length];
+    }
+
+    private void loadCarSprites() {
+        for (int i = 0; i < roster.size; i++) {
+            CarTemplate template = roster.get(i);
+            disposeTexture(template.spriteTexture);
+            template.spriteTexture = loadTexture(template.spritePath);
         }
     }
 
@@ -304,6 +354,20 @@ public class RatassGame extends ApplicationAdapter {
             return Gdx.audio.newSound(Gdx.files.internal(path));
         } catch (RuntimeException exception) {
             Gdx.app.error("RatassGame", "Could not load sound " + path, exception);
+            return null;
+        }
+    }
+
+    private Texture loadTexture(String path) {
+        if (!Gdx.files.internal(path).exists()) {
+            return null;
+        }
+        try {
+            Texture texture = new Texture(Gdx.files.internal(path));
+            texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+            return texture;
+        } catch (RuntimeException exception) {
+            Gdx.app.error("RatassGame", "Could not load texture " + path, exception);
             return null;
         }
     }
@@ -691,49 +755,8 @@ public class RatassGame extends ApplicationAdapter {
         effect.color.set(car.color);
         effect.timer = DESTRUCTION_EFFECT_DURATION;
         effect.rotationDeg = MathUtils.random(360f);
-        effect.scale = 0.92f + MathUtils.random(0.55f) + car.getSizeScale() * 0.12f;
+        effect.scale = 0.62f + MathUtils.random(0.28f) + car.getSizeScale() * 0.07f;
         destructionEffects.add(effect);
-    }
-
-    private Color createEnemyColor(int index) {
-        float hue = (28f + index * 31f) % 360f;
-        float saturation = 0.66f + (index % 3) * 0.06f;
-        float value = 0.86f + (index % 4) * 0.03f;
-        return hsvColor(hue, saturation, Math.min(1f, value));
-    }
-
-    private Color hsvColor(float hue, float saturation, float value) {
-        float normalizedHue = ((hue % 360f) + 360f) % 360f;
-        float chroma = value * saturation;
-        float segment = normalizedHue / 60f;
-        float x = chroma * (1f - Math.abs(segment % 2f - 1f));
-
-        float r = 0f;
-        float g = 0f;
-        float b = 0f;
-
-        if (segment < 1f) {
-            r = chroma;
-            g = x;
-        } else if (segment < 2f) {
-            r = x;
-            g = chroma;
-        } else if (segment < 3f) {
-            g = chroma;
-            b = x;
-        } else if (segment < 4f) {
-            g = x;
-            b = chroma;
-        } else if (segment < 5f) {
-            r = x;
-            b = chroma;
-        } else {
-            r = chroma;
-            b = x;
-        }
-
-        float match = value - chroma;
-        return new Color(r + match, g + match, b + match, 1f);
     }
 
     private void updateWorldCamera() {
@@ -1059,6 +1082,7 @@ public class RatassGame extends ApplicationAdapter {
 
         worldViewport.apply();
         shapeRenderer.setProjectionMatrix(worldCamera.combined);
+        spriteBatch.setProjectionMatrix(worldCamera.combined);
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
@@ -1067,7 +1091,14 @@ public class RatassGame extends ApplicationAdapter {
         drawBackdrop();
         drawArena();
         drawGrowthPickup();
-        drawCars();
+        drawCarEffects();
+        shapeRenderer.end();
+
+        spriteBatch.begin();
+        drawCarSprites();
+        spriteBatch.end();
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawDestructionEffects();
         shapeRenderer.end();
 
@@ -1193,7 +1224,7 @@ public class RatassGame extends ApplicationAdapter {
                 20);
     }
 
-    private void drawCars() {
+    private void drawCarEffects() {
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
             if (!car.active || car.body == null) {
@@ -1206,12 +1237,14 @@ public class RatassGame extends ApplicationAdapter {
             float carWidth = car.getWidth();
             float carHeight = car.getHeight();
             float carScale = car.getSizeScale();
+            float spriteWidth = carWidth * CAR_SPRITE_WIDTH_SCALE;
+            float spriteHeight = carHeight * CAR_SPRITE_HEIGHT_SCALE;
 
             drawRotatedRect(
                     centerX + 0.10f * carScale,
                     centerY - 0.12f * carScale,
-                    carWidth,
-                    carHeight,
+                    spriteWidth,
+                    spriteHeight,
                     angleDeg,
                     0.04f,
                     0.05f,
@@ -1223,8 +1256,8 @@ public class RatassGame extends ApplicationAdapter {
                 drawRotatedRect(
                         centerX,
                         centerY,
-                        carWidth + (0.30f + boostPulse * 0.12f) * carScale,
-                        carHeight + (0.30f + boostPulse * 0.12f) * carScale,
+                        spriteWidth + (0.30f + boostPulse * 0.12f) * carScale,
+                        spriteHeight + (0.30f + boostPulse * 0.12f) * carScale,
                         angleDeg,
                         1f,
                         0.82f,
@@ -1236,8 +1269,8 @@ public class RatassGame extends ApplicationAdapter {
                 drawRotatedRect(
                         centerX,
                         centerY,
-                        carWidth + 0.42f * carScale,
-                        carHeight + 0.42f * carScale,
+                        spriteWidth + 0.42f * carScale,
+                        spriteHeight + 0.42f * carScale,
                         angleDeg,
                         0.36f,
                         0.82f,
@@ -1247,8 +1280,8 @@ public class RatassGame extends ApplicationAdapter {
                 drawRotatedRect(
                         centerX,
                         centerY,
-                        carWidth + 0.20f * carScale,
-                        carHeight + 0.20f * carScale,
+                        spriteWidth + 0.20f * carScale,
+                        spriteHeight + 0.20f * carScale,
                         angleDeg,
                         0.96f,
                         0.94f,
@@ -1256,57 +1289,106 @@ public class RatassGame extends ApplicationAdapter {
                         0.26f);
             }
 
-            drawRotatedRect(
-                    centerX,
-                    centerY,
-                    carWidth,
-                    carHeight,
-                    angleDeg,
-                    car.color.r,
-                    car.color.g,
-                    car.color.b,
-                    1f);
-
-            tint.set(car.color).lerp(Color.WHITE, 0.18f);
-            drawOffsetRotatedRect(
-                    centerX,
-                    centerY,
-                    0f,
-                    -0.08f * carScale,
-                    carWidth * 0.68f,
-                    carHeight * 0.50f,
-                    angleDeg,
-                    tint.r,
-                    tint.g,
-                    tint.b,
-                    1f);
-
-            drawOffsetRotatedRect(
-                    centerX,
-                    centerY,
-                    0f,
-                    0.40f * carScale,
-                    carWidth * 0.62f,
-                    carHeight * 0.16f,
-                    angleDeg,
-                    0.12f,
-                    0.13f,
-                    0.15f,
-                    1f);
-
-            drawOffsetRotatedRect(
-                    centerX,
-                    centerY,
-                    0f,
-                    0.84f * carScale,
-                    carWidth * 0.55f,
-                    carHeight * 0.09f,
-                    angleDeg,
-                    0.96f,
-                    0.92f,
-                    0.74f,
-                    1f);
+            if (car.template.spriteTexture == null) {
+                drawFallbackCarBody(car, centerX, centerY, carWidth, carHeight, carScale, angleDeg);
+            }
         }
+    }
+
+    private void drawCarSprites() {
+        spriteBatch.setColor(1f, 1f, 1f, 1f);
+
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null || car.template.spriteTexture == null) {
+                continue;
+            }
+
+            Texture sprite = car.template.spriteTexture;
+            float angleDeg = car.body.getAngle() * MathUtils.radiansToDegrees;
+            float centerX = car.body.getPosition().x;
+            float centerY = car.body.getPosition().y;
+            float spriteWidth = car.getWidth() * CAR_SPRITE_WIDTH_SCALE;
+            float spriteHeight = car.getHeight() * CAR_SPRITE_HEIGHT_SCALE;
+
+            spriteBatch.draw(
+                    sprite,
+                    centerX - spriteWidth * 0.5f,
+                    centerY - spriteHeight * 0.5f,
+                    spriteWidth * 0.5f,
+                    spriteHeight * 0.5f,
+                    spriteWidth,
+                    spriteHeight,
+                    1f,
+                    1f,
+                    angleDeg,
+                    0,
+                    0,
+                    sprite.getWidth(),
+                    sprite.getHeight(),
+                    false,
+                    false);
+        }
+    }
+
+    private void drawFallbackCarBody(
+            Car car,
+            float centerX,
+            float centerY,
+            float carWidth,
+            float carHeight,
+            float carScale,
+            float angleDeg) {
+        drawRotatedRect(
+                centerX,
+                centerY,
+                carWidth,
+                carHeight,
+                angleDeg,
+                car.color.r,
+                car.color.g,
+                car.color.b,
+                1f);
+
+        tint.set(car.color).lerp(Color.WHITE, 0.18f);
+        drawOffsetRotatedRect(
+                centerX,
+                centerY,
+                0f,
+                -0.08f * carScale,
+                carWidth * 0.68f,
+                carHeight * 0.50f,
+                angleDeg,
+                tint.r,
+                tint.g,
+                tint.b,
+                1f);
+
+        drawOffsetRotatedRect(
+                centerX,
+                centerY,
+                0f,
+                0.40f * carScale,
+                carWidth * 0.62f,
+                carHeight * 0.16f,
+                angleDeg,
+                0.12f,
+                0.13f,
+                0.15f,
+                1f);
+
+        drawOffsetRotatedRect(
+                centerX,
+                centerY,
+                0f,
+                0.84f * carScale,
+                carWidth * 0.55f,
+                carHeight * 0.09f,
+                angleDeg,
+                0.96f,
+                0.92f,
+                0.74f,
+                1f);
     }
 
     private void drawDestructionEffects() {
@@ -1314,8 +1396,8 @@ public class RatassGame extends ApplicationAdapter {
             DestructionEffect effect = destructionEffects.get(i);
             float progress = 1f - effect.timer / DESTRUCTION_EFFECT_DURATION;
             float alpha = MathUtils.clamp(1f - progress, 0f, 1f);
-            float burstRadius = (0.72f + progress * 1.65f) * effect.scale;
-            float flashRadius = (0.28f + progress * 0.42f) * effect.scale;
+            float burstRadius = (0.50f + progress * 1.05f) * effect.scale;
+            float flashRadius = (0.20f + progress * 0.24f) * effect.scale;
 
             shapeRenderer.setColor(effect.color.r, effect.color.g, effect.color.b, 0.18f * alpha);
             shapeRenderer.circle(effect.position.x, effect.position.y, burstRadius, 28);
@@ -1325,11 +1407,11 @@ public class RatassGame extends ApplicationAdapter {
 
             for (int shard = 0; shard < 6; shard++) {
                 float angleDeg = effect.rotationDeg + shard * 60f + progress * 95f;
-                float shardDistance = burstRadius * (0.58f + shard * 0.04f);
+                float shardDistance = burstRadius * (0.44f + shard * 0.03f);
                 float shardX = effect.position.x + MathUtils.cosDeg(angleDeg) * shardDistance;
                 float shardY = effect.position.y + MathUtils.sinDeg(angleDeg) * shardDistance;
-                float shardWidth = (0.46f - progress * 0.10f) * effect.scale;
-                float shardHeight = (0.16f + progress * 0.18f) * effect.scale;
+                float shardWidth = (0.32f - progress * 0.08f) * effect.scale;
+                float shardHeight = (0.12f + progress * 0.12f) * effect.scale;
 
                 drawRotatedRect(
                         shardX,
@@ -1903,10 +1985,19 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private void disposeTexture(Texture texture) {
+        if (texture != null) {
+            texture.dispose();
+        }
+    }
+
     @Override
     public void dispose() {
         if (world != null) {
             world.dispose();
+        }
+        for (int i = 0; i < roster.size; i++) {
+            disposeTexture(roster.get(i).spriteTexture);
         }
         shapeRenderer.dispose();
         spriteBatch.dispose();
@@ -2315,6 +2406,8 @@ public class RatassGame extends ApplicationAdapter {
         private final boolean playerControlled;
         private final Color color;
         private final AiDrivingPersonality personality;
+        private final String spritePath;
+        private Texture spriteTexture;
         private int totalPoints;
         private int roundFinishPosition;
         private int lastRoundAwardedPoints;
@@ -2325,11 +2418,13 @@ public class RatassGame extends ApplicationAdapter {
                 String name,
                 boolean playerControlled,
                 Color color,
-                AiDrivingPersonality personality) {
+                AiDrivingPersonality personality,
+                String spritePath) {
             this.name = name;
             this.playerControlled = playerControlled;
             this.color = color;
             this.personality = personality;
+            this.spritePath = spritePath;
         }
     }
 
@@ -2350,6 +2445,16 @@ public class RatassGame extends ApplicationAdapter {
             this.edge = edge;
             this.surface = surface;
             this.center = center;
+        }
+    }
+
+    private static final class CarVisual {
+        private final String spritePath;
+        private final Color color;
+
+        private CarVisual(String spritePath, Color color) {
+            this.spritePath = spritePath;
+            this.color = color;
         }
     }
 }
