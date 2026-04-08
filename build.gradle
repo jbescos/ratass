@@ -1,5 +1,21 @@
+boolean optionalProjectRequested(String projectPath) {
+    def normalizedPath = projectPath.startsWith(":") ? projectPath.substring(1) : projectPath
+
+    gradle.startParameter.taskNames.any { requestedTask ->
+        requestedTask == projectPath
+                || requestedTask == normalizedPath
+                || requestedTask.startsWith(projectPath + ":")
+                || requestedTask.startsWith(normalizedPath + ":")
+    }
+}
+
 buildscript {
-    
+    def androidTaskRequested = gradle.startParameter.taskNames.any { requestedTask ->
+        requestedTask == ":android"
+                || requestedTask == "android"
+                || requestedTask.startsWith(":android:")
+                || requestedTask.startsWith("android:")
+    }
 
     repositories {
         mavenLocal()
@@ -9,22 +25,15 @@ buildscript {
         google()
     }
     dependencies {
-        classpath 'org.wisepersist:gwt-gradle-plugin:1.1.16'
-        classpath 'org.gretty:gretty:3.0.7'
+        classpath 'org.docstr.gwt:org.docstr.gwt.gradle.plugin:2.2.9'
         classpath 'com.mobidevelop.robovm:robovm-gradle-plugin:2.3.16'
-        
-
     }
-}
 
-def optionalProjectRequested = { String projectPath ->
-    def normalizedPath = projectPath.startsWith(":") ? projectPath.substring(1) : projectPath
-
-    gradle.startParameter.taskNames.any { requestedTask ->
-        requestedTask == projectPath
-                || requestedTask == normalizedPath
-                || requestedTask.startsWith(projectPath + ":")
-                || requestedTask.startsWith(normalizedPath + ":")
+    // Keep Android tooling off the classpath unless an Android task is requested.
+    if (androidTaskRequested) {
+        dependencies {
+            classpath 'com.android.tools.build:gradle:8.9.0'
+        }
     }
 }
 
@@ -67,6 +76,31 @@ project(":desktop") {
     }
 }
 
+project(":android") {
+    if (optionalProjectRequested(path)) {
+        apply plugin: "com.android.application"
+
+        configurations {
+            natives
+        }
+
+        dependencies {
+            implementation project(":core")
+            implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
+            implementation "com.badlogicgames.gdx-controllers:gdx-controllers-android:$gdxControllersVersion"
+
+            natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
+            natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
+            natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86"
+            natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86_64"
+            natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-armeabi-v7a"
+            natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-arm64-v8a"
+            natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-x86"
+            natives "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-x86_64"
+        }
+    }
+}
+
 project(":ios") {
     if (optionalProjectRequested(path)) {
         apply plugin: "java-library"
@@ -89,9 +123,8 @@ project(":ios") {
 project(":html") {
     if (optionalProjectRequested(path)) {
         apply plugin: "java-library"
-        apply plugin: "gwt"
+        apply plugin: "org.docstr.gwt"
         apply plugin: "war"
-        apply plugin: "org.gretty"
 
 
         dependencies {
@@ -107,6 +140,9 @@ project(":html") {
             api "com.badlogicgames.gdx:gdx-ai:$aiVersion:sources"
             api "com.badlogicgames.ashley:ashley:$ashleyVersion:sources"
             api "com.badlogicgames.box2dlights:box2dlights:$box2DLightsVersion:sources"
+            api "com.google.jsinterop:jsinterop-annotations:2.0.2"
+            api "com.google.jsinterop:jsinterop-annotations:2.0.2:sources"
+            api "javax.validation:validation-api:1.0.0.GA:sources"
             
         }
     }

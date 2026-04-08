@@ -1,5 +1,6 @@
 package com.github.jbescos;
 
+import com.badlogic.gdx.Application.ApplicationType;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -13,6 +14,7 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.Box2D;
@@ -23,32 +25,63 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
+import com.github.jbescos.ai.AiControlDecision;
+import com.github.jbescos.ai.AiDrivingPersonality;
+import com.github.jbescos.ai.AiDrivingPersonalities;
+import com.github.jbescos.ai.AiVehicleView;
+import com.github.jbescos.ai.CarAiController;
+import com.github.jbescos.gameplay.ArenaMap;
+import com.github.jbescos.gameplay.ArenaMaps;
+import com.github.jbescos.gameplay.MapProgression;
+import com.github.jbescos.gameplay.SpawnPoint;
 
 public class RatassGame extends ApplicationAdapter {
     private static final float WORLD_WIDTH = 32f;
     private static final float WORLD_HEIGHT = 18f;
-    private static final float ARENA_WIDTH = 22f;
-    private static final float ARENA_HEIGHT = 12f;
     private static final float EDGE_FALLOFF_MARGIN = 0.35f;
     private static final float PHYSICS_STEP = 1f / 60f;
     private static final int VELOCITY_ITERATIONS = 6;
     private static final int POSITION_ITERATIONS = 2;
+    private static final float ARENA_EDGE_INSET = 0.7f;
+    private static final float ARENA_CENTER_INSET = 1.15f;
+    private static final float AUTO_ADVANCE_DELAY = 1.8f;
 
     private static final Color SKYLINE = new Color(0.05f, 0.07f, 0.09f, 1f);
     private static final Color VOID = new Color(0.08f, 0.10f, 0.13f, 1f);
     private static final Color PLATFORM_SHADOW = new Color(0.04f, 0.05f, 0.07f, 1f);
-    private static final Color PLATFORM_EDGE = new Color(0.38f, 0.34f, 0.24f, 1f);
-    private static final Color PLATFORM_SURFACE = new Color(0.78f, 0.72f, 0.54f, 1f);
-    private static final Color PLATFORM_CENTER = new Color(0.69f, 0.63f, 0.46f, 1f);
     private static final Color WARNING_BRIGHT = new Color(0.95f, 0.78f, 0.18f, 1f);
     private static final Color WARNING_DARK = new Color(0.14f, 0.14f, 0.15f, 1f);
 
-    private final Rectangle arenaBounds =
-            new Rectangle(-ARENA_WIDTH * 0.5f, -ARENA_HEIGHT * 0.5f, ARENA_WIDTH, ARENA_HEIGHT);
+    private static final MapTheme[] MAP_THEMES = new MapTheme[] {
+            new MapTheme(
+                    new Color(0.38f, 0.34f, 0.24f, 1f),
+                    new Color(0.78f, 0.72f, 0.54f, 1f),
+                    new Color(0.69f, 0.63f, 0.46f, 1f)),
+            new MapTheme(
+                    new Color(0.23f, 0.36f, 0.44f, 1f),
+                    new Color(0.48f, 0.70f, 0.78f, 1f),
+                    new Color(0.31f, 0.53f, 0.60f, 1f)),
+            new MapTheme(
+                    new Color(0.43f, 0.25f, 0.20f, 1f),
+                    new Color(0.82f, 0.58f, 0.40f, 1f),
+                    new Color(0.68f, 0.41f, 0.28f, 1f)),
+            new MapTheme(
+                    new Color(0.25f, 0.33f, 0.22f, 1f),
+                    new Color(0.56f, 0.74f, 0.46f, 1f),
+                    new Color(0.38f, 0.58f, 0.31f, 1f))
+    };
+
     private final Array<Car> cars = new Array<Car>();
+    private final Array<CarTemplate> roster = new Array<CarTemplate>();
     private final GlyphLayout glyphLayout = new GlyphLayout();
     private final Color tint = new Color();
-    private final Vector2 arenaCenter = new Vector2();
+    private final Rectangle mapBounds = new Rectangle();
+    private final Vector2 focusPoint = new Vector2();
+    private final Rectangle steerPadBounds = new Rectangle();
+    private final Rectangle throttlePadBounds = new Rectangle();
+    private final Rectangle reversePadBounds = new Rectangle();
+    private final Rectangle restartButtonBounds = new Rectangle();
+    private final Vector3 hudTouchPoint = new Vector3();
 
     private OrthographicCamera worldCamera;
     private FitViewport worldViewport;
@@ -60,9 +93,20 @@ public class RatassGame extends ApplicationAdapter {
     private BitmapFont titleFont;
     private World world;
 
+    private MapProgression mapProgression;
+    private ArenaMap currentMap;
     private float accumulator;
+    private float roundOverTimer;
+    private float frameThrottleInput;
+    private float frameTurnInput;
+    private float touchThrottleInput;
+    private float touchTurnInput;
+    private boolean touchRestartPressed;
+    private boolean touchRestartJustPressed;
+    private boolean touchControlsEnabled;
     private boolean roundOver;
     private int roundNumber;
+    private int playerWins;
     private Car playerCar;
     private Car winner;
 
@@ -86,8 +130,32 @@ public class RatassGame extends ApplicationAdapter {
         titleFont.setUseIntegerPositions(false);
         titleFont.getData().setScale(1.9f);
 
+        Gdx.input.setCatchKey(Input.Keys.BACK, true);
+        createRoster();
+        mapProgression = new MapProgression(ArenaMaps.createDefaultSet());
+
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        resetRound();
+        resetRound(false);
+    }
+
+    private void createRoster() {
+        roster.clear();
+        roster.add(new CarTemplate("You", true, new Color(0.90f, 0.25f, 0.20f, 1f), null));
+        roster.add(new CarTemplate(
+                "Cinder",
+                false,
+                new Color(0.92f, 0.54f, 0.13f, 1f),
+                AiDrivingPersonalities.BRAWLER));
+        roster.add(new CarTemplate(
+                "Frost",
+                false,
+                new Color(0.16f, 0.57f, 0.84f, 1f),
+                AiDrivingPersonalities.INTERCEPTOR));
+        roster.add(new CarTemplate(
+                "Moss",
+                false,
+                new Color(0.24f, 0.70f, 0.42f, 1f),
+                AiDrivingPersonalities.SURVIVOR));
     }
 
     @Override
@@ -103,14 +171,18 @@ public class RatassGame extends ApplicationAdapter {
     public void render() {
         float delta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+        updateTouchState();
+        frameThrottleInput = readPlayerThrottle();
+        frameTurnInput = readPlayerTurn();
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
+                || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
             Gdx.app.exit();
             return;
         }
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.R)
-                || Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
-            resetRound();
+        if (isRestartRequested()) {
+            resetRound(shouldAdvanceMap());
         }
 
         update(delta);
@@ -119,6 +191,14 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void update(float delta) {
+        if (roundOver) {
+            roundOverTimer += delta;
+            if (winner != null && winner.playerControlled && roundOverTimer >= AUTO_ADVANCE_DELAY) {
+                resetRound(true);
+                return;
+            }
+        }
+
         accumulator += delta;
         while (accumulator >= PHYSICS_STEP) {
             stepSimulation(PHYSICS_STEP);
@@ -132,7 +212,7 @@ public class RatassGame extends ApplicationAdapter {
     private void stepSimulation(float delta) {
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
-            car.step(delta, arenaBounds, arenaCenter, cars, !roundOver);
+            car.step(delta, currentMap, cars, !roundOver, frameThrottleInput, frameTurnInput);
         }
 
         world.step(delta, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
@@ -151,12 +231,8 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             Vector2 position = car.body.getPosition();
-            boolean outOfBounds = position.x < arenaBounds.x - EDGE_FALLOFF_MARGIN
-                    || position.x > arenaBounds.x + arenaBounds.width + EDGE_FALLOFF_MARGIN
-                    || position.y < arenaBounds.y - EDGE_FALLOFF_MARGIN
-                    || position.y > arenaBounds.y + arenaBounds.height + EDGE_FALLOFF_MARGIN;
-
-            if (outOfBounds) {
+            if (!currentMap.supports(position)
+                    && currentMap.distanceToSafety(position) > EDGE_FALLOFF_MARGIN) {
                 car.eliminate(world);
             }
         }
@@ -179,6 +255,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         roundOver = true;
+        roundOverTimer = 0f;
         winner = lastAlive;
 
         for (int i = 0; i < cars.size; i++) {
@@ -190,7 +267,14 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private void resetRound() {
+    private void resetRound(boolean advanceMap) {
+        if (advanceMap) {
+            playerWins++;
+            mapProgression.advanceIfPlayerWon(true);
+        }
+
+        currentMap = mapProgression.getCurrentMap();
+
         if (world != null) {
             world.dispose();
         }
@@ -199,54 +283,135 @@ public class RatassGame extends ApplicationAdapter {
         cars.clear();
         accumulator = 0f;
         roundOver = false;
+        roundOverTimer = 0f;
         winner = null;
         playerCar = null;
         roundNumber++;
 
-        playerCar = createCar(
-                "You",
-                true,
-                new Color(0.90f, 0.25f, 0.20f, 1f),
-                0f,
-                -3.8f,
-                facingAngle(0f, -3.8f, 0f, 0f));
+        if (currentMap.getSpawnCount() < roster.size) {
+            throw new IllegalStateException("Current map does not have enough spawn points.");
+        }
 
-        createCar(
-                "Cinder",
-                false,
-                new Color(0.92f, 0.54f, 0.13f, 1f),
-                -6.4f,
-                3.4f,
-                facingAngle(-6.4f, 3.4f, 0f, 0f));
-
-        createCar(
-                "Frost",
-                false,
-                new Color(0.16f, 0.57f, 0.84f, 1f),
-                6.2f,
-                3.0f,
-                facingAngle(6.2f, 3.0f, 0f, 0f));
-
-        createCar(
-                "Moss",
-                false,
-                new Color(0.24f, 0.70f, 0.42f, 1f),
-                0f,
-                4.4f,
-                facingAngle(0f, 4.4f, 0f, 0f));
+        for (int i = 0; i < roster.size; i++) {
+            CarTemplate template = roster.get(i);
+            SpawnPoint spawnPoint = currentMap.getSpawn(i);
+            Car car = createCar(template, spawnPoint);
+            if (template.playerControlled) {
+                playerCar = car;
+            }
+        }
     }
 
-    private Car createCar(
-            String name,
-            boolean playerControlled,
-            Color color,
-            float x,
-            float y,
-            float angleRad) {
+    private boolean shouldAdvanceMap() {
+        return roundOver && winner != null && winner.playerControlled;
+    }
+
+    private boolean isRestartRequested() {
+        return Gdx.input.isKeyJustPressed(Input.Keys.R)
+                || Gdx.input.isKeyJustPressed(Input.Keys.ENTER)
+                || touchRestartJustPressed;
+    }
+
+    private float readPlayerThrottle() {
+        float throttle = 0f;
+        if (Gdx.input.isKeyPressed(Input.Keys.W) || Gdx.input.isKeyPressed(Input.Keys.UP)) {
+            throttle += 1f;
+        }
+        if (Gdx.input.isKeyPressed(Input.Keys.S) || Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
+            throttle -= 1f;
+        }
+
+        if (Math.abs(touchThrottleInput) > Math.abs(throttle)) {
+            throttle = touchThrottleInput;
+        }
+
+        return MathUtils.clamp(throttle, -1f, 1f);
+    }
+
+    private float readPlayerTurn() {
+        float turn = 0f;
+        if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
+            turn += 1f;
+        }
+        if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
+            turn -= 1f;
+        }
+
+        if (Math.abs(touchTurnInput) > Math.abs(turn)) {
+            turn = touchTurnInput;
+        }
+
+        return MathUtils.clamp(turn, -1f, 1f);
+    }
+
+    private void updateTouchState() {
+        touchControlsEnabled = shouldEnableTouchControls();
+        if (!touchControlsEnabled) {
+            touchThrottleInput = 0f;
+            touchTurnInput = 0f;
+            touchRestartJustPressed = false;
+            touchRestartPressed = false;
+            return;
+        }
+
+        updateTouchBounds(hudViewport.getWorldWidth(), hudViewport.getWorldHeight());
+
+        float nextThrottle = 0f;
+        float nextTurn = 0f;
+        boolean restartPressed = false;
+        int maxPointers = Math.min(5, Gdx.input.getMaxPointers());
+
+        for (int pointer = 0; pointer < maxPointers; pointer++) {
+            if (!Gdx.input.isTouched(pointer)) {
+                continue;
+            }
+
+            hudTouchPoint.set(Gdx.input.getX(pointer), Gdx.input.getY(pointer), 0f);
+            hudViewport.unproject(hudTouchPoint);
+
+            if (steerPadBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+                float centerX = steerPadBounds.x + steerPadBounds.width * 0.5f;
+                float normalized =
+                        (centerX - hudTouchPoint.x) / (steerPadBounds.width * 0.5f);
+                nextTurn = MathUtils.clamp(normalized, -1f, 1f);
+            } else if (throttlePadBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+                nextThrottle = 1f;
+            } else if (reversePadBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+                nextThrottle = -1f;
+            } else if (restartButtonBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+                restartPressed = true;
+            }
+        }
+
+        touchRestartJustPressed = restartPressed && !touchRestartPressed;
+        touchRestartPressed = restartPressed;
+        touchThrottleInput = nextThrottle;
+        touchTurnInput = nextTurn;
+    }
+
+    private boolean shouldEnableTouchControls() {
+        ApplicationType appType = Gdx.app.getType();
+        return appType == ApplicationType.Android
+                || appType == ApplicationType.iOS
+                || (!Gdx.input.isPeripheralAvailable(Input.Peripheral.HardwareKeyboard)
+                && appType != ApplicationType.Desktop);
+    }
+
+    private void updateTouchBounds(float hudWidth, float hudHeight) {
+        float padSize = Math.min(180f, hudHeight * 0.26f);
+        steerPadBounds.set(18f, 18f, padSize, padSize);
+
+        float buttonWidth = padSize * 0.82f;
+        throttlePadBounds.set(hudWidth - buttonWidth - 18f, 18f + padSize * 0.52f, buttonWidth, padSize * 0.42f);
+        reversePadBounds.set(hudWidth - buttonWidth - 18f, 18f, buttonWidth, padSize * 0.32f);
+        restartButtonBounds.set(hudWidth - 154f, hudHeight - 68f, 132f, 38f);
+    }
+
+    private Car createCar(CarTemplate template, SpawnPoint spawnPoint) {
         BodyDef bodyDef = new BodyDef();
         bodyDef.type = BodyDef.BodyType.DynamicBody;
-        bodyDef.position.set(x, y);
-        bodyDef.angle = angleRad;
+        bodyDef.position.set(spawnPoint.x, spawnPoint.y);
+        bodyDef.angle = spawnPoint.angleRad;
         bodyDef.linearDamping = 0.25f;
         bodyDef.angularDamping = 1.8f;
         bodyDef.bullet = true;
@@ -264,14 +429,10 @@ public class RatassGame extends ApplicationAdapter {
         body.createFixture(fixtureDef);
         shape.dispose();
 
-        Car car = new Car(body, name, playerControlled, color);
+        Car car = new Car(body, template.name, template.playerControlled, template.color, template.personality);
         body.setUserData(car);
         cars.add(car);
         return car;
-    }
-
-    private float facingAngle(float fromX, float fromY, float toX, float toY) {
-        return MathUtils.atan2(toY - fromY, toX - fromX) - MathUtils.HALF_PI;
     }
 
     private void renderWorld() {
@@ -303,37 +464,49 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void drawArena() {
-        float edgeInset = 0.7f;
-        float centerInset = 1.2f;
+        MapTheme theme = currentTheme();
+        currentMap.getBounds(mapBounds);
 
         shapeRenderer.setColor(PLATFORM_SHADOW);
-        shapeRenderer.rect(
-                arenaBounds.x + 0.18f,
-                arenaBounds.y - 0.22f,
-                arenaBounds.width,
-                arenaBounds.height);
+        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
+            currentMap.getSolidZone(i).draw(shapeRenderer, 0.18f, -0.22f, 0f);
+        }
 
-        shapeRenderer.setColor(PLATFORM_EDGE);
-        shapeRenderer.rect(arenaBounds.x - edgeInset, arenaBounds.y - edgeInset,
-                arenaBounds.width + edgeInset * 2f, arenaBounds.height + edgeInset * 2f);
+        shapeRenderer.setColor(theme.edge);
+        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
+            currentMap.getSolidZone(i).draw(shapeRenderer, 0f, 0f, ARENA_EDGE_INSET);
+        }
 
         drawWarningStripes();
 
-        shapeRenderer.setColor(PLATFORM_SURFACE);
-        shapeRenderer.rect(arenaBounds.x, arenaBounds.y, arenaBounds.width, arenaBounds.height);
+        shapeRenderer.setColor(theme.surface);
+        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
+            currentMap.getSolidZone(i).draw(shapeRenderer, 0f, 0f, 0f);
+        }
 
-        shapeRenderer.setColor(PLATFORM_CENTER);
-        shapeRenderer.rect(
-                arenaBounds.x + centerInset,
-                arenaBounds.y + centerInset,
-                arenaBounds.width - centerInset * 2f,
-                arenaBounds.height - centerInset * 2f);
+        shapeRenderer.setColor(theme.center);
+        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
+            currentMap.getSolidZone(i).draw(shapeRenderer, 0f, 0f, -ARENA_CENTER_INSET);
+        }
 
-        shapeRenderer.setColor(0.61f, 0.56f, 0.40f, 1f);
-        shapeRenderer.circle(0f, 0f, 1.7f, 28);
+        if (currentMap.getHoleZoneCount() > 0) {
+            shapeRenderer.setColor(theme.edge);
+            for (int i = 0; i < currentMap.getHoleZoneCount(); i++) {
+                currentMap.getHoleZone(i).draw(shapeRenderer, 0f, 0f, 0.48f);
+            }
 
-        shapeRenderer.setColor(0.57f, 0.52f, 0.37f, 1f);
-        shapeRenderer.circle(0f, 0f, 0.8f, 20);
+            shapeRenderer.setColor(VOID);
+            for (int i = 0; i < currentMap.getHoleZoneCount(); i++) {
+                currentMap.getHoleZone(i).draw(shapeRenderer, 0f, 0f, 0f);
+            }
+        } else {
+            currentMap.getFocusPoint(focusPoint);
+            shapeRenderer.setColor(theme.edge);
+            shapeRenderer.circle(focusPoint.x, focusPoint.y, 1.65f, 28);
+
+            shapeRenderer.setColor(theme.center);
+            shapeRenderer.circle(focusPoint.x, focusPoint.y, 0.82f, 20);
+        }
     }
 
     private void drawWarningStripes() {
@@ -341,20 +514,22 @@ public class RatassGame extends ApplicationAdapter {
         float stripeLength = 1.25f;
         boolean bright = true;
 
-        for (float x = arenaBounds.x - 0.7f; x < arenaBounds.x + arenaBounds.width + 0.7f;
+        for (float x = mapBounds.x - ARENA_EDGE_INSET;
+                x < mapBounds.x + mapBounds.width + ARENA_EDGE_INSET;
                 x += stripeLength) {
             shapeRenderer.setColor(bright ? WARNING_BRIGHT : WARNING_DARK);
-            shapeRenderer.rect(x, arenaBounds.y + arenaBounds.height, stripeLength, stripeDepth);
-            shapeRenderer.rect(x, arenaBounds.y - stripeDepth, stripeLength, stripeDepth);
+            shapeRenderer.rect(x, mapBounds.y + mapBounds.height, stripeLength, stripeDepth);
+            shapeRenderer.rect(x, mapBounds.y - stripeDepth, stripeLength, stripeDepth);
             bright = !bright;
         }
 
         bright = false;
-        for (float y = arenaBounds.y - 0.7f; y < arenaBounds.y + arenaBounds.height + 0.7f;
+        for (float y = mapBounds.y - ARENA_EDGE_INSET;
+                y < mapBounds.y + mapBounds.height + ARENA_EDGE_INSET;
                 y += stripeLength) {
             shapeRenderer.setColor(bright ? WARNING_BRIGHT : WARNING_DARK);
-            shapeRenderer.rect(arenaBounds.x - stripeDepth, y, stripeDepth, stripeLength);
-            shapeRenderer.rect(arenaBounds.x + arenaBounds.width, y, stripeDepth, stripeLength);
+            shapeRenderer.rect(mapBounds.x - stripeDepth, y, stripeDepth, stripeLength);
+            shapeRenderer.rect(mapBounds.x + mapBounds.width, y, stripeDepth, stripeLength);
             bright = !bright;
         }
     }
@@ -370,31 +545,80 @@ public class RatassGame extends ApplicationAdapter {
             float centerX = car.body.getPosition().x;
             float centerY = car.body.getPosition().y;
 
-            drawRotatedRect(centerX + 0.10f, centerY - 0.12f,
-                    Car.WIDTH, Car.HEIGHT, angleDeg, 0.04f, 0.05f, 0.07f, 0.32f);
+            drawRotatedRect(
+                    centerX + 0.10f,
+                    centerY - 0.12f,
+                    Car.WIDTH,
+                    Car.HEIGHT,
+                    angleDeg,
+                    0.04f,
+                    0.05f,
+                    0.07f,
+                    0.32f);
 
             if (car.playerControlled) {
-                drawRotatedRect(centerX, centerY,
-                        Car.WIDTH + 0.20f, Car.HEIGHT + 0.20f, angleDeg,
-                        0.96f, 0.94f, 0.88f, 0.26f);
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        Car.WIDTH + 0.20f,
+                        Car.HEIGHT + 0.20f,
+                        angleDeg,
+                        0.96f,
+                        0.94f,
+                        0.88f,
+                        0.26f);
             }
 
-            drawRotatedRect(centerX, centerY,
-                    Car.WIDTH, Car.HEIGHT, angleDeg,
-                    car.color.r, car.color.g, car.color.b, 1f);
+            drawRotatedRect(
+                    centerX,
+                    centerY,
+                    Car.WIDTH,
+                    Car.HEIGHT,
+                    angleDeg,
+                    car.color.r,
+                    car.color.g,
+                    car.color.b,
+                    1f);
 
             tint.set(car.color).lerp(Color.WHITE, 0.18f);
-            drawOffsetRotatedRect(centerX, centerY, 0f, -0.08f,
-                    Car.WIDTH * 0.68f, Car.HEIGHT * 0.50f, angleDeg,
-                    tint.r, tint.g, tint.b, 1f);
+            drawOffsetRotatedRect(
+                    centerX,
+                    centerY,
+                    0f,
+                    -0.08f,
+                    Car.WIDTH * 0.68f,
+                    Car.HEIGHT * 0.50f,
+                    angleDeg,
+                    tint.r,
+                    tint.g,
+                    tint.b,
+                    1f);
 
-            drawOffsetRotatedRect(centerX, centerY, 0f, 0.40f,
-                    Car.WIDTH * 0.62f, Car.HEIGHT * 0.16f, angleDeg,
-                    0.12f, 0.13f, 0.15f, 1f);
+            drawOffsetRotatedRect(
+                    centerX,
+                    centerY,
+                    0f,
+                    0.40f,
+                    Car.WIDTH * 0.62f,
+                    Car.HEIGHT * 0.16f,
+                    angleDeg,
+                    0.12f,
+                    0.13f,
+                    0.15f,
+                    1f);
 
-            drawOffsetRotatedRect(centerX, centerY, 0f, 0.84f,
-                    Car.WIDTH * 0.55f, Car.HEIGHT * 0.09f, angleDeg,
-                    0.96f, 0.92f, 0.74f, 1f);
+            drawOffsetRotatedRect(
+                    centerX,
+                    centerY,
+                    0f,
+                    0.84f,
+                    Car.WIDTH * 0.55f,
+                    Car.HEIGHT * 0.09f,
+                    angleDeg,
+                    0.96f,
+                    0.92f,
+                    0.74f,
+                    1f);
         }
     }
 
@@ -446,6 +670,7 @@ public class RatassGame extends ApplicationAdapter {
 
         float hudWidth = hudViewport.getWorldWidth();
         float hudHeight = hudViewport.getWorldHeight();
+        float statusRightInset = touchControlsEnabled ? 166f : 22f;
 
         spriteBatch.begin();
 
@@ -455,26 +680,35 @@ public class RatassGame extends ApplicationAdapter {
         hudFont.setColor(0.82f, 0.88f, 0.93f, 1f);
         hudFont.draw(
                 spriteBatch,
-                "WASD or Arrow Keys: drive and steer   R / Enter: restart   Esc: quit",
+                "Map " + mapProgression.getCurrentMapNumber() + ": " + currentMap.getName(),
                 22f,
                 hudHeight - 44f);
 
+        hudFont.setColor(0.74f, 0.82f, 0.88f, 1f);
+        hudFont.draw(spriteBatch, buildControlsText(), 22f, hudHeight - 68f);
+
         String status = buildStatusText();
         glyphLayout.setText(hudFont, status);
-        hudFont.draw(spriteBatch, status, hudWidth - glyphLayout.width - 22f, hudHeight - 20f);
+        hudFont.setColor(0.96f, 0.92f, 0.82f, 1f);
+        hudFont.draw(
+                spriteBatch,
+                status,
+                hudWidth - glyphLayout.width - statusRightInset,
+                hudHeight - 20f);
 
         hudFont.setColor(0.93f, 0.84f, 0.49f, 1f);
         hudFont.draw(
                 spriteBatch,
-                "Last car standing wins. Push rivals clean off the platform.",
+                buildObjectiveText(),
                 22f,
-                30f);
+                44f);
 
-        if (roundOver || !playerCar.active) {
+        hudFont.setColor(0.84f, 0.90f, 0.94f, 1f);
+        hudFont.draw(spriteBatch, buildRivalText(), 22f, 22f);
+
+        if (roundOver || (playerCar != null && !playerCar.active)) {
             String headline = buildHeadline();
-            String subline = roundOver
-                    ? "Press Enter or R to throw another round."
-                    : "You are out. Watch the chaos or restart.";
+            String subline = buildSubline();
 
             titleFont.setColor(0.97f, 0.94f, 0.85f, 1f);
             glyphLayout.setText(titleFont, headline);
@@ -494,18 +728,61 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         spriteBatch.end();
+
+        if (touchControlsEnabled) {
+            drawTouchControls();
+        }
+    }
+
+    private String buildControlsText() {
+        if (touchControlsEnabled) {
+            return "Touch: steer left, gas top-right, reverse bottom-right, restart top-right.";
+        }
+        return "WASD or Arrow Keys: drive and steer   R / Enter: restart   Esc: quit";
     }
 
     private String buildStatusText() {
         int aliveCars = 0;
         for (int i = 0; i < cars.size; i++) {
-            Car car = cars.get(i);
-            if (car.active) {
+            if (cars.get(i).active) {
                 aliveCars++;
             }
         }
 
-        return "Round " + roundNumber + "   |   Cars left: " + aliveCars + "/" + cars.size;
+        return "Wins " + playerWins
+                + "  |  Round " + roundNumber
+                + "  |  Cars left: " + aliveCars + "/" + cars.size
+                + "  |  Arenas " + mapProgression.getCurrentMapNumber() + "/" + mapProgression.getMapCount();
+    }
+
+    private String buildObjectiveText() {
+        return currentMap.getName() + ": win the arena to unlock " + mapProgression.getNextMap().getName() + ".";
+    }
+
+    private String buildRivalText() {
+        StringBuilder builder = new StringBuilder("Rivals: ");
+        boolean first = true;
+
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (car.playerControlled) {
+                continue;
+            }
+
+            if (!first) {
+                builder.append("   |   ");
+            }
+
+            builder.append(car.name)
+                    .append(" / ")
+                    .append(car.getPersonalityDisplayName());
+            if (!car.active) {
+                builder.append(" out");
+            }
+            first = false;
+        }
+
+        return builder.toString();
     }
 
     private String buildHeadline() {
@@ -518,10 +795,72 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         if (winner.playerControlled) {
-            return "YOU WIN";
+            return "MAP CLEAR";
         }
 
         return winner.name.toUpperCase() + " WINS";
+    }
+
+    private String buildSubline() {
+        if (!roundOver) {
+            return touchControlsEnabled
+                    ? "You are out. Tap Restart to retry or watch the pile-up."
+                    : "You are out. Watch the chaos or restart.";
+        }
+
+        if (winner == null) {
+            return touchControlsEnabled
+                    ? "Draw. Tap Restart to replay the arena."
+                    : "Draw. Press Enter or R to replay the arena.";
+        }
+
+        if (winner.playerControlled) {
+            return "Next arena: " + mapProgression.getNextMap().getName()
+                    + ". Press restart now or wait a moment.";
+        }
+
+        return touchControlsEnabled
+                ? "Retry " + currentMap.getName() + " with the Restart button."
+                : "Press Enter or R to retry " + currentMap.getName() + ".";
+    }
+
+    private void drawTouchControls() {
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+
+        shapeRenderer.setColor(0.10f, 0.12f, 0.16f, 0.28f);
+        shapeRenderer.rect(steerPadBounds.x, steerPadBounds.y, steerPadBounds.width, steerPadBounds.height);
+        shapeRenderer.rect(throttlePadBounds.x, throttlePadBounds.y, throttlePadBounds.width, throttlePadBounds.height);
+        shapeRenderer.rect(reversePadBounds.x, reversePadBounds.y, reversePadBounds.width, reversePadBounds.height);
+        shapeRenderer.rect(restartButtonBounds.x, restartButtonBounds.y, restartButtonBounds.width, restartButtonBounds.height);
+
+        shapeRenderer.setColor(1f, 1f, 1f, 0.08f);
+        float steerCenterX = steerPadBounds.x + steerPadBounds.width * 0.5f;
+        shapeRenderer.rect(steerCenterX - 2f, steerPadBounds.y + 12f, 4f, steerPadBounds.height - 24f);
+
+        float knobX = steerCenterX - touchTurnInput * steerPadBounds.width * 0.26f;
+        float knobY = steerPadBounds.y + steerPadBounds.height * 0.5f;
+        shapeRenderer.setColor(0.95f, 0.78f, 0.18f, 0.42f);
+        shapeRenderer.circle(knobX, knobY, steerPadBounds.width * 0.12f, 28);
+
+        shapeRenderer.setColor(0.73f, 0.88f, 0.97f, touchThrottleInput > 0f ? 0.40f : 0.16f);
+        shapeRenderer.rect(throttlePadBounds.x + 8f, throttlePadBounds.y + 8f, throttlePadBounds.width - 16f, throttlePadBounds.height - 16f);
+
+        shapeRenderer.setColor(0.95f, 0.64f, 0.36f, touchThrottleInput < 0f ? 0.40f : 0.16f);
+        shapeRenderer.rect(reversePadBounds.x + 8f, reversePadBounds.y + 8f, reversePadBounds.width - 16f, reversePadBounds.height - 16f);
+
+        shapeRenderer.setColor(0.97f, 0.86f, 0.52f, touchRestartPressed ? 0.40f : 0.18f);
+        shapeRenderer.rect(restartButtonBounds.x + 8f, restartButtonBounds.y + 8f, restartButtonBounds.width - 16f, restartButtonBounds.height - 16f);
+
+        shapeRenderer.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private MapTheme currentTheme() {
+        return MAP_THEMES[(mapProgression.getCurrentMapNumber() - 1) % MAP_THEMES.length];
     }
 
     @Override
@@ -535,7 +874,7 @@ public class RatassGame extends ApplicationAdapter {
         titleFont.dispose();
     }
 
-    private static final class Car {
+    private static final class Car implements AiVehicleView {
         private static final float WIDTH = 1.35f;
         private static final float HEIGHT = 2.35f;
         private static final float HALF_WIDTH = WIDTH * 0.5f;
@@ -548,40 +887,38 @@ public class RatassGame extends ApplicationAdapter {
         private static final float ANGULAR_GRIP = 0.25f;
         private static final float FORWARD_DRAG = 2.0f;
         private static final float MAX_SPEED = 14f;
-        private static final float AI_RECOVERY_EDGE = 1.8f;
-        private static final float AI_CAUTION_EDGE = 2.7f;
-        private static final float AI_TARGET_LEAD_MAX = 0.45f;
-        private static final float AI_STAGING_DISTANCE = 1.85f;
 
         private final String name;
         private final boolean playerControlled;
         private final Color color;
+        private final CarAiController aiController;
         private final Vector2 forwardAxis = new Vector2();
         private final Vector2 sidewaysAxis = new Vector2();
-        private final Vector2 desiredVector = new Vector2();
-        private final Vector2 centerBias = new Vector2();
         private final Vector2 working = new Vector2();
-        private final Vector2 targetLead = new Vector2();
-        private final Vector2 attackVector = new Vector2();
-        private final Vector2 interceptPoint = new Vector2();
 
         private Body body;
         private boolean active = true;
-        private float stuckTimer;
 
-        private Car(Body body, String name, boolean playerControlled, Color color) {
+        private Car(
+                Body body,
+                String name,
+                boolean playerControlled,
+                Color color,
+                AiDrivingPersonality aiPersonality) {
             this.body = body;
             this.name = name;
             this.playerControlled = playerControlled;
             this.color = color;
+            aiController = playerControlled ? null : new CarAiController(aiPersonality);
         }
 
         private void step(
                 float delta,
-                Rectangle arenaBounds,
-                Vector2 arenaCenter,
+                ArenaMap arenaMap,
                 Array<Car> cars,
-                boolean allowControl) {
+                boolean allowControl,
+                float playerThrottle,
+                float playerTurn) {
             if (!active || body == null) {
                 return;
             }
@@ -593,155 +930,12 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             if (playerControlled) {
-                drive(getPlayerThrottle(), getPlayerTurn());
+                drive(playerThrottle, playerTurn);
                 return;
             }
 
-            driveAi(delta, arenaBounds, arenaCenter, cars);
-        }
-
-        private void driveAi(
-                float delta,
-                Rectangle arenaBounds,
-                Vector2 arenaCenter,
-                Array<Car> cars) {
-            Car target = findTarget(cars, arenaBounds, arenaCenter);
-            if (target == null || target.body == null) {
-                drive(0f, 0f);
-                return;
-            }
-
-            Vector2 position = body.getPosition();
-            float nearestEdge = distanceToNearestEdge(position, arenaBounds);
-            float outwardVelocity = 0f;
-
-            centerBias.set(position).sub(arenaCenter);
-            if (!centerBias.isZero(0.001f)) {
-                centerBias.nor();
-                outwardVelocity = centerBias.dot(body.getLinearVelocity());
-            }
-
-            boolean recovering =
-                    nearestEdge < AI_RECOVERY_EDGE
-                            || (nearestEdge < AI_CAUTION_EDGE && outwardVelocity > 1.15f);
-
-            if (recovering) {
-                desiredVector.set(arenaCenter).sub(position);
-                if (desiredVector.isZero(0.001f)) {
-                    desiredVector.set(0f, 1f);
-                }
-            } else {
-                Vector2 targetPosition = target.body.getPosition();
-                float leadTime = MathUtils.clamp(
-                        position.dst(targetPosition) / 10f,
-                        0.14f,
-                        AI_TARGET_LEAD_MAX);
-                interceptPoint.set(targetPosition).mulAdd(target.body.getLinearVelocity(), leadTime);
-                clampInsideArena(interceptPoint, arenaBounds, 0.7f);
-
-                attackVector.set(targetPosition).sub(arenaCenter);
-                if (attackVector.isZero(0.001f)) {
-                    attackVector.set(interceptPoint).sub(position);
-                }
-                if (attackVector.isZero(0.001f)) {
-                    attackVector.set(0f, 1f);
-                }
-                attackVector.nor();
-
-                targetLead.set(interceptPoint).sub(position);
-                float pushAlignment = 0f;
-                if (!targetLead.isZero(0.001f)) {
-                    targetLead.nor();
-                    pushAlignment = targetLead.dot(attackVector);
-                }
-
-                float targetEdge = distanceToNearestEdge(targetPosition, arenaBounds);
-                boolean commitPush =
-                        targetEdge < AI_RECOVERY_EDGE
-                                || (pushAlignment > 0.42f && position.dst2(targetPosition) < 20f);
-
-                if (commitPush) {
-                    desiredVector.set(interceptPoint).mulAdd(attackVector, 1.15f).sub(position);
-                } else {
-                    float stagingDistance = MathUtils.clamp(
-                            AI_STAGING_DISTANCE + target.body.getLinearVelocity().len() * 0.18f,
-                            1.45f,
-                            2.55f);
-                    desiredVector.set(interceptPoint).mulAdd(attackVector, -stagingDistance).sub(position);
-
-                    if (targetEdge > 3.4f && nearestEdge > 3f) {
-                        centerBias.set(arenaCenter).sub(interceptPoint);
-                        if (!centerBias.isZero(0.001f)) {
-                            centerBias.nor().scl(0.75f);
-                            desiredVector.add(centerBias);
-                        }
-                    }
-                }
-            }
-
-            float currentHeading = body.getAngle() + MathUtils.HALF_PI;
-            float desiredHeading = desiredVector.angleRad();
-            float angleError = desiredHeading - currentHeading;
-            angleError = MathUtils.atan2(MathUtils.sin(angleError), MathUtils.cos(angleError));
-
-            float turn = MathUtils.clamp(angleError * (recovering ? 3.8f : 3.1f), -1f, 1f);
-            float throttle;
-
-            if (recovering) {
-                if (Math.abs(angleError) > 1.35f) {
-                    throttle = -0.58f;
-                } else if (nearestEdge < 1.1f) {
-                    throttle = 1f;
-                } else {
-                    throttle = 0.85f;
-                }
-            } else if (Math.abs(angleError) > 1.55f) {
-                throttle = -0.42f;
-            } else if (Math.abs(angleError) > 0.85f) {
-                throttle = 0.55f;
-            } else if (desiredVector.len2() < 2f) {
-                throttle = 0.78f;
-            } else {
-                throttle = 1f;
-            }
-
-            if (body.getLinearVelocity().len2() < 1f) {
-                stuckTimer += delta;
-            } else {
-                stuckTimer = 0f;
-            }
-
-            if (stuckTimer > 0.65f) {
-                throttle = -0.72f;
-                turn = turn >= 0f ? 1f : -1f;
-                if (stuckTimer > 1.1f) {
-                    stuckTimer = 0f;
-                }
-            }
-
-            drive(throttle, turn);
-        }
-
-        private float getPlayerThrottle() {
-            float throttle = 0f;
-            if (Gdx.input.isKeyPressed(Input.Keys.W) || Gdx.input.isKeyPressed(Input.Keys.UP)) {
-                throttle += 1f;
-            }
-            if (Gdx.input.isKeyPressed(Input.Keys.S) || Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
-                throttle -= 1f;
-            }
-            return throttle;
-        }
-
-        private float getPlayerTurn() {
-            float turn = 0f;
-            if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
-                turn += 1f;
-            }
-            if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
-                turn -= 1f;
-            }
-            return turn;
+            AiControlDecision decision = aiController.plan(delta, this, arenaMap, cars);
+            drive(decision.throttle, decision.turn);
         }
 
         private void applyGrip() {
@@ -786,6 +980,7 @@ public class RatassGame extends ApplicationAdapter {
                 steeringStrength = MathUtils.clamp(body.getLinearVelocity().len() / 5.2f, 0.34f, 1.1f);
                 turnTorque = AI_TURN_TORQUE;
             }
+
             float steeringDirection = 1f;
             if (signedForwardSpeed < -0.25f) {
                 steeringDirection = -1f;
@@ -801,68 +996,23 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
-        private Car findTarget(Array<Car> cars, Rectangle arenaBounds, Vector2 arenaCenter) {
-            Car best = null;
-            float bestScore = -Float.MAX_VALUE;
-            Vector2 myPosition = body.getPosition();
-            forwardAxis.set(body.getWorldVector(working.set(0f, 1f)));
-
-            for (int i = 0; i < cars.size; i++) {
-                Car candidate = cars.get(i);
-                if (candidate == this || !candidate.active || candidate.body == null) {
-                    continue;
-                }
-
-                Vector2 candidatePosition = candidate.body.getPosition();
-                float distance = myPosition.dst(candidatePosition);
-                float edgeThreat = 4.8f - distanceToNearestEdge(candidatePosition, arenaBounds);
-
-                targetLead.set(candidatePosition).sub(arenaCenter);
-                float centerDistanceScore = targetLead.len() * 0.28f;
-
-                targetLead.set(candidatePosition).sub(myPosition);
-                float approachAlignment = 0f;
-                if (!targetLead.isZero(0.001f)) {
-                    targetLead.nor();
-                    approachAlignment = Math.max(0f, forwardAxis.dot(targetLead));
-                }
-
-                float score =
-                        edgeThreat * 2.3f
-                                + centerDistanceScore
-                                + approachAlignment * 1.8f
-                                - distance * 0.24f;
-
-                if (candidate.playerControlled) {
-                    score += 0.45f;
-                }
-
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = candidate;
-                }
-            }
-
-            return best;
+        private String getPersonalityDisplayName() {
+            return aiController == null ? "Player" : aiController.getPersonality().displayName;
         }
 
-        private float distanceToNearestEdge(Vector2 position, Rectangle arenaBounds) {
-            float leftGap = position.x - arenaBounds.x;
-            float rightGap = arenaBounds.x + arenaBounds.width - position.x;
-            float bottomGap = position.y - arenaBounds.y;
-            float topGap = arenaBounds.y + arenaBounds.height - position.y;
-            return Math.min(Math.min(leftGap, rightGap), Math.min(bottomGap, topGap));
+        @Override
+        public Body getBody() {
+            return body;
         }
 
-        private void clampInsideArena(Vector2 point, Rectangle arenaBounds, float margin) {
-            point.x = MathUtils.clamp(
-                    point.x,
-                    arenaBounds.x + margin,
-                    arenaBounds.x + arenaBounds.width - margin);
-            point.y = MathUtils.clamp(
-                    point.y,
-                    arenaBounds.y + margin,
-                    arenaBounds.y + arenaBounds.height - margin);
+        @Override
+        public boolean isActive() {
+            return active;
+        }
+
+        @Override
+        public boolean isPlayerControlled() {
+            return playerControlled;
         }
 
         private void eliminate(World world) {
@@ -873,6 +1023,36 @@ public class RatassGame extends ApplicationAdapter {
             active = false;
             world.destroyBody(body);
             body = null;
+        }
+    }
+
+    private static final class CarTemplate {
+        private final String name;
+        private final boolean playerControlled;
+        private final Color color;
+        private final AiDrivingPersonality personality;
+
+        private CarTemplate(
+                String name,
+                boolean playerControlled,
+                Color color,
+                AiDrivingPersonality personality) {
+            this.name = name;
+            this.playerControlled = playerControlled;
+            this.color = color;
+            this.personality = personality;
+        }
+    }
+
+    private static final class MapTheme {
+        private final Color edge;
+        private final Color surface;
+        private final Color center;
+
+        private MapTheme(Color edge, Color surface, Color center) {
+            this.edge = edge;
+            this.surface = surface;
+            this.center = center;
         }
     }
 }
