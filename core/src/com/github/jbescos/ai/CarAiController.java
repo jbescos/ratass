@@ -31,6 +31,10 @@ public final class CarAiController {
     private static final float CHARGE_TURN_GAIN_MULTIPLIER = 1.20f;
     private static final float STUCK_RESET_DURATION = 1.1f;
     private static final float POWER_PICKUP_EDGE_MARGIN = 1.05f;
+    private static final float POINT_PICKUP_MAX_CHASE_DISTANCE_SQ = 92f;
+    private static final float BOOSTED_POINT_PICKUP_MAX_CHASE_DISTANCE_SQ = 52f;
+    private static final float POINT_PICKUP_TARGET_DISTANCE_FACTOR = 0.72f;
+    private static final float POINT_PICKUP_TARGET_EDGE_OVERRIDE_DISTANCE = 2.35f;
     private static final float BOOSTED_TARGET_BONUS = 1.85f;
     private static final float EDGE_ATTACK_COMMIT_DISTANCE = 2.55f;
     private static final float EDGE_VULNERABILITY_DISTANCE = 2.9f;
@@ -66,7 +70,9 @@ public final class CarAiController {
             ArenaMap arenaMap,
             Array<? extends AiVehicleView> vehicles,
             boolean growthPickupActive,
-            Vector2 growthPickupPosition) {
+            Vector2 growthPickupPosition,
+            boolean pointPickupActive,
+            Vector2 pointPickupPosition) {
         if (self == null || !self.isActive()) {
             clearAttackResetState();
             return decision.set(0f, 0f);
@@ -88,13 +94,12 @@ public final class CarAiController {
                         && arenaMap.distanceToHazard(growthPickupPosition) >= POWER_PICKUP_EDGE_MARGIN;
 
         AiVehicleView target = null;
+        Body targetBody = null;
         if (!chaseGrowthPickup) {
             target = findTarget(self, body, vehicles, arenaMap, arenaFocus);
-        }
-
-        if (!chaseGrowthPickup && (target == null || target.getBody() == null)) {
-            clearAttackResetState();
-            return decision.set(0f, 0f);
+            if (target != null) {
+                targetBody = target.getBody();
+            }
         }
 
         Vector2 position = body.getPosition();
@@ -113,11 +118,45 @@ public final class CarAiController {
                         || (nearestHazard < personality.cautionEdgeDistance
                         && awayFromSafetyVelocity > personality.outwardVelocityThreshold);
 
-        if (recovering || chaseGrowthPickup) {
+        boolean chasePointPickup =
+                !chaseGrowthPickup
+                        && pointPickupActive
+                        && pointPickupPosition != null
+                        && arenaMap.distanceToHazard(pointPickupPosition) >= POWER_PICKUP_EDGE_MARGIN
+                        && nearestHazard >= personality.recoveryEdgeDistance + 0.15f;
+
+        float targetDistanceSq = Float.MAX_VALUE;
+        if (chasePointPickup) {
+            float pointPickupDistanceSq = position.dst2(pointPickupPosition);
+            float maxChaseDistanceSq =
+                    self.hasGrowthBoost()
+                            ? BOOSTED_POINT_PICKUP_MAX_CHASE_DISTANCE_SQ
+                            : POINT_PICKUP_MAX_CHASE_DISTANCE_SQ;
+            if (pointPickupDistanceSq > maxChaseDistanceSq) {
+                chasePointPickup = false;
+            } else if (targetBody != null) {
+                targetDistanceSq = position.dst2(targetBody.getPosition());
+                float targetEdgeDistance = arenaMap.distanceToHazard(targetBody.getPosition());
+                boolean targetPrime =
+                        target.hasGrowthBoost()
+                                || targetEdgeDistance < POINT_PICKUP_TARGET_EDGE_OVERRIDE_DISTANCE;
+                if (targetPrime
+                        || targetDistanceSq
+                        < pointPickupDistanceSq * POINT_PICKUP_TARGET_DISTANCE_FACTOR) {
+                    chasePointPickup = false;
+                }
+            }
+        }
+
+        if (recovering || chaseGrowthPickup || chasePointPickup) {
             clearAttackResetState();
         }
 
-        float targetDistanceSq = Float.MAX_VALUE;
+        if (!recovering && !chaseGrowthPickup && !chasePointPickup && targetBody == null) {
+            clearAttackResetState();
+            return decision.set(0f, 0f);
+        }
+
         boolean disengaging = false;
         boolean charging = false;
 
@@ -126,8 +165,10 @@ public final class CarAiController {
         } else if (chaseGrowthPickup) {
             desiredVector.set(growthPickupPosition);
             arenaMap.clampToPlayable(desiredVector, INTERCEPT_CLAMP_MARGIN);
+        } else if (chasePointPickup) {
+            desiredVector.set(pointPickupPosition);
+            arenaMap.clampToPlayable(desiredVector, INTERCEPT_CLAMP_MARGIN);
         } else {
-            Body targetBody = target.getBody();
             Vector2 targetPosition = targetBody.getPosition();
             targetDistanceSq = position.dst2(targetPosition);
             float leadTime = MathUtils.clamp(
@@ -256,6 +297,7 @@ public final class CarAiController {
         boolean stuckEligible =
                 !recovering
                         && !chaseGrowthPickup
+                        && !chasePointPickup
                         && target != null
                         && targetDistanceSq <= STUCK_ENGAGE_DISTANCE_SQ
                         && disengageTimer <= 0f;

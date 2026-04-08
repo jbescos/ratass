@@ -58,6 +58,11 @@ public class RatassGame extends ApplicationAdapter {
     private static final float GROWTH_PICKUP_SPAWN_MARGIN = 1.05f;
     private static final float GROWTH_PICKUP_MIN_MOVE_DISTANCE = 3.4f;
     private static final int GROWTH_PICKUP_SPAWN_ATTEMPTS = 96;
+    private static final float POINT_PICKUP_RADIUS = 0.30f;
+    private static final float POINT_PICKUP_SPAWN_MARGIN = 0.92f;
+    private static final float POINT_PICKUP_MIN_MOVE_DISTANCE = 2.6f;
+    private static final int POINT_PICKUP_SPAWN_ATTEMPTS = 96;
+    private static final float PICKUP_MIN_SEPARATION = 1.95f;
     private static final float GROWTH_DURATION = 5f;
     private static final float DESTRUCTION_EFFECT_DURATION = 0.65f;
     private static final int TOTAL_CARS = 20;
@@ -171,8 +176,10 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle mapBounds = new Rectangle();
     private final Vector2 focusPoint = new Vector2();
     private final Vector2 growthPickupPosition = new Vector2();
+    private final Vector2 pointPickupPosition = new Vector2();
     private final Vector2 pickupCandidate = new Vector2();
     private final Vector2 lastGrowthPickupPosition = new Vector2();
+    private final Vector2 lastPointPickupPosition = new Vector2();
     private final Vector2 spawnCandidate = new Vector2();
     private final Array<SpawnPoint> roundSpawns = new Array<SpawnPoint>();
     private final Rectangle steerPadBounds = new Rectangle();
@@ -237,7 +244,9 @@ public class RatassGame extends ApplicationAdapter {
     private boolean touchRestartJustPressed;
     private boolean touchControlsEnabled;
     private boolean growthPickupActive;
+    private boolean pointPickupActive;
     private boolean hasLastGrowthPickupPosition;
+    private boolean hasLastPointPickupPosition;
     private boolean roundOver;
     private boolean roundStartSoundPlayed;
     private boolean roundTimedOut;
@@ -505,7 +514,9 @@ public class RatassGame extends ApplicationAdapter {
                     frameThrottleInput,
                     frameTurnInput,
                     growthPickupActive,
-                    growthPickupPosition);
+                    growthPickupPosition,
+                    pointPickupActive,
+                    pointPickupPosition);
         }
 
         if (!allowControl && !roundOver) {
@@ -522,6 +533,7 @@ public class RatassGame extends ApplicationAdapter {
                 updateRoundTimer(delta);
                 if (!roundOver) {
                     updateGrowthPickup(delta);
+                    updatePointPickup();
                 }
             }
         }
@@ -600,7 +612,9 @@ public class RatassGame extends ApplicationAdapter {
         accumulator = 0f;
         effectClock = 0f;
         growthPickupActive = false;
+        pointPickupActive = false;
         hasLastGrowthPickupPosition = false;
+        hasLastPointPickupPosition = false;
         growthBoostTimer = 0f;
         boostedCar = null;
         preRoundCountdownTimer = ROUND_START_COUNTDOWN;
@@ -635,6 +649,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         spawnGrowthPickup();
+        spawnPointPickup();
     }
 
     private void freezeCarsForCountdown() {
@@ -984,6 +999,26 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private void updatePointPickup() {
+        if (!pointPickupActive) {
+            spawnPointPickup();
+            return;
+        }
+
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null) {
+                continue;
+            }
+
+            float collectRadius = POINT_PICKUP_RADIUS + car.getGrowthPickupReach();
+            if (car.body.getPosition().dst2(pointPickupPosition) <= collectRadius * collectRadius) {
+                collectPointPickup(car);
+                return;
+            }
+        }
+    }
+
     private void collectGrowthPickup(Car car) {
         if (car == null || !growthPickupActive || !car.active) {
             return;
@@ -998,6 +1033,20 @@ public class RatassGame extends ApplicationAdapter {
         car.template.roundPickupPoints++;
         car.setGrowthBoost(true);
         playSound(pickupSound, 0.72f);
+    }
+
+    private void collectPointPickup(Car car) {
+        if (car == null || !pointPickupActive || !car.active) {
+            return;
+        }
+
+        lastPointPickupPosition.set(pointPickupPosition);
+        hasLastPointPickupPosition = true;
+        pointPickupActive = false;
+        car.template.totalPoints++;
+        car.template.roundPickupPoints++;
+        playSound(pickupSound, 0.58f);
+        spawnPointPickup();
     }
 
     private void clearGrowthBoost() {
@@ -1049,7 +1098,10 @@ public class RatassGame extends ApplicationAdapter {
                     < GROWTH_PICKUP_MIN_MOVE_DISTANCE * GROWTH_PICKUP_MIN_MOVE_DISTANCE) {
                 continue;
             }
-            if (avoidCars && !isGrowthPickupFarFromCars(pickupCandidate)) {
+            if (avoidCars && !isPickupFarFromCars(pickupCandidate, GROWTH_PICKUP_RADIUS, 0.75f)) {
+                continue;
+            }
+            if (!isPickupSeparated(pickupCandidate, pointPickupPosition, pointPickupActive, PICKUP_MIN_SEPARATION)) {
                 continue;
             }
 
@@ -1061,20 +1113,85 @@ public class RatassGame extends ApplicationAdapter {
         return false;
     }
 
-    private boolean isGrowthPickupFarFromCars(Vector2 candidate) {
+    private void spawnPointPickup() {
+        if (currentMap == null) {
+            return;
+        }
+
+        pointPickupActive = false;
+        currentMap.getBounds(mapBounds);
+
+        if (trySpawnPointPickup(true, true)
+                || trySpawnPointPickup(true, false)
+                || trySpawnPointPickup(false, false)) {
+            return;
+        }
+
+        pickupCandidate.set(0f, 0f);
+        currentMap.findRecoveryPoint(pickupCandidate, pointPickupPosition);
+        pointPickupActive = true;
+    }
+
+    private boolean trySpawnPointPickup(boolean avoidCars, boolean requireNewSpot) {
+        float minX = mapBounds.x + POINT_PICKUP_SPAWN_MARGIN;
+        float maxX = mapBounds.x + mapBounds.width - POINT_PICKUP_SPAWN_MARGIN;
+        float minY = mapBounds.y + POINT_PICKUP_SPAWN_MARGIN;
+        float maxY = mapBounds.y + mapBounds.height - POINT_PICKUP_SPAWN_MARGIN;
+
+        if (minX >= maxX || minY >= maxY) {
+            return false;
+        }
+
+        for (int attempt = 0; attempt < POINT_PICKUP_SPAWN_ATTEMPTS; attempt++) {
+            pickupCandidate.set(MathUtils.random(minX, maxX), MathUtils.random(minY, maxY));
+
+            if (currentMap.distanceToHazard(pickupCandidate) < POINT_PICKUP_SPAWN_MARGIN) {
+                continue;
+            }
+            if (requireNewSpot
+                    && hasLastPointPickupPosition
+                    && pickupCandidate.dst2(lastPointPickupPosition)
+                    < POINT_PICKUP_MIN_MOVE_DISTANCE * POINT_PICKUP_MIN_MOVE_DISTANCE) {
+                continue;
+            }
+            if (avoidCars && !isPickupFarFromCars(pickupCandidate, POINT_PICKUP_RADIUS, 0.65f)) {
+                continue;
+            }
+            if (!isPickupSeparated(pickupCandidate, growthPickupPosition, growthPickupActive, PICKUP_MIN_SEPARATION)) {
+                continue;
+            }
+
+            pointPickupPosition.set(pickupCandidate);
+            pointPickupActive = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean isPickupFarFromCars(Vector2 candidate, float pickupRadius, float extraMargin) {
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
             if (!car.active || car.body == null) {
                 continue;
             }
 
-            float minDistance = car.getGrowthPickupReach() + GROWTH_PICKUP_RADIUS + 0.75f;
+            float minDistance = car.getGrowthPickupReach() + pickupRadius + extraMargin;
             if (car.body.getPosition().dst2(candidate) < minDistance * minDistance) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    private boolean isPickupSeparated(
+            Vector2 candidate,
+            Vector2 otherPickupPosition,
+            boolean otherPickupActive,
+            float minDistance) {
+        return !otherPickupActive
+                || candidate.dst2(otherPickupPosition) >= minDistance * minDistance;
     }
 
     private void renderWorld() {
@@ -1090,6 +1207,7 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawBackdrop();
         drawArena();
+        drawPointPickup();
         drawGrowthPickup();
         drawCarEffects();
         shapeRenderer.end();
@@ -1222,6 +1340,51 @@ public class RatassGame extends ApplicationAdapter {
                 growthPickupPosition.y,
                 GROWTH_PICKUP_RADIUS * 0.34f,
                 20);
+    }
+
+    private void drawPointPickup() {
+        if (!pointPickupActive) {
+            return;
+        }
+
+        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 8.4f + 0.6f);
+        float spinDeg = effectClock * -170f;
+
+        shapeRenderer.setColor(0.14f, 0.92f, 1f, 0.14f + pulse * 0.08f);
+        shapeRenderer.circle(
+                pointPickupPosition.x,
+                pointPickupPosition.y,
+                POINT_PICKUP_RADIUS * (1.95f + pulse * 0.32f),
+                24);
+
+        drawRotatedRect(
+                pointPickupPosition.x,
+                pointPickupPosition.y,
+                POINT_PICKUP_RADIUS * 2.35f,
+                POINT_PICKUP_RADIUS * 2.35f,
+                spinDeg,
+                0.10f,
+                0.84f,
+                1f,
+                0.92f);
+
+        drawRotatedRect(
+                pointPickupPosition.x,
+                pointPickupPosition.y,
+                POINT_PICKUP_RADIUS * 1.25f,
+                POINT_PICKUP_RADIUS * 1.25f,
+                -spinDeg * 1.4f,
+                0.70f,
+                0.98f,
+                1f,
+                0.98f);
+
+        shapeRenderer.setColor(1f, 1f, 1f, 1f);
+        shapeRenderer.circle(
+                pointPickupPosition.x,
+                pointPickupPosition.y,
+                POINT_PICKUP_RADIUS * 0.24f,
+                16);
     }
 
     private void drawCarEffects() {
@@ -1818,7 +1981,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private String buildObjectiveText() {
         if (preRoundCountdownTimer > 0f) {
-            return "Prepare for the horn. First car out gets 1 point. Sudden death starts at 30s and the arena wipes at 60s.";
+            return "Prepare for the horn. First car out gets 1 point, bonus pickups keep respawning, sudden death starts at 30s, and the arena wipes at 60s.";
         }
 
         if (roundOver) {
@@ -1838,7 +2001,9 @@ public class RatassGame extends ApplicationAdapter {
                     ? "Mass core active: you are huge for "
                     : boostedCar.name + " has the mass core for ")
                     + MathUtils.ceil(growthBoostTimer)
-                    + " more seconds. Sudden death in "
+                    + " more seconds. "
+                    + (pointPickupActive ? "Bonus pickup live for extra points. " : "")
+                    + "Sudden death in "
                     + getSuddenDeathSecondsLeft()
                     + "s, wipe in "
                     + getRoundTimeoutSecondsLeft()
@@ -1847,7 +2012,17 @@ public class RatassGame extends ApplicationAdapter {
 
         if (growthPickupActive) {
             return currentMap.getName()
-                    + ": mass core live. Sudden death in "
+                    + (pointPickupActive
+                    ? ": mass core and bonus pickup live. Sudden death in "
+                    : ": mass core live. Sudden death in ")
+                    + getSuddenDeathSecondsLeft()
+                    + "s, wipe in "
+                    + getRoundTimeoutSecondsLeft()
+                    + "s.";
+        }
+
+        if (pointPickupActive) {
+            return currentMap.getName() + ": bonus pickup live. Sudden death in "
                     + getSuddenDeathSecondsLeft()
                     + "s, wipe in "
                     + getRoundTimeoutSecondsLeft()
@@ -2075,8 +2250,16 @@ public class RatassGame extends ApplicationAdapter {
                 }
             }
 
-            carA.absorbCollision(normal, -1f, impactStrength);
-            carB.absorbCollision(normal, 1f, impactStrength);
+            carA.absorbCollision(
+                    normal,
+                    -1f,
+                    impactStrength,
+                    carA.getCollisionReboundMultiplierAgainst(carB));
+            carB.absorbCollision(
+                    normal,
+                    1f,
+                    impactStrength,
+                    carB.getCollisionReboundMultiplierAgainst(carA));
         }
     }
 
@@ -2107,6 +2290,9 @@ public class RatassGame extends ApplicationAdapter {
         private static final float MAX_STORED_COLLISION_IMPULSE = 22f;
         private static final float IMPACT_SLIDE_DURATION = 0.42f;
         private static final float IMPACT_SLIDE_REFERENCE = 22f;
+        private static final float BOOSTED_VS_NORMAL_REBOUND_MULTIPLIER = 0.52f;
+        private static final float NORMAL_VS_BOOSTED_REBOUND_MULTIPLIER = 2.35f;
+        private static final float BOOSTED_VS_BOOSTED_REBOUND_MULTIPLIER = 1.55f;
 
         private final CarTemplate template;
         private final String name;
@@ -2144,7 +2330,9 @@ public class RatassGame extends ApplicationAdapter {
                 float playerThrottle,
                 float playerTurn,
                 boolean growthPickupActive,
-                Vector2 growthPickupPosition) {
+                Vector2 growthPickupPosition,
+                boolean pointPickupActive,
+                Vector2 pointPickupPosition) {
             if (!active || body == null) {
                 return;
             }
@@ -2163,7 +2351,15 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             AiControlDecision decision =
-                    aiController.plan(delta, this, arenaMap, cars, growthPickupActive, growthPickupPosition);
+                    aiController.plan(
+                            delta,
+                            this,
+                            arenaMap,
+                            cars,
+                            growthPickupActive,
+                            growthPickupPosition,
+                            pointPickupActive,
+                            pointPickupPosition);
             drive(decision.throttle, decision.turn);
         }
 
@@ -2263,15 +2459,21 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
-        private void absorbCollision(Vector2 normal, float direction, float impactStrength) {
+        private void absorbCollision(
+                Vector2 normal,
+                float direction,
+                float impactStrength,
+                float reboundMultiplier) {
             if (!active || body == null) {
                 return;
             }
 
             float collisionImpulse = MathUtils.clamp(
-                    (impactStrength - MIN_COLLISION_RESPONSE_IMPULSE) * COLLISION_REBOUND_IMPULSE_FACTOR,
+                    (impactStrength - MIN_COLLISION_RESPONSE_IMPULSE)
+                            * COLLISION_REBOUND_IMPULSE_FACTOR
+                            * reboundMultiplier,
                     0f,
-                    MAX_COLLISION_REBOUND_IMPULSE);
+                    MAX_COLLISION_REBOUND_IMPULSE * Math.max(1f, reboundMultiplier));
             if (collisionImpulse <= 0f) {
                 return;
             }
@@ -2286,8 +2488,27 @@ public class RatassGame extends ApplicationAdapter {
             float slideShare = 0.28f + 0.72f * Math.abs(sidewaysAxis.dot(normal));
             impactSlideStrength = Math.max(
                     impactSlideStrength,
-                    MathUtils.clamp(slideShare * impactStrength / IMPACT_SLIDE_REFERENCE, 0f, 1f));
+                    MathUtils.clamp(
+                            slideShare * impactStrength * reboundMultiplier / IMPACT_SLIDE_REFERENCE,
+                            0f,
+                            1f));
             impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION);
+        }
+
+        private float getCollisionReboundMultiplierAgainst(Car other) {
+            if (other == null) {
+                return 1f;
+            }
+            if (growthBoosted && other.growthBoosted) {
+                return BOOSTED_VS_BOOSTED_REBOUND_MULTIPLIER;
+            }
+            if (growthBoosted) {
+                return BOOSTED_VS_NORMAL_REBOUND_MULTIPLIER;
+            }
+            if (other.growthBoosted) {
+                return NORMAL_VS_BOOSTED_REBOUND_MULTIPLIER;
+            }
+            return 1f;
         }
 
         private void setGrowthBoost(boolean growthBoosted) {
