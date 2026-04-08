@@ -22,6 +22,8 @@ public final class CarAiController {
     private static final float FULL_ATTACK_THROTTLE = 1f;
     private static final float STUCK_SPEED_SQ = 1f;
     private static final float STUCK_RESET_DURATION = 1.1f;
+    private static final float POWER_PICKUP_EDGE_MARGIN = 1.05f;
+    private static final float BOOSTED_TARGET_BONUS = 1.85f;
 
     private final AiDrivingPersonality personality;
     private final AiControlDecision decision = new AiControlDecision();
@@ -48,7 +50,9 @@ public final class CarAiController {
             float delta,
             AiVehicleView self,
             ArenaMap arenaMap,
-            Array<? extends AiVehicleView> vehicles) {
+            Array<? extends AiVehicleView> vehicles,
+            boolean growthPickupActive,
+            Vector2 growthPickupPosition) {
         if (self == null || !self.isActive()) {
             stuckTimer = 0f;
             return decision.set(0f, 0f);
@@ -61,8 +65,18 @@ public final class CarAiController {
         }
 
         arenaMap.getFocusPoint(arenaFocus);
-        AiVehicleView target = findTarget(self, body, vehicles, arenaMap, arenaFocus);
-        if (target == null || target.getBody() == null) {
+        boolean chaseGrowthPickup =
+                growthPickupActive
+                        && growthPickupPosition != null
+                        && !self.hasGrowthBoost()
+                        && arenaMap.distanceToHazard(growthPickupPosition) >= POWER_PICKUP_EDGE_MARGIN;
+
+        AiVehicleView target = null;
+        if (!chaseGrowthPickup) {
+            target = findTarget(self, body, vehicles, arenaMap, arenaFocus);
+        }
+
+        if (!chaseGrowthPickup && (target == null || target.getBody() == null)) {
             stuckTimer = 0f;
             return decision.set(0f, 0f);
         }
@@ -83,10 +97,13 @@ public final class CarAiController {
                         || (nearestHazard < personality.cautionEdgeDistance
                         && awayFromSafetyVelocity > personality.outwardVelocityThreshold);
 
-        Body targetBody = target.getBody();
         if (recovering) {
             arenaMap.findRecoveryPoint(position, desiredVector);
+        } else if (chaseGrowthPickup) {
+            desiredVector.set(growthPickupPosition);
+            arenaMap.clampToPlayable(desiredVector, INTERCEPT_CLAMP_MARGIN);
         } else {
+            Body targetBody = target.getBody();
             Vector2 targetPosition = targetBody.getPosition();
             float leadTime = MathUtils.clamp(
                     position.dst(targetPosition) / TARGET_LEAD_DISTANCE_FACTOR,
@@ -248,6 +265,9 @@ public final class CarAiController {
 
             if (candidate.isPlayerControlled()) {
                 score += personality.targetPlayerBias;
+            }
+            if (candidate.hasGrowthBoost()) {
+                score += BOOSTED_TARGET_BONUS;
             }
 
             if (score > bestScore) {

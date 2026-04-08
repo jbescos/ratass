@@ -18,7 +18,12 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.physics.box2d.Body;
 import com.badlogic.gdx.physics.box2d.BodyDef;
 import com.badlogic.gdx.physics.box2d.Box2D;
+import com.badlogic.gdx.physics.box2d.Contact;
+import com.badlogic.gdx.physics.box2d.ContactImpulse;
+import com.badlogic.gdx.physics.box2d.ContactListener;
+import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.FixtureDef;
+import com.badlogic.gdx.physics.box2d.Manifold;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
@@ -45,6 +50,11 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ARENA_EDGE_INSET = 0.7f;
     private static final float ARENA_CENTER_INSET = 1.15f;
     private static final float AUTO_ADVANCE_DELAY = 1.8f;
+    private static final float GROWTH_PICKUP_RADIUS = 0.42f;
+    private static final float GROWTH_PICKUP_SPAWN_MARGIN = 1.05f;
+    private static final float GROWTH_PICKUP_MIN_MOVE_DISTANCE = 3.4f;
+    private static final int GROWTH_PICKUP_SPAWN_ATTEMPTS = 96;
+    private static final float GROWTH_DURATION = 5f;
 
     private static final Color SKYLINE = new Color(0.05f, 0.07f, 0.09f, 1f);
     private static final Color VOID = new Color(0.08f, 0.10f, 0.13f, 1f);
@@ -77,11 +87,15 @@ public class RatassGame extends ApplicationAdapter {
     private final Color tint = new Color();
     private final Rectangle mapBounds = new Rectangle();
     private final Vector2 focusPoint = new Vector2();
+    private final Vector2 growthPickupPosition = new Vector2();
+    private final Vector2 pickupCandidate = new Vector2();
+    private final Vector2 lastGrowthPickupPosition = new Vector2();
     private final Rectangle steerPadBounds = new Rectangle();
     private final Rectangle throttlePadBounds = new Rectangle();
     private final Rectangle reversePadBounds = new Rectangle();
     private final Rectangle restartButtonBounds = new Rectangle();
     private final Vector3 hudTouchPoint = new Vector3();
+    private final ImpactContactListener impactContactListener = new ImpactContactListener();
 
     private OrthographicCamera worldCamera;
     private FitViewport worldViewport;
@@ -97,16 +111,21 @@ public class RatassGame extends ApplicationAdapter {
     private ArenaMap currentMap;
     private float accumulator;
     private float roundOverTimer;
+    private float effectClock;
     private float frameThrottleInput;
     private float frameTurnInput;
     private float touchThrottleInput;
     private float touchTurnInput;
+    private float growthBoostTimer;
     private boolean touchRestartPressed;
     private boolean touchRestartJustPressed;
     private boolean touchControlsEnabled;
+    private boolean growthPickupActive;
+    private boolean hasLastGrowthPickupPosition;
     private boolean roundOver;
     private int roundNumber;
     private int playerWins;
+    private Car boostedCar;
     private Car playerCar;
     private Car winner;
 
@@ -191,6 +210,8 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void update(float delta) {
+        effectClock += delta;
+
         if (roundOver) {
             roundOverTimer += delta;
             if (winner != null && winner.playerControlled && roundOverTimer >= AUTO_ADVANCE_DELAY) {
@@ -212,7 +233,15 @@ public class RatassGame extends ApplicationAdapter {
     private void stepSimulation(float delta) {
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
-            car.step(delta, currentMap, cars, !roundOver, frameThrottleInput, frameTurnInput);
+            car.step(
+                    delta,
+                    currentMap,
+                    cars,
+                    !roundOver,
+                    frameThrottleInput,
+                    frameTurnInput,
+                    growthPickupActive,
+                    growthPickupPosition);
         }
 
         world.step(delta, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
@@ -220,6 +249,9 @@ public class RatassGame extends ApplicationAdapter {
 
         if (!roundOver) {
             updateRoundState();
+            if (!roundOver) {
+                updateGrowthPickup(delta);
+            }
         }
     }
 
@@ -280,8 +312,14 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         world = new World(new Vector2(0f, 0f), true);
+        world.setContactListener(impactContactListener);
         cars.clear();
         accumulator = 0f;
+        effectClock = 0f;
+        growthPickupActive = false;
+        hasLastGrowthPickupPosition = false;
+        growthBoostTimer = 0f;
+        boostedCar = null;
         roundOver = false;
         roundOverTimer = 0f;
         winner = null;
@@ -300,6 +338,8 @@ public class RatassGame extends ApplicationAdapter {
                 playerCar = car;
             }
         }
+
+        spawnGrowthPickup();
     }
 
     private boolean shouldAdvanceMap() {
@@ -412,27 +452,141 @@ public class RatassGame extends ApplicationAdapter {
         bodyDef.type = BodyDef.BodyType.DynamicBody;
         bodyDef.position.set(spawnPoint.x, spawnPoint.y);
         bodyDef.angle = spawnPoint.angleRad;
-        bodyDef.linearDamping = 0.25f;
-        bodyDef.angularDamping = 1.8f;
+        bodyDef.linearDamping = 0.18f;
+        bodyDef.angularDamping = 1.45f;
         bodyDef.bullet = true;
 
         Body body = world.createBody(bodyDef);
-
-        PolygonShape shape = new PolygonShape();
-        shape.setAsBox(Car.HALF_WIDTH, Car.HALF_HEIGHT);
-
-        FixtureDef fixtureDef = new FixtureDef();
-        fixtureDef.shape = shape;
-        fixtureDef.density = 1.3f;
-        fixtureDef.friction = 0.55f;
-        fixtureDef.restitution = 0.08f;
-        body.createFixture(fixtureDef);
-        shape.dispose();
 
         Car car = new Car(body, template.name, template.playerControlled, template.color, template.personality);
         body.setUserData(car);
         cars.add(car);
         return car;
+    }
+
+    private void updateGrowthPickup(float delta) {
+        if (boostedCar != null) {
+            if (!boostedCar.active || boostedCar.body == null) {
+                clearGrowthBoost();
+                spawnGrowthPickup();
+                return;
+            }
+
+            growthBoostTimer -= delta;
+            if (growthBoostTimer <= 0f) {
+                clearGrowthBoost();
+                spawnGrowthPickup();
+            }
+            return;
+        }
+
+        if (!growthPickupActive) {
+            spawnGrowthPickup();
+            return;
+        }
+
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null) {
+                continue;
+            }
+
+            float collectRadius = GROWTH_PICKUP_RADIUS + car.getGrowthPickupReach();
+            if (car.body.getPosition().dst2(growthPickupPosition) <= collectRadius * collectRadius) {
+                collectGrowthPickup(car);
+                return;
+            }
+        }
+    }
+
+    private void collectGrowthPickup(Car car) {
+        if (car == null || !growthPickupActive || !car.active) {
+            return;
+        }
+
+        lastGrowthPickupPosition.set(growthPickupPosition);
+        hasLastGrowthPickupPosition = true;
+        growthPickupActive = false;
+        boostedCar = car;
+        growthBoostTimer = GROWTH_DURATION;
+        car.setGrowthBoost(true);
+    }
+
+    private void clearGrowthBoost() {
+        if (boostedCar != null) {
+            boostedCar.setGrowthBoost(false);
+            boostedCar = null;
+        }
+        growthBoostTimer = 0f;
+    }
+
+    private void spawnGrowthPickup() {
+        if (currentMap == null) {
+            return;
+        }
+
+        growthPickupActive = false;
+        currentMap.getBounds(mapBounds);
+
+        if (trySpawnGrowthPickup(true, true)
+                || trySpawnGrowthPickup(true, false)
+                || trySpawnGrowthPickup(false, false)) {
+            return;
+        }
+
+        pickupCandidate.set(0f, 0f);
+        currentMap.findRecoveryPoint(pickupCandidate, growthPickupPosition);
+        growthPickupActive = true;
+    }
+
+    private boolean trySpawnGrowthPickup(boolean avoidCars, boolean requireNewSpot) {
+        float minX = mapBounds.x + GROWTH_PICKUP_SPAWN_MARGIN;
+        float maxX = mapBounds.x + mapBounds.width - GROWTH_PICKUP_SPAWN_MARGIN;
+        float minY = mapBounds.y + GROWTH_PICKUP_SPAWN_MARGIN;
+        float maxY = mapBounds.y + mapBounds.height - GROWTH_PICKUP_SPAWN_MARGIN;
+
+        if (minX >= maxX || minY >= maxY) {
+            return false;
+        }
+
+        for (int attempt = 0; attempt < GROWTH_PICKUP_SPAWN_ATTEMPTS; attempt++) {
+            pickupCandidate.set(MathUtils.random(minX, maxX), MathUtils.random(minY, maxY));
+
+            if (currentMap.distanceToHazard(pickupCandidate) < GROWTH_PICKUP_SPAWN_MARGIN) {
+                continue;
+            }
+            if (requireNewSpot
+                    && hasLastGrowthPickupPosition
+                    && pickupCandidate.dst2(lastGrowthPickupPosition)
+                    < GROWTH_PICKUP_MIN_MOVE_DISTANCE * GROWTH_PICKUP_MIN_MOVE_DISTANCE) {
+                continue;
+            }
+            if (avoidCars && !isGrowthPickupFarFromCars(pickupCandidate)) {
+                continue;
+            }
+
+            growthPickupPosition.set(pickupCandidate);
+            growthPickupActive = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean isGrowthPickupFarFromCars(Vector2 candidate) {
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null) {
+                continue;
+            }
+
+            float minDistance = car.getGrowthPickupReach() + GROWTH_PICKUP_RADIUS + 0.75f;
+            if (car.body.getPosition().dst2(candidate) < minDistance * minDistance) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void renderWorld() {
@@ -447,6 +601,7 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawBackdrop();
         drawArena();
+        drawGrowthPickup();
         drawCars();
         shapeRenderer.end();
 
@@ -534,6 +689,51 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private void drawGrowthPickup() {
+        if (!growthPickupActive) {
+            return;
+        }
+
+        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 6.5f);
+        float spinDeg = effectClock * 135f;
+
+        shapeRenderer.setColor(1f, 0.84f, 0.22f, 0.16f + pulse * 0.10f);
+        shapeRenderer.circle(
+                growthPickupPosition.x,
+                growthPickupPosition.y,
+                GROWTH_PICKUP_RADIUS * (1.85f + pulse * 0.45f),
+                28);
+
+        drawRotatedRect(
+                growthPickupPosition.x,
+                growthPickupPosition.y,
+                GROWTH_PICKUP_RADIUS * 2.15f,
+                GROWTH_PICKUP_RADIUS * 2.15f,
+                spinDeg,
+                0.96f,
+                0.70f,
+                0.18f,
+                0.92f);
+
+        drawRotatedRect(
+                growthPickupPosition.x,
+                growthPickupPosition.y,
+                GROWTH_PICKUP_RADIUS * 1.30f,
+                GROWTH_PICKUP_RADIUS * 1.30f,
+                -spinDeg * 1.25f,
+                1f,
+                0.93f,
+                0.46f,
+                0.96f);
+
+        shapeRenderer.setColor(1f, 0.99f, 0.86f, 1f);
+        shapeRenderer.circle(
+                growthPickupPosition.x,
+                growthPickupPosition.y,
+                GROWTH_PICKUP_RADIUS * 0.34f,
+                20);
+    }
+
     private void drawCars() {
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
@@ -544,24 +744,41 @@ public class RatassGame extends ApplicationAdapter {
             float angleDeg = car.body.getAngle() * MathUtils.radiansToDegrees;
             float centerX = car.body.getPosition().x;
             float centerY = car.body.getPosition().y;
+            float carWidth = car.getWidth();
+            float carHeight = car.getHeight();
+            float carScale = car.getSizeScale();
 
             drawRotatedRect(
-                    centerX + 0.10f,
-                    centerY - 0.12f,
-                    Car.WIDTH,
-                    Car.HEIGHT,
+                    centerX + 0.10f * carScale,
+                    centerY - 0.12f * carScale,
+                    carWidth,
+                    carHeight,
                     angleDeg,
                     0.04f,
                     0.05f,
                     0.07f,
                     0.32f);
 
+            if (car.hasGrowthBoost()) {
+                float boostPulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 9f);
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        carWidth + (0.30f + boostPulse * 0.12f) * carScale,
+                        carHeight + (0.30f + boostPulse * 0.12f) * carScale,
+                        angleDeg,
+                        1f,
+                        0.82f,
+                        0.22f,
+                        0.18f + boostPulse * 0.07f);
+            }
+
             if (car.playerControlled) {
                 drawRotatedRect(
                         centerX,
                         centerY,
-                        Car.WIDTH + 0.20f,
-                        Car.HEIGHT + 0.20f,
+                        carWidth + 0.20f * carScale,
+                        carHeight + 0.20f * carScale,
                         angleDeg,
                         0.96f,
                         0.94f,
@@ -572,8 +789,8 @@ public class RatassGame extends ApplicationAdapter {
             drawRotatedRect(
                     centerX,
                     centerY,
-                    Car.WIDTH,
-                    Car.HEIGHT,
+                    carWidth,
+                    carHeight,
                     angleDeg,
                     car.color.r,
                     car.color.g,
@@ -585,9 +802,9 @@ public class RatassGame extends ApplicationAdapter {
                     centerX,
                     centerY,
                     0f,
-                    -0.08f,
-                    Car.WIDTH * 0.68f,
-                    Car.HEIGHT * 0.50f,
+                    -0.08f * carScale,
+                    carWidth * 0.68f,
+                    carHeight * 0.50f,
                     angleDeg,
                     tint.r,
                     tint.g,
@@ -598,9 +815,9 @@ public class RatassGame extends ApplicationAdapter {
                     centerX,
                     centerY,
                     0f,
-                    0.40f,
-                    Car.WIDTH * 0.62f,
-                    Car.HEIGHT * 0.16f,
+                    0.40f * carScale,
+                    carWidth * 0.62f,
+                    carHeight * 0.16f,
                     angleDeg,
                     0.12f,
                     0.13f,
@@ -611,9 +828,9 @@ public class RatassGame extends ApplicationAdapter {
                     centerX,
                     centerY,
                     0f,
-                    0.84f,
-                    Car.WIDTH * 0.55f,
-                    Car.HEIGHT * 0.09f,
+                    0.84f * carScale,
+                    carWidth * 0.55f,
+                    carHeight * 0.09f,
                     angleDeg,
                     0.96f,
                     0.92f,
@@ -749,13 +966,43 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
-        return "Wins " + playerWins
-                + "  |  Round " + roundNumber
-                + "  |  Cars left: " + aliveCars + "/" + cars.size
-                + "  |  Arenas " + mapProgression.getCurrentMapNumber() + "/" + mapProgression.getMapCount();
+        StringBuilder builder = new StringBuilder();
+        builder.append("Wins ").append(playerWins)
+                .append("  |  Round ").append(roundNumber)
+                .append("  |  Cars left: ").append(aliveCars).append("/").append(cars.size)
+                .append("  |  Arenas ").append(mapProgression.getCurrentMapNumber()).append("/")
+                .append(mapProgression.getMapCount());
+
+        if (boostedCar != null && boostedCar.active) {
+            builder.append("  |  BIG ")
+                    .append(boostedCar.playerControlled ? "you" : boostedCar.name)
+                    .append(" ")
+                    .append(MathUtils.ceil(growthBoostTimer))
+                    .append("s");
+        } else if (growthPickupActive) {
+            builder.append("  |  Mass Core Live");
+        }
+
+        return builder.toString();
     }
 
     private String buildObjectiveText() {
+        if (boostedCar != null && boostedCar.active) {
+            if (boostedCar.playerControlled) {
+                return "Mass core active: you are huge for "
+                        + MathUtils.ceil(growthBoostTimer)
+                        + " more seconds. Ram somebody off the roof.";
+            }
+            return boostedCar.name + " grabbed the mass core. Survive for "
+                    + MathUtils.ceil(growthBoostTimer)
+                    + " seconds or shove them out first.";
+        }
+
+        if (growthPickupActive) {
+            return currentMap.getName()
+                    + ": grab the mass core to turn into a wrecking ball for five seconds.";
+        }
+
         return currentMap.getName() + ": win the arena to unlock " + mapProgression.getNextMap().getName() + ".";
     }
 
@@ -776,6 +1023,9 @@ public class RatassGame extends ApplicationAdapter {
             builder.append(car.name)
                     .append(" / ")
                     .append(car.getPersonalityDisplayName());
+            if (car.hasGrowthBoost()) {
+                builder.append(" BIG");
+            }
             if (!car.active) {
                 builder.append(" out");
             }
@@ -874,19 +1124,90 @@ public class RatassGame extends ApplicationAdapter {
         titleFont.dispose();
     }
 
+    private final class ImpactContactListener implements ContactListener {
+        @Override
+        public void beginContact(Contact contact) {
+        }
+
+        @Override
+        public void endContact(Contact contact) {
+        }
+
+        @Override
+        public void preSolve(Contact contact, Manifold oldManifold) {
+        }
+
+        @Override
+        public void postSolve(Contact contact, ContactImpulse impulse) {
+            Object userDataA = contact.getFixtureA().getBody().getUserData();
+            Object userDataB = contact.getFixtureB().getBody().getUserData();
+            if (!(userDataA instanceof Car) || !(userDataB instanceof Car)) {
+                return;
+            }
+
+            Car carA = (Car) userDataA;
+            Car carB = (Car) userDataB;
+            if (!carA.active || !carB.active || carA.body == null || carB.body == null) {
+                return;
+            }
+
+            Vector2 normal = contact.getWorldManifold().getNormal();
+            if (normal.isZero(0.0001f)) {
+                return;
+            }
+
+            float totalNormalImpulse = 0f;
+            float[] normalImpulses = impulse.getNormalImpulses();
+            for (int i = 0; i < normalImpulses.length; i++) {
+                totalNormalImpulse += Math.abs(normalImpulses[i]);
+            }
+
+            if (totalNormalImpulse < Car.MIN_COLLISION_RESPONSE_IMPULSE) {
+                return;
+            }
+
+            Vector2 velocityA = carA.body.getLinearVelocity();
+            Vector2 velocityB = carB.body.getLinearVelocity();
+            float closingSpeed = Math.max(
+                    0f,
+                    -((velocityB.x - velocityA.x) * normal.x
+                            + (velocityB.y - velocityA.y) * normal.y));
+            if (closingSpeed < Car.MIN_COLLISION_RESPONSE_SPEED) {
+                return;
+            }
+
+            float impactStrength = totalNormalImpulse + closingSpeed * 2.8f;
+            carA.absorbCollision(normal, -1f, impactStrength);
+            carB.absorbCollision(normal, 1f, impactStrength);
+        }
+    }
+
     private static final class Car implements AiVehicleView {
         private static final float WIDTH = 1.35f;
         private static final float HEIGHT = 2.35f;
         private static final float HALF_WIDTH = WIDTH * 0.5f;
         private static final float HALF_HEIGHT = HEIGHT * 0.5f;
+        private static final float FIXTURE_DENSITY = 1.3f;
+        private static final float FIXTURE_FRICTION = 0.32f;
+        private static final float FIXTURE_RESTITUTION = 0.12f;
+        private static final float GROWTH_SCALE = 1.40f;
         private static final float DRIVE_FORCE = 105f;
         private static final float REVERSE_FORCE = 82f;
         private static final float PLAYER_TURN_TORQUE = 48f;
         private static final float AI_TURN_TORQUE = 38f;
-        private static final float LATERAL_GRIP = 0.82f;
-        private static final float ANGULAR_GRIP = 0.25f;
-        private static final float FORWARD_DRAG = 2.0f;
-        private static final float MAX_SPEED = 14f;
+        private static final float LATERAL_GRIP = 0.72f;
+        private static final float ANGULAR_GRIP = 0.23f;
+        private static final float FORWARD_DRAG = 1.55f;
+        private static final float MAX_SPEED = 14.8f;
+        private static final float GROWTH_DRIVE_MULTIPLIER = 1.18f;
+        private static final float GROWTH_TURN_MULTIPLIER = 0.90f;
+        private static final float MAX_GROWTH_SPEED_MULTIPLIER = 1.06f;
+        private static final float MIN_COLLISION_RESPONSE_IMPULSE = 4.5f;
+        private static final float MIN_COLLISION_RESPONSE_SPEED = 1.1f;
+        private static final float COLLISION_PUSH_FACTOR = 0.085f;
+        private static final float MAX_COLLISION_PUSH = 4.6f;
+        private static final float IMPACT_SLIDE_DURATION = 0.34f;
+        private static final float IMPACT_SLIDE_REFERENCE = 26f;
 
         private final String name;
         private final boolean playerControlled;
@@ -895,9 +1216,14 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 forwardAxis = new Vector2();
         private final Vector2 sidewaysAxis = new Vector2();
         private final Vector2 working = new Vector2();
+        private final Vector2 pendingImpactImpulse = new Vector2();
 
         private Body body;
         private boolean active = true;
+        private boolean growthBoosted;
+        private float sizeScale = 1f;
+        private float impactSlideTimer;
+        private float impactSlideStrength;
 
         private Car(
                 Body body,
@@ -910,6 +1236,7 @@ public class RatassGame extends ApplicationAdapter {
             this.playerControlled = playerControlled;
             this.color = color;
             aiController = playerControlled ? null : new CarAiController(aiPersonality);
+            rebuildCollisionFixture();
         }
 
         private void step(
@@ -918,12 +1245,16 @@ public class RatassGame extends ApplicationAdapter {
                 Array<Car> cars,
                 boolean allowControl,
                 float playerThrottle,
-                float playerTurn) {
+                float playerTurn,
+                boolean growthPickupActive,
+                Vector2 growthPickupPosition) {
             if (!active || body == null) {
                 return;
             }
 
-            applyGrip();
+            applyPendingImpact();
+            float impactSlideFactor = advanceImpactSlide(delta);
+            applyGrip(impactSlideFactor);
 
             if (!allowControl) {
                 return;
@@ -934,36 +1265,63 @@ public class RatassGame extends ApplicationAdapter {
                 return;
             }
 
-            AiControlDecision decision = aiController.plan(delta, this, arenaMap, cars);
+            AiControlDecision decision =
+                    aiController.plan(delta, this, arenaMap, cars, growthPickupActive, growthPickupPosition);
             drive(decision.throttle, decision.turn);
         }
 
-        private void applyGrip() {
+        private void applyPendingImpact() {
+            if (pendingImpactImpulse.isZero(0.0001f)) {
+                return;
+            }
+
+            body.applyLinearImpulse(pendingImpactImpulse, body.getWorldCenter(), true);
+            pendingImpactImpulse.setZero();
+        }
+
+        private float advanceImpactSlide(float delta) {
+            if (impactSlideTimer <= 0f) {
+                return 0f;
+            }
+
+            float slideFactor = impactSlideStrength * (impactSlideTimer / IMPACT_SLIDE_DURATION);
+            impactSlideTimer = Math.max(0f, impactSlideTimer - delta);
+            if (impactSlideTimer == 0f) {
+                impactSlideStrength = 0f;
+            }
+            return slideFactor;
+        }
+
+        private void applyGrip(float impactSlideFactor) {
             forwardAxis.set(body.getWorldVector(working.set(0f, 1f)));
             sidewaysAxis.set(body.getWorldVector(working.set(1f, 0f)));
 
+            float gripMultiplier = MathUtils.clamp(1f - 0.62f * impactSlideFactor, 0.24f, 1f);
+            float dragMultiplier = MathUtils.clamp(1f - 0.52f * impactSlideFactor, 0.30f, 1f);
+
             float lateralSpeed = sidewaysAxis.dot(body.getLinearVelocity());
-            working.set(sidewaysAxis).scl(-lateralSpeed * body.getMass() * LATERAL_GRIP);
+            working.set(sidewaysAxis).scl(-lateralSpeed * body.getMass() * LATERAL_GRIP * gripMultiplier);
             body.applyLinearImpulse(working, body.getWorldCenter(), true);
 
             body.applyAngularImpulse(
-                    -body.getAngularVelocity() * body.getInertia() * ANGULAR_GRIP,
+                    -body.getAngularVelocity() * body.getInertia() * ANGULAR_GRIP * gripMultiplier,
                     true);
 
             float forwardSpeed = forwardAxis.dot(body.getLinearVelocity());
-            working.set(forwardAxis).scl(-forwardSpeed * FORWARD_DRAG);
+            working.set(forwardAxis).scl(-forwardSpeed * FORWARD_DRAG * dragMultiplier);
             body.applyForceToCenter(working, true);
         }
 
         private void drive(float throttle, float turn) {
             forwardAxis.set(body.getWorldVector(working.set(0f, 1f)));
             float signedForwardSpeed = forwardAxis.dot(body.getLinearVelocity());
+            float growthDriveMultiplier = growthBoosted ? GROWTH_DRIVE_MULTIPLIER : 1f;
 
             float engineForce = 0f;
             if (throttle > 0f) {
-                engineForce = throttle * DRIVE_FORCE;
+                engineForce = throttle * DRIVE_FORCE * growthDriveMultiplier;
             } else if (throttle < 0f) {
-                engineForce = throttle * REVERSE_FORCE;
+                engineForce = throttle * REVERSE_FORCE * growthDriveMultiplier;
             }
 
             if (engineForce != 0f) {
@@ -981,6 +1339,11 @@ public class RatassGame extends ApplicationAdapter {
                 turnTorque = AI_TURN_TORQUE;
             }
 
+            if (growthBoosted) {
+                steeringStrength = MathUtils.clamp(steeringStrength * 0.96f, 0.30f, 1.3f);
+                turnTorque *= GROWTH_TURN_MULTIPLIER;
+            }
+
             float steeringDirection = 1f;
             if (signedForwardSpeed < -0.25f) {
                 steeringDirection = -1f;
@@ -990,10 +1353,78 @@ public class RatassGame extends ApplicationAdapter {
             body.applyTorque(turn * steeringDirection * turnTorque * steeringStrength, true);
 
             float currentSpeed = body.getLinearVelocity().len();
-            if (currentSpeed > MAX_SPEED) {
-                working.set(body.getLinearVelocity()).scl(MAX_SPEED / currentSpeed);
+            float maxSpeed = MAX_SPEED * (growthBoosted ? MAX_GROWTH_SPEED_MULTIPLIER : 1f);
+            if (currentSpeed > maxSpeed) {
+                working.set(body.getLinearVelocity()).scl(maxSpeed / currentSpeed);
                 body.setLinearVelocity(working);
             }
+        }
+
+        private void absorbCollision(Vector2 normal, float direction, float impactStrength) {
+            if (!active || body == null) {
+                return;
+            }
+
+            float extraPush = MathUtils.clamp(
+                    (impactStrength - MIN_COLLISION_RESPONSE_IMPULSE) * COLLISION_PUSH_FACTOR,
+                    0f,
+                    MAX_COLLISION_PUSH);
+            if (extraPush <= 0f) {
+                return;
+            }
+
+            pendingImpactImpulse.mulAdd(normal, direction * extraPush);
+            impactSlideStrength = Math.max(
+                    impactSlideStrength,
+                    MathUtils.clamp(impactStrength / IMPACT_SLIDE_REFERENCE, 0f, 1f));
+            impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION);
+        }
+
+        private void setGrowthBoost(boolean growthBoosted) {
+            this.growthBoosted = growthBoosted;
+            sizeScale = growthBoosted ? GROWTH_SCALE : 1f;
+            if (body != null) {
+                rebuildCollisionFixture();
+            }
+        }
+
+        private void rebuildCollisionFixture() {
+            if (body == null) {
+                return;
+            }
+
+            Array<Fixture> fixtures = body.getFixtureList();
+            while (fixtures.size > 0) {
+                body.destroyFixture(fixtures.first());
+            }
+
+            PolygonShape shape = new PolygonShape();
+            shape.setAsBox(HALF_WIDTH * sizeScale, HALF_HEIGHT * sizeScale);
+
+            FixtureDef fixtureDef = new FixtureDef();
+            fixtureDef.shape = shape;
+            fixtureDef.density = FIXTURE_DENSITY;
+            fixtureDef.friction = FIXTURE_FRICTION;
+            fixtureDef.restitution = FIXTURE_RESTITUTION;
+            body.createFixture(fixtureDef);
+            shape.dispose();
+            body.resetMassData();
+        }
+
+        private float getWidth() {
+            return WIDTH * sizeScale;
+        }
+
+        private float getHeight() {
+            return HEIGHT * sizeScale;
+        }
+
+        private float getSizeScale() {
+            return sizeScale;
+        }
+
+        private float getGrowthPickupReach() {
+            return Math.max(getWidth(), getHeight()) * 0.42f;
         }
 
         private String getPersonalityDisplayName() {
@@ -1015,12 +1446,22 @@ public class RatassGame extends ApplicationAdapter {
             return playerControlled;
         }
 
+        @Override
+        public boolean hasGrowthBoost() {
+            return growthBoosted;
+        }
+
         private void eliminate(World world) {
             if (!active || body == null) {
                 return;
             }
 
             active = false;
+            growthBoosted = false;
+            sizeScale = 1f;
+            pendingImpactImpulse.setZero();
+            impactSlideTimer = 0f;
+            impactSlideStrength = 0f;
             world.destroyBody(body);
             body = null;
         }

@@ -8,4 +8,6 @@ public interface AiVehicleView {
     boolean isActive();
 
     boolean isPlayerControlled();
+
+    boolean hasGrowthBoost();
 }

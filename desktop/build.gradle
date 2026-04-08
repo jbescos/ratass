@@ -34,7 +34,7 @@ plugins.withId("java-library") {
         debug = true
     }
 
-    task dist(type: Jar) {
+    tasks.named("jar", Jar).configure {
         duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
         manifest {
             attributes "Main-Class": project.mainClassName
@@ -43,9 +43,12 @@ plugins.withId("java-library") {
         from {
             configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
         }
-        with jar
     }
 
-    dist.dependsOn classes
+    task dist(dependsOn: jar) {
+        group = "build"
+        description = "Builds the runnable desktop fat JAR."
+    }
+
     eclipse.project.name = appName + "-desktop"
 }
