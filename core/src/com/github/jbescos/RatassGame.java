@@ -55,6 +55,41 @@ public class RatassGame extends ApplicationAdapter {
     private static final float GROWTH_PICKUP_MIN_MOVE_DISTANCE = 3.4f;
     private static final int GROWTH_PICKUP_SPAWN_ATTEMPTS = 96;
     private static final float GROWTH_DURATION = 5f;
+    private static final int TOTAL_CARS = 20;
+    private static final float CAMERA_HORIZONTAL_PADDING = 4f;
+    private static final float CAMERA_VERTICAL_PADDING = 3f;
+    private static final int ROUND_SPAWN_ATTEMPTS = 3200;
+    private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
+    private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
+    private static final String[] ENEMY_NAMES = new String[] {
+            "Cinder",
+            "Frost",
+            "Moss",
+            "Volt",
+            "Riot",
+            "Slate",
+            "Tango",
+            "Brick",
+            "Blitz",
+            "Orbit",
+            "Knurl",
+            "Viper",
+            "Torque",
+            "Crush",
+            "Rivet",
+            "Dune",
+            "Glitch",
+            "Piston",
+            "Grit"
+    };
+
+    private static final AiDrivingPersonality[] ENEMY_PERSONALITIES =
+            new AiDrivingPersonality[] {
+                    AiDrivingPersonalities.BRAWLER,
+                    AiDrivingPersonalities.INTERCEPTOR,
+                    AiDrivingPersonalities.SURVIVOR,
+                    AiDrivingPersonalities.BALANCED
+            };
 
     private static final Color SKYLINE = new Color(0.05f, 0.07f, 0.09f, 1f);
     private static final Color VOID = new Color(0.08f, 0.10f, 0.13f, 1f);
@@ -90,6 +125,8 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector2 growthPickupPosition = new Vector2();
     private final Vector2 pickupCandidate = new Vector2();
     private final Vector2 lastGrowthPickupPosition = new Vector2();
+    private final Vector2 spawnCandidate = new Vector2();
+    private final Array<SpawnPoint> roundSpawns = new Array<SpawnPoint>();
     private final Rectangle steerPadBounds = new Rectangle();
     private final Rectangle throttlePadBounds = new Rectangle();
     private final Rectangle reversePadBounds = new Rectangle();
@@ -160,28 +197,29 @@ public class RatassGame extends ApplicationAdapter {
     private void createRoster() {
         roster.clear();
         roster.add(new CarTemplate("You", true, new Color(0.90f, 0.25f, 0.20f, 1f), null));
-        roster.add(new CarTemplate(
-                "Cinder",
-                false,
-                new Color(0.92f, 0.54f, 0.13f, 1f),
-                AiDrivingPersonalities.BRAWLER));
-        roster.add(new CarTemplate(
-                "Frost",
-                false,
-                new Color(0.16f, 0.57f, 0.84f, 1f),
-                AiDrivingPersonalities.INTERCEPTOR));
-        roster.add(new CarTemplate(
-                "Moss",
-                false,
-                new Color(0.24f, 0.70f, 0.42f, 1f),
-                AiDrivingPersonalities.SURVIVOR));
+
+        for (int i = 0; i < ENEMY_NAMES.length && roster.size < TOTAL_CARS; i++) {
+            roster.add(new CarTemplate(
+                    ENEMY_NAMES[i],
+                    false,
+                    createEnemyColor(i),
+                    ENEMY_PERSONALITIES[i % ENEMY_PERSONALITIES.length]));
+        }
+
+        while (roster.size < TOTAL_CARS) {
+            int enemyIndex = roster.size - 1;
+            roster.add(new CarTemplate(
+                    "Rival " + roster.size,
+                    false,
+                    createEnemyColor(enemyIndex),
+                    ENEMY_PERSONALITIES[enemyIndex % ENEMY_PERSONALITIES.length]));
+        }
     }
 
     @Override
     public void resize(int width, int height) {
         worldViewport.update(width, height);
-        worldCamera.position.set(0f, 0f, 0f);
-        worldCamera.update();
+        updateWorldCamera();
 
         hudViewport.update(width, height, true);
     }
@@ -306,6 +344,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         currentMap = mapProgression.getCurrentMap();
+        updateWorldCamera();
 
         if (world != null) {
             world.dispose();
@@ -325,14 +364,11 @@ public class RatassGame extends ApplicationAdapter {
         winner = null;
         playerCar = null;
         roundNumber++;
-
-        if (currentMap.getSpawnCount() < roster.size) {
-            throw new IllegalStateException("Current map does not have enough spawn points.");
-        }
+        buildRoundSpawns(roster.size, roundSpawns);
 
         for (int i = 0; i < roster.size; i++) {
             CarTemplate template = roster.get(i);
-            SpawnPoint spawnPoint = currentMap.getSpawn(i);
+            SpawnPoint spawnPoint = roundSpawns.get(i);
             Car car = createCar(template, spawnPoint);
             if (template.playerControlled) {
                 playerCar = car;
@@ -344,6 +380,127 @@ public class RatassGame extends ApplicationAdapter {
 
     private boolean shouldAdvanceMap() {
         return roundOver && winner != null && winner.playerControlled;
+    }
+
+    private Color createEnemyColor(int index) {
+        float hue = (28f + index * 31f) % 360f;
+        float saturation = 0.66f + (index % 3) * 0.06f;
+        float value = 0.86f + (index % 4) * 0.03f;
+        return hsvColor(hue, saturation, Math.min(1f, value));
+    }
+
+    private Color hsvColor(float hue, float saturation, float value) {
+        float normalizedHue = ((hue % 360f) + 360f) % 360f;
+        float chroma = value * saturation;
+        float segment = normalizedHue / 60f;
+        float x = chroma * (1f - Math.abs(segment % 2f - 1f));
+
+        float r = 0f;
+        float g = 0f;
+        float b = 0f;
+
+        if (segment < 1f) {
+            r = chroma;
+            g = x;
+        } else if (segment < 2f) {
+            r = x;
+            g = chroma;
+        } else if (segment < 3f) {
+            g = chroma;
+            b = x;
+        } else if (segment < 4f) {
+            g = x;
+            b = chroma;
+        } else if (segment < 5f) {
+            r = x;
+            b = chroma;
+        } else {
+            r = chroma;
+            b = x;
+        }
+
+        float match = value - chroma;
+        return new Color(r + match, g + match, b + match, 1f);
+    }
+
+    private void updateWorldCamera() {
+        if (worldCamera == null) {
+            return;
+        }
+
+        if (currentMap == null) {
+            worldCamera.zoom = 1f;
+            worldCamera.position.set(0f, 0f, 0f);
+            worldCamera.update();
+            return;
+        }
+
+        currentMap.getBounds(mapBounds);
+        currentMap.getFocusPoint(focusPoint);
+
+        float visibleWidth = Math.max(1f, WORLD_WIDTH - CAMERA_HORIZONTAL_PADDING);
+        float visibleHeight = Math.max(1f, WORLD_HEIGHT - CAMERA_VERTICAL_PADDING);
+        float zoomX = mapBounds.width / visibleWidth;
+        float zoomY = mapBounds.height / visibleHeight;
+
+        worldCamera.zoom = Math.max(1f, Math.max(zoomX, zoomY));
+        worldCamera.position.set(focusPoint.x, focusPoint.y, 0f);
+        worldCamera.update();
+    }
+
+    private void buildRoundSpawns(int count, Array<SpawnPoint> out) {
+        out.clear();
+        currentMap.getFocusPoint(focusPoint);
+        currentMap.getBounds(mapBounds);
+
+        for (int i = 0; i < currentMap.getSpawnCount() && out.size < count; i++) {
+            SpawnPoint seed = currentMap.getSpawn(i);
+            spawnCandidate.set(seed.x, seed.y);
+            if (currentMap.distanceToHazard(spawnCandidate) < ROUND_SPAWN_SAFE_MARGIN) {
+                continue;
+            }
+            if (isSpawnLocationClear(spawnCandidate, out, ROUND_SPAWN_MIN_DISTANCE)) {
+                out.add(seed);
+            }
+        }
+
+        float minX = mapBounds.x + ROUND_SPAWN_SAFE_MARGIN;
+        float maxX = mapBounds.x + mapBounds.width - ROUND_SPAWN_SAFE_MARGIN;
+        float minY = mapBounds.y + ROUND_SPAWN_SAFE_MARGIN;
+        float maxY = mapBounds.y + mapBounds.height - ROUND_SPAWN_SAFE_MARGIN;
+
+        for (int attempt = 0; attempt < ROUND_SPAWN_ATTEMPTS && out.size < count; attempt++) {
+            spawnCandidate.set(MathUtils.random(minX, maxX), MathUtils.random(minY, maxY));
+            currentMap.clampToPlayable(spawnCandidate, ROUND_SPAWN_SAFE_MARGIN);
+
+            if (currentMap.distanceToHazard(spawnCandidate) < ROUND_SPAWN_SAFE_MARGIN) {
+                continue;
+            }
+            if (!isSpawnLocationClear(spawnCandidate, out, ROUND_SPAWN_MIN_DISTANCE)) {
+                continue;
+            }
+
+            out.add(SpawnPoint.facingPoint(
+                    spawnCandidate.x,
+                    spawnCandidate.y,
+                    focusPoint.x,
+                    focusPoint.y));
+        }
+
+        if (out.size < count) {
+            throw new IllegalStateException("Could not generate enough safe spawn points for the current map.");
+        }
+    }
+
+    private boolean isSpawnLocationClear(Vector2 candidate, Array<SpawnPoint> spawns, float minDistance) {
+        float minDistanceSq = minDistance * minDistance;
+        for (int i = 0; i < spawns.size; i++) {
+            SpawnPoint spawnPoint = spawns.get(i);
+            if (Vector2.dst2(candidate.x, candidate.y, spawnPoint.x, spawnPoint.y) < minDistanceSq) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean isRestartRequested() {
@@ -1007,29 +1164,48 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private String buildRivalText() {
-        StringBuilder builder = new StringBuilder("Rivals: ");
-        boolean first = true;
+        int activeRivals = 0;
+        int totalRivals = 0;
+        int hiddenActiveRivals = 0;
+        String boostedRival = null;
+        StringBuilder frontLine = new StringBuilder();
 
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
             if (car.playerControlled) {
                 continue;
             }
-
-            if (!first) {
-                builder.append("   |   ");
+            totalRivals++;
+            if (car.active) {
+                activeRivals++;
             }
-
-            builder.append(car.name)
-                    .append(" / ")
-                    .append(car.getPersonalityDisplayName());
             if (car.hasGrowthBoost()) {
-                builder.append(" BIG");
+                boostedRival = car.name;
             }
             if (!car.active) {
-                builder.append(" out");
+                continue;
             }
-            first = false;
+
+            if (frontLine.length() > 0 && hiddenActiveRivals < 4) {
+                frontLine.append(", ");
+            }
+
+            if (hiddenActiveRivals < 4) {
+                frontLine.append(car.name);
+                hiddenActiveRivals++;
+            }
+        }
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("Rivals ").append(activeRivals).append("/").append(totalRivals).append(" active");
+        if (boostedRival != null) {
+            builder.append("  |  BIG: ").append(boostedRival);
+        }
+        if (frontLine.length() > 0) {
+            builder.append("  |  Front line: ").append(frontLine);
+            if (activeRivals > hiddenActiveRivals) {
+                builder.append(" +").append(activeRivals - hiddenActiveRivals).append(" more");
+            }
         }
 
         return builder.toString();
@@ -1183,22 +1359,22 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private static final class Car implements AiVehicleView {
-        private static final float WIDTH = 1.35f;
-        private static final float HEIGHT = 2.35f;
+        private static final float WIDTH = 1.12f;
+        private static final float HEIGHT = 1.94f;
         private static final float HALF_WIDTH = WIDTH * 0.5f;
         private static final float HALF_HEIGHT = HEIGHT * 0.5f;
         private static final float FIXTURE_DENSITY = 1.3f;
         private static final float FIXTURE_FRICTION = 0.32f;
         private static final float FIXTURE_RESTITUTION = 0.12f;
         private static final float GROWTH_SCALE = 1.40f;
-        private static final float DRIVE_FORCE = 105f;
-        private static final float REVERSE_FORCE = 82f;
+        private static final float DRIVE_FORCE = 96f;
+        private static final float REVERSE_FORCE = 74f;
         private static final float PLAYER_TURN_TORQUE = 48f;
         private static final float AI_TURN_TORQUE = 38f;
         private static final float LATERAL_GRIP = 0.72f;
         private static final float ANGULAR_GRIP = 0.23f;
         private static final float FORWARD_DRAG = 1.55f;
-        private static final float MAX_SPEED = 14.8f;
+        private static final float MAX_SPEED = 15.2f;
         private static final float GROWTH_DRIVE_MULTIPLIER = 1.18f;
         private static final float GROWTH_TURN_MULTIPLIER = 0.90f;
         private static final float MAX_GROWTH_SPEED_MULTIPLIER = 1.06f;
