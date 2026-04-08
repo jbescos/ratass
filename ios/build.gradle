@@ -1,19 +1,27 @@
-sourceSets.main.java.srcDirs = [ "src/" ]
+plugins.withId("robovm") {
+    java {
+        sourceCompatibility = org.gradle.api.JavaVersion.VERSION_1_8
+        targetCompatibility = org.gradle.api.JavaVersion.VERSION_1_8
+    }
 
-sourceCompatibility = '1.7'
-[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+    sourceSets.main.java.srcDirs = ["src/"]
 
-ext {
-	mainClassName = "com.github.jbescos.IOSLauncher"
+    tasks.withType(org.gradle.api.tasks.compile.JavaCompile).configureEach {
+        options.encoding = "UTF-8"
+    }
+
+    ext {
+        mainClassName = "com.github.jbescos.IOSLauncher"
+    }
+
+    launchIPhoneSimulator.dependsOn build
+    launchIPadSimulator.dependsOn build
+    launchIOSDevice.dependsOn build
+    createIPA.dependsOn build
+
+    robovm {
+        archs = "thumbv7:arm64"
+    }
+
+    eclipse.project.name = appName + "-ios"
 }
-
-launchIPhoneSimulator.dependsOn build
-launchIPadSimulator.dependsOn build
-launchIOSDevice.dependsOn build
-createIPA.dependsOn build
-
-robovm {
-	archs = "thumbv7:arm64"
-}
-
-eclipse.project.name = appName + "-ios"

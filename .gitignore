@@ -93,6 +93,7 @@ nb-configuration.xml
 
 /local.properties
 .gradle/
+/.gradle-home/
 gradle-app.setting
 /build/
 /android/build/

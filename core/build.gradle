@@ -1,6 +1,13 @@
-sourceCompatibility = 1.7
-[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+plugins.withId("java-library") {
+    java {
+        sourceCompatibility = org.gradle.api.JavaVersion.VERSION_1_8
+        targetCompatibility = org.gradle.api.JavaVersion.VERSION_1_8
+    }
 
-sourceSets.main.java.srcDirs = [ "src/" ]
+    tasks.withType(org.gradle.api.tasks.compile.JavaCompile).configureEach {
+        options.encoding = "UTF-8"
+    }
 
-eclipse.project.name = appName + "-core"
+    sourceSets.main.java.srcDirs = ["src/"]
+    eclipse.project.name = appName + "-core"
+}

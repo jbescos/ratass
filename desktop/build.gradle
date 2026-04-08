@@ -1,47 +1,51 @@
-sourceCompatibility = 1.8
-sourceSets.main.java.srcDirs = [ "src/" ]
-sourceSets.main.resources.srcDirs = ["../assets"]
-
-project.ext.mainClassName = "com.github.jbescos.DesktopLauncher"
-project.ext.assetsDir = new File("../assets")
-
 import org.gradle.internal.os.OperatingSystem
 
-task run(dependsOn: classes, type: JavaExec) {
-    main = project.mainClassName
-    classpath = sourceSets.main.runtimeClasspath
-    standardInput = System.in
-    workingDir = project.assetsDir
-    ignoreExitValue = true
-
-    if (OperatingSystem.current() == OperatingSystem.MAC_OS) {
-        // Required to run on macOS
-        jvmArgs += "-XstartOnFirstThread"
+plugins.withId("java-library") {
+    java {
+        sourceCompatibility = org.gradle.api.JavaVersion.VERSION_1_8
+        targetCompatibility = org.gradle.api.JavaVersion.VERSION_1_8
     }
-}
 
-task debug(dependsOn: classes, type: JavaExec) {
-    main = project.mainClassName
-    classpath = sourceSets.main.runtimeClasspath
-    standardInput = System.in
-    workingDir = project.assetsDir
-    ignoreExitValue = true
-    debug = true
-}
+    sourceSets.main.java.srcDirs = ["src/"]
+    sourceSets.main.resources.srcDirs = ["../assets"]
 
-task dist(type: Jar) {
-    duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
-    manifest {
-        attributes 'Main-Class': project.mainClassName
+    project.ext.mainClassName = "com.github.jbescos.DesktopLauncher"
+    project.ext.assetsDir = new File("../assets")
+
+    task run(dependsOn: classes, type: JavaExec) {
+        mainClass = project.mainClassName
+        classpath = sourceSets.main.runtimeClasspath
+        standardInput = System.in
+        workingDir = project.assetsDir
+        ignoreExitValue = true
+
+        if (OperatingSystem.current() == OperatingSystem.MAC_OS) {
+            // Required to run on macOS
+            jvmArgs += "-XstartOnFirstThread"
+        }
     }
-    dependsOn configurations.runtimeClasspath
-    from {
-        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+
+    task debug(dependsOn: classes, type: JavaExec) {
+        mainClass = project.mainClassName
+        classpath = sourceSets.main.runtimeClasspath
+        standardInput = System.in
+        workingDir = project.assetsDir
+        ignoreExitValue = true
+        debug = true
     }
-    with jar
+
+    task dist(type: Jar) {
+        duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
+        manifest {
+            attributes "Main-Class": project.mainClassName
+        }
+        dependsOn configurations.runtimeClasspath
+        from {
+            configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+        }
+        with jar
+    }
+
+    dist.dependsOn classes
+    eclipse.project.name = appName + "-desktop"
 }
-
-
-dist.dependsOn classes
-
-eclipse.project.name = appName + "-desktop"
