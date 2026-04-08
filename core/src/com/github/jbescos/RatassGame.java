@@ -4,6 +4,7 @@ import com.badlogic.gdx.Application.ApplicationType;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -26,6 +27,7 @@ import com.badlogic.gdx.physics.box2d.FixtureDef;
 import com.badlogic.gdx.physics.box2d.Manifold;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
@@ -67,6 +69,13 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float SUDDEN_DEATH_TIE_SPEED_MARGIN = 0.08f;
+    private static final float HUD_SIDEBAR_RATIO = 0.26f;
+    private static final float HUD_SIDEBAR_MIN_WIDTH = 180f;
+    private static final float HUD_SIDEBAR_PREFERRED_MIN_WIDTH = 240f;
+    private static final float HUD_SIDEBAR_MAX_WIDTH = 360f;
+    private static final float HUD_MIN_PLAYFIELD_WIDTH = 320f;
+    private static final float IMPACT_SOUND_COOLDOWN = 0.06f;
+    private static final float DESTRUCTION_SOUND_COOLDOWN = 0.08f;
     private static final String[] ENEMY_NAMES = new String[] {
             "Cinder",
             "Frost",
@@ -169,6 +178,13 @@ public class RatassGame extends ApplicationAdapter {
     private BitmapFont titleFont;
     private BitmapFont leaderboardFont;
     private BitmapFont labelFont;
+    private Sound impactSound;
+    private Sound pickupSound;
+    private Sound destructionSound;
+    private Sound countdownSound;
+    private Sound roundStartSound;
+    private Sound suddenDeathSound;
+    private Sound timeoutSound;
     private World world;
 
     private MapProgression mapProgression;
@@ -183,14 +199,20 @@ public class RatassGame extends ApplicationAdapter {
     private float touchThrottleInput;
     private float touchTurnInput;
     private float growthBoostTimer;
+    private float playfieldHudWidth;
+    private float sidebarHudWidth;
+    private float impactSoundCooldown;
+    private float destructionSoundCooldown;
     private boolean touchRestartPressed;
     private boolean touchRestartJustPressed;
     private boolean touchControlsEnabled;
     private boolean growthPickupActive;
     private boolean hasLastGrowthPickupPosition;
     private boolean roundOver;
+    private boolean roundStartSoundPlayed;
     private boolean roundTimedOut;
     private boolean suddenDeathActive;
+    private int countdownCueSecond;
     private int roundNumber;
     private int playerWins;
     private int finishPositionCounter;
@@ -228,6 +250,7 @@ public class RatassGame extends ApplicationAdapter {
         labelFont.setUseIntegerPositions(false);
         labelFont.getData().setScale(0.74f);
 
+        loadSounds();
         Gdx.input.setCatchKey(Input.Keys.BACK, true);
         createRoster();
         mapProgression = new MapProgression(ArenaMaps.createDefaultSet());
@@ -258,9 +281,97 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private void loadSounds() {
+        impactSound = loadSound("audio/impact.wav");
+        pickupSound = loadSound("audio/pickup.wav");
+        destructionSound = loadSound("audio/destroy.wav");
+        countdownSound = loadSound("audio/countdown.wav");
+        roundStartSound = loadSound("audio/start.wav");
+        suddenDeathSound = loadSound("audio/sudden_death.wav");
+        timeoutSound = loadSound("audio/timeout.wav");
+    }
+
+    private Sound loadSound(String path) {
+        if (!Gdx.files.internal(path).exists()) {
+            return null;
+        }
+        try {
+            return Gdx.audio.newSound(Gdx.files.internal(path));
+        } catch (RuntimeException exception) {
+            Gdx.app.error("RatassGame", "Could not load sound " + path, exception);
+            return null;
+        }
+    }
+
+    private int calculateSidebarWidth(int width) {
+        float preferred = MathUtils.clamp(
+                width * HUD_SIDEBAR_RATIO,
+                HUD_SIDEBAR_PREFERRED_MIN_WIDTH,
+                HUD_SIDEBAR_MAX_WIDTH);
+        float sidebarWidth = Math.min(preferred, width - HUD_MIN_PLAYFIELD_WIDTH);
+        if (sidebarWidth < HUD_SIDEBAR_MIN_WIDTH) {
+            sidebarWidth = Math.min(HUD_SIDEBAR_MIN_WIDTH, width * 0.32f);
+        }
+        return Math.max(0, Math.round(MathUtils.clamp(sidebarWidth, 0f, HUD_SIDEBAR_MAX_WIDTH)));
+    }
+
+    private void updateAudioState(float delta) {
+        impactSoundCooldown = Math.max(0f, impactSoundCooldown - delta);
+        destructionSoundCooldown = Math.max(0f, destructionSoundCooldown - delta);
+
+        if (roundOver) {
+            return;
+        }
+
+        if (preRoundCountdownTimer > 0f) {
+            int countdownSecond = MathUtils.ceil(preRoundCountdownTimer);
+            if (countdownSecond < countdownCueSecond) {
+                playSound(countdownSound, countdownSecond == 1 ? 0.62f : 0.48f);
+                countdownCueSecond = countdownSecond;
+            }
+            return;
+        }
+
+        if (!roundStartSoundPlayed) {
+            playSound(roundStartSound, 0.78f);
+            roundStartSoundPlayed = true;
+        }
+    }
+
+    private void playImpactSound(float impactStrength) {
+        if (impactSoundCooldown > 0f) {
+            return;
+        }
+
+        float volume = MathUtils.clamp(
+                (impactStrength - Car.MIN_COLLISION_RESPONSE_IMPULSE) / 24f,
+                0.18f,
+                0.82f);
+        playSound(impactSound, volume);
+        impactSoundCooldown = IMPACT_SOUND_COOLDOWN;
+    }
+
+    private void playDestructionSound(float volume) {
+        if (destructionSoundCooldown > 0f) {
+            return;
+        }
+
+        playSound(destructionSound, volume);
+        destructionSoundCooldown = DESTRUCTION_SOUND_COOLDOWN;
+    }
+
+    private void playSound(Sound sound, float volume) {
+        if (sound == null) {
+            return;
+        }
+        sound.play(MathUtils.clamp(volume, 0f, 1f));
+    }
+
     @Override
     public void resize(int width, int height) {
-        worldViewport.update(width, height);
+        sidebarHudWidth = calculateSidebarWidth(width);
+        playfieldHudWidth = Math.max(1f, width - sidebarHudWidth);
+        worldViewport.update(Math.max(1, Math.round(playfieldHudWidth)), height, true);
         updateWorldCamera();
 
         hudViewport.update(width, height, true);
@@ -305,6 +416,8 @@ public class RatassGame extends ApplicationAdapter {
                 accumulator = 0f;
             }
         }
+
+        updateAudioState(delta);
     }
 
     private void stepSimulation(float delta) {
@@ -421,7 +534,11 @@ public class RatassGame extends ApplicationAdapter {
         growthBoostTimer = 0f;
         boostedCar = null;
         preRoundCountdownTimer = ROUND_START_COUNTDOWN;
+        countdownCueSecond = MathUtils.ceil(ROUND_START_COUNTDOWN) + 1;
+        roundStartSoundPlayed = false;
         roundTimer = 0f;
+        impactSoundCooldown = 0f;
+        destructionSoundCooldown = 0f;
         roundOver = false;
         roundOverTimer = 0f;
         roundTimedOut = false;
@@ -476,6 +593,7 @@ public class RatassGame extends ApplicationAdapter {
         roundTimer = Math.min(ROUND_TIMEOUT_LIMIT, roundTimer + delta);
         if (!suddenDeathActive && roundTimer >= ROUND_TIME_LIMIT) {
             suddenDeathActive = true;
+            playSound(suddenDeathSound, 0.72f);
         }
         if (roundTimer >= ROUND_TIMEOUT_LIMIT) {
             triggerRoundTimeout();
@@ -492,6 +610,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         roundTimedOut = true;
+        playSound(timeoutSound, 0.78f);
         timeoutSurvivorCount = survivors.size;
         if (survivors.size > 0) {
             timeoutSharedPoints = roster.size - survivors.size + 1;
@@ -529,6 +648,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         spawnDestructionEffect(car);
+        playDestructionSound(0.42f + car.getSizeScale() * 0.10f);
         if (boostedCar == car) {
             clearGrowthBoost();
         }
@@ -776,8 +896,10 @@ public class RatassGame extends ApplicationAdapter {
         steerPadBounds.set(18f, 18f, padSize, padSize);
 
         float buttonWidth = padSize * 0.82f;
-        throttlePadBounds.set(hudWidth - buttonWidth - 18f, 18f + padSize * 0.52f, buttonWidth, padSize * 0.42f);
-        reversePadBounds.set(hudWidth - buttonWidth - 18f, 18f, buttonWidth, padSize * 0.32f);
+        float controlWidth = playfieldHudWidth > 0f ? Math.min(playfieldHudWidth, hudWidth) : hudWidth;
+        float rightEdge = Math.max(buttonWidth + 36f, controlWidth - 18f);
+        throttlePadBounds.set(rightEdge - buttonWidth, 18f + padSize * 0.52f, buttonWidth, padSize * 0.42f);
+        reversePadBounds.set(rightEdge - buttonWidth, 18f, buttonWidth, padSize * 0.32f);
     }
 
     private Car createCar(CarTemplate template, SpawnPoint spawnPoint) {
@@ -845,6 +967,7 @@ public class RatassGame extends ApplicationAdapter {
         car.template.totalPoints++;
         car.template.roundPickupPoints++;
         car.setGrowthBoost(true);
+        playSound(pickupSound, 0.72f);
     }
 
     private void clearGrowthBoost() {
@@ -1263,6 +1386,13 @@ public class RatassGame extends ApplicationAdapter {
 
         float hudWidth = hudViewport.getWorldWidth();
         float hudHeight = hudViewport.getWorldHeight();
+        float playfieldWidth = playfieldHudWidth > 0f ? playfieldHudWidth : hudWidth;
+        float sidebarX = playfieldWidth;
+        float sidebarWidth = Math.max(0f, hudWidth - playfieldWidth);
+
+        if (sidebarWidth > 0f) {
+            drawSidebarPanel(sidebarX, sidebarWidth, hudHeight);
+        }
 
         spriteBatch.begin();
 
@@ -1279,30 +1409,16 @@ public class RatassGame extends ApplicationAdapter {
         hudFont.setColor(0.74f, 0.82f, 0.88f, 1f);
         hudFont.draw(spriteBatch, buildControlsText(), 22f, hudHeight - 68f);
 
-        String status = buildStatusText();
-        glyphLayout.setText(hudFont, status);
-        hudFont.setColor(0.96f, 0.92f, 0.82f, 1f);
-        hudFont.draw(
-                spriteBatch,
-                status,
-                hudWidth - glyphLayout.width - 22f,
-                hudHeight - 20f);
-
-        hudFont.setColor(0.93f, 0.84f, 0.49f, 1f);
-        hudFont.draw(
-                spriteBatch,
-                buildObjectiveText(),
-                22f,
-                44f);
-
-        drawLeaderboard(hudWidth, hudHeight);
+        drawSidebarSummary(sidebarX, sidebarWidth, hudHeight);
+        drawLeaderboard(sidebarX, sidebarWidth, hudHeight);
+        drawSidebarFooter(sidebarX, sidebarWidth);
         drawCarLabels();
 
         if (preRoundCountdownTimer > 0f && !roundOver) {
             drawCenteredOverlay(
                     String.valueOf(MathUtils.ceil(preRoundCountdownTimer)),
                     "GET READY",
-                    hudWidth,
+                    playfieldWidth * 0.5f,
                     hudHeight,
                     new Color(0.98f, 0.94f, 0.84f, 1f),
                     0.62f);
@@ -1313,7 +1429,7 @@ public class RatassGame extends ApplicationAdapter {
             drawCenteredOverlay(
                     headline,
                     subline,
-                    hudWidth,
+                    playfieldWidth * 0.5f,
                     hudHeight,
                     winner != null && winner.playerControlled
                             ? new Color(0.98f, 0.96f, 0.80f, 1f)
@@ -1323,7 +1439,7 @@ public class RatassGame extends ApplicationAdapter {
             drawCenteredOverlay(
                     "SUDDEN DEATH",
                     buildSuddenDeathOverlayText(),
-                    hudWidth,
+                    playfieldWidth * 0.5f,
                     hudHeight,
                     new Color(1f, 0.42f, 0.30f, 1f),
                     0.60f);
@@ -1339,7 +1455,7 @@ public class RatassGame extends ApplicationAdapter {
     private void drawCenteredOverlay(
             String headline,
             String subline,
-            float hudWidth,
+            float centerX,
             float hudHeight,
             Color headlineColor,
             float headlineYFactor) {
@@ -1348,7 +1464,7 @@ public class RatassGame extends ApplicationAdapter {
         titleFont.draw(
                 spriteBatch,
                 headline,
-                (hudWidth - glyphLayout.width) * 0.5f,
+                centerX - glyphLayout.width * 0.5f,
                 hudHeight * headlineYFactor);
 
         hudFont.setColor(0.87f, 0.91f, 0.95f, 1f);
@@ -1356,38 +1472,96 @@ public class RatassGame extends ApplicationAdapter {
         hudFont.draw(
                 spriteBatch,
                 subline,
-                (hudWidth - glyphLayout.width) * 0.5f,
+                centerX - glyphLayout.width * 0.5f,
                 hudHeight * headlineYFactor - 34f);
     }
 
-    private void drawLeaderboard(float hudWidth, float hudHeight) {
+    private void drawSidebarPanel(float sidebarX, float sidebarWidth, float hudHeight) {
+        if (sidebarWidth <= 0f) {
+            return;
+        }
+
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0.04f, 0.06f, 0.08f, 0.95f);
+        shapeRenderer.rect(sidebarX, 0f, sidebarWidth, hudHeight);
+
+        shapeRenderer.setColor(0.98f, 0.84f, 0.28f, 0.16f);
+        shapeRenderer.rect(sidebarX, hudHeight - 4f, sidebarWidth, 4f);
+
+        shapeRenderer.setColor(1f, 1f, 1f, 0.06f);
+        shapeRenderer.rect(sidebarX, 0f, 2f, hudHeight);
+
+        shapeRenderer.setColor(0.10f, 0.13f, 0.17f, 0.95f);
+        shapeRenderer.rect(sidebarX + 12f, hudHeight - 92f, sidebarWidth - 24f, 70f);
+        shapeRenderer.rect(sidebarX + 12f, 10f, sidebarWidth - 24f, 66f);
+        shapeRenderer.end();
+
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawSidebarSummary(float sidebarX, float sidebarWidth, float hudHeight) {
+        if (sidebarWidth <= 0f) {
+            return;
+        }
+
+        float x = sidebarX + 18f;
+        float contentWidth = sidebarWidth - 36f;
+
+        hudFont.setColor(0.98f, 0.95f, 0.84f, 1f);
+        hudFont.draw(spriteBatch, "Classification", x, hudHeight - 24f);
+
+        leaderboardFont.setColor(0.76f, 0.84f, 0.90f, 1f);
+        leaderboardFont.draw(
+                spriteBatch,
+                "Map " + mapProgression.getCurrentMapNumber() + "/" + mapProgression.getMapCount()
+                        + "  |  Round " + roundNumber,
+                x,
+                hudHeight - 46f);
+        leaderboardFont.draw(spriteBatch, currentMap.getName(), x, hudHeight - 60f);
+        leaderboardFont.draw(
+                spriteBatch,
+                "Cars " + getAliveCarCount() + "/" + cars.size + "  |  You " + roster.first().totalPoints + " pts",
+                x,
+                hudHeight - 74f);
+
+        leaderboardFont.setColor(0.94f, 0.84f, 0.50f, 1f);
+        leaderboardFont.draw(
+                spriteBatch,
+                buildSidebarStateText(),
+                x,
+                hudHeight - 88f,
+                contentWidth,
+                Align.left,
+                true);
+    }
+
+    private void drawLeaderboard(float sidebarX, float sidebarWidth, float hudHeight) {
         leaderboardEntries.clear();
         leaderboardEntries.addAll(roster);
         leaderboardEntries.sort(leaderboardComparator);
 
-        float x = hudWidth - 300f;
-        float y = hudHeight - 52f;
+        float x = sidebarX + 18f;
+        float rightX = sidebarX + sidebarWidth - 18f;
+        float y = hudHeight - 110f;
 
         leaderboardFont.setColor(0.98f, 0.95f, 0.84f, 1f);
-        leaderboardFont.draw(spriteBatch, "Leaderboard", x, y);
-        y -= 18f;
+        leaderboardFont.draw(spriteBatch, "Rank", x, y);
+        glyphLayout.setText(leaderboardFont, "Points");
+        leaderboardFont.draw(spriteBatch, "Points", rightX - glyphLayout.width, y);
+        y -= 16f;
 
         for (int i = 0; i < leaderboardEntries.size; i++) {
             CarTemplate template = leaderboardEntries.get(i);
             boolean active = template.currentCar != null && template.currentCar.active;
-            String name = template.playerControlled ? "YOU" : template.name;
-            StringBuilder row = new StringBuilder();
-            row.append(i + 1).append(". ").append(name).append("  ")
-                    .append(template.totalPoints).append(" pts");
-
-            if (roundOver) {
-                row.append("  +").append(template.lastRoundAwardedPoints);
-            } else if (template.roundFinishPosition > 0) {
-                row.append("  OUT #").append(template.roundFinishPosition);
-            } else if (active && template.currentCar.hasGrowthBoost()) {
-                row.append("  BIG");
-            } else if (active) {
-                row.append("  IN");
+            String left = (i + 1) + ". " + (template.playerControlled ? "YOU" : template.name);
+            String right = template.totalPoints + " pts";
+            String rowState = buildLeaderboardRowState(template, active);
+            if (!rowState.isEmpty()) {
+                right += " " + rowState;
             }
 
             if (template.playerControlled) {
@@ -1398,9 +1572,40 @@ public class RatassGame extends ApplicationAdapter {
                 leaderboardFont.setColor(0.84f, 0.90f, 0.94f, 1f);
             }
 
-            leaderboardFont.draw(spriteBatch, row, x, y);
-            y -= 16f;
+            leaderboardFont.draw(spriteBatch, left, x, y);
+            glyphLayout.setText(leaderboardFont, right);
+            leaderboardFont.draw(spriteBatch, right, rightX - glyphLayout.width, y);
+            y -= 14f;
         }
+    }
+
+    private String buildLeaderboardRowState(CarTemplate template, boolean active) {
+        if (roundOver) {
+            return "+" + template.lastRoundAwardedPoints;
+        }
+        if (template.roundFinishPosition > 0) {
+            return "OUT#" + template.roundFinishPosition;
+        }
+        if (active && template.currentCar.hasGrowthBoost()) {
+            return "BIG";
+        }
+        return active ? "IN" : "";
+    }
+
+    private void drawSidebarFooter(float sidebarX, float sidebarWidth) {
+        if (sidebarWidth <= 0f) {
+            return;
+        }
+
+        leaderboardFont.setColor(0.93f, 0.84f, 0.49f, 1f);
+        leaderboardFont.draw(
+                spriteBatch,
+                buildObjectiveText(),
+                sidebarX + 18f,
+                64f,
+                sidebarWidth - 36f,
+                Align.left,
+                true);
     }
 
     private void drawCarLabels() {
@@ -1444,18 +1649,21 @@ public class RatassGame extends ApplicationAdapter {
         return "WASD or Arrow Keys: drive and steer   Esc: quit";
     }
 
-    private String buildStatusText() {
+    private int getAliveCarCount() {
         int aliveCars = 0;
         for (int i = 0; i < cars.size; i++) {
             if (cars.get(i).active) {
                 aliveCars++;
             }
         }
+        return aliveCars;
+    }
 
+    private String buildStatusText() {
         StringBuilder builder = new StringBuilder();
         builder.append("You ").append(roster.first().totalPoints).append(" pts")
                 .append("  |  Round ").append(roundNumber)
-                .append("  |  Cars left: ").append(aliveCars).append("/").append(cars.size)
+                .append("  |  Cars left: ").append(getAliveCarCount()).append("/").append(cars.size)
                 .append("  |  Arenas ").append(mapProgression.getCurrentMapNumber()).append("/")
                 .append(mapProgression.getMapCount());
 
@@ -1472,6 +1680,39 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         return builder.toString();
+    }
+
+    private String buildSidebarStateText() {
+        if (preRoundCountdownTimer > 0f) {
+            return "Starts in " + MathUtils.ceil(preRoundCountdownTimer) + "s";
+        }
+
+        if (roundTimedOut) {
+            return "Arena wipe resolved";
+        }
+
+        if (roundOver) {
+            return "Round over";
+        }
+
+        if (boostedCar != null && boostedCar.active) {
+            String owner = boostedCar.playerControlled ? "YOU" : boostedCar.name;
+            if (suddenDeathActive) {
+                return owner + " BIG  |  wipe " + getRoundTimeoutSecondsLeft() + "s";
+            }
+            return owner + " BIG " + MathUtils.ceil(growthBoostTimer)
+                    + "s  |  SD " + getSuddenDeathSecondsLeft() + "s";
+        }
+
+        if (suddenDeathActive) {
+            return "Sudden death  |  wipe " + getRoundTimeoutSecondsLeft() + "s";
+        }
+
+        if (growthPickupActive) {
+            return "Mass core live  |  SD " + getSuddenDeathSecondsLeft() + "s";
+        }
+
+        return "Sudden death in " + getSuddenDeathSecondsLeft() + "s";
     }
 
     private String buildObjectiveText() {
@@ -1626,6 +1867,12 @@ public class RatassGame extends ApplicationAdapter {
         return MAP_THEMES[(mapProgression.getCurrentMapNumber() - 1) % MAP_THEMES.length];
     }
 
+    private void disposeSound(Sound sound) {
+        if (sound != null) {
+            sound.dispose();
+        }
+    }
+
     @Override
     public void dispose() {
         if (world != null) {
@@ -1637,6 +1884,13 @@ public class RatassGame extends ApplicationAdapter {
         titleFont.dispose();
         leaderboardFont.dispose();
         labelFont.dispose();
+        disposeSound(impactSound);
+        disposeSound(pickupSound);
+        disposeSound(destructionSound);
+        disposeSound(countdownSound);
+        disposeSound(roundStartSound);
+        disposeSound(suddenDeathSound);
+        disposeSound(timeoutSound);
     }
 
     private final class ImpactContactListener implements ContactListener {
@@ -1692,6 +1946,9 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             float impactStrength = totalNormalImpulse + closingSpeed * 2.8f;
+            if (!roundOver && preRoundCountdownTimer <= 0f) {
+                playImpactSound(impactStrength);
+            }
 
             if (suddenDeathActive) {
                 if (carA.hasGrowthBoost() != carB.hasGrowthBoost()) {
