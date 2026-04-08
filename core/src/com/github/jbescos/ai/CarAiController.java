@@ -20,10 +20,22 @@ public final class CarAiController {
     private static final float RECOVERY_REVERSE_THROTTLE = -0.58f;
     private static final float ATTACK_REVERSE_THROTTLE = -0.42f;
     private static final float FULL_ATTACK_THROTTLE = 1f;
+    private static final float CHARGE_ATTACK_THROTTLE = 0.82f;
     private static final float STUCK_SPEED_SQ = 1f;
+    private static final float STUCK_ENGAGE_DISTANCE_SQ = 5.8f;
+    private static final float STUCK_DISENGAGE_DURATION = 0.62f;
+    private static final float STUCK_RELEASE_DISTANCE_SQ = 9f;
+    private static final float STUCK_CHARGE_DURATION = 0.95f;
+    private static final float DISENGAGE_REVERSE_THROTTLE = -1f;
+    private static final float DISENGAGE_TURN_GAIN_MULTIPLIER = 1.18f;
+    private static final float CHARGE_TURN_GAIN_MULTIPLIER = 1.20f;
     private static final float STUCK_RESET_DURATION = 1.1f;
     private static final float POWER_PICKUP_EDGE_MARGIN = 1.05f;
     private static final float BOOSTED_TARGET_BONUS = 1.85f;
+    private static final float EDGE_ATTACK_COMMIT_DISTANCE = 2.55f;
+    private static final float EDGE_VULNERABILITY_DISTANCE = 2.9f;
+    private static final float EDGE_VULNERABILITY_BONUS = 2.4f;
+    private static final float EDGE_OUTWARD_SPEED_BONUS = 0.9f;
 
     private final AiDrivingPersonality personality;
     private final AiControlDecision decision = new AiControlDecision();
@@ -37,6 +49,8 @@ public final class CarAiController {
     private final Vector2 working = new Vector2();
 
     private float stuckTimer;
+    private float disengageTimer;
+    private float chargeTimer;
 
     public CarAiController(AiDrivingPersonality personality) {
         this.personality = personality == null ? AiDrivingPersonalities.BALANCED : personality;
@@ -54,15 +68,17 @@ public final class CarAiController {
             boolean growthPickupActive,
             Vector2 growthPickupPosition) {
         if (self == null || !self.isActive()) {
-            stuckTimer = 0f;
+            clearAttackResetState();
             return decision.set(0f, 0f);
         }
 
         Body body = self.getBody();
         if (body == null) {
-            stuckTimer = 0f;
+            clearAttackResetState();
             return decision.set(0f, 0f);
         }
+
+        advanceAttackResetState(delta);
 
         arenaMap.getFocusPoint(arenaFocus);
         boolean chaseGrowthPickup =
@@ -77,7 +93,7 @@ public final class CarAiController {
         }
 
         if (!chaseGrowthPickup && (target == null || target.getBody() == null)) {
-            stuckTimer = 0f;
+            clearAttackResetState();
             return decision.set(0f, 0f);
         }
 
@@ -97,6 +113,14 @@ public final class CarAiController {
                         || (nearestHazard < personality.cautionEdgeDistance
                         && awayFromSafetyVelocity > personality.outwardVelocityThreshold);
 
+        if (recovering || chaseGrowthPickup) {
+            clearAttackResetState();
+        }
+
+        float targetDistanceSq = Float.MAX_VALUE;
+        boolean disengaging = false;
+        boolean charging = false;
+
         if (recovering) {
             arenaMap.findRecoveryPoint(position, desiredVector);
         } else if (chaseGrowthPickup) {
@@ -105,6 +129,7 @@ public final class CarAiController {
         } else {
             Body targetBody = target.getBody();
             Vector2 targetPosition = targetBody.getPosition();
+            targetDistanceSq = position.dst2(targetPosition);
             float leadTime = MathUtils.clamp(
                     position.dst(targetPosition) / TARGET_LEAD_DISTANCE_FACTOR,
                     MIN_TARGET_LEAD_TIME,
@@ -135,11 +160,16 @@ public final class CarAiController {
 
             float targetEdge = arenaMap.distanceToHazard(targetPosition);
             boolean commitPush =
-                    targetEdge < personality.recoveryEdgeDistance
+                    targetEdge < EDGE_ATTACK_COMMIT_DISTANCE
                             || (pushAlignment > personality.commitAlignmentThreshold
                             && position.dst2(targetPosition) < personality.commitDistanceSq);
 
-            if (commitPush) {
+            disengaging = disengageTimer > 0f;
+            charging = !disengaging && chargeTimer > 0f;
+
+            if (disengaging) {
+                desiredVector.set(targetPosition);
+            } else if (commitPush) {
                 desiredVector.set(interceptPoint)
                         .mulAdd(attackVector, personality.commitPushOffsetDistance);
             } else {
@@ -163,6 +193,13 @@ public final class CarAiController {
                 }
             }
 
+            if (disengaging && targetDistanceSq >= STUCK_RELEASE_DISTANCE_SQ) {
+                disengageTimer = 0f;
+                chargeTimer = STUCK_CHARGE_DURATION;
+                charging = true;
+                disengaging = false;
+            }
+
             arenaMap.clampToPlayable(desiredVector, INTERCEPT_CLAMP_MARGIN);
         }
 
@@ -179,10 +216,13 @@ public final class CarAiController {
         float angleError = desiredHeading - currentHeading;
         angleError = MathUtils.atan2(MathUtils.sin(angleError), MathUtils.cos(angleError));
 
-        float turn = MathUtils.clamp(
-                angleError * (recovering ? personality.recoveryTurnGain : personality.attackTurnGain),
-                -1f,
-                1f);
+        float turnGain = recovering ? personality.recoveryTurnGain : personality.attackTurnGain;
+        if (disengaging) {
+            turnGain *= DISENGAGE_TURN_GAIN_MULTIPLIER;
+        } else if (charging) {
+            turnGain *= CHARGE_TURN_GAIN_MULTIPLIER;
+        }
+        float turn = MathUtils.clamp(angleError * turnGain, -1f, 1f);
 
         float throttle;
         if (recovering) {
@@ -192,6 +232,16 @@ public final class CarAiController {
                 throttle = EMERGENCY_RECOVERY_THROTTLE;
             } else {
                 throttle = personality.recoveryThrottle;
+            }
+        } else if (disengaging) {
+            throttle = DISENGAGE_REVERSE_THROTTLE;
+        } else if (charging) {
+            if (Math.abs(angleError) > personality.reverseAttackAngle) {
+                throttle = CHARGE_ATTACK_THROTTLE;
+            } else if (Math.abs(angleError) > personality.cautiousAttackAngle) {
+                throttle = Math.max(personality.cautiousAttackThrottle, CHARGE_ATTACK_THROTTLE);
+            } else {
+                throttle = FULL_ATTACK_THROTTLE;
             }
         } else if (Math.abs(angleError) > personality.reverseAttackAngle) {
             throttle = ATTACK_REVERSE_THROTTLE;
@@ -203,21 +253,57 @@ public final class CarAiController {
             throttle = FULL_ATTACK_THROTTLE;
         }
 
-        if (body.getLinearVelocity().len2() < STUCK_SPEED_SQ) {
+        boolean stuckEligible =
+                !recovering
+                        && !chaseGrowthPickup
+                        && target != null
+                        && targetDistanceSq <= STUCK_ENGAGE_DISTANCE_SQ
+                        && disengageTimer <= 0f;
+        if (stuckEligible && body.getLinearVelocity().len2() < STUCK_SPEED_SQ) {
             stuckTimer += delta;
         } else {
             stuckTimer = 0f;
         }
 
-        if (stuckTimer > personality.stuckDuration) {
-            throttle = personality.stuckReverseThrottle;
-            turn = turn >= 0f ? 1f : -1f;
-            if (stuckTimer > STUCK_RESET_DURATION) {
-                stuckTimer = 0f;
-            }
+        if (stuckEligible && stuckTimer > personality.stuckDuration && chargeTimer <= 0f) {
+            disengageTimer = STUCK_DISENGAGE_DURATION;
+            throttle = DISENGAGE_REVERSE_THROTTLE;
+            turn = Math.abs(turn) < 0.2f ? 1f : Math.signum(turn);
+            stuckTimer = 0f;
+        } else if (stuckTimer > STUCK_RESET_DURATION) {
+            stuckTimer = 0f;
         }
 
         return decision.set(throttle, turn);
+    }
+
+    private void clearAttackResetState() {
+        stuckTimer = 0f;
+        disengageTimer = 0f;
+        chargeTimer = 0f;
+    }
+
+    private void advanceAttackResetState(float delta) {
+        boolean wasDisengaging = disengageTimer > 0f;
+        if (disengageTimer > 0f) {
+            disengageTimer = Math.max(0f, disengageTimer - delta);
+        }
+        if (wasDisengaging && disengageTimer == 0f) {
+            chargeTimer = Math.max(chargeTimer, STUCK_CHARGE_DURATION);
+        }
+        if (chargeTimer > 0f) {
+            chargeTimer = Math.max(0f, chargeTimer - delta);
+        }
+    }
+
+    private float computeOutwardVelocity(ArenaMap arenaMap, Vector2 position, Body body) {
+        arenaMap.findRecoveryPoint(position, centerBias);
+        centerBias.sub(position);
+        if (centerBias.isZero(EPSILON)) {
+            return 0f;
+        }
+        centerBias.nor();
+        return Math.max(0f, -centerBias.dot(body.getLinearVelocity()));
     }
 
     private AiVehicleView findTarget(
@@ -244,7 +330,10 @@ public final class CarAiController {
 
             Vector2 candidatePosition = candidateBody.getPosition();
             float distance = myPosition.dst(candidatePosition);
-            float edgeThreat = 4.8f - arenaMap.distanceToHazard(candidatePosition);
+            float candidateEdgeDistance = arenaMap.distanceToHazard(candidatePosition);
+            float edgeThreat = 4.8f - candidateEdgeDistance;
+            float edgeVulnerability = Math.max(0f, EDGE_VULNERABILITY_DISTANCE - candidateEdgeDistance);
+            float outwardVelocity = computeOutwardVelocity(arenaMap, candidatePosition, candidateBody);
 
             targetLead.set(candidatePosition).sub(arenaCenter);
             float centerDistanceScore = targetLead.len() * personality.targetCenterDistanceWeight;
@@ -259,6 +348,8 @@ public final class CarAiController {
             // Blend ring-out chances with current approach so presets can lean aggressive or safe.
             float score =
                     edgeThreat * personality.targetEdgeThreatWeight
+                            + edgeVulnerability * EDGE_VULNERABILITY_BONUS
+                            + outwardVelocity * EDGE_OUTWARD_SPEED_BONUS
                             + centerDistanceScore
                             + approachAlignment * personality.targetApproachAlignmentWeight
                             - distance * personality.targetDistancePenaltyWeight;

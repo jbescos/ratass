@@ -990,13 +990,6 @@ public class RatassGame extends ApplicationAdapter {
             for (int i = 0; i < currentMap.getHoleZoneCount(); i++) {
                 currentMap.getHoleZone(i).draw(shapeRenderer, 0f, 0f, 0f);
             }
-        } else {
-            currentMap.getFocusPoint(focusPoint);
-            shapeRenderer.setColor(theme.edge);
-            shapeRenderer.circle(focusPoint.x, focusPoint.y, 1.65f, 28);
-
-            shapeRenderer.setColor(theme.center);
-            shapeRenderer.circle(focusPoint.x, focusPoint.y, 0.82f, 20);
         }
     }
 
@@ -1704,8 +1697,8 @@ public class RatassGame extends ApplicationAdapter {
                 if (carA.hasGrowthBoost() != carB.hasGrowthBoost()) {
                     queueCollisionElimination(carA.hasGrowthBoost() ? carB : carA);
                 } else {
-                    float speedA = Math.abs(velocityA.dot(normal));
-                    float speedB = Math.abs(velocityB.dot(normal));
+                    float speedA = Math.max(0f, velocityA.dot(normal));
+                    float speedB = Math.max(0f, -velocityB.dot(normal));
                     if (Math.abs(speedA - speedB) <= SUDDEN_DEATH_TIE_SPEED_MARGIN) {
                         speedA = velocityA.len();
                         speedB = velocityB.len();
@@ -1727,7 +1720,7 @@ public class RatassGame extends ApplicationAdapter {
         private static final float HALF_HEIGHT = HEIGHT * 0.5f;
         private static final float FIXTURE_DENSITY = 1.3f;
         private static final float FIXTURE_FRICTION = 0.32f;
-        private static final float FIXTURE_RESTITUTION = 0.12f;
+        private static final float FIXTURE_RESTITUTION = 0.22f;
         private static final float GROWTH_SCALE = 1.40f;
         private static final float GROWTH_MASS_MULTIPLIER = 10f;
         private static final float DRIVE_FORCE = 96f;
@@ -1744,9 +1737,11 @@ public class RatassGame extends ApplicationAdapter {
         private static final float MIN_COLLISION_RESPONSE_SPEED = 1.1f;
         private static final float COLLISION_FORCE_FACTOR = 4.8f;
         private static final float MAX_COLLISION_FORCE = 74f;
+        private static final float COLLISION_REBOUND_FORCE_FACTOR = 0.62f;
+        private static final float MAX_COLLISION_REBOUND_FORCE = 44f;
         private static final float COLLISION_FORWARD_TRANSFER = 1f;
         private static final float COLLISION_SIDEWAYS_TRANSFER = 0.44f;
-        private static final float MAX_STORED_COLLISION_FORCE = 96f;
+        private static final float MAX_STORED_COLLISION_FORCE = 128f;
         private static final float IMPACT_FORCE_DURATION = 0.18f;
         private static final float IMPACT_SLIDE_DURATION = 0.34f;
         private static final float IMPACT_SLIDE_REFERENCE = 26f;
@@ -1928,6 +1923,12 @@ public class RatassGame extends ApplicationAdapter {
 
             updateAxes();
 
+            float reboundForce = MathUtils.clamp(
+                    collisionForce * COLLISION_REBOUND_FORCE_FACTOR,
+                    0f,
+                    MAX_COLLISION_REBOUND_FORCE);
+            pendingImpactForce.mulAdd(normal, direction * reboundForce);
+
             float forwardShare = forwardAxis.dot(normal) * direction;
             float sidewaysShare = sidewaysAxis.dot(normal) * direction;
             working.set(forwardAxis).scl(forwardShare * collisionForce * COLLISION_FORWARD_TRANSFER);
@@ -1938,9 +1939,10 @@ public class RatassGame extends ApplicationAdapter {
             }
             impactForceTimer = Math.max(impactForceTimer, IMPACT_FORCE_DURATION);
 
+            float slideShare = 0.22f + 0.78f * Math.abs(sidewaysShare);
             impactSlideStrength = Math.max(
                     impactSlideStrength,
-                    MathUtils.clamp(Math.abs(sidewaysShare) * impactStrength / IMPACT_SLIDE_REFERENCE, 0f, 1f));
+                    MathUtils.clamp(slideShare * impactStrength / IMPACT_SLIDE_REFERENCE, 0f, 1f));
             impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION);
         }
 
