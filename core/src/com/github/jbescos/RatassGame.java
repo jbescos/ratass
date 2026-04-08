@@ -1240,17 +1240,6 @@ public class RatassGame extends ApplicationAdapter {
             float spriteWidth = carWidth * CAR_SPRITE_WIDTH_SCALE;
             float spriteHeight = carHeight * CAR_SPRITE_HEIGHT_SCALE;
 
-            drawRotatedRect(
-                    centerX + 0.10f * carScale,
-                    centerY - 0.12f * carScale,
-                    spriteWidth,
-                    spriteHeight,
-                    angleDeg,
-                    0.04f,
-                    0.05f,
-                    0.07f,
-                    0.32f);
-
             if (car.hasGrowthBoost()) {
                 float boostPulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 9f);
                 drawRotatedRect(
