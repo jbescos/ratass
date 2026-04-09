@@ -123,30 +123,174 @@ public class RatassGame extends ApplicationAdapter {
                     AiDrivingPersonalities.BALANCED
             };
 
-    private static final Color SKYLINE = new Color(0.05f, 0.07f, 0.09f, 1f);
     private static final Color VOID = new Color(0.08f, 0.10f, 0.13f, 1f);
     private static final Color PLATFORM_SHADOW = new Color(0.04f, 0.05f, 0.07f, 1f);
     private static final Color WARNING_BRIGHT = new Color(0.95f, 0.78f, 0.18f, 1f);
-    private static final Color WARNING_DARK = new Color(0.14f, 0.14f, 0.15f, 1f);
-
-    private static final MapTheme[] MAP_THEMES = new MapTheme[] {
-            new MapTheme(
-                    new Color(0.38f, 0.34f, 0.24f, 1f),
-                    new Color(0.78f, 0.72f, 0.54f, 1f),
-                    new Color(0.69f, 0.63f, 0.46f, 1f)),
-            new MapTheme(
-                    new Color(0.23f, 0.36f, 0.44f, 1f),
-                    new Color(0.48f, 0.70f, 0.78f, 1f),
-                    new Color(0.31f, 0.53f, 0.60f, 1f)),
-            new MapTheme(
-                    new Color(0.43f, 0.25f, 0.20f, 1f),
-                    new Color(0.82f, 0.58f, 0.40f, 1f),
-                    new Color(0.68f, 0.41f, 0.28f, 1f)),
-            new MapTheme(
-                    new Color(0.25f, 0.33f, 0.22f, 1f),
-                    new Color(0.56f, 0.74f, 0.46f, 1f),
-                    new Color(0.38f, 0.58f, 0.31f, 1f))
-    };
+    private static final MapTheme DEFAULT_MAP_THEME =
+            mapTheme(
+                    MapDecorStyle.GRID,
+                    "081018",
+                    "10232d",
+                    "1d4b59",
+                    "173642",
+                    "6b8790",
+                    "4f6972",
+                    "efbf57",
+                    "8ecad4");
+    private static final MapTheme CROSSWIND_THEME =
+            mapTheme(
+                    MapDecorStyle.CROSS,
+                    "06141c",
+                    "12303c",
+                    "2d7a8d",
+                    "183742",
+                    "74a1ad",
+                    "52717d",
+                    "efc565",
+                    "8bdbe7");
+    private static final MapTheme SPLIT_SHIFT_THEME =
+            mapTheme(
+                    MapDecorStyle.DIAGONAL,
+                    "120d11",
+                    "33212a",
+                    "9e5037",
+                    "3a2327",
+                    "88707a",
+                    "66525c",
+                    "f08b42",
+                    "d7b199");
+    private static final MapTheme DONUT_BOWL_THEME =
+            mapTheme(
+                    MapDecorStyle.ORBIT,
+                    "140f0b",
+                    "342417",
+                    "94552d",
+                    "4a3222",
+                    "a48462",
+                    "7d6448",
+                    "f5bf5c",
+                    "ddb585");
+    private static final MapTheme TWIN_CRATER_THEME =
+            mapTheme(
+                    MapDecorStyle.ORBIT,
+                    "0d0f13",
+                    "1f222d",
+                    "7f3a33",
+                    "2d313d",
+                    "7c7e89",
+                    "616572",
+                    "e46a4b",
+                    "a1a8bc");
+    private static final MapTheme FRAME_RING_THEME =
+            mapTheme(
+                    MapDecorStyle.GRID,
+                    "07110d",
+                    "10261f",
+                    "2a8b6a",
+                    "183a31",
+                    "6f9d88",
+                    "50725f",
+                    "e9d36d",
+                    "8ad5bb");
+    private static final MapTheme CAUSEWAY_THEME =
+            mapTheme(
+                    MapDecorStyle.RUNWAY,
+                    "07111a",
+                    "12273a",
+                    "2e6285",
+                    "163447",
+                    "5f7e99",
+                    "456071",
+                    "e6b05a",
+                    "8ab5d5");
+    private static final MapTheme CORE_BREACH_THEME =
+            mapTheme(
+                    MapDecorStyle.CROSS,
+                    "12080a",
+                    "351519",
+                    "a63228",
+                    "431d23",
+                    "8d6461",
+                    "6a4a49",
+                    "f05d3a",
+                    "e4a591");
+    private static final MapTheme PILLBOX_THEME =
+            mapTheme(
+                    MapDecorStyle.RUNWAY,
+                    "081316",
+                    "133039",
+                    "188791",
+                    "163940",
+                    "79a4a4",
+                    "5a7d7d",
+                    "f4df83",
+                    "9ae2d8");
+    private static final MapTheme SATELLITE_THEME =
+            mapTheme(
+                    MapDecorStyle.ORBIT,
+                    "07101c",
+                    "0f2642",
+                    "376ab6",
+                    "18355a",
+                    "6d88bf",
+                    "4d6390",
+                    "f5c85e",
+                    "98baf3");
+    private static final MapTheme KNIFE_EDGE_THEME =
+            mapTheme(
+                    MapDecorStyle.RUNWAY,
+                    "0f1114",
+                    "2a2f35",
+                    "b24a37",
+                    "3c4348",
+                    "a49b8d",
+                    "7c7569",
+                    "f06b4c",
+                    "d9d3cc");
+    private static final MapTheme DEADFALL_THEME =
+            mapTheme(
+                    MapDecorStyle.ORBIT,
+                    "130d0a",
+                    "362314",
+                    "8a5c2c",
+                    "4a2f1e",
+                    "a88662",
+                    "7d6247",
+                    "eea550",
+                    "d7c1a2");
+    private static final MapTheme SWITCHBACK_THEME =
+            mapTheme(
+                    MapDecorStyle.DIAGONAL,
+                    "120c0b",
+                    "321e19",
+                    "a24b31",
+                    "452922",
+                    "9c7a66",
+                    "745848",
+                    "f0a064",
+                    "dbaf96");
+    private static final MapTheme LAST_STAND_THEME =
+            mapTheme(
+                    MapDecorStyle.FORTRESS,
+                    "0a110d",
+                    "183223",
+                    "46663a",
+                    "224231",
+                    "7d9364",
+                    "5b6d47",
+                    "e5bf5f",
+                    "a9c986");
+    private static final MapTheme BOILER_DECK_THEME =
+            mapTheme(
+                    MapDecorStyle.RUNWAY,
+                    "110c0b",
+                    "30201a",
+                    "a5662d",
+                    "462d24",
+                    "a28063",
+                    "7d604b",
+                    "f0a352",
+                    "d8b89b");
 
     // Keep the active 20-car roster distinct; reserve cars continue as car21+ in assets/cars.
     private static final CarVisual[] CAR_VISUALS = new CarVisual[] {
@@ -1291,7 +1435,16 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void renderWorld() {
-        ScreenUtils.clear(SKYLINE.r, SKYLINE.g, SKYLINE.b, 1f);
+        MapTheme theme = currentTheme();
+        if (currentMap != null) {
+            currentMap.getBounds(mapBounds);
+            currentMap.getFocusPoint(focusPoint);
+        } else {
+            mapBounds.set(-WORLD_WIDTH * 0.32f, -WORLD_HEIGHT * 0.26f, WORLD_WIDTH * 0.64f, WORLD_HEIGHT * 0.52f);
+            focusPoint.set(0f, 0f);
+        }
+
+        ScreenUtils.clear(theme.backdropBase.r, theme.backdropBase.g, theme.backdropBase.b, 1f);
 
         updateWorldCamera();
         worldViewport.apply();
@@ -1302,8 +1455,8 @@ public class RatassGame extends ApplicationAdapter {
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        drawBackdrop();
-        drawArena();
+        drawBackdrop(theme);
+        drawArena(theme);
         drawPointPickup();
         drawGrowthPickup();
         drawCarEffects();
@@ -1320,56 +1473,296 @@ public class RatassGame extends ApplicationAdapter {
         Gdx.gl.glDisable(GL20.GL_BLEND);
     }
 
-    private void drawBackdrop() {
-        shapeRenderer.setColor(VOID);
+    private void drawBackdrop(MapTheme theme) {
+        shapeRenderer.setColor(theme.backdropBase);
         shapeRenderer.rect(-WORLD_WIDTH, -WORLD_HEIGHT, WORLD_WIDTH * 2f, WORLD_HEIGHT * 2f);
 
-        shapeRenderer.setColor(0.11f, 0.14f, 0.17f, 1f);
-        for (float x = -WORLD_WIDTH; x <= WORLD_WIDTH; x += 2.8f) {
-            shapeRenderer.rect(x, -WORLD_HEIGHT, 0.15f, WORLD_HEIGHT * 2f);
+        for (float y = -WORLD_HEIGHT; y < WORLD_HEIGHT; y += 3.25f) {
+            boolean majorBand = (((int) ((y + WORLD_HEIGHT) / 3.25f)) & 1) == 0;
+            setShapeColor(theme.backdropLine, majorBand ? 0.12f : 0.06f);
+            shapeRenderer.rect(-WORLD_WIDTH, y, WORLD_WIDTH * 2f, majorBand ? 1.35f : 0.72f);
+        }
+
+        for (float x = -WORLD_WIDTH; x <= WORLD_WIDTH; x += 3.1f) {
+            float alpha = Math.abs(x - focusPoint.x) < mapBounds.width * 0.44f ? 0.15f : 0.08f;
+            setShapeColor(theme.backdropLine, alpha);
+            shapeRenderer.rect(x, -WORLD_HEIGHT, 0.16f, WORLD_HEIGHT * 2f);
+        }
+
+        for (float y = -WORLD_HEIGHT; y <= WORLD_HEIGHT; y += 2.6f) {
+            float alpha = Math.abs(y - focusPoint.y) < mapBounds.height * 0.42f ? 0.08f : 0.04f;
+            setShapeColor(theme.backdropGlow, alpha);
+            shapeRenderer.rect(-WORLD_WIDTH, y, WORLD_WIDTH * 2f, 0.10f);
+        }
+
+        drawBackdropMotif(theme);
+    }
+
+    private void drawBackdropMotif(MapTheme theme) {
+        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 1.35f);
+        float centerX = focusPoint.x;
+        float centerY = focusPoint.y;
+        float span = Math.max(mapBounds.width, mapBounds.height);
+        float longSpan = span + 10f;
+        float laneAngle = mapBounds.width >= mapBounds.height ? 0f : 90f;
+
+        switch (theme.decorStyle) {
+            case ORBIT:
+                setShapeColor(theme.backdropGlow, 0.05f + pulse * 0.04f);
+                shapeRenderer.circle(centerX, centerY, span * 0.28f + 1.2f, 56);
+                setShapeColor(theme.accentSoft, 0.04f);
+                shapeRenderer.circle(centerX, centerY, span * 0.46f + 2.8f, 56);
+                setShapeColor(theme.accent, 0.05f);
+                shapeRenderer.circle(centerX, centerY, span * 0.64f + 3.8f, 56);
+                break;
+            case RUNWAY:
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        longSpan + 8f,
+                        0.92f,
+                        laneAngle,
+                        theme.backdropGlow.r,
+                        theme.backdropGlow.g,
+                        theme.backdropGlow.b,
+                        0.09f + pulse * 0.03f);
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        longSpan + 10f,
+                        0.20f,
+                        laneAngle,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.18f);
+                drawOffsetRotatedRect(
+                        centerX,
+                        centerY,
+                        0f,
+                        2.4f,
+                        longSpan + 6f,
+                        0.26f,
+                        laneAngle,
+                        theme.accentSoft.r,
+                        theme.accentSoft.g,
+                        theme.accentSoft.b,
+                        0.08f);
+                drawOffsetRotatedRect(
+                        centerX,
+                        centerY,
+                        0f,
+                        -2.4f,
+                        longSpan + 6f,
+                        0.26f,
+                        laneAngle,
+                        theme.accentSoft.r,
+                        theme.accentSoft.g,
+                        theme.accentSoft.b,
+                        0.08f);
+                break;
+            case CROSS:
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        longSpan + 8f,
+                        1.05f,
+                        0f,
+                        theme.backdropGlow.r,
+                        theme.backdropGlow.g,
+                        theme.backdropGlow.b,
+                        0.08f + pulse * 0.03f);
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        mapBounds.height + 11f,
+                        1.05f,
+                        90f,
+                        theme.backdropGlow.r,
+                        theme.backdropGlow.g,
+                        theme.backdropGlow.b,
+                        0.08f + pulse * 0.03f);
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        longSpan + 12f,
+                        0.18f,
+                        0f,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.14f);
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        mapBounds.height + 14f,
+                        0.18f,
+                        90f,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.14f);
+                break;
+            case FORTRESS:
+                drawRotatedRect(
+                        centerX,
+                        centerY - mapBounds.height * 0.5f - 2.2f,
+                        mapBounds.width + 7f,
+                        0.42f,
+                        0f,
+                        theme.backdropGlow.r,
+                        theme.backdropGlow.g,
+                        theme.backdropGlow.b,
+                        0.10f);
+                drawRotatedRect(
+                        centerX,
+                        centerY + mapBounds.height * 0.5f + 2.2f,
+                        mapBounds.width + 7f,
+                        0.42f,
+                        0f,
+                        theme.backdropGlow.r,
+                        theme.backdropGlow.g,
+                        theme.backdropGlow.b,
+                        0.10f);
+                drawRotatedRect(
+                        centerX - mapBounds.width * 0.5f - 2.2f,
+                        centerY,
+                        mapBounds.height + 7f,
+                        0.42f,
+                        90f,
+                        theme.backdropGlow.r,
+                        theme.backdropGlow.g,
+                        theme.backdropGlow.b,
+                        0.10f);
+                drawRotatedRect(
+                        centerX + mapBounds.width * 0.5f + 2.2f,
+                        centerY,
+                        mapBounds.height + 7f,
+                        0.42f,
+                        90f,
+                        theme.backdropGlow.r,
+                        theme.backdropGlow.g,
+                        theme.backdropGlow.b,
+                        0.10f);
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        Math.min(mapBounds.width, mapBounds.height) + 4.2f,
+                        0.18f,
+                        45f,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.12f);
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        Math.min(mapBounds.width, mapBounds.height) + 4.2f,
+                        0.18f,
+                        -45f,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.12f);
+                break;
+            case DIAGONAL:
+                for (float offset = -WORLD_WIDTH * 1.35f; offset <= WORLD_WIDTH * 1.35f; offset += 6.2f) {
+                    drawRotatedRect(
+                            offset,
+                            centerY,
+                            WORLD_WIDTH * 1.8f,
+                            0.64f,
+                            28f,
+                            theme.backdropGlow.r,
+                            theme.backdropGlow.g,
+                            theme.backdropGlow.b,
+                            0.05f);
+                }
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        WORLD_WIDTH * 1.7f,
+                        0.22f,
+                        -28f,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.12f);
+                break;
+            case GRID:
+            default:
+                float halfWidth = mapBounds.width * 0.55f + 2.4f;
+                float halfHeight = mapBounds.height * 0.55f + 2.4f;
+                setShapeColor(theme.backdropGlow, 0.08f + pulse * 0.03f);
+                shapeRenderer.rect(centerX - halfWidth, centerY - 0.18f, halfWidth * 2f, 0.36f);
+                shapeRenderer.rect(centerX - 0.18f, centerY - halfHeight, 0.36f, halfHeight * 2f);
+                setShapeColor(theme.accentSoft, 0.05f);
+                shapeRenderer.rect(centerX - halfWidth, centerY - halfHeight, halfWidth * 2f, 0.18f);
+                shapeRenderer.rect(centerX - halfWidth, centerY + halfHeight - 0.18f, halfWidth * 2f, 0.18f);
+                shapeRenderer.rect(centerX - halfWidth, centerY - halfHeight, 0.18f, halfHeight * 2f);
+                shapeRenderer.rect(centerX + halfWidth - 0.18f, centerY - halfHeight, 0.18f, halfHeight * 2f);
+                break;
         }
     }
 
-    private void drawArena() {
-        MapTheme theme = currentTheme();
-        currentMap.getBounds(mapBounds);
-
-        shapeRenderer.setColor(PLATFORM_SHADOW);
-        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
-            currentMap.getSolidZone(i).draw(shapeRenderer, 0.18f, -0.22f, 0f);
+    private void drawArena(MapTheme theme) {
+        if (currentMap == null) {
+            return;
         }
 
-        shapeRenderer.setColor(theme.edge);
-        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
-            currentMap.getSolidZone(i).draw(shapeRenderer, 0f, 0f, ARENA_EDGE_INSET);
-        }
+        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 2.2f);
 
-        drawWarningStripes();
+        drawSolidZones(theme.backdropGlow, 0.14f + pulse * 0.05f, 0f, 0f, 0.44f);
+        drawSolidZones(PLATFORM_SHADOW, 1f, 0.18f, -0.22f, 0f);
+        drawSolidZones(theme.edge, 1f, 0f, 0f, ARENA_EDGE_INSET);
 
-        shapeRenderer.setColor(theme.surface);
-        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
-            currentMap.getSolidZone(i).draw(shapeRenderer, 0f, 0f, 0f);
-        }
+        drawArenaFrame(theme);
+        drawWarningStripes(theme);
 
-        shapeRenderer.setColor(theme.center);
-        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
-            currentMap.getSolidZone(i).draw(shapeRenderer, 0f, 0f, -ARENA_CENTER_INSET);
-        }
+        drawSolidZones(theme.surface, 1f, 0f, 0f, 0f);
+        drawSolidZones(theme.accentSoft, 0.16f, 0f, 0f, -0.34f);
+        drawSolidZones(theme.center, 0.30f, -0.06f, 0.08f, -0.58f);
+        drawSolidZones(theme.center, 1f, 0f, 0f, -ARENA_CENTER_INSET);
+
+        drawSpawnPads(theme);
+        drawFocusMotif(theme);
 
         if (currentMap.getHoleZoneCount() > 0) {
-            shapeRenderer.setColor(theme.edge);
-            for (int i = 0; i < currentMap.getHoleZoneCount(); i++) {
-                currentMap.getHoleZone(i).draw(shapeRenderer, 0f, 0f, 0.48f);
-            }
-
-            shapeRenderer.setColor(VOID);
-            for (int i = 0; i < currentMap.getHoleZoneCount(); i++) {
-                currentMap.getHoleZone(i).draw(shapeRenderer, 0f, 0f, 0f);
-            }
+            drawHoleZones(theme.backdropGlow, 0.14f + pulse * 0.06f, 0f, 0f, 0.72f);
+            drawHoleZones(theme.edge, 0.90f, 0f, 0f, 0.48f);
+            drawHoleZones(VOID, 1f, 0f, 0f, 0f);
         }
     }
 
-    private void drawWarningStripes() {
+    private void drawArenaFrame(MapTheme theme) {
+        float inset = 1.08f;
+        float segment = Math.min(3.1f, Math.min(mapBounds.width, mapBounds.height) * 0.26f + 0.85f);
+        float thickness = 0.18f;
+        float left = mapBounds.x - inset;
+        float right = mapBounds.x + mapBounds.width + inset - thickness;
+        float bottom = mapBounds.y - inset;
+        float top = mapBounds.y + mapBounds.height + inset - thickness;
+        float centerX = mapBounds.x + mapBounds.width * 0.5f;
+        float centerY = mapBounds.y + mapBounds.height * 0.5f;
+
+        setShapeColor(theme.accentSoft, 0.24f);
+        shapeRenderer.rect(left, top, segment, thickness);
+        shapeRenderer.rect(left, top - segment + thickness, thickness, segment);
+        shapeRenderer.rect(right - segment + thickness, top, segment, thickness);
+        shapeRenderer.rect(right, top - segment + thickness, thickness, segment);
+        shapeRenderer.rect(left, bottom, segment, thickness);
+        shapeRenderer.rect(left, bottom, thickness, segment);
+        shapeRenderer.rect(right - segment + thickness, bottom, segment, thickness);
+        shapeRenderer.rect(right, bottom, thickness, segment);
+
+        setShapeColor(theme.accent, 0.22f);
+        shapeRenderer.rect(centerX - 1.05f, top, 2.1f, thickness);
+        shapeRenderer.rect(centerX - 1.05f, bottom, 2.1f, thickness);
+        shapeRenderer.rect(left, centerY - 1.05f, thickness, 2.1f);
+        shapeRenderer.rect(right, centerY - 1.05f, thickness, 2.1f);
+    }
+
+    private void drawWarningStripes(MapTheme theme) {
         float stripeDepth = 0.55f;
         float stripeLength = 1.25f;
         boolean bright = true;
@@ -1377,7 +1770,11 @@ public class RatassGame extends ApplicationAdapter {
         for (float x = mapBounds.x - ARENA_EDGE_INSET;
                 x < mapBounds.x + mapBounds.width + ARENA_EDGE_INSET;
                 x += stripeLength) {
-            shapeRenderer.setColor(bright ? WARNING_BRIGHT : WARNING_DARK);
+            if (bright) {
+                setShapeColor(WARNING_BRIGHT, 0.92f);
+            } else {
+                setShapeColor(theme.edge, 0.96f);
+            }
             shapeRenderer.rect(x, mapBounds.y + mapBounds.height, stripeLength, stripeDepth);
             shapeRenderer.rect(x, mapBounds.y - stripeDepth, stripeLength, stripeDepth);
             bright = !bright;
@@ -1387,11 +1784,243 @@ public class RatassGame extends ApplicationAdapter {
         for (float y = mapBounds.y - ARENA_EDGE_INSET;
                 y < mapBounds.y + mapBounds.height + ARENA_EDGE_INSET;
                 y += stripeLength) {
-            shapeRenderer.setColor(bright ? WARNING_BRIGHT : WARNING_DARK);
+            if (bright) {
+                setShapeColor(WARNING_BRIGHT, 0.92f);
+            } else {
+                setShapeColor(theme.edge, 0.96f);
+            }
             shapeRenderer.rect(mapBounds.x - stripeDepth, y, stripeDepth, stripeLength);
             shapeRenderer.rect(mapBounds.x + mapBounds.width, y, stripeDepth, stripeLength);
             bright = !bright;
         }
+    }
+
+    private void drawSpawnPads(MapTheme theme) {
+        if (currentMap == null) {
+            return;
+        }
+
+        for (int i = 0; i < currentMap.getSpawnCount(); i++) {
+            SpawnPoint spawnPoint = currentMap.getSpawn(i);
+            float angleDeg = spawnPoint.angleRad * MathUtils.radiansToDegrees + 90f;
+
+            setShapeColor(theme.backdropGlow, 0.16f);
+            shapeRenderer.circle(spawnPoint.x, spawnPoint.y, 0.56f, 20);
+
+            drawRotatedRect(
+                    spawnPoint.x,
+                    spawnPoint.y,
+                    1.42f,
+                    0.46f,
+                    angleDeg,
+                    theme.edge.r,
+                    theme.edge.g,
+                    theme.edge.b,
+                    0.34f);
+            drawRotatedRect(
+                    spawnPoint.x,
+                    spawnPoint.y,
+                    1.10f,
+                    0.18f,
+                    angleDeg,
+                    theme.accentSoft.r,
+                    theme.accentSoft.g,
+                    theme.accentSoft.b,
+                    0.28f);
+            drawOffsetRotatedRect(
+                    spawnPoint.x,
+                    spawnPoint.y,
+                    0.34f,
+                    0f,
+                    0.34f,
+                    0.10f,
+                    angleDeg,
+                    theme.accent.r,
+                    theme.accent.g,
+                    theme.accent.b,
+                    0.44f);
+
+            setShapeColor(theme.accent, 0.34f);
+            shapeRenderer.circle(spawnPoint.x, spawnPoint.y, 0.12f, 14);
+        }
+    }
+
+    private void drawFocusMotif(MapTheme theme) {
+        if (currentMap == null || !currentMap.supports(focusPoint)) {
+            return;
+        }
+
+        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 3.1f);
+
+        switch (theme.decorStyle) {
+            case ORBIT:
+                setShapeColor(theme.accentSoft, 0.15f);
+                shapeRenderer.circle(focusPoint.x, focusPoint.y, 0.92f + pulse * 0.10f, 28);
+                setShapeColor(theme.accent, 0.12f);
+                shapeRenderer.circle(focusPoint.x, focusPoint.y, 1.55f + pulse * 0.16f, 28);
+                break;
+            case RUNWAY:
+                float laneAngle = mapBounds.width >= mapBounds.height ? 0f : 90f;
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        2.6f,
+                        0.16f,
+                        laneAngle,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.30f);
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        0.80f,
+                        0.16f,
+                        laneAngle + 90f,
+                        theme.accentSoft.r,
+                        theme.accentSoft.g,
+                        theme.accentSoft.b,
+                        0.22f);
+                break;
+            case CROSS:
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        2.8f,
+                        0.16f,
+                        0f,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.28f);
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        2.8f,
+                        0.16f,
+                        90f,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.28f);
+                break;
+            case FORTRESS:
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        2.4f,
+                        0.16f,
+                        0f,
+                        theme.accentSoft.r,
+                        theme.accentSoft.g,
+                        theme.accentSoft.b,
+                        0.24f);
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        2.4f,
+                        0.16f,
+                        90f,
+                        theme.accentSoft.r,
+                        theme.accentSoft.g,
+                        theme.accentSoft.b,
+                        0.24f);
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        1.65f,
+                        0.12f,
+                        45f,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.24f);
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        1.65f,
+                        0.12f,
+                        -45f,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.24f);
+                break;
+            case DIAGONAL:
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        2.5f,
+                        0.18f,
+                        28f,
+                        theme.accent.r,
+                        theme.accent.g,
+                        theme.accent.b,
+                        0.28f);
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        2.5f,
+                        0.18f,
+                        -28f,
+                        theme.accentSoft.r,
+                        theme.accentSoft.g,
+                        theme.accentSoft.b,
+                        0.22f);
+                break;
+            case GRID:
+            default:
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        2.2f,
+                        0.16f,
+                        0f,
+                        theme.accentSoft.r,
+                        theme.accentSoft.g,
+                        theme.accentSoft.b,
+                        0.26f);
+                drawRotatedRect(
+                        focusPoint.x,
+                        focusPoint.y,
+                        2.2f,
+                        0.16f,
+                        90f,
+                        theme.accentSoft.r,
+                        theme.accentSoft.g,
+                        theme.accentSoft.b,
+                        0.26f);
+                break;
+        }
+
+        setShapeColor(theme.accent, 0.38f + pulse * 0.06f);
+        shapeRenderer.circle(focusPoint.x, focusPoint.y, 0.13f + pulse * 0.02f, 16);
+    }
+
+    private void drawSolidZones(Color color, float alpha, float offsetX, float offsetY, float expansion) {
+        if (currentMap == null) {
+            return;
+        }
+
+        setShapeColor(color, alpha);
+        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
+            currentMap.getSolidZone(i).draw(shapeRenderer, offsetX, offsetY, expansion);
+        }
+    }
+
+    private void drawHoleZones(Color color, float alpha, float offsetX, float offsetY, float expansion) {
+        if (currentMap == null) {
+            return;
+        }
+
+        setShapeColor(color, alpha);
+        for (int i = 0; i < currentMap.getHoleZoneCount(); i++) {
+            currentMap.getHoleZone(i).draw(shapeRenderer, offsetX, offsetY, expansion);
+        }
+    }
+
+    private void setShapeColor(Color color, float alpha) {
+        shapeRenderer.setColor(color.r, color.g, color.b, alpha);
     }
 
     private void drawGrowthPickup() {
@@ -2327,7 +2956,85 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private MapTheme currentTheme() {
-        return MAP_THEMES[(mapProgression.getCurrentMapNumber() - 1) % MAP_THEMES.length];
+        if (currentMap == null) {
+            return DEFAULT_MAP_THEME;
+        }
+
+        String mapId = currentMap.getId();
+        if (mapId == null) {
+            return DEFAULT_MAP_THEME;
+        }
+
+        if (mapId.startsWith("crosswind-junction")) {
+            return CROSSWIND_THEME;
+        }
+        if (mapId.startsWith("split-shift")) {
+            return SPLIT_SHIFT_THEME;
+        }
+        if (mapId.startsWith("donut-bowl")) {
+            return DONUT_BOWL_THEME;
+        }
+        if (mapId.startsWith("twin-crater")) {
+            return TWIN_CRATER_THEME;
+        }
+        if (mapId.startsWith("frame-ring")) {
+            return FRAME_RING_THEME;
+        }
+        if (mapId.startsWith("causeway-clash")) {
+            return CAUSEWAY_THEME;
+        }
+        if (mapId.startsWith("core-breach")) {
+            return CORE_BREACH_THEME;
+        }
+        if (mapId.startsWith("pillbox-lanes")) {
+            return PILLBOX_THEME;
+        }
+        if (mapId.startsWith("satellite-crown")) {
+            return SATELLITE_THEME;
+        }
+        if (mapId.startsWith("boiler-deck")) {
+            return BOILER_DECK_THEME;
+        }
+        if ("knife-edge".equals(mapId)) {
+            return KNIFE_EDGE_THEME;
+        }
+        if ("deadfall".equals(mapId)) {
+            return DEADFALL_THEME;
+        }
+        if ("switchback".equals(mapId)) {
+            return SWITCHBACK_THEME;
+        }
+        if ("last-stand".equals(mapId)) {
+            return LAST_STAND_THEME;
+        }
+
+        return DEFAULT_MAP_THEME;
+    }
+
+    private static MapTheme mapTheme(
+            MapDecorStyle decorStyle,
+            String backdropBase,
+            String backdropLine,
+            String backdropGlow,
+            String edge,
+            String surface,
+            String center,
+            String accent,
+            String accentSoft) {
+        return new MapTheme(
+                decorStyle,
+                parseThemeColor(backdropBase),
+                parseThemeColor(backdropLine),
+                parseThemeColor(backdropGlow),
+                parseThemeColor(edge),
+                parseThemeColor(surface),
+                parseThemeColor(center),
+                parseThemeColor(accent),
+                parseThemeColor(accentSoft));
+    }
+
+    private static Color parseThemeColor(String value) {
+        return Color.valueOf(value.length() == 6 ? value + "ff" : value);
     }
 
     private void disposeSound(Sound sound) {
@@ -3077,15 +3784,45 @@ public class RatassGame extends ApplicationAdapter {
         private float scale;
     }
 
+    private enum MapDecorStyle {
+        GRID,
+        RUNWAY,
+        ORBIT,
+        CROSS,
+        DIAGONAL,
+        FORTRESS
+    }
+
     private static final class MapTheme {
+        private final MapDecorStyle decorStyle;
+        private final Color backdropBase;
+        private final Color backdropLine;
+        private final Color backdropGlow;
         private final Color edge;
         private final Color surface;
         private final Color center;
+        private final Color accent;
+        private final Color accentSoft;
 
-        private MapTheme(Color edge, Color surface, Color center) {
+        private MapTheme(
+                MapDecorStyle decorStyle,
+                Color backdropBase,
+                Color backdropLine,
+                Color backdropGlow,
+                Color edge,
+                Color surface,
+                Color center,
+                Color accent,
+                Color accentSoft) {
+            this.decorStyle = decorStyle;
+            this.backdropBase = backdropBase;
+            this.backdropLine = backdropLine;
+            this.backdropGlow = backdropGlow;
             this.edge = edge;
             this.surface = surface;
             this.center = center;
+            this.accent = accent;
+            this.accentSoft = accentSoft;
         }
     }
 
