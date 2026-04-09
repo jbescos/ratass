@@ -26,11 +26,9 @@ modern JDK such as Java 17.
 
 ## Optional Maven modules
 
-- Browser module packaging: `mvn -Phtml -pl html -am package`
-- Browser GWT compile attempt: `mvn -Phtml -pl html -am -Dgwt.compiler.skip=false package`
+- Browser build: `mvn -Phtml -pl html -am package`
 - iOS module: `mvn -Pios -pl ios -am package`
 
-The browser GWT compile is still failing at the existing `jsinterop`
-module-resolution issue, so the Maven migration keeps that step optional.
+The browser build output is written to `html/target/ratass-html-1.0/`.
 The Android module is still kept in the repository but is not part of the Maven
 reactor yet.
