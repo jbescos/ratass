@@ -63,7 +63,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float POINT_PICKUP_MIN_MOVE_DISTANCE = 2.6f;
     private static final int POINT_PICKUP_SPAWN_ATTEMPTS = 96;
     private static final float PICKUP_MIN_SEPARATION = 1.95f;
-    private static final float GROWTH_DURATION = 5f;
+    private static final float GROWTH_DURATION = 10f;
     private static final float DESTRUCTION_EFFECT_DURATION = 0.65f;
     private static final int TOTAL_CARS = 20;
     private static final float ROUND_START_COUNTDOWN = 3f;
@@ -2228,6 +2228,7 @@ public class RatassGame extends ApplicationAdapter {
                     impactStrength,
                     speedIntoCollisionA,
                     carB.getCollisionReboundMultiplierAgainst(carA));
+
         }
     }
 
@@ -2262,9 +2263,9 @@ public class RatassGame extends ApplicationAdapter {
         private static final float MAX_STORED_COLLISION_IMPULSE = 30f;
         private static final float IMPACT_SLIDE_DURATION = 0.54f;
         private static final float IMPACT_SLIDE_REFERENCE = 18f;
-        private static final float BOOSTED_VS_NORMAL_REBOUND_MULTIPLIER = 0.52f;
-        private static final float NORMAL_VS_BOOSTED_REBOUND_MULTIPLIER = 2.35f;
-        private static final float BOOSTED_VS_BOOSTED_REBOUND_MULTIPLIER = 1.55f;
+        private static final float BOOSTED_VS_NORMAL_REBOUND_MULTIPLIER = 0.85f;
+        private static final float NORMAL_VS_BOOSTED_REBOUND_MULTIPLIER = 3.15f;
+        private static final float BOOSTED_VS_BOOSTED_REBOUND_MULTIPLIER = 1.70f;
 
         private final CarTemplate template;
         private final String name;
