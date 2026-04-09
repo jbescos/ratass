@@ -39,9 +39,9 @@ import com.github.jbescos.ai.AiDrivingPersonalities;
 import com.github.jbescos.ai.AiVehicleView;
 import com.github.jbescos.ai.CarAiController;
 import com.github.jbescos.gameplay.ArenaMap;
-import com.github.jbescos.gameplay.ArenaMaps;
 import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.SpawnPoint;
+import com.github.jbescos.gameplay.maps.ArenaMaps;
 import java.util.Comparator;
 
 public class RatassGame extends ApplicationAdapter {
@@ -596,7 +596,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private void resetRound(boolean advanceMap) {
         if (advanceMap) {
-            mapProgression.advanceIfPlayerWon(true);
+            mapProgression.advance();
         }
 
         currentMap = mapProgression.getCurrentMap();
