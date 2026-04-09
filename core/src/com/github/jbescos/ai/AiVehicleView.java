@@ -10,4 +10,14 @@ public interface AiVehicleView {
     boolean isPlayerControlled();
 
     boolean hasGrowthBoost();
+
+    boolean hasRamCharge();
+
+    int getVehicleId();
+
+    int getScore();
+
+    int getLastAttackerId();
+
+    float getRecentImpactTime();
 }

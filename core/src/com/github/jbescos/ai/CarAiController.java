@@ -36,6 +36,11 @@ public final class CarAiController {
     private static final float POINT_PICKUP_TARGET_EDGE_OVERRIDE_DISTANCE = 2.35f;
     private static final float POINT_PICKUP_ATTACK_OVERRIDE_DISTANCE_SQ = 12f;
     private static final float BOOSTED_TARGET_BONUS = 1.85f;
+    private static final float RAM_CHARGE_TARGET_BONUS = 1.35f;
+    private static final float LEADER_TARGET_BONUS = 1.75f;
+    private static final float GRUDGE_TARGET_BONUS = 2.65f;
+    private static final float DOGPILE_TARGET_BONUS = 1.85f;
+    private static final float FINISH_HIM_BONUS = 1.10f;
     private static final float EDGE_ATTACK_COMMIT_DISTANCE = 2.55f;
     private static final float EDGE_VULNERABILITY_DISTANCE = 2.9f;
     private static final float EDGE_VULNERABILITY_BONUS = 2.4f;
@@ -129,6 +134,7 @@ public final class CarAiController {
                 !chaseGrowthPickup
                         && pointPickupActive
                         && pointPickupPosition != null
+                        && !self.hasRamCharge()
                         && arenaMap.distanceToHazard(pointPickupPosition) >= POWER_PICKUP_EDGE_MARGIN
                         && nearestHazard >= personality.recoveryEdgeDistance + 0.15f;
 
@@ -388,6 +394,14 @@ public final class CarAiController {
         float bestScore = -Float.MAX_VALUE;
         Vector2 myPosition = body.getPosition();
         forwardAxis.set(body.getWorldVector(working.set(0f, 1f)));
+        int topScore = Integer.MIN_VALUE;
+
+        for (int i = 0; i < vehicles.size; i++) {
+            AiVehicleView candidate = vehicles.get(i);
+            if (candidate != null && candidate.isActive()) {
+                topScore = Math.max(topScore, candidate.getScore());
+            }
+        }
 
         for (int i = 0; i < vehicles.size; i++) {
             AiVehicleView candidate = vehicles.get(i);
@@ -431,6 +445,22 @@ public final class CarAiController {
             }
             if (candidate.hasGrowthBoost()) {
                 score += BOOSTED_TARGET_BONUS;
+            }
+            if (candidate.hasRamCharge()) {
+                score += RAM_CHARGE_TARGET_BONUS;
+            }
+            if (candidate.getScore() == topScore && candidate.getScore() > self.getScore()) {
+                score += LEADER_TARGET_BONUS;
+            }
+            if (candidate.getVehicleId() == self.getLastAttackerId()
+                    && self.getRecentImpactTime() > 0f) {
+                score += GRUDGE_TARGET_BONUS;
+            }
+            if (candidate.getRecentImpactTime() > 0f) {
+                score += DOGPILE_TARGET_BONUS;
+                if (candidateEdgeDistance < EDGE_ATTACK_COMMIT_DISTANCE) {
+                    score += FINISH_HIM_BONUS;
+                }
             }
 
             if (score > bestScore) {

@@ -53,27 +53,31 @@ public class RatassGame extends ApplicationAdapter {
     private static final int POSITION_ITERATIONS = 2;
     private static final float ARENA_EDGE_INSET = 0.7f;
     private static final float ARENA_CENTER_INSET = 1.15f;
-    private static final float AUTO_ADVANCE_DELAY = 3f;
+    private static final float AUTO_ADVANCE_DELAY = 2f;
     private static final float GROWTH_PICKUP_RADIUS = 0.42f;
     private static final float GROWTH_PICKUP_SPAWN_MARGIN = 1.05f;
     private static final float GROWTH_PICKUP_MIN_MOVE_DISTANCE = 3.4f;
     private static final int GROWTH_PICKUP_SPAWN_ATTEMPTS = 96;
-    private static final float POINT_PICKUP_RADIUS = 0.30f;
+    private static final float POINT_PICKUP_RADIUS = 0.34f;
     private static final float POINT_PICKUP_SPAWN_MARGIN = 0.92f;
     private static final float POINT_PICKUP_MIN_MOVE_DISTANCE = 2.6f;
     private static final int POINT_PICKUP_SPAWN_ATTEMPTS = 96;
     private static final float PICKUP_MIN_SEPARATION = 1.95f;
     private static final float GROWTH_DURATION = 10f;
+    private static final float RAM_CHARGE_DURATION = 8f;
     private static final float DESTRUCTION_EFFECT_DURATION = 0.65f;
-    private static final int TOTAL_CARS = 20;
+    private static final int TOTAL_CARS = 12;
     private static final float ROUND_START_COUNTDOWN = 3f;
-    private static final float ROUND_TIME_LIMIT = 30f;
-    private static final float ROUND_TIMEOUT_LIMIT = 60f;
+    private static final float ROUND_TIME_LIMIT = 20f;
+    private static final float ROUND_TIMEOUT_LIMIT = 35f;
     private static final float CAMERA_HORIZONTAL_PADDING = 4f;
     private static final float CAMERA_VERTICAL_PADDING = 3f;
     private static final int ROUND_SPAWN_ATTEMPTS = 3200;
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
+    private static final float CAMERA_SHAKE_BASE_DURATION = 0.22f;
+    private static final float CAMERA_SHAKE_MAX_OFFSET = 0.42f;
+    private static final float EVENT_CALLOUT_DURATION = 1.35f;
     private static final float SUDDEN_DEATH_TIE_SPEED_MARGIN = 0.08f;
     private static final float HUD_SIDEBAR_RATIO = 0.29f;
     private static final float HUD_SIDEBAR_MIN_WIDTH = 200f;
@@ -188,6 +192,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle throttlePadBounds = new Rectangle();
     private final Rectangle reversePadBounds = new Rectangle();
     private final Rectangle restartButtonBounds = new Rectangle();
+    private final Color eventCalloutColor = new Color();
     private final Vector3 hudTouchPoint = new Vector3();
     private final Vector3 carLabelProjection = new Vector3();
     private final ImpactContactListener impactContactListener = new ImpactContactListener();
@@ -242,6 +247,9 @@ public class RatassGame extends ApplicationAdapter {
     private float sidebarHudWidth;
     private float impactSoundCooldown;
     private float destructionSoundCooldown;
+    private float cameraShakeTimer;
+    private float cameraShakeStrength;
+    private float eventCalloutTimer;
     private boolean touchRestartPressed;
     private boolean touchRestartJustPressed;
     private boolean touchControlsEnabled;
@@ -262,6 +270,8 @@ public class RatassGame extends ApplicationAdapter {
     private Car boostedCar;
     private Car playerCar;
     private Car winner;
+    private String eventCalloutTitle = "";
+    private String eventCalloutSubline = "";
 
     @Override
     public void create() {
@@ -306,6 +316,7 @@ public class RatassGame extends ApplicationAdapter {
         roster.clear();
         CarVisual playerVisual = getCarVisual(0);
         roster.add(new CarTemplate(
+                roster.size,
                 "You",
                 true,
                 new Color(playerVisual.color),
@@ -315,6 +326,7 @@ public class RatassGame extends ApplicationAdapter {
         for (int i = 0; i < ENEMY_NAMES.length && roster.size < TOTAL_CARS; i++) {
             CarVisual visual = getCarVisual(i + 1);
             roster.add(new CarTemplate(
+                    roster.size,
                     ENEMY_NAMES[i],
                     false,
                     new Color(visual.color),
@@ -327,6 +339,7 @@ public class RatassGame extends ApplicationAdapter {
             int rosterIndex = roster.size;
             CarVisual visual = getCarVisual(rosterIndex);
             roster.add(new CarTemplate(
+                    roster.size,
                     "Rival " + roster.size,
                     false,
                     new Color(visual.color),
@@ -440,6 +453,61 @@ public class RatassGame extends ApplicationAdapter {
         destructionSoundCooldown = DESTRUCTION_SOUND_COOLDOWN;
     }
 
+    private void updatePresentationState(float delta) {
+        cameraShakeTimer = Math.max(0f, cameraShakeTimer - delta);
+        if (cameraShakeTimer == 0f) {
+            cameraShakeStrength = 0f;
+        }
+        eventCalloutTimer = Math.max(0f, eventCalloutTimer - delta);
+        if (eventCalloutTimer == 0f) {
+            eventCalloutTitle = "";
+            eventCalloutSubline = "";
+        }
+    }
+
+    private void triggerCameraShake(float strength) {
+        if (strength <= 0f) {
+            return;
+        }
+        cameraShakeTimer = Math.max(cameraShakeTimer, CAMERA_SHAKE_BASE_DURATION + strength * 0.05f);
+        cameraShakeStrength = Math.min(
+                CAMERA_SHAKE_MAX_OFFSET,
+                Math.max(cameraShakeStrength, strength));
+    }
+
+    private void announceEvent(String title, String subline, Color color) {
+        eventCalloutTitle = title == null ? "" : title;
+        eventCalloutSubline = subline == null ? "" : subline;
+        eventCalloutColor.set(color == null ? Color.WHITE : color);
+        eventCalloutTimer = EVENT_CALLOUT_DURATION;
+    }
+
+    private void clearEventCallout() {
+        eventCalloutTimer = 0f;
+        eventCalloutTitle = "";
+        eventCalloutSubline = "";
+    }
+
+    private Car findActiveRamChargeCar() {
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (car.active && car.body != null && car.hasRamCharge()) {
+                return car;
+            }
+        }
+        return null;
+    }
+
+    private CarTemplate findTemplateByVehicleId(int vehicleId) {
+        for (int i = 0; i < roster.size; i++) {
+            CarTemplate template = roster.get(i);
+            if (template.vehicleId == vehicleId) {
+                return template;
+            }
+        }
+        return null;
+    }
+
     private void playSound(Sound sound, float volume) {
         if (sound == null) {
             return;
@@ -478,6 +546,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private void update(float delta) {
         effectClock += delta;
+        updatePresentationState(delta);
         updateDestructionEffects(delta);
 
         if (roundOver) {
@@ -613,10 +682,13 @@ public class RatassGame extends ApplicationAdapter {
         destructionEffects.clear();
         accumulator = 0f;
         effectClock = 0f;
+        cameraShakeTimer = 0f;
+        cameraShakeStrength = 0f;
         growthPickupActive = false;
         pointPickupActive = false;
         hasLastGrowthPickupPosition = false;
         hasLastPointPickupPosition = false;
+        clearEventCallout();
         growthBoostTimer = 0f;
         boostedCar = null;
         preRoundCountdownTimer = ROUND_START_COUNTDOWN;
@@ -737,6 +809,7 @@ public class RatassGame extends ApplicationAdapter {
 
         spawnDestructionEffect(car);
         playDestructionSound(0.42f + car.getSizeScale() * 0.10f);
+        announceElimination(car);
         if (boostedCar == car) {
             clearGrowthBoost();
         }
@@ -774,6 +847,7 @@ public class RatassGame extends ApplicationAdapter {
         effect.rotationDeg = MathUtils.random(360f);
         effect.scale = 0.62f + MathUtils.random(0.28f) + car.getSizeScale() * 0.07f;
         destructionEffects.add(effect);
+        triggerCameraShake(0.24f + car.getSizeScale() * 0.04f);
     }
 
     private void updateWorldCamera() {
@@ -797,7 +871,13 @@ public class RatassGame extends ApplicationAdapter {
         float zoomY = mapBounds.height / visibleHeight;
 
         worldCamera.zoom = Math.max(1f, Math.max(zoomX, zoomY));
-        worldCamera.position.set(focusPoint.x, focusPoint.y, 0f);
+        float shake = cameraShakeTimer > 0f
+                ? cameraShakeStrength * MathUtils.clamp(cameraShakeTimer / CAMERA_SHAKE_BASE_DURATION, 0f, 1f)
+                : 0f;
+        worldCamera.position.set(
+                focusPoint.x + MathUtils.randomTriangular(-shake, shake),
+                focusPoint.y + MathUtils.randomTriangular(-shake, shake),
+                0f);
         worldCamera.update();
     }
 
@@ -1002,6 +1082,11 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void updatePointPickup() {
+        if (findActiveRamChargeCar() != null) {
+            pointPickupActive = false;
+            return;
+        }
+
         if (!pointPickupActive) {
             spawnPointPickup();
             return;
@@ -1035,6 +1120,10 @@ public class RatassGame extends ApplicationAdapter {
         car.template.roundPickupPoints++;
         car.setGrowthBoost(true);
         playSound(pickupSound, 0.72f);
+        triggerCameraShake(0.18f);
+        if (car.playerControlled) {
+            announceEvent("MASS CORE", "You are huge for 10 seconds.", new Color(0.99f, 0.85f, 0.28f, 1f));
+        }
     }
 
     private void collectPointPickup(Car car) {
@@ -1045,10 +1134,15 @@ public class RatassGame extends ApplicationAdapter {
         lastPointPickupPosition.set(pointPickupPosition);
         hasLastPointPickupPosition = true;
         pointPickupActive = false;
-        car.template.totalPoints++;
-        car.template.roundPickupPoints++;
-        playSound(pickupSound, 0.58f);
-        spawnPointPickup();
+        car.grantRamCharge();
+        playSound(pickupSound, 0.64f);
+        triggerCameraShake(0.14f);
+        if (car.playerControlled) {
+            announceEvent(
+                    "RAM CORE",
+                    "Your next clean hit lands much harder.",
+                    new Color(1f, 0.48f, 0.22f, 1f));
+        }
     }
 
     private void clearGrowthBoost() {
@@ -1199,6 +1293,7 @@ public class RatassGame extends ApplicationAdapter {
     private void renderWorld() {
         ScreenUtils.clear(SKYLINE.r, SKYLINE.g, SKYLINE.b, 1f);
 
+        updateWorldCamera();
         worldViewport.apply();
         shapeRenderer.setProjectionMatrix(worldCamera.combined);
         spriteBatch.setProjectionMatrix(worldCamera.combined);
@@ -1349,43 +1444,54 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
-        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 8.4f + 0.6f);
-        float spinDeg = effectClock * -170f;
+        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 8.2f + 0.6f);
+        float spinDeg = effectClock * 190f;
 
-        shapeRenderer.setColor(0.14f, 0.92f, 1f, 0.14f + pulse * 0.08f);
+        shapeRenderer.setColor(1f, 0.36f, 0.12f, 0.15f + pulse * 0.10f);
         shapeRenderer.circle(
                 pointPickupPosition.x,
                 pointPickupPosition.y,
-                POINT_PICKUP_RADIUS * (1.95f + pulse * 0.32f),
+                POINT_PICKUP_RADIUS * (2.20f + pulse * 0.30f),
                 24);
 
         drawRotatedRect(
                 pointPickupPosition.x,
                 pointPickupPosition.y,
-                POINT_PICKUP_RADIUS * 2.35f,
-                POINT_PICKUP_RADIUS * 2.35f,
+                POINT_PICKUP_RADIUS * 3.00f,
+                POINT_PICKUP_RADIUS * 0.90f,
                 spinDeg,
-                0.10f,
-                0.84f,
                 1f,
+                0.30f,
+                0.10f,
                 0.92f);
 
         drawRotatedRect(
                 pointPickupPosition.x,
                 pointPickupPosition.y,
-                POINT_PICKUP_RADIUS * 1.25f,
-                POINT_PICKUP_RADIUS * 1.25f,
-                -spinDeg * 1.4f,
-                0.70f,
-                0.98f,
+                POINT_PICKUP_RADIUS * 0.90f,
+                POINT_PICKUP_RADIUS * 3.00f,
+                -spinDeg * 1.25f,
                 1f,
+                0.68f,
+                0.22f,
                 0.98f);
 
-        shapeRenderer.setColor(1f, 1f, 1f, 1f);
+        drawRotatedRect(
+                pointPickupPosition.x,
+                pointPickupPosition.y,
+                POINT_PICKUP_RADIUS * 1.55f,
+                POINT_PICKUP_RADIUS * 1.55f,
+                -spinDeg * 1.65f,
+                1f,
+                0.90f,
+                0.42f,
+                0.98f);
+
+        shapeRenderer.setColor(1f, 0.98f, 0.86f, 1f);
         shapeRenderer.circle(
                 pointPickupPosition.x,
                 pointPickupPosition.y,
-                POINT_PICKUP_RADIUS * 0.24f,
+                POINT_PICKUP_RADIUS * 0.28f,
                 16);
     }
 
@@ -1402,6 +1508,40 @@ public class RatassGame extends ApplicationAdapter {
             float carWidth = car.getWidth();
             float carHeight = car.getHeight();
             float carScale = car.getSizeScale();
+
+            if (car.hasGrowthBoost()) {
+                float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 6f + i * 0.4f);
+                shapeRenderer.setColor(1f, 0.84f, 0.24f, 0.12f + pulse * 0.08f);
+                shapeRenderer.circle(
+                        centerX,
+                        centerY,
+                        Math.max(carWidth, carHeight) * (0.78f + pulse * 0.08f),
+                        24);
+            }
+
+            if (car.hasRamCharge()) {
+                float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 10.2f + i * 0.7f);
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        carWidth * (1.65f + pulse * 0.06f),
+                        carHeight * 0.34f,
+                        angleDeg + effectClock * 230f,
+                        1f,
+                        0.36f,
+                        0.12f,
+                        0.74f);
+                drawRotatedRect(
+                        centerX,
+                        centerY,
+                        carWidth * 0.34f,
+                        carHeight * (1.65f + pulse * 0.06f),
+                        angleDeg - effectClock * 190f,
+                        1f,
+                        0.78f,
+                        0.22f,
+                        0.82f);
+            }
 
             if (car.template.spriteTexture == null) {
                 drawFallbackCarBody(car, centerX, centerY, carWidth, carHeight, carScale, angleDeg);
@@ -1621,6 +1761,10 @@ public class RatassGame extends ApplicationAdapter {
         drawSidebarFooter(sidebarX, sidebarWidth);
         drawCarLabels();
 
+        if (eventCalloutTimer > 0f && !roundOver && preRoundCountdownTimer <= 0f) {
+            drawEventCallout(playfieldWidth * 0.5f, hudHeight * 0.80f);
+        }
+
         if (preRoundCountdownTimer > 0f && !roundOver) {
             drawCenteredOverlay(
                     String.valueOf(MathUtils.ceil(preRoundCountdownTimer)),
@@ -1681,6 +1825,33 @@ public class RatassGame extends ApplicationAdapter {
                 subline,
                 centerX - glyphLayout.width * 0.5f,
                 hudHeight * headlineYFactor - Math.max(36f, titleFont.getLineHeight() * 0.52f));
+    }
+
+    private void drawEventCallout(float centerX, float y) {
+        if (eventCalloutTitle.length() == 0) {
+            return;
+        }
+
+        float alpha = MathUtils.clamp(eventCalloutTimer / EVENT_CALLOUT_DURATION, 0f, 1f);
+        titleFont.setColor(eventCalloutColor.r, eventCalloutColor.g, eventCalloutColor.b, alpha);
+        glyphLayout.setText(titleFont, eventCalloutTitle);
+        titleFont.draw(
+                spriteBatch,
+                eventCalloutTitle,
+                centerX - glyphLayout.width * 0.5f,
+                y);
+
+        if (eventCalloutSubline.length() == 0) {
+            return;
+        }
+
+        hudFont.setColor(0.96f, 0.95f, 0.90f, alpha);
+        glyphLayout.setText(hudFont, eventCalloutSubline);
+        hudFont.draw(
+                spriteBatch,
+                eventCalloutSubline,
+                centerX - glyphLayout.width * 0.5f,
+                y - Math.max(30f, titleFont.getLineHeight() * 0.46f));
     }
 
     private void drawSidebarPanel(float sidebarX, float sidebarWidth, float hudHeight) {
@@ -1805,8 +1976,14 @@ public class RatassGame extends ApplicationAdapter {
         if (template.roundFinishPosition > 0) {
             return "OUT#" + template.roundFinishPosition;
         }
+        if (active && template.currentCar.hasGrowthBoost() && template.currentCar.hasRamCharge()) {
+            return "BIG RAM";
+        }
         if (active && template.currentCar.hasGrowthBoost()) {
             return "BIG";
+        }
+        if (active && template.currentCar.hasRamCharge()) {
+            return "RAM";
         }
         return active ? "IN" : "";
     }
@@ -1845,6 +2022,9 @@ public class RatassGame extends ApplicationAdapter {
             String label = car.playerControlled ? "YOU" : car.name;
             if (car.hasGrowthBoost()) {
                 label += " BIG";
+            }
+            if (car.hasRamCharge()) {
+                label += " RAM";
             }
 
             glyphLayout.setText(labelFont, label);
@@ -1910,6 +2090,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private String buildSidebarStateText() {
+        Car ramChargeHolder = findActiveRamChargeCar();
         if (preRoundCountdownTimer > 0f) {
             return "Starts in " + MathUtils.ceil(preRoundCountdownTimer) + "s";
         }
@@ -1928,6 +2109,22 @@ public class RatassGame extends ApplicationAdapter {
                 return owner + " BIG  |  wipe " + getRoundTimeoutSecondsLeft() + "s";
             }
             return owner + " BIG " + MathUtils.ceil(growthBoostTimer)
+                    + "s"
+                    + (ramChargeHolder != null
+                    ? "  |  RAM "
+                    + (ramChargeHolder.playerControlled ? "YOU " : ramChargeHolder.name + " ")
+                    + MathUtils.ceil(ramChargeHolder.getRamChargeTimeLeft()) + "s"
+                    : "")
+                    + "  |  SD " + getSuddenDeathSecondsLeft() + "s";
+        }
+
+        if (ramChargeHolder != null) {
+            String owner = ramChargeHolder.playerControlled ? "YOU" : ramChargeHolder.name;
+            if (suddenDeathActive) {
+                return owner + " RAM " + MathUtils.ceil(ramChargeHolder.getRamChargeTimeLeft())
+                        + "s  |  wipe " + getRoundTimeoutSecondsLeft() + "s";
+            }
+            return owner + " RAM " + MathUtils.ceil(ramChargeHolder.getRamChargeTimeLeft())
                     + "s  |  SD " + getSuddenDeathSecondsLeft() + "s";
         }
 
@@ -1936,15 +2133,21 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         if (growthPickupActive) {
-            return "Mass core live  |  SD " + getSuddenDeathSecondsLeft() + "s";
+            return (pointPickupActive ? "Mass + ram core live" : "Mass core live")
+                    + "  |  SD " + getSuddenDeathSecondsLeft() + "s";
+        }
+
+        if (pointPickupActive) {
+            return "Ram core live  |  SD " + getSuddenDeathSecondsLeft() + "s";
         }
 
         return "Sudden death in " + getSuddenDeathSecondsLeft() + "s";
     }
 
     private String buildObjectiveText() {
+        Car ramChargeHolder = findActiveRamChargeCar();
         if (preRoundCountdownTimer > 0f) {
-            return "Prepare for the horn. First car out gets 1 point, bonus pickups keep respawning, sudden death starts at 30s, and the arena wipes at 60s.";
+            return "Prepare for the horn. First car out gets 1 point, the mass core makes one car huge, the ram core powers one brutal hit, sudden death starts at 20s, and the arena wipes at 35s.";
         }
 
         if (roundOver) {
@@ -1965,8 +2168,24 @@ public class RatassGame extends ApplicationAdapter {
                     : boostedCar.name + " has the mass core for ")
                     + MathUtils.ceil(growthBoostTimer)
                     + " more seconds. "
-                    + (pointPickupActive ? "Bonus pickup live for extra points. " : "")
+                    + (ramChargeHolder != null
+                    ? (ramChargeHolder.playerControlled
+                    ? "You hold the ram core. "
+                    : ramChargeHolder.name + " holds the ram core. ")
+                    : pointPickupActive ? "Ram core live. " : "")
                     + "Sudden death in "
+                    + getSuddenDeathSecondsLeft()
+                    + "s, wipe in "
+                    + getRoundTimeoutSecondsLeft()
+                    + "s.";
+        }
+
+        if (ramChargeHolder != null) {
+            return (ramChargeHolder.playerControlled
+                    ? "Ram core active: your next clean hit will slam harder for "
+                    : ramChargeHolder.name + " holds the ram core for ")
+                    + MathUtils.ceil(ramChargeHolder.getRamChargeTimeLeft())
+                    + " more seconds. Sudden death in "
                     + getSuddenDeathSecondsLeft()
                     + "s, wipe in "
                     + getRoundTimeoutSecondsLeft()
@@ -1976,7 +2195,7 @@ public class RatassGame extends ApplicationAdapter {
         if (growthPickupActive) {
             return currentMap.getName()
                     + (pointPickupActive
-                    ? ": mass core and bonus pickup live. Sudden death in "
+                    ? ": mass core and ram core live. Sudden death in "
                     : ": mass core live. Sudden death in ")
                     + getSuddenDeathSecondsLeft()
                     + "s, wipe in "
@@ -1985,7 +2204,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         if (pointPickupActive) {
-            return currentMap.getName() + ": bonus pickup live. Sudden death in "
+            return currentMap.getName() + ": ram core live. Sudden death in "
                     + getSuddenDeathSecondsLeft()
                     + "s, wipe in "
                     + getRoundTimeoutSecondsLeft()
@@ -2003,6 +2222,11 @@ public class RatassGame extends ApplicationAdapter {
         if (boostedCar != null && boostedCar.active) {
             return (boostedCar.playerControlled ? "The big YOU" : boostedCar.name + " in big form")
                     + " destroys every car it hits.";
+        }
+        Car ramChargeHolder = findActiveRamChargeCar();
+        if (ramChargeHolder != null) {
+            return (ramChargeHolder.playerControlled ? "Your ram core" : ramChargeHolder.name + "'s ram core")
+                    + " still launches much harder.";
         }
         return "The slower car in every hit is destroyed.";
     }
@@ -2141,6 +2365,67 @@ public class RatassGame extends ApplicationAdapter {
         disposeSound(timeoutSound);
     }
 
+    private void announceRamImpact(Car attacker, Car victim) {
+        if (attacker == null || victim == null) {
+            return;
+        }
+
+        if (attacker.playerControlled) {
+            announceEvent(
+                    "SLAM",
+                    victim.name + " got launched.",
+                    new Color(1f, 0.56f, 0.18f, 1f));
+            return;
+        }
+
+        if (victim.playerControlled) {
+            announceEvent(
+                    "HEAVY HIT",
+                    attacker.name + " cracked your line.",
+                    new Color(1f, 0.38f, 0.24f, 1f));
+            return;
+        }
+
+        if (getAliveCarCount() <= 4) {
+            announceEvent(
+                    "BRAWL",
+                    attacker.name + " smashed " + victim.name + ".",
+                    new Color(1f, 0.62f, 0.20f, 1f));
+        }
+    }
+
+    private void announceElimination(Car eliminated) {
+        if (eliminated == null) {
+            return;
+        }
+
+        CarTemplate attacker = findTemplateByVehicleId(eliminated.getLastAttackerId());
+        if (eliminated.playerControlled) {
+            announceEvent(
+                    "YOU'RE OUT",
+                    attacker != null
+                            ? attacker.name + " rang you out."
+                            : "You went over the edge.",
+                    new Color(1f, 0.34f, 0.22f, 1f));
+            return;
+        }
+
+        if (attacker != null && attacker.playerControlled) {
+            announceEvent(
+                    "RING OUT",
+                    eliminated.name + " is gone.",
+                    new Color(1f, 0.86f, 0.34f, 1f));
+            return;
+        }
+
+        if (getAliveCarCount() <= 4) {
+            announceEvent(
+                    "KNOCKOUT",
+                    eliminated.name + " dropped off the roof.",
+                    new Color(0.95f, 0.88f, 0.70f, 1f));
+        }
+    }
+
     private final class ImpactContactListener implements ContactListener {
         @Override
         public void beginContact(Contact contact) {
@@ -2199,6 +2484,7 @@ public class RatassGame extends ApplicationAdapter {
             float impactStrength = totalNormalImpulse + closingSpeed * Car.IMPACT_STRENGTH_SPEED_FACTOR;
             if (!roundOver && preRoundCountdownTimer <= 0f) {
                 playImpactSound(impactStrength);
+                triggerCameraShake(MathUtils.clamp(impactStrength / 48f, 0.08f, 0.22f));
             }
 
             if (suddenDeathActive) {
@@ -2216,6 +2502,13 @@ public class RatassGame extends ApplicationAdapter {
                 }
             }
 
+            boolean carADominant = speedIntoCollisionA > speedIntoCollisionB + 0.24f;
+            boolean carBDominant = speedIntoCollisionB > speedIntoCollisionA + 0.24f;
+            boolean carARamHit = carADominant && carA.hasRamCharge();
+            boolean carBRamHit = carBDominant && carB.hasRamCharge();
+            boolean carAEmpoweredHit = carARamHit || (carADominant && carA.hasGrowthBoost());
+            boolean carBEmpoweredHit = carBRamHit || (carBDominant && carB.hasGrowthBoost());
+
             carA.absorbCollision(
                     normal,
                     -1f,
@@ -2228,6 +2521,19 @@ public class RatassGame extends ApplicationAdapter {
                     impactStrength,
                     speedIntoCollisionA,
                     carB.getCollisionReboundMultiplierAgainst(carA));
+            carA.receiveCombatHit(carB, currentMap, impactStrength, speedIntoCollisionB, carBEmpoweredHit);
+            carB.receiveCombatHit(carA, currentMap, impactStrength, speedIntoCollisionA, carAEmpoweredHit);
+
+            if (carARamHit) {
+                carA.consumeRamCharge();
+                announceRamImpact(carA, carB);
+                triggerCameraShake(0.28f);
+            }
+            if (carBRamHit) {
+                carB.consumeRamCharge();
+                announceRamImpact(carB, carA);
+                triggerCameraShake(0.28f);
+            }
 
         }
     }
@@ -2266,6 +2572,14 @@ public class RatassGame extends ApplicationAdapter {
         private static final float BOOSTED_VS_NORMAL_REBOUND_MULTIPLIER = 0.85f;
         private static final float NORMAL_VS_BOOSTED_REBOUND_MULTIPLIER = 3.15f;
         private static final float BOOSTED_VS_BOOSTED_REBOUND_MULTIPLIER = 1.70f;
+        private static final float RAM_CHARGE_ATTACKER_REBOUND_MULTIPLIER = 0.70f;
+        private static final float RAM_CHARGE_VICTIM_REBOUND_MULTIPLIER = 1.85f;
+        private static final float RECENT_IMPACT_DURATION = 1.8f;
+        private static final float CONTROL_LOCK_REFERENCE = 20f;
+        private static final float MAX_CONTROL_LOCK_DURATION = 0.58f;
+        private static final float EDGE_FINISH_DISTANCE = 2.5f;
+        private static final float BASE_EDGE_FINISH_IMPULSE = 3.2f;
+        private static final float EMPOWERED_EDGE_FINISH_MULTIPLIER = 1.75f;
 
         private final CarTemplate template;
         private final String name;
@@ -2276,14 +2590,20 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 sidewaysAxis = new Vector2();
         private final Vector2 working = new Vector2();
         private final Vector2 pendingImpactImpulse = new Vector2();
+        private final Vector2 impactRecoveryPoint = new Vector2();
+        private final Vector2 impactOutward = new Vector2();
 
         private Body body;
         private boolean active = true;
         private boolean growthBoosted;
         private boolean pendingElimination;
+        private int lastAttackerId = -1;
         private float sizeScale = 1f;
         private float impactSlideTimer;
         private float impactSlideStrength;
+        private float controlLockTimer;
+        private float recentImpactTimer;
+        private float ramChargeTimer;
 
         private Car(Body body, CarTemplate template) {
             this.body = body;
@@ -2310,11 +2630,12 @@ public class RatassGame extends ApplicationAdapter {
                 return;
             }
 
+            advanceCombatTimers(delta);
             float impactSlideFactor = advanceImpactSlide(delta);
             applyGrip(impactSlideFactor);
             applyPendingImpactImpulse();
 
-            if (!allowControl) {
+            if (!allowControl || controlLockTimer > 0f) {
                 return;
             }
 
@@ -2350,6 +2671,15 @@ public class RatassGame extends ApplicationAdapter {
             pendingImpactImpulse.setZero();
         }
 
+        private void advanceCombatTimers(float delta) {
+            recentImpactTimer = Math.max(0f, recentImpactTimer - delta);
+            if (recentImpactTimer == 0f) {
+                lastAttackerId = -1;
+            }
+            controlLockTimer = Math.max(0f, controlLockTimer - delta);
+            ramChargeTimer = Math.max(0f, ramChargeTimer - delta);
+        }
+
         private float advanceImpactSlide(float delta) {
             if (impactSlideTimer <= 0f) {
                 return 0f;
@@ -2368,6 +2698,10 @@ public class RatassGame extends ApplicationAdapter {
 
             float gripMultiplier = MathUtils.clamp(1f - 0.68f * impactSlideFactor, 0.18f, 1f);
             float dragMultiplier = MathUtils.clamp(1f - 0.58f * impactSlideFactor, 0.24f, 1f);
+            if (controlLockTimer > 0f) {
+                gripMultiplier *= 0.58f;
+                dragMultiplier *= 0.76f;
+            }
             float longitudinalForceMultiplier = getMassMultiplier();
 
             float lateralSpeed = sidewaysAxis.dot(body.getLinearVelocity());
@@ -2463,10 +2797,7 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             pendingImpactImpulse.mulAdd(normal, direction * collisionImpulse);
-            float maxStoredImpulse = MAX_STORED_COLLISION_IMPULSE * COLLISION_BOUNCE_SCALE;
-            if (pendingImpactImpulse.len2() > maxStoredImpulse * maxStoredImpulse) {
-                pendingImpactImpulse.setLength(maxStoredImpulse);
-            }
+            clampPendingImpactImpulse();
 
             updateAxes();
             float slideShare = 0.28f + 0.72f * Math.abs(sidewaysAxis.dot(normal));
@@ -2483,20 +2814,100 @@ public class RatassGame extends ApplicationAdapter {
             impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION);
         }
 
+        private void clampPendingImpactImpulse() {
+            float maxStoredImpulse = MAX_STORED_COLLISION_IMPULSE * COLLISION_BOUNCE_SCALE;
+            if (pendingImpactImpulse.len2() > maxStoredImpulse * maxStoredImpulse) {
+                pendingImpactImpulse.setLength(maxStoredImpulse);
+            }
+        }
+
+        private void receiveCombatHit(
+                Car attacker,
+                ArenaMap arenaMap,
+                float impactStrength,
+                float incomingSpeed,
+                boolean attackerEmpowered) {
+            if (!active || body == null) {
+                return;
+            }
+
+            lastAttackerId = attacker == null ? -1 : attacker.template.vehicleId;
+            recentImpactTimer = RECENT_IMPACT_DURATION;
+            controlLockTimer = Math.max(
+                    controlLockTimer,
+                    MathUtils.clamp(
+                            (impactStrength - MIN_COLLISION_RESPONSE_IMPULSE)
+                                    / CONTROL_LOCK_REFERENCE
+                                    + (attackerEmpowered ? 0.14f : 0.04f),
+                            0.06f,
+                            attackerEmpowered ? MAX_CONTROL_LOCK_DURATION : 0.34f));
+
+            if (arenaMap == null) {
+                return;
+            }
+
+            float edgeDistance = arenaMap.distanceToHazard(body.getPosition());
+            if (edgeDistance >= EDGE_FINISH_DISTANCE) {
+                return;
+            }
+
+            arenaMap.findRecoveryPoint(body.getPosition(), impactRecoveryPoint);
+            impactOutward.set(body.getPosition()).sub(impactRecoveryPoint);
+            if (impactOutward.isZero(0.0001f)) {
+                return;
+            }
+
+            float danger = 1f - MathUtils.clamp(edgeDistance / EDGE_FINISH_DISTANCE, 0f, 1f);
+            float finishImpulse = (BASE_EDGE_FINISH_IMPULSE + incomingSpeed * 1.55f) * danger;
+            if (attackerEmpowered) {
+                finishImpulse *= EMPOWERED_EDGE_FINISH_MULTIPLIER;
+            }
+
+            pendingImpactImpulse.mulAdd(impactOutward.nor(), finishImpulse);
+            clampPendingImpactImpulse();
+
+            impactSlideStrength = Math.max(
+                    impactSlideStrength,
+                    MathUtils.clamp(
+                            0.40f + danger * 0.26f + (attackerEmpowered ? 0.18f : 0f),
+                            0f,
+                            1f));
+            impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION + danger * 0.18f);
+        }
+
         private float getCollisionReboundMultiplierAgainst(Car other) {
+            float multiplier = 1f;
             if (other == null) {
-                return 1f;
+                return multiplier;
             }
+
             if (growthBoosted && other.growthBoosted) {
-                return BOOSTED_VS_BOOSTED_REBOUND_MULTIPLIER;
+                multiplier *= BOOSTED_VS_BOOSTED_REBOUND_MULTIPLIER;
+            } else if (growthBoosted) {
+                multiplier *= BOOSTED_VS_NORMAL_REBOUND_MULTIPLIER;
+            } else if (other.growthBoosted) {
+                multiplier *= NORMAL_VS_BOOSTED_REBOUND_MULTIPLIER;
             }
-            if (growthBoosted) {
-                return BOOSTED_VS_NORMAL_REBOUND_MULTIPLIER;
+
+            if (hasRamCharge() && !other.hasRamCharge()) {
+                multiplier *= RAM_CHARGE_ATTACKER_REBOUND_MULTIPLIER;
+            } else if (other.hasRamCharge() && !hasRamCharge()) {
+                multiplier *= RAM_CHARGE_VICTIM_REBOUND_MULTIPLIER;
             }
-            if (other.growthBoosted) {
-                return NORMAL_VS_BOOSTED_REBOUND_MULTIPLIER;
-            }
-            return 1f;
+
+            return multiplier;
+        }
+
+        private void grantRamCharge() {
+            ramChargeTimer = RAM_CHARGE_DURATION;
+        }
+
+        private void consumeRamCharge() {
+            ramChargeTimer = 0f;
+        }
+
+        private float getRamChargeTimeLeft() {
+            return ramChargeTimer;
         }
 
         private void setGrowthBoost(boolean growthBoosted) {
@@ -2511,6 +2922,9 @@ public class RatassGame extends ApplicationAdapter {
             pendingImpactImpulse.setZero();
             impactSlideTimer = 0f;
             impactSlideStrength = 0f;
+            controlLockTimer = 0f;
+            recentImpactTimer = 0f;
+            lastAttackerId = -1;
         }
 
         private void rebuildCollisionFixture() {
@@ -2584,6 +2998,31 @@ public class RatassGame extends ApplicationAdapter {
             return growthBoosted;
         }
 
+        @Override
+        public boolean hasRamCharge() {
+            return ramChargeTimer > 0f;
+        }
+
+        @Override
+        public int getVehicleId() {
+            return template.vehicleId;
+        }
+
+        @Override
+        public int getScore() {
+            return template.totalPoints;
+        }
+
+        @Override
+        public int getLastAttackerId() {
+            return lastAttackerId;
+        }
+
+        @Override
+        public float getRecentImpactTime() {
+            return recentImpactTimer;
+        }
+
         private void eliminate(World world) {
             if (!active || body == null) {
                 return;
@@ -2592,6 +3031,7 @@ public class RatassGame extends ApplicationAdapter {
             active = false;
             growthBoosted = false;
             pendingElimination = false;
+            ramChargeTimer = 0f;
             sizeScale = 1f;
             clearImpactResponse();
             world.destroyBody(body);
@@ -2600,6 +3040,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private static final class CarTemplate {
+        private final int vehicleId;
         private final String name;
         private final boolean playerControlled;
         private final Color color;
@@ -2613,11 +3054,13 @@ public class RatassGame extends ApplicationAdapter {
         private Car currentCar;
 
         private CarTemplate(
+                int vehicleId,
                 String name,
                 boolean playerControlled,
                 Color color,
                 AiDrivingPersonality personality,
                 String spritePath) {
+            this.vehicleId = vehicleId;
             this.name = name;
             this.playerControlled = playerControlled;
             this.color = color;
