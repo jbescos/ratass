@@ -86,6 +86,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float LABEL_FONT_SCALE = 0.86f;
     private static final float CAR_SPRITE_WIDTH_SCALE = 1.16f;
     private static final float CAR_SPRITE_HEIGHT_SCALE = 1.14f;
+    private static final float CAR_SPRITE_ROTATION_OFFSET_DEG = 180f;
     private static final float IMPACT_SOUND_COOLDOWN = 0.06f;
     private static final float DESTRUCTION_SOUND_COOLDOWN = 0.08f;
     private static final String[] ENEMY_NAMES = new String[] {
@@ -143,27 +144,28 @@ public class RatassGame extends ApplicationAdapter {
                     new Color(0.38f, 0.58f, 0.31f, 1f))
     };
 
+    // Keep the active 20-car roster distinct; reserve cars continue as car21+ in assets/cars.
     private static final CarVisual[] CAR_VISUALS = new CarVisual[] {
-            new CarVisual("cars/player.png", Color.valueOf("3279df")),
-            new CarVisual("cars/cinder.png", Color.valueOf("c54730")),
-            new CarVisual("cars/frost.png", Color.valueOf("7bc6f0")),
-            new CarVisual("cars/moss.png", Color.valueOf("5d7d3e")),
-            new CarVisual("cars/volt.png", Color.valueOf("ead537")),
-            new CarVisual("cars/riot.png", Color.valueOf("c63b78")),
-            new CarVisual("cars/slate.png", Color.valueOf("6d7684")),
-            new CarVisual("cars/tango.png", Color.valueOf("df7b46")),
-            new CarVisual("cars/brick.png", Color.valueOf("a64438")),
-            new CarVisual("cars/blitz.png", Color.valueOf("14a8d8")),
-            new CarVisual("cars/orbit.png", Color.valueOf("7f63c8")),
-            new CarVisual("cars/knurl.png", Color.valueOf("6b7078")),
-            new CarVisual("cars/viper.png", Color.valueOf("45a03b")),
-            new CarVisual("cars/torque.png", Color.valueOf("cb7034")),
-            new CarVisual("cars/crush.png", Color.valueOf("a92f32")),
-            new CarVisual("cars/rivet.png", Color.valueOf("b8892e")),
-            new CarVisual("cars/dune.png", Color.valueOf("c7a14d")),
-            new CarVisual("cars/glitch.png", Color.valueOf("5d53d6")),
-            new CarVisual("cars/piston.png", Color.valueOf("bf4336")),
-            new CarVisual("cars/grit.png", Color.valueOf("866640"))
+            new CarVisual("cars/car11.png", Color.valueOf("f42934")),
+            new CarVisual("cars/car01.png", Color.valueOf("fde14b")),
+            new CarVisual("cars/car02.png", Color.valueOf("f2ecea")),
+            new CarVisual("cars/car03.png", Color.valueOf("fcfafa")),
+            new CarVisual("cars/car04.png", Color.valueOf("f6732a")),
+            new CarVisual("cars/car05.png", Color.valueOf("72ab33")),
+            new CarVisual("cars/car06.png", Color.valueOf("86d9eb")),
+            new CarVisual("cars/car07.png", Color.valueOf("fa64a9")),
+            new CarVisual("cars/car08.png", Color.valueOf("624d5b")),
+            new CarVisual("cars/car09.png", Color.valueOf("fcfaf8")),
+            new CarVisual("cars/car10.png", Color.valueOf("2b3741")),
+            new CarVisual("cars/car12.png", Color.valueOf("2ca6f5")),
+            new CarVisual("cars/car13.png", Color.valueOf("cba268")),
+            new CarVisual("cars/car14.png", Color.valueOf("f9f5f4")),
+            new CarVisual("cars/car15.png", Color.valueOf("fcfbfb")),
+            new CarVisual("cars/car16.png", Color.valueOf("682a46")),
+            new CarVisual("cars/car17.png", Color.valueOf("f3ebe4")),
+            new CarVisual("cars/car18.png", Color.valueOf("f46925")),
+            new CarVisual("cars/car20.png", Color.valueOf("87c538")),
+            new CarVisual("cars/car33.png", Color.valueOf("363c49"))
     };
 
     private final Array<Car> cars = new Array<Car>();
@@ -1400,46 +1402,6 @@ public class RatassGame extends ApplicationAdapter {
             float carWidth = car.getWidth();
             float carHeight = car.getHeight();
             float carScale = car.getSizeScale();
-            float spriteWidth = carWidth * CAR_SPRITE_WIDTH_SCALE;
-            float spriteHeight = carHeight * CAR_SPRITE_HEIGHT_SCALE;
-
-            if (car.hasGrowthBoost()) {
-                float boostPulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 9f);
-                drawRotatedRect(
-                        centerX,
-                        centerY,
-                        spriteWidth + (0.30f + boostPulse * 0.12f) * carScale,
-                        spriteHeight + (0.30f + boostPulse * 0.12f) * carScale,
-                        angleDeg,
-                        1f,
-                        0.82f,
-                        0.22f,
-                        0.18f + boostPulse * 0.07f);
-            }
-
-            if (car.playerControlled) {
-                drawRotatedRect(
-                        centerX,
-                        centerY,
-                        spriteWidth + 0.42f * carScale,
-                        spriteHeight + 0.42f * carScale,
-                        angleDeg,
-                        0.36f,
-                        0.82f,
-                        1f,
-                        0.22f);
-
-                drawRotatedRect(
-                        centerX,
-                        centerY,
-                        spriteWidth + 0.20f * carScale,
-                        spriteHeight + 0.20f * carScale,
-                        angleDeg,
-                        0.96f,
-                        0.94f,
-                        0.88f,
-                        0.26f);
-            }
 
             if (car.template.spriteTexture == null) {
                 drawFallbackCarBody(car, centerX, centerY, carWidth, carHeight, carScale, angleDeg);
@@ -1458,6 +1420,7 @@ public class RatassGame extends ApplicationAdapter {
 
             Texture sprite = car.template.spriteTexture;
             float angleDeg = car.body.getAngle() * MathUtils.radiansToDegrees;
+            float spriteAngleDeg = angleDeg + CAR_SPRITE_ROTATION_OFFSET_DEG;
             float centerX = car.body.getPosition().x;
             float centerY = car.body.getPosition().y;
             float spriteWidth = car.getWidth() * CAR_SPRITE_WIDTH_SCALE;
@@ -1473,7 +1436,7 @@ public class RatassGame extends ApplicationAdapter {
                     spriteHeight,
                     1f,
                     1f,
-                    angleDeg,
+                    spriteAngleDeg,
                     0,
                     0,
                     sprite.getWidth(),
