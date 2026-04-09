@@ -21,6 +21,8 @@ public final class CarAiController {
     private static final float ATTACK_REVERSE_THROTTLE = -0.42f;
     private static final float FULL_ATTACK_THROTTLE = 1f;
     private static final float CHARGE_ATTACK_THROTTLE = 0.82f;
+    private static final float LOW_SPEED_PIVOT_SPEED_SQ = 1.1f;
+    private static final float LOW_SPEED_PIVOT_THROTTLE = 0.18f;
     private static final float STUCK_PROGRESS_SPEED_SQ = 4.2f;
     private static final float STUCK_PROGRESS_DISTANCE_SQ = 0.48f;
     private static final float STUCK_PROGRESS_RESET_DISTANCE_SQ = 1.44f;
@@ -31,6 +33,20 @@ public final class CarAiController {
     private static final float DISENGAGE_TURN_GAIN_MULTIPLIER = 1.18f;
     private static final float CHARGE_TURN_GAIN_MULTIPLIER = 1.20f;
     private static final float STUCK_RESET_DURATION = 1.1f;
+    private static final float OSCILLATION_LOW_SPEED_SQ = 2.2f;
+    private static final float OSCILLATION_DIRECTION_THROTTLE = LOW_SPEED_PIVOT_THROTTLE * 0.8f;
+    private static final float OSCILLATION_TRIGGER_WINDOW = 1.2f;
+    private static final float OSCILLATION_TRIGGER_DISTANCE_SQ = 1.05f;
+    private static final int OSCILLATION_TRIGGER_FLIPS = 3;
+    private static final float OSCILLATION_ESCAPE_DURATION = 0.95f;
+    private static final float OSCILLATION_ESCAPE_THROTTLE = 0.88f;
+    private static final float NAVIGATION_STALL_SPEED_SQ = 2.4f;
+    private static final float NAVIGATION_STALL_DISTANCE_SQ = 1.25f;
+    private static final float NAVIGATION_SWITCH_DISTANCE_SQ = 5.4f;
+    private static final float NAVIGATION_SWITCH_WINDOW = 1.3f;
+    private static final int NAVIGATION_SWITCH_TRIGGER_COUNT = 2;
+    private static final float NAVIGATION_COMMIT_DURATION = 1.05f;
+    private static final float NAVIGATION_COMMIT_REACHED_DISTANCE_SQ = 0.40f;
     private static final float NAVIGATION_MARGIN = 0.52f;
     private static final float POWER_PICKUP_EDGE_MARGIN = 1.05f;
     private static final float POINT_PICKUP_TARGET_EDGE_OVERRIDE_DISTANCE = 2.35f;
@@ -57,12 +73,27 @@ public final class CarAiController {
     private final Vector2 arenaFocus = new Vector2();
     private final Vector2 working = new Vector2();
     private final Vector2 stuckAnchor = new Vector2();
+    private final Vector2 oscillationAnchor = new Vector2();
+    private final Vector2 previousNavigationTarget = new Vector2();
+    private final Vector2 committedNavigationTarget = new Vector2();
+    private final Vector2 navigationAnchor = new Vector2();
 
     private float stuckTimer;
     private float disengageTimer;
     private float chargeTimer;
+    private float navigationSwitchTimer;
+    private float navigationCommitTimer;
+    private float oscillationFlipTimer;
+    private float oscillationEscapeTimer;
     private float stuckTurnDirection = 1f;
+    private int lastThrottleSign;
+    private int navigationSwitchCount;
+    private int oscillationFlipCount;
     private boolean stuckAnchorInitialized;
+    private boolean previousNavigationTargetInitialized;
+    private boolean navigationAnchorInitialized;
+    private boolean committedNavigationTargetInitialized;
+    private boolean oscillationAnchorInitialized;
 
     public CarAiController(AiDrivingPersonality personality) {
         this.personality = personality == null ? AiDrivingPersonalities.BALANCED : personality;
@@ -115,6 +146,10 @@ public final class CarAiController {
             stuckAnchor.set(position);
             stuckAnchorInitialized = true;
         }
+        if (!navigationAnchorInitialized) {
+            navigationAnchor.set(position);
+            navigationAnchorInitialized = true;
+        }
         float nearestHazard = arenaMap.distanceToHazard(position);
         float awayFromSafetyVelocity = 0f;
 
@@ -163,6 +198,7 @@ public final class CarAiController {
 
         boolean disengaging = false;
         boolean charging = false;
+        boolean escapingOscillation = oscillationEscapeTimer > 0f;
 
         if (recovering) {
             arenaMap.findRecoveryPoint(position, desiredVector);
@@ -242,6 +278,7 @@ public final class CarAiController {
         }
 
         arenaMap.findDriveTarget(position, desiredVector, NAVIGATION_MARGIN, desiredVector);
+        applyNavigationCommit(position, arenaMap, desiredVector, body.getLinearVelocity().len2());
         desiredVector.sub(position);
         if (desiredVector.isZero(EPSILON)) {
             desiredVector.set(arenaFocus).sub(position);
@@ -262,11 +299,14 @@ public final class CarAiController {
             turnGain *= CHARGE_TURN_GAIN_MULTIPLIER;
         }
         float turn = MathUtils.clamp(angleError * turnGain, -1f, 1f);
+        float speedSq = body.getLinearVelocity().len2();
 
         float throttle;
         if (recovering) {
             if (Math.abs(angleError) > personality.recoveryReverseAngle) {
-                throttle = RECOVERY_REVERSE_THROTTLE;
+                throttle = speedSq <= LOW_SPEED_PIVOT_SPEED_SQ
+                        ? LOW_SPEED_PIVOT_THROTTLE
+                        : RECOVERY_REVERSE_THROTTLE;
             } else if (nearestHazard < EMERGENCY_RECOVERY_EDGE_DISTANCE) {
                 throttle = EMERGENCY_RECOVERY_THROTTLE;
             } else {
@@ -283,7 +323,9 @@ public final class CarAiController {
                 throttle = FULL_ATTACK_THROTTLE;
             }
         } else if (Math.abs(angleError) > personality.reverseAttackAngle) {
-            throttle = ATTACK_REVERSE_THROTTLE;
+            throttle = speedSq <= LOW_SPEED_PIVOT_SPEED_SQ
+                    ? LOW_SPEED_PIVOT_THROTTLE
+                    : ATTACK_REVERSE_THROTTLE;
         } else if (Math.abs(angleError) > personality.cautiousAttackAngle) {
             throttle = personality.cautiousAttackThrottle;
         } else if (desiredVector.len2() < personality.closeTargetDistanceSq) {
@@ -329,6 +371,27 @@ public final class CarAiController {
             turn = stuckTurnDirection;
         }
 
+        updateOscillationState(
+                delta,
+                position,
+                body.getLinearVelocity().len2(),
+                throttle,
+                recovering,
+                chaseGrowthPickup,
+                chasePointPickup,
+                disengaging,
+                charging);
+
+        if (oscillationEscapeTimer > 0f) {
+            throttle = OSCILLATION_ESCAPE_THROTTLE;
+            turn = stuckTurnDirection;
+            escapingOscillation = true;
+        }
+
+        if (escapingOscillation) {
+            resetStuckProgress(position);
+        }
+
         return decision.set(throttle, turn);
     }
 
@@ -336,8 +399,19 @@ public final class CarAiController {
         stuckTimer = 0f;
         disengageTimer = 0f;
         chargeTimer = 0f;
+        navigationSwitchTimer = 0f;
+        navigationCommitTimer = 0f;
+        oscillationFlipTimer = 0f;
+        oscillationEscapeTimer = 0f;
         stuckTurnDirection = 1f;
+        lastThrottleSign = 0;
+        navigationSwitchCount = 0;
+        oscillationFlipCount = 0;
         stuckAnchorInitialized = false;
+        previousNavigationTargetInitialized = false;
+        navigationAnchorInitialized = false;
+        committedNavigationTargetInitialized = false;
+        oscillationAnchorInitialized = false;
     }
 
     private void advanceAttackResetState(float delta) {
@@ -350,6 +424,27 @@ public final class CarAiController {
         }
         if (chargeTimer > 0f) {
             chargeTimer = Math.max(0f, chargeTimer - delta);
+        }
+        if (navigationSwitchTimer > 0f) {
+            navigationSwitchTimer = Math.max(0f, navigationSwitchTimer - delta);
+            if (navigationSwitchTimer == 0f) {
+                navigationSwitchCount = 0;
+            }
+        }
+        if (navigationCommitTimer > 0f) {
+            navigationCommitTimer = Math.max(0f, navigationCommitTimer - delta);
+            if (navigationCommitTimer == 0f) {
+                committedNavigationTargetInitialized = false;
+            }
+        }
+        if (oscillationFlipTimer > 0f) {
+            oscillationFlipTimer = Math.max(0f, oscillationFlipTimer - delta);
+            if (oscillationFlipTimer == 0f) {
+                oscillationFlipCount = 0;
+            }
+        }
+        if (oscillationEscapeTimer > 0f) {
+            oscillationEscapeTimer = Math.max(0f, oscillationEscapeTimer - delta);
         }
     }
 
@@ -372,6 +467,139 @@ public final class CarAiController {
         }
         stuckAnchor.set(position);
         stuckAnchorInitialized = true;
+    }
+
+    private void updateOscillationState(
+            float delta,
+            Vector2 position,
+            float speedSq,
+            float throttle,
+            boolean recovering,
+            boolean chaseGrowthPickup,
+            boolean chasePointPickup,
+            boolean disengaging,
+            boolean charging) {
+        if (position == null) {
+            oscillationAnchorInitialized = false;
+            lastThrottleSign = 0;
+            return;
+        }
+
+        if (!oscillationAnchorInitialized) {
+            oscillationAnchor.set(position);
+            oscillationAnchorInitialized = true;
+        }
+
+        boolean eligible =
+                !recovering
+                        && !chaseGrowthPickup
+                        && !chasePointPickup
+                        && !disengaging
+                        && !charging
+                        && oscillationEscapeTimer <= 0f
+                        && speedSq <= OSCILLATION_LOW_SPEED_SQ
+                        && position.dst2(oscillationAnchor) <= OSCILLATION_TRIGGER_DISTANCE_SQ;
+
+        if (!eligible) {
+            if (position.dst2(oscillationAnchor) > OSCILLATION_TRIGGER_DISTANCE_SQ) {
+                oscillationAnchor.set(position);
+            }
+            lastThrottleSign = toOscillationThrottleSign(throttle);
+            if (oscillationFlipTimer == 0f) {
+                oscillationFlipCount = 0;
+            }
+            return;
+        }
+
+        int throttleSign = toOscillationThrottleSign(throttle);
+        if (throttleSign == 0) {
+            return;
+        }
+
+        if (lastThrottleSign != 0 && throttleSign != lastThrottleSign) {
+            oscillationFlipCount++;
+            oscillationFlipTimer = OSCILLATION_TRIGGER_WINDOW;
+            if (oscillationFlipCount >= OSCILLATION_TRIGGER_FLIPS) {
+                oscillationEscapeTimer = OSCILLATION_ESCAPE_DURATION;
+                oscillationFlipCount = 0;
+                oscillationFlipTimer = 0f;
+                stuckTurnDirection = stuckTurnDirection > 0f ? -1f : 1f;
+                oscillationAnchor.set(position);
+                lastThrottleSign = 0;
+                return;
+            }
+        }
+
+        if (position.dst2(oscillationAnchor) > OSCILLATION_TRIGGER_DISTANCE_SQ * 0.55f) {
+            oscillationAnchor.set(position);
+            oscillationFlipCount = Math.max(0, oscillationFlipCount - 1);
+        }
+
+        lastThrottleSign = throttleSign;
+    }
+
+    private int toOscillationThrottleSign(float throttle) {
+        return Math.abs(throttle) >= OSCILLATION_DIRECTION_THROTTLE
+                ? (int) Math.signum(throttle)
+                : 0;
+    }
+
+    private void applyNavigationCommit(
+            Vector2 position,
+            ArenaMap arenaMap,
+            Vector2 proposedTarget,
+            float speedSq) {
+        if (position == null || proposedTarget == null) {
+            previousNavigationTargetInitialized = false;
+            committedNavigationTargetInitialized = false;
+            navigationAnchorInitialized = false;
+            return;
+        }
+
+        if (!navigationAnchorInitialized) {
+            navigationAnchor.set(position);
+            navigationAnchorInitialized = true;
+        }
+
+        if (!previousNavigationTargetInitialized) {
+            previousNavigationTarget.set(proposedTarget);
+            previousNavigationTargetInitialized = true;
+            navigationAnchor.set(position);
+            return;
+        }
+
+        if (navigationCommitTimer > 0f && committedNavigationTargetInitialized) {
+            if (position.dst2(committedNavigationTarget) <= NAVIGATION_COMMIT_REACHED_DISTANCE_SQ) {
+                navigationCommitTimer = 0f;
+                committedNavigationTargetInitialized = false;
+            } else {
+                arenaMap.findDriveTarget(position, committedNavigationTarget, NAVIGATION_MARGIN, proposedTarget);
+                previousNavigationTarget.set(proposedTarget);
+                return;
+            }
+        }
+
+        boolean stalled =
+                speedSq <= NAVIGATION_STALL_SPEED_SQ
+                        && position.dst2(navigationAnchor) <= NAVIGATION_STALL_DISTANCE_SQ;
+        if (stalled && proposedTarget.dst2(previousNavigationTarget) >= NAVIGATION_SWITCH_DISTANCE_SQ) {
+            navigationSwitchCount++;
+            navigationSwitchTimer = NAVIGATION_SWITCH_WINDOW;
+            if (navigationSwitchCount >= NAVIGATION_SWITCH_TRIGGER_COUNT) {
+                committedNavigationTarget.set(proposedTarget);
+                committedNavigationTargetInitialized = true;
+                navigationCommitTimer = NAVIGATION_COMMIT_DURATION;
+                navigationSwitchCount = 0;
+                navigationSwitchTimer = 0f;
+                navigationAnchor.set(position);
+            }
+        } else if (position.dst2(navigationAnchor) > NAVIGATION_STALL_DISTANCE_SQ) {
+            navigationAnchor.set(position);
+            navigationSwitchCount = 0;
+            navigationSwitchTimer = 0f;
+        }
+
+        previousNavigationTarget.set(proposedTarget);
     }
 
     private float computeOutwardVelocity(ArenaMap arenaMap, Vector2 position, Body body) {
