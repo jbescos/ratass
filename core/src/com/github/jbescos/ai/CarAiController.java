@@ -21,10 +21,11 @@ public final class CarAiController {
     private static final float ATTACK_REVERSE_THROTTLE = -0.42f;
     private static final float FULL_ATTACK_THROTTLE = 1f;
     private static final float CHARGE_ATTACK_THROTTLE = 0.82f;
-    private static final float STUCK_SPEED_SQ = 1f;
-    private static final float STUCK_ENGAGE_DISTANCE_SQ = 5.8f;
+    private static final float STUCK_PROGRESS_SPEED_SQ = 4.2f;
+    private static final float STUCK_PROGRESS_DISTANCE_SQ = 0.48f;
+    private static final float STUCK_PROGRESS_RESET_DISTANCE_SQ = 1.44f;
+    private static final float STUCK_MIN_COMMAND_THROTTLE = 0.45f;
     private static final float STUCK_DISENGAGE_DURATION = 0.62f;
-    private static final float STUCK_RELEASE_DISTANCE_SQ = 9f;
     private static final float STUCK_CHARGE_DURATION = 0.95f;
     private static final float DISENGAGE_REVERSE_THROTTLE = -1f;
     private static final float DISENGAGE_TURN_GAIN_MULTIPLIER = 1.18f;
@@ -50,10 +51,13 @@ public final class CarAiController {
     private final Vector2 interceptPoint = new Vector2();
     private final Vector2 arenaFocus = new Vector2();
     private final Vector2 working = new Vector2();
+    private final Vector2 stuckAnchor = new Vector2();
 
     private float stuckTimer;
     private float disengageTimer;
     private float chargeTimer;
+    private float stuckTurnDirection = 1f;
+    private boolean stuckAnchorInitialized;
 
     public CarAiController(AiDrivingPersonality personality) {
         this.personality = personality == null ? AiDrivingPersonalities.BALANCED : personality;
@@ -102,6 +106,10 @@ public final class CarAiController {
         }
 
         Vector2 position = body.getPosition();
+        if (!stuckAnchorInitialized) {
+            stuckAnchor.set(position);
+            stuckAnchorInitialized = true;
+        }
         float nearestHazard = arenaMap.distanceToHazard(position);
         float awayFromSafetyVelocity = 0f;
 
@@ -224,13 +232,6 @@ public final class CarAiController {
                 }
             }
 
-            if (disengaging && targetDistanceSq >= STUCK_RELEASE_DISTANCE_SQ) {
-                disengageTimer = 0f;
-                chargeTimer = STUCK_CHARGE_DURATION;
-                charging = true;
-                disengaging = false;
-            }
-
             arenaMap.clampToPlayable(desiredVector, INTERCEPT_CLAMP_MARGIN);
         }
 
@@ -286,25 +287,40 @@ public final class CarAiController {
         }
 
         boolean stuckEligible =
-                !recovering
-                        && !chaseGrowthPickup
+                !chaseGrowthPickup
                         && !chasePointPickup
-                        && target != null
-                        && targetDistanceSq <= STUCK_ENGAGE_DISTANCE_SQ
-                        && disengageTimer <= 0f;
-        if (stuckEligible && body.getLinearVelocity().len2() < STUCK_SPEED_SQ) {
-            stuckTimer += delta;
+                        && (recovering || target != null)
+                        && disengageTimer <= 0f
+                        && chargeTimer <= 0f
+                        && Math.abs(throttle) >= STUCK_MIN_COMMAND_THROTTLE
+                        && body.getLinearVelocity().len2() < STUCK_PROGRESS_SPEED_SQ;
+        if (stuckEligible) {
+            float stuckDisplacementSq = position.dst2(stuckAnchor);
+            if (stuckDisplacementSq >= STUCK_PROGRESS_RESET_DISTANCE_SQ) {
+                resetStuckProgress(position);
+            } else if (stuckDisplacementSq <= STUCK_PROGRESS_DISTANCE_SQ) {
+                stuckTimer += delta;
+            } else {
+                stuckTimer = Math.max(0f, stuckTimer - delta * 0.5f);
+            }
         } else {
-            stuckTimer = 0f;
+            resetStuckProgress(position);
         }
 
         if (stuckEligible && stuckTimer > personality.stuckDuration && chargeTimer <= 0f) {
-            disengageTimer = STUCK_DISENGAGE_DURATION;
-            throttle = DISENGAGE_REVERSE_THROTTLE;
-            turn = Math.abs(turn) < 0.2f ? 1f : Math.signum(turn);
-            stuckTimer = 0f;
+            engageStuckRecovery(turn, position);
+            disengaging = true;
+            charging = false;
         } else if (stuckTimer > STUCK_RESET_DURATION) {
-            stuckTimer = 0f;
+            resetStuckProgress(position);
+        }
+
+        if (disengaging) {
+            throttle = personality.stuckReverseThrottle;
+            turn = stuckTurnDirection;
+        } else if (charging) {
+            throttle = FULL_ATTACK_THROTTLE;
+            turn = stuckTurnDirection;
         }
 
         return decision.set(throttle, turn);
@@ -314,6 +330,8 @@ public final class CarAiController {
         stuckTimer = 0f;
         disengageTimer = 0f;
         chargeTimer = 0f;
+        stuckTurnDirection = 1f;
+        stuckAnchorInitialized = false;
     }
 
     private void advanceAttackResetState(float delta) {
@@ -327,6 +345,27 @@ public final class CarAiController {
         if (chargeTimer > 0f) {
             chargeTimer = Math.max(0f, chargeTimer - delta);
         }
+    }
+
+    private void engageStuckRecovery(float suggestedTurn, Vector2 position) {
+        disengageTimer = STUCK_DISENGAGE_DURATION;
+        chargeTimer = 0f;
+        if (Math.abs(suggestedTurn) >= 0.2f) {
+            stuckTurnDirection = Math.signum(suggestedTurn);
+        } else {
+            stuckTurnDirection = stuckTurnDirection > 0f ? -1f : 1f;
+        }
+        resetStuckProgress(position);
+    }
+
+    private void resetStuckProgress(Vector2 position) {
+        stuckTimer = 0f;
+        if (position == null) {
+            stuckAnchorInitialized = false;
+            return;
+        }
+        stuckAnchor.set(position);
+        stuckAnchorInitialized = true;
     }
 
     private float computeOutwardVelocity(ArenaMap arenaMap, Vector2 position, Body body) {

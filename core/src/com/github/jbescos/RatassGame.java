@@ -2193,7 +2193,10 @@ public class RatassGame extends ApplicationAdapter {
                 return;
             }
 
-            float impactStrength = totalNormalImpulse + closingSpeed * 2.8f;
+            float speedIntoCollisionA = Math.max(0f, velocityA.dot(normal));
+            float speedIntoCollisionB = Math.max(0f, -velocityB.dot(normal));
+
+            float impactStrength = totalNormalImpulse + closingSpeed * Car.IMPACT_STRENGTH_SPEED_FACTOR;
             if (!roundOver && preRoundCountdownTimer <= 0f) {
                 playImpactSound(impactStrength);
             }
@@ -2217,11 +2220,13 @@ public class RatassGame extends ApplicationAdapter {
                     normal,
                     -1f,
                     impactStrength,
+                    speedIntoCollisionB,
                     carA.getCollisionReboundMultiplierAgainst(carB));
             carB.absorbCollision(
                     normal,
                     1f,
                     impactStrength,
+                    speedIntoCollisionA,
                     carB.getCollisionReboundMultiplierAgainst(carA));
         }
     }
@@ -2248,11 +2253,15 @@ public class RatassGame extends ApplicationAdapter {
         private static final float MAX_GROWTH_SPEED_MULTIPLIER = 1.06f;
         private static final float MIN_COLLISION_RESPONSE_IMPULSE = 3.6f;
         private static final float MIN_COLLISION_RESPONSE_SPEED = 0.75f;
-        private static final float COLLISION_REBOUND_IMPULSE_FACTOR = 0.78f;
-        private static final float MAX_COLLISION_REBOUND_IMPULSE = 16f;
-        private static final float MAX_STORED_COLLISION_IMPULSE = 22f;
-        private static final float IMPACT_SLIDE_DURATION = 0.42f;
-        private static final float IMPACT_SLIDE_REFERENCE = 22f;
+        private static final float COLLISION_BOUNCE_SCALE = 2f;
+        private static final float IMPACT_STRENGTH_SPEED_FACTOR = 3.9f;
+        private static final float COLLISION_REBOUND_IMPULSE_FACTOR = 0.96f;
+        private static final float INCOMING_SPEED_REBOUND_BOOST_FACTOR = 0.11f;
+        private static final float MAX_INCOMING_SPEED_REBOUND_BOOST = 1.10f;
+        private static final float MAX_COLLISION_REBOUND_IMPULSE = 22f;
+        private static final float MAX_STORED_COLLISION_IMPULSE = 30f;
+        private static final float IMPACT_SLIDE_DURATION = 0.54f;
+        private static final float IMPACT_SLIDE_REFERENCE = 18f;
         private static final float BOOSTED_VS_NORMAL_REBOUND_MULTIPLIER = 0.52f;
         private static final float NORMAL_VS_BOOSTED_REBOUND_MULTIPLIER = 2.35f;
         private static final float BOOSTED_VS_BOOSTED_REBOUND_MULTIPLIER = 1.55f;
@@ -2426,25 +2435,36 @@ public class RatassGame extends ApplicationAdapter {
                 Vector2 normal,
                 float direction,
                 float impactStrength,
+                float incomingSpeed,
                 float reboundMultiplier) {
             if (!active || body == null) {
                 return;
             }
 
+            float speedReboundBoost = 1f
+                    + MathUtils.clamp(
+                            incomingSpeed * INCOMING_SPEED_REBOUND_BOOST_FACTOR,
+                            0f,
+                            MAX_INCOMING_SPEED_REBOUND_BOOST);
+            float speedReboundScale =
+                    (float) Math.pow(speedReboundBoost, COLLISION_BOUNCE_SCALE);
             float collisionImpulse = MathUtils.clamp(
                     (impactStrength - MIN_COLLISION_RESPONSE_IMPULSE)
                             * COLLISION_REBOUND_IMPULSE_FACTOR
-                            * reboundMultiplier,
+                            * reboundMultiplier
+                            * speedReboundScale,
                     0f,
-                    MAX_COLLISION_REBOUND_IMPULSE * Math.max(1f, reboundMultiplier));
+                    MAX_COLLISION_REBOUND_IMPULSE
+                            * Math.max(1f, reboundMultiplier)
+                            * speedReboundScale);
             if (collisionImpulse <= 0f) {
                 return;
             }
 
             pendingImpactImpulse.mulAdd(normal, direction * collisionImpulse);
-            if (pendingImpactImpulse.len2()
-                    > MAX_STORED_COLLISION_IMPULSE * MAX_STORED_COLLISION_IMPULSE) {
-                pendingImpactImpulse.setLength(MAX_STORED_COLLISION_IMPULSE);
+            float maxStoredImpulse = MAX_STORED_COLLISION_IMPULSE * COLLISION_BOUNCE_SCALE;
+            if (pendingImpactImpulse.len2() > maxStoredImpulse * maxStoredImpulse) {
+                pendingImpactImpulse.setLength(maxStoredImpulse);
             }
 
             updateAxes();
@@ -2452,7 +2472,11 @@ public class RatassGame extends ApplicationAdapter {
             impactSlideStrength = Math.max(
                     impactSlideStrength,
                     MathUtils.clamp(
-                            slideShare * impactStrength * reboundMultiplier / IMPACT_SLIDE_REFERENCE,
+                            slideShare
+                                    * impactStrength
+                                    * reboundMultiplier
+                                    * speedReboundScale
+                                    / IMPACT_SLIDE_REFERENCE,
                             0f,
                             1f));
             impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION);
