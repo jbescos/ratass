@@ -102,6 +102,7 @@ gradle-app.setting
 /html/build/
 /ios/build/
 /target/
+/android/target/
 /core/target/
 /desktop/target/
 /html/target/
