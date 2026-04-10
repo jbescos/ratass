@@ -499,6 +499,32 @@ public final class ArenaMap {
             return this;
         }
 
+        public Builder scale(float factor) {
+            if (factor <= 0f) {
+                throw new IllegalArgumentException("Arena map scale must be positive.");
+            }
+            if (MathUtils.isEqual(factor, 1f)) {
+                return this;
+            }
+
+            focusPoint.scl(factor);
+
+            for (int i = 0; i < solidZones.size; i++) {
+                solidZones.set(i, solidZones.get(i).scale(factor));
+            }
+            for (int i = 0; i < holeZones.size; i++) {
+                holeZones.set(i, holeZones.get(i).scale(factor));
+            }
+            for (int i = 0; i < spawnPoints.size; i++) {
+                spawnPoints.set(i, spawnPoints.get(i).scale(factor));
+            }
+            for (int i = 0; i < recoveryPoints.size; i++) {
+                recoveryPoints.get(i).scl(factor);
+            }
+
+            return this;
+        }
+
         public ArenaMap build() {
             if (solidZones.size == 0) {
                 throw new IllegalStateException("Arena map requires at least one solid zone.");

@@ -13,6 +13,10 @@ public final class SpawnPoint {
         this.angleRad = angleRad;
     }
 
+    public SpawnPoint scale(float factor) {
+        return new SpawnPoint(x * factor, y * factor, angleRad);
+    }
+
     public static SpawnPoint facingPoint(float x, float y, float lookAtX, float lookAtY) {
         return new SpawnPoint(
                 x,

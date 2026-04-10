@@ -72,6 +72,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_TIMEOUT_LIMIT = 35f;
     private static final float CAMERA_HORIZONTAL_PADDING = 4f;
     private static final float CAMERA_VERTICAL_PADDING = 3f;
+    private static final float MIN_WORLD_CAMERA_ZOOM = 0.90f;
     private static final int ROUND_SPAWN_ATTEMPTS = 3200;
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
@@ -1014,7 +1015,7 @@ public class RatassGame extends ApplicationAdapter {
         float zoomX = mapBounds.width / visibleWidth;
         float zoomY = mapBounds.height / visibleHeight;
 
-        worldCamera.zoom = Math.max(1f, Math.max(zoomX, zoomY));
+        worldCamera.zoom = Math.max(MIN_WORLD_CAMERA_ZOOM, Math.max(zoomX, zoomY));
         float shake = cameraShakeTimer > 0f
                 ? cameraShakeStrength * MathUtils.clamp(cameraShakeTimer / CAMERA_SHAKE_BASE_DURATION, 0f, 1f)
                 : 0f;

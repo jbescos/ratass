@@ -6,6 +6,7 @@ import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.SpawnPoint;
 
 abstract class AbstractArenaMapDefinition implements ArenaMapDefinition {
+    private static final float DEFAULT_MAP_SCALE = 0.85f;
     private final String id;
     private final String name;
 
@@ -18,6 +19,7 @@ abstract class AbstractArenaMapDefinition implements ArenaMapDefinition {
     public final ArenaMap create() {
         ArenaMap.Builder builder = ArenaMap.builder(id, name);
         define(builder);
+        builder.scale(DEFAULT_MAP_SCALE);
         return builder.build();
     }
 

@@ -29,6 +29,8 @@ public abstract class ArenaShape {
             float offsetY,
             float expansion);
 
+    public abstract ArenaShape scale(float factor);
+
     public abstract float getMinX();
 
     public abstract float getMaxX();
@@ -143,6 +145,15 @@ public abstract class ArenaShape {
         }
 
         @Override
+        public ArenaShape scale(float factor) {
+            return new RectangleShape(
+                    centerX * factor,
+                    centerY * factor,
+                    halfWidth * 2f * factor,
+                    halfHeight * 2f * factor);
+        }
+
+        @Override
         public float getMinX() {
             return centerX - halfWidth;
         }
@@ -241,6 +252,11 @@ public abstract class ArenaShape {
             }
 
             shapeRenderer.circle(centerX + offsetX, centerY + offsetY, effectiveRadius, 56);
+        }
+
+        @Override
+        public ArenaShape scale(float factor) {
+            return new CircleShape(centerX * factor, centerY * factor, radius * factor);
         }
 
         @Override
