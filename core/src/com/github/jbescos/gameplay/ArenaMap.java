@@ -18,6 +18,13 @@ public final class ArenaMap {
     private final Vector2 scratchAdjusted = new Vector2();
     private final Vector2 scratchBest = new Vector2();
     private final Vector2 scratchGoal = new Vector2();
+    private final boolean[] navigationNodeSafe;
+    private final boolean[][] navigationNodeVisible;
+    private final float[][] navigationNodeTravelCost;
+    private final float[] navigationRouteCosts;
+    private final int[] navigationRoutePrevious;
+    private final boolean[] navigationRouteVisited;
+    private float cachedNavigationMargin = -1f;
 
     private ArenaMap(
             String id,
@@ -54,6 +61,14 @@ public final class ArenaMap {
         }
 
         bounds.set(minX, minY, maxX - minX, maxY - minY);
+
+        int navigationNodeCount = this.recoveryPoints.size;
+        navigationNodeSafe = new boolean[navigationNodeCount];
+        navigationNodeVisible = new boolean[navigationNodeCount][navigationNodeCount];
+        navigationNodeTravelCost = new float[navigationNodeCount][navigationNodeCount];
+        navigationRouteCosts = new float[navigationNodeCount];
+        navigationRoutePrevious = new int[navigationNodeCount];
+        navigationRouteVisited = new boolean[navigationNodeCount];
     }
 
     public static Builder builder(String id, String name) {
@@ -260,36 +275,154 @@ public final class ArenaMap {
             return;
         }
 
-        boolean found = false;
-        float bestScore = Float.MAX_VALUE;
-
-        for (int i = 0; i < recoveryPoints.size; i++) {
-            scratchCandidate.set(recoveryPoints.get(i));
-            if (distanceToHazard(scratchCandidate) < margin) {
-                continue;
-            }
-            if (!isPathPlayable(from, scratchCandidate, margin)) {
-                continue;
-            }
-
-            float score = scratchCandidate.dst2(scratchGoal) + from.dst2(scratchCandidate) * 0.22f;
-            if (isPathPlayable(scratchCandidate, scratchGoal, margin)) {
-                score *= 0.35f;
-            }
-
-            if (!found || score < bestScore) {
-                bestScore = score;
-                scratchBest.set(scratchCandidate);
-                found = true;
-            }
-        }
-
-        if (found) {
-            out.set(scratchBest);
+        int navigationHop = findNavigationHop(from, scratchGoal, margin);
+        if (navigationHop >= 0) {
+            out.set(recoveryPoints.get(navigationHop));
             return;
         }
 
         findRecoveryPoint(from, out);
+    }
+
+    private int findNavigationHop(Vector2 from, Vector2 goal, float margin) {
+        if (from == null || goal == null || recoveryPoints.size == 0) {
+            return -1;
+        }
+
+        ensureNavigationGraph(margin);
+
+        float bestGoalCost = Float.MAX_VALUE;
+        int bestGoalIndex = -1;
+        float bestFallbackScore = Float.MAX_VALUE;
+        int bestFallbackIndex = -1;
+
+        for (int i = 0; i < recoveryPoints.size; i++) {
+            navigationRouteCosts[i] = Float.MAX_VALUE;
+            navigationRoutePrevious[i] = -1;
+            navigationRouteVisited[i] = !navigationNodeSafe[i];
+            if (!navigationNodeSafe[i]) {
+                continue;
+            }
+
+            Vector2 candidate = recoveryPoints.get(i);
+            if (!isPathPlayable(from, candidate, margin)) {
+                continue;
+            }
+
+            float travelCost = from.dst(candidate);
+            navigationRouteCosts[i] = travelCost;
+
+            float fallbackScore = travelCost + candidate.dst(goal);
+            if (fallbackScore < bestFallbackScore) {
+                bestFallbackScore = fallbackScore;
+                bestFallbackIndex = i;
+            }
+
+            if (!isPathPlayable(candidate, goal, margin)) {
+                continue;
+            }
+
+            float goalCost = travelCost + candidate.dst(goal);
+            if (goalCost < bestGoalCost) {
+                bestGoalCost = goalCost;
+                bestGoalIndex = i;
+            }
+        }
+
+        while (true) {
+            int current = -1;
+            float currentCost = bestGoalCost;
+            if (currentCost == Float.MAX_VALUE) {
+                currentCost = Float.POSITIVE_INFINITY;
+            }
+
+            for (int i = 0; i < recoveryPoints.size; i++) {
+                if (!navigationRouteVisited[i] && navigationRouteCosts[i] < currentCost) {
+                    current = i;
+                    currentCost = navigationRouteCosts[i];
+                }
+            }
+
+            if (current < 0) {
+                break;
+            }
+
+            navigationRouteVisited[current] = true;
+            Vector2 currentPoint = recoveryPoints.get(current);
+
+            float fallbackScore = currentCost + currentPoint.dst(goal);
+            if (fallbackScore < bestFallbackScore) {
+                bestFallbackScore = fallbackScore;
+                bestFallbackIndex = current;
+            }
+
+            if (isPathPlayable(currentPoint, goal, margin)) {
+                float goalCost = currentCost + currentPoint.dst(goal);
+                if (goalCost < bestGoalCost) {
+                    bestGoalCost = goalCost;
+                    bestGoalIndex = current;
+                }
+            }
+
+            for (int i = 0; i < recoveryPoints.size; i++) {
+                if (navigationRouteVisited[i] || !navigationNodeVisible[current][i]) {
+                    continue;
+                }
+
+                float routeCost = currentCost + navigationNodeTravelCost[current][i];
+                if (routeCost >= navigationRouteCosts[i]) {
+                    continue;
+                }
+
+                navigationRouteCosts[i] = routeCost;
+                navigationRoutePrevious[i] = current;
+            }
+        }
+
+        if (bestGoalIndex >= 0) {
+            return unwindNavigationHop(bestGoalIndex);
+        }
+        if (bestFallbackIndex >= 0) {
+            return unwindNavigationHop(bestFallbackIndex);
+        }
+        return -1;
+    }
+
+    private int unwindNavigationHop(int targetIndex) {
+        int current = targetIndex;
+        while (current >= 0 && navigationRoutePrevious[current] >= 0) {
+            current = navigationRoutePrevious[current];
+        }
+        return current;
+    }
+
+    private void ensureNavigationGraph(float margin) {
+        if (cachedNavigationMargin >= 0f
+                && Math.abs(cachedNavigationMargin - margin) <= 0.0001f) {
+            return;
+        }
+
+        for (int i = 0; i < recoveryPoints.size; i++) {
+            Vector2 source = recoveryPoints.get(i);
+            navigationNodeSafe[i] = distanceToHazard(source) >= margin;
+            navigationNodeVisible[i][i] = false;
+            navigationNodeTravelCost[i][i] = 0f;
+
+            for (int j = i + 1; j < recoveryPoints.size; j++) {
+                Vector2 target = recoveryPoints.get(j);
+                boolean connected =
+                        navigationNodeSafe[i]
+                                && distanceToHazard(target) >= margin
+                                && isPathPlayable(source, target, margin);
+                navigationNodeVisible[i][j] = connected;
+                navigationNodeVisible[j][i] = connected;
+                float travelCost = connected ? source.dst(target) : 0f;
+                navigationNodeTravelCost[i][j] = travelCost;
+                navigationNodeTravelCost[j][i] = travelCost;
+            }
+        }
+
+        cachedNavigationMargin = margin;
     }
 
     private boolean isPathPlayable(Vector2 from, Vector2 to, float margin) {

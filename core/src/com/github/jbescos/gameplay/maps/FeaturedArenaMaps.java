@@ -11,10 +11,12 @@ final class KnifeEdgeMap extends AbstractArenaMapDefinition {
 
     @Override
     protected void define(ArenaMap.Builder builder) {
+        float bridgeWidth = 12.4f;
+        float bridgeHeight = 3.6f;
         builder.focusPoint(0f, 0f)
                 .solid(ArenaShape.rectangle(-10.5f, 0f, 11.5f, 11f))
                 .solid(ArenaShape.rectangle(10.5f, 0f, 11.5f, 11f))
-                .solid(ArenaShape.rectangle(0f, 0f, 10.5f, 3.2f));
+                .solid(ArenaShape.rectangle(0f, 0f, bridgeWidth, bridgeHeight));
 
         builder.spawn(SpawnPoint.facingPoint(-10.5f, -2.7f, 0f, 0f))
                 .spawn(SpawnPoint.facingPoint(-10.5f, 2.7f, 0f, 0f))
@@ -24,9 +26,15 @@ final class KnifeEdgeMap extends AbstractArenaMapDefinition {
         builder.recoveryPoint(-10.5f, -2.8f)
                 .recoveryPoint(-10.5f, 0f)
                 .recoveryPoint(-10.5f, 2.8f)
+                .recoveryPoint(-7.2f, -1.1f)
+                .recoveryPoint(-7.2f, 1.1f)
                 .recoveryPoint(-4.4f, 0f)
+                .recoveryPoint(-2f, 0f)
                 .recoveryPoint(0f, 0f)
+                .recoveryPoint(2f, 0f)
                 .recoveryPoint(4.4f, 0f)
+                .recoveryPoint(7.2f, -1.1f)
+                .recoveryPoint(7.2f, 1.1f)
                 .recoveryPoint(10.5f, -2.8f)
                 .recoveryPoint(10.5f, 0f)
                 .recoveryPoint(10.5f, 2.8f);
@@ -50,12 +58,16 @@ final class DeadfallMap extends AbstractArenaMapDefinition {
 
         addCardinalSpawns(builder, 13.2f, 9.4f);
         builder.recoveryPoint(-15f, 0f)
+                .recoveryPoint(-6.5f, 0f)
                 .recoveryPoint(-7f, -8f)
                 .recoveryPoint(-7f, 8f)
+                .recoveryPoint(0f, -6.8f)
                 .recoveryPoint(0f, -11f)
+                .recoveryPoint(0f, 6.8f)
                 .recoveryPoint(0f, 11f)
                 .recoveryPoint(7f, -8f)
                 .recoveryPoint(7f, 8f)
+                .recoveryPoint(6.5f, 0f)
                 .recoveryPoint(15f, 0f);
     }
 }
@@ -70,6 +82,7 @@ final class SwitchbackMap extends AbstractArenaMapDefinition {
         builder.focusPoint(0f, 0f)
                 .solid(ArenaShape.rectangle(-12f, -7.5f, 13f, 8f))
                 .solid(ArenaShape.rectangle(-4f, -1.5f, 7f, 4.2f))
+                .solid(ArenaShape.rectangle(-6.5f, -3.55f, 3f, 3f))
                 .solid(ArenaShape.rectangle(4f, 4.2f, 7f, 4.2f))
                 .solid(ArenaShape.rectangle(12f, 9f, 13f, 8f))
                 .solid(ArenaShape.rectangle(0f, 1.4f, 4.5f, 12f));
@@ -81,9 +94,13 @@ final class SwitchbackMap extends AbstractArenaMapDefinition {
 
         builder.recoveryPoint(-12f, -7.5f)
                 .recoveryPoint(-8f, -6f)
+                .recoveryPoint(-6.5f, -3.55f)
                 .recoveryPoint(-4f, -2f)
+                .recoveryPoint(-2.1f, -0.8f)
                 .recoveryPoint(0f, 0f)
+                .recoveryPoint(1.2f, 2.3f)
                 .recoveryPoint(4f, 3.8f)
+                .recoveryPoint(6.4f, 5.6f)
                 .recoveryPoint(8f, 6.2f)
                 .recoveryPoint(12f, 9f);
     }
@@ -96,16 +113,18 @@ final class LastStandMap extends AbstractArenaMapDefinition {
 
     @Override
     protected void define(ArenaMap.Builder builder) {
+        float spokeWidth = 3f;
+        float spokeLength = 6.4f;
         builder.focusPoint(0f, 0f)
                 .solid(ArenaShape.rectangle(0f, 0f, 9.2f, 9.2f))
                 .solid(ArenaShape.rectangle(0f, 11.2f, 7.8f, 7.8f))
                 .solid(ArenaShape.rectangle(0f, -11.2f, 7.8f, 7.8f))
                 .solid(ArenaShape.rectangle(-11.2f, 0f, 7.8f, 7.8f))
                 .solid(ArenaShape.rectangle(11.2f, 0f, 7.8f, 7.8f))
-                .solid(ArenaShape.rectangle(0f, 5.8f, 2.6f, 5f))
-                .solid(ArenaShape.rectangle(0f, -5.8f, 2.6f, 5f))
-                .solid(ArenaShape.rectangle(-5.8f, 0f, 5f, 2.6f))
-                .solid(ArenaShape.rectangle(5.8f, 0f, 5f, 2.6f));
+                .solid(ArenaShape.rectangle(0f, 5.8f, spokeWidth, spokeLength))
+                .solid(ArenaShape.rectangle(0f, -5.8f, spokeWidth, spokeLength))
+                .solid(ArenaShape.rectangle(-5.8f, 0f, spokeLength, spokeWidth))
+                .solid(ArenaShape.rectangle(5.8f, 0f, spokeLength, spokeWidth));
 
         builder.spawn(SpawnPoint.facingPoint(0f, 11.2f, 0f, 0f))
                 .spawn(SpawnPoint.facingPoint(0f, -11.2f, 0f, 0f))
@@ -113,10 +132,18 @@ final class LastStandMap extends AbstractArenaMapDefinition {
                 .spawn(SpawnPoint.facingPoint(11.2f, 0f, 0f, 0f));
 
         builder.recoveryPoint(0f, 0f)
+                .recoveryPoint(0f, 3.4f)
+                .recoveryPoint(0f, -3.4f)
+                .recoveryPoint(-3.4f, 0f)
+                .recoveryPoint(3.4f, 0f)
                 .recoveryPoint(0f, 5.6f)
                 .recoveryPoint(0f, -5.6f)
                 .recoveryPoint(-5.6f, 0f)
                 .recoveryPoint(5.6f, 0f)
+                .recoveryPoint(0f, 8.2f)
+                .recoveryPoint(0f, -8.2f)
+                .recoveryPoint(-8.2f, 0f)
+                .recoveryPoint(8.2f, 0f)
                 .recoveryPoint(0f, 11.2f)
                 .recoveryPoint(0f, -11.2f)
                 .recoveryPoint(-11.2f, 0f)

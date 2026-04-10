@@ -20,11 +20,17 @@ abstract class SplitShiftMapDefinition extends AbstractArenaMapDefinition {
         float bridgeWidth = 9.4f + variant * 0.8f;
         float bridgeHeight = 5.5f + (variant % 3) * 0.6f;
         float bridgeY = (variant - 2) * 0.9f;
+        float bridgeConnectorWidth = 2.4f + variant * 0.18f;
+        float bridgeConnectorHeight = bridgeHeight * 0.82f;
+        float bridgeConnectorCenterX =
+                (islandOffset - islandWidth * 0.5f + bridgeWidth * 0.5f) * 0.5f;
 
         builder.focusPoint(0f, 0f)
                 .solid(ArenaShape.rectangle(-islandOffset, 0f, islandWidth, islandHeight))
                 .solid(ArenaShape.rectangle(islandOffset, 0f, islandWidth, islandHeight))
-                .solid(ArenaShape.rectangle(0f, bridgeY, bridgeWidth, bridgeHeight));
+                .solid(ArenaShape.rectangle(0f, bridgeY, bridgeWidth, bridgeHeight))
+                .solid(ArenaShape.rectangle(-bridgeConnectorCenterX, bridgeY, bridgeConnectorWidth, bridgeConnectorHeight))
+                .solid(ArenaShape.rectangle(bridgeConnectorCenterX, bridgeY, bridgeConnectorWidth, bridgeConnectorHeight));
 
         if (variant >= 3) {
             builder.solid(ArenaShape.rectangle(0f, -bridgeY, bridgeWidth * 0.72f, bridgeHeight * 0.72f));
@@ -39,11 +45,19 @@ abstract class SplitShiftMapDefinition extends AbstractArenaMapDefinition {
                 .recoveryPoint(-islandOffset, 0f)
                 .recoveryPoint(-islandOffset, islandHeight * 0.30f)
                 .recoveryPoint(-bridgeWidth * 0.45f, bridgeY)
+                .recoveryPoint(-bridgeWidth * 0.16f, bridgeY)
+                .recoveryPoint(0f, bridgeY)
                 .recoveryPoint(0f, 0f)
+                .recoveryPoint(bridgeWidth * 0.16f, bridgeY)
                 .recoveryPoint(bridgeWidth * 0.45f, bridgeY)
                 .recoveryPoint(islandOffset, -islandHeight * 0.30f)
                 .recoveryPoint(islandOffset, 0f)
                 .recoveryPoint(islandOffset, islandHeight * 0.30f);
+        if (variant >= 3) {
+            builder.recoveryPoint(-bridgeWidth * 0.18f, -bridgeY)
+                    .recoveryPoint(0f, -bridgeY)
+                    .recoveryPoint(bridgeWidth * 0.18f, -bridgeY);
+        }
     }
 }
 

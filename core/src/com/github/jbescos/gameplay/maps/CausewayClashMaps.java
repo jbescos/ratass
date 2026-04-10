@@ -37,11 +37,13 @@ abstract class CausewayClashMapDefinition extends AbstractArenaMapDefinition {
                 .spawn(SpawnPoint.facingPoint(podOffsetX, -podOffsetY, 0f, 0f));
 
         builder.recoveryPoint(-podOffsetX, podOffsetY)
+                .recoveryPoint(-podOffsetX * 0.56f, podOffsetY * 0.46f)
                 .recoveryPoint(-spineWidth * 0.22f, 0f)
                 .recoveryPoint(0f, 0f)
                 .recoveryPoint(spineWidth * 0.22f, 0f)
+                .recoveryPoint(podOffsetX * 0.56f, -podOffsetY * 0.46f)
                 .recoveryPoint(podOffsetX, -podOffsetY);
-        addGridRecoveryPoints(builder, spineWidth * 0.28f, spineHeight * 0.24f, 4, 2);
+        addGridRecoveryPoints(builder, spineWidth * 0.30f, spineHeight * 0.26f, 5, 3);
     }
 }
 
