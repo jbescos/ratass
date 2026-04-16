@@ -73,6 +73,12 @@ public class RatassGame extends ApplicationAdapter {
     private static final float CAMERA_HORIZONTAL_PADDING = 4f;
     private static final float CAMERA_VERTICAL_PADDING = 3f;
     private static final float MIN_WORLD_CAMERA_ZOOM = 0.90f;
+    private static final float PLAYER_CAMERA_ZOOM = 0.72f;
+    private static final float PLAYER_CAMERA_SPEED_ZOOM_OUT = 0.10f;
+    private static final float PLAYER_CAMERA_GROWTH_ZOOM_OUT = 0.05f;
+    private static final float PLAYER_CAMERA_LOOK_AHEAD_TIME = 0.15f;
+    private static final float PLAYER_CAMERA_MAX_LOOK_AHEAD = 2.35f;
+    private static final float PLAYER_CAMERA_FOLLOW_LERP_SPEED = 7.5f;
     private static final int ROUND_SPAWN_ATTEMPTS = 3200;
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
@@ -337,6 +343,9 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle throttlePadBounds = new Rectangle();
     private final Rectangle reversePadBounds = new Rectangle();
     private final Rectangle restartButtonBounds = new Rectangle();
+    private final Vector2 cameraTargetPosition = new Vector2();
+    private final Vector2 cameraSmoothedPosition = new Vector2();
+    private final Vector2 cameraLookAhead = new Vector2();
     private final Color eventCalloutColor = new Color();
     private final Vector3 hudTouchPoint = new Vector3();
     private final Vector3 carLabelProjection = new Vector3();
@@ -394,10 +403,12 @@ public class RatassGame extends ApplicationAdapter {
     private float destructionSoundCooldown;
     private float cameraShakeTimer;
     private float cameraShakeStrength;
+    private float smoothedCameraZoom = 1f;
     private float eventCalloutTimer;
     private boolean touchRestartPressed;
     private boolean touchRestartJustPressed;
     private boolean touchControlsEnabled;
+    private boolean cameraInitialized;
     private boolean growthPickupActive;
     private boolean pointPickupActive;
     private boolean hasLastGrowthPickupPosition;
@@ -814,6 +825,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         currentMap = mapProgression.getCurrentMap();
+        cameraInitialized = false;
         updateWorldCamera();
 
         if (world != null) {
@@ -867,6 +879,8 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
+        cameraInitialized = false;
+        updateWorldCamera();
         spawnGrowthPickup();
         spawnPointPickup();
     }
@@ -1001,9 +1015,11 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         if (currentMap == null) {
-            worldCamera.zoom = 1f;
-            worldCamera.position.set(0f, 0f, 0f);
-            worldCamera.update();
+            cameraTargetPosition.set(0f, 0f);
+            cameraSmoothedPosition.set(cameraTargetPosition);
+            smoothedCameraZoom = 1f;
+            cameraInitialized = true;
+            applyWorldCamera(1f);
             return;
         }
 
@@ -1015,13 +1031,69 @@ public class RatassGame extends ApplicationAdapter {
         float zoomX = mapBounds.width / visibleWidth;
         float zoomY = mapBounds.height / visibleHeight;
 
-        worldCamera.zoom = Math.max(MIN_WORLD_CAMERA_ZOOM, Math.max(zoomX, zoomY));
+        float targetZoom = Math.max(MIN_WORLD_CAMERA_ZOOM, Math.max(zoomX, zoomY));
+        cameraTargetPosition.set(focusPoint);
+
+        if (playerCar != null && playerCar.active && playerCar.body != null) {
+            Vector2 playerPosition = playerCar.body.getPosition();
+            Vector2 playerVelocity = playerCar.body.getLinearVelocity();
+            cameraLookAhead.set(playerVelocity).scl(PLAYER_CAMERA_LOOK_AHEAD_TIME);
+            if (cameraLookAhead.len2() > PLAYER_CAMERA_MAX_LOOK_AHEAD * PLAYER_CAMERA_MAX_LOOK_AHEAD) {
+                cameraLookAhead.setLength(PLAYER_CAMERA_MAX_LOOK_AHEAD);
+            }
+
+            cameraTargetPosition.set(playerPosition).add(cameraLookAhead);
+            targetZoom = MathUtils.clamp(
+                    PLAYER_CAMERA_ZOOM
+                            + MathUtils.clamp(playerVelocity.len() / Car.MAX_SPEED, 0f, 1f)
+                                    * PLAYER_CAMERA_SPEED_ZOOM_OUT
+                            + MathUtils.clamp(playerCar.getSizeScale() - 1f, 0f, 1f)
+                                    * PLAYER_CAMERA_GROWTH_ZOOM_OUT,
+                    PLAYER_CAMERA_ZOOM,
+                    MIN_WORLD_CAMERA_ZOOM);
+        }
+
+        clampCameraToArena(cameraTargetPosition, targetZoom);
+
+        float delta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
+        if (!cameraInitialized || delta <= 0f) {
+            cameraSmoothedPosition.set(cameraTargetPosition);
+            smoothedCameraZoom = targetZoom;
+            cameraInitialized = true;
+        } else {
+            float alpha = 1f - (float) Math.exp(-PLAYER_CAMERA_FOLLOW_LERP_SPEED * delta);
+            cameraSmoothedPosition.lerp(cameraTargetPosition, alpha);
+            smoothedCameraZoom += (targetZoom - smoothedCameraZoom) * alpha;
+        }
+
+        clampCameraToArena(cameraSmoothedPosition, smoothedCameraZoom);
         float shake = cameraShakeTimer > 0f
                 ? cameraShakeStrength * MathUtils.clamp(cameraShakeTimer / CAMERA_SHAKE_BASE_DURATION, 0f, 1f)
                 : 0f;
+        applyWorldCamera(smoothedCameraZoom, shake);
+    }
+
+    private void clampCameraToArena(Vector2 position, float zoom) {
+        float halfViewportWidth = worldCamera.viewportWidth * zoom * 0.5f;
+        float halfViewportHeight = worldCamera.viewportHeight * zoom * 0.5f;
+        float minX = mapBounds.x + halfViewportWidth;
+        float maxX = mapBounds.x + mapBounds.width - halfViewportWidth;
+        float minY = mapBounds.y + halfViewportHeight;
+        float maxY = mapBounds.y + mapBounds.height - halfViewportHeight;
+
+        position.x = minX > maxX ? focusPoint.x : MathUtils.clamp(position.x, minX, maxX);
+        position.y = minY > maxY ? focusPoint.y : MathUtils.clamp(position.y, minY, maxY);
+    }
+
+    private void applyWorldCamera(float zoom) {
+        applyWorldCamera(zoom, 0f);
+    }
+
+    private void applyWorldCamera(float zoom, float shake) {
+        worldCamera.zoom = zoom;
         worldCamera.position.set(
-                focusPoint.x + MathUtils.randomTriangular(-shake, shake),
-                focusPoint.y + MathUtils.randomTriangular(-shake, shake),
+                cameraSmoothedPosition.x + MathUtils.randomTriangular(-shake, shake),
+                cameraSmoothedPosition.y + MathUtils.randomTriangular(-shake, shake),
                 0f);
         worldCamera.update();
     }
