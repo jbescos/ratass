@@ -1,5 +1,7 @@
 package com.github.jbescos.ai;
 
+import com.badlogic.gdx.utils.Array;
+
 public final class AiDrivingPersonalities {
     public static final AiDrivingPersonality BALANCED =
             AiDrivingPersonality.builder("balanced", "Balanced").build();
@@ -32,6 +34,10 @@ public final class AiDrivingPersonalities {
                     .recoveryThrottle(0.92f)
                     .stuckDuration(0.75f)
                     .stuckReverseThrottle(-0.78f)
+                    .targetLockBonus(1.05f)
+                    .pickupThreatWeight(0.58f)
+                    .empoweredThreatAvoidance(0.34f)
+                    .flankOffsetDistance(0.30f)
                     .build();
 
     public static final AiDrivingPersonality INTERCEPTOR =
@@ -62,6 +68,10 @@ public final class AiDrivingPersonalities {
                     .recoveryThrottle(0.84f)
                     .stuckDuration(0.62f)
                     .stuckReverseThrottle(-0.70f)
+                    .targetLockBonus(0.84f)
+                    .pickupThreatWeight(1.30f)
+                    .empoweredThreatAvoidance(0.56f)
+                    .flankOffsetDistance(0.80f)
                     .build();
 
     public static final AiDrivingPersonality SURVIVOR =
@@ -92,7 +102,36 @@ public final class AiDrivingPersonalities {
                     .recoveryThrottle(0.76f)
                     .stuckDuration(0.52f)
                     .stuckReverseThrottle(-0.68f)
+                    .targetLockBonus(0.44f)
+                    .pickupThreatWeight(0.40f)
+                    .empoweredThreatAvoidance(1.18f)
+                    .flankOffsetDistance(0.64f)
                     .build();
+
+    public static Array<AiDrivingPersonality> createPresetList() {
+        Array<AiDrivingPersonality> presets = new Array<AiDrivingPersonality>();
+        presets.add(BALANCED);
+        presets.add(BRAWLER);
+        presets.add(INTERCEPTOR);
+        presets.add(SURVIVOR);
+        return presets;
+    }
+
+    public static AiDrivingPersonality byId(String id) {
+        if (BALANCED.id.equals(id)) {
+            return BALANCED;
+        }
+        if (BRAWLER.id.equals(id)) {
+            return BRAWLER;
+        }
+        if (INTERCEPTOR.id.equals(id)) {
+            return INTERCEPTOR;
+        }
+        if (SURVIVOR.id.equals(id)) {
+            return SURVIVOR;
+        }
+        return null;
+    }
 
     private AiDrivingPersonalities() {
     }

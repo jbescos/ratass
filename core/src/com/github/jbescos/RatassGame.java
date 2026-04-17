@@ -43,6 +43,9 @@ import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.SpawnPoint;
 import com.github.jbescos.gameplay.maps.ArenaMaps;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Random;
 
 public class RatassGame extends ApplicationAdapter {
     private static final float WORLD_WIDTH = 32f;
@@ -471,36 +474,167 @@ public class RatassGame extends ApplicationAdapter {
     private void createRoster() {
         roster.clear();
         CarVisual playerVisual = getCarVisual(0);
-        roster.add(new CarTemplate(
-                roster.size,
+        addRosterTemplate(
                 "You",
                 true,
                 new Color(playerVisual.color),
                 null,
-                playerVisual.spritePath));
+                playerVisual.spritePath,
+                "player");
 
         for (int i = 0; i < ENEMY_NAMES.length && roster.size < TOTAL_CARS; i++) {
             CarVisual visual = getCarVisual(i + 1);
-            roster.add(new CarTemplate(
-                    roster.size,
+            addRosterTemplate(
                     ENEMY_NAMES[i],
                     false,
                     new Color(visual.color),
                     ENEMY_PERSONALITIES[i % ENEMY_PERSONALITIES.length],
-                    visual.spritePath));
+                    visual.spritePath,
+                    ENEMY_PERSONALITIES[i % ENEMY_PERSONALITIES.length].id);
         }
 
         while (roster.size < TOTAL_CARS) {
             int enemyIndex = roster.size - 1;
             int rosterIndex = roster.size;
             CarVisual visual = getCarVisual(rosterIndex);
-            roster.add(new CarTemplate(
-                    roster.size,
+            addRosterTemplate(
                     "Rival " + roster.size,
                     false,
                     new Color(visual.color),
                     ENEMY_PERSONALITIES[enemyIndex % ENEMY_PERSONALITIES.length],
-                    visual.spritePath));
+                    visual.spritePath,
+                    ENEMY_PERSONALITIES[enemyIndex % ENEMY_PERSONALITIES.length].id);
+        }
+    }
+
+    private void createSimulationRoster(Array<AiTournamentParticipant> participants) {
+        roster.clear();
+        for (int i = 0; i < participants.size; i++) {
+            AiTournamentParticipant participant = participants.get(i);
+            CarVisual visual = getCarVisual(i);
+            String displayName =
+                    participant.displayName == null || participant.displayName.length() == 0
+                            ? "Bot " + (i + 1)
+                            : participant.displayName;
+            addRosterTemplate(
+                    displayName,
+                    false,
+                    new Color(visual.color),
+                    participant.personality,
+                    visual.spritePath,
+                    participant.label);
+        }
+    }
+
+    private void addRosterTemplate(
+            String name,
+            boolean playerControlled,
+            Color color,
+            AiDrivingPersonality personality,
+            String spritePath,
+            String statsLabel) {
+        roster.add(new CarTemplate(
+                roster.size,
+                name,
+                playerControlled,
+                color,
+                personality,
+                spritePath,
+                statsLabel));
+    }
+
+    public static AiTournamentResult runAiTournament(AiTournamentConfig config) {
+        if (config == null) {
+            throw new IllegalArgumentException("Ai tournament config is required.");
+        }
+        if (config.participants.size == 0) {
+            throw new IllegalArgumentException("Ai tournament config requires at least one participant.");
+        }
+        if (config.rounds <= 0) {
+            throw new IllegalArgumentException("Ai tournament rounds must be positive.");
+        }
+
+        RatassGame game = new RatassGame();
+        try {
+            return game.runAiTournamentInternal(config);
+        } finally {
+            game.dispose();
+        }
+    }
+
+    private AiTournamentResult runAiTournamentInternal(AiTournamentConfig config) {
+        MathUtils.random.setSeed(config.seed);
+        Box2D.init();
+
+        Array<ArenaMap> maps = config.maps.size == 0 ? ArenaMaps.createDefaultSet() : config.maps;
+        createSimulationRoster(config.participants);
+        mapProgression = new MapProgression(maps, new Random(config.seed ^ 0x9E3779B97F4A7C15L));
+        frameThrottleInput = 0f;
+        frameTurnInput = 0f;
+        roundNumber = 0;
+        playerWins = 0;
+
+        LinkedHashMap<String, AiTournamentEntry> statsByLabel = new LinkedHashMap<String, AiTournamentEntry>();
+        for (int i = 0; i < config.participants.size; i++) {
+            AiTournamentParticipant participant = config.participants.get(i);
+            AiTournamentEntry entry = statsByLabel.get(participant.label);
+            if (entry == null) {
+                entry = new AiTournamentEntry(participant.label, participant.displayName);
+                statsByLabel.put(participant.label, entry);
+            }
+            entry.entrants++;
+        }
+
+        resetRound(false);
+        if (config.skipCountdown) {
+            preRoundCountdownTimer = 0f;
+            countdownCueSecond = 0;
+        }
+
+        int maxStepsPerRound = Math.max(1, MathUtils.ceil(ROUND_TIMEOUT_LIMIT / PHYSICS_STEP) + 300);
+        for (int round = 0; round < config.rounds; round++) {
+            int steps = 0;
+            while (!roundOver && steps < maxStepsPerRound) {
+                stepSimulation(PHYSICS_STEP);
+                steps++;
+            }
+            if (!roundOver) {
+                triggerRoundTimeout();
+            }
+
+            collectTournamentRound(statsByLabel);
+
+            if (round + 1 < config.rounds) {
+                resetRound(true);
+                if (config.skipCountdown) {
+                    preRoundCountdownTimer = 0f;
+                    countdownCueSecond = 0;
+                }
+            }
+        }
+
+        AiTournamentResult result = new AiTournamentResult(config.seed, config.rounds, config.participants.size);
+        for (Map.Entry<String, AiTournamentEntry> entry : statsByLabel.entrySet()) {
+            result.entries.add(entry.getValue());
+        }
+        return result;
+    }
+
+    private void collectTournamentRound(Map<String, AiTournamentEntry> statsByLabel) {
+        for (int i = 0; i < roster.size; i++) {
+            CarTemplate template = roster.get(i);
+            AiTournamentEntry entry = statsByLabel.get(template.statsLabel);
+            if (entry == null) {
+                continue;
+            }
+
+            entry.samples++;
+            entry.totalPlacementPoints += template.roundFinishPosition;
+            entry.totalAwardedPoints += template.lastRoundAwardedPoints;
+            entry.totalPickupPoints += template.roundPickupPoints;
+            if (winner != null && winner.template.vehicleId == template.vehicleId) {
+                entry.wins++;
+            }
         }
     }
 
@@ -3130,12 +3264,24 @@ public class RatassGame extends ApplicationAdapter {
         for (int i = 0; i < roster.size; i++) {
             disposeTexture(roster.get(i).spriteTexture);
         }
-        shapeRenderer.dispose();
-        spriteBatch.dispose();
-        hudFont.dispose();
-        titleFont.dispose();
-        leaderboardFont.dispose();
-        labelFont.dispose();
+        if (shapeRenderer != null) {
+            shapeRenderer.dispose();
+        }
+        if (spriteBatch != null) {
+            spriteBatch.dispose();
+        }
+        if (hudFont != null) {
+            hudFont.dispose();
+        }
+        if (titleFont != null) {
+            titleFont.dispose();
+        }
+        if (leaderboardFont != null) {
+            leaderboardFont.dispose();
+        }
+        if (labelFont != null) {
+            labelFont.dispose();
+        }
         disposeSound(impactSound);
         disposeSound(pickupSound);
         disposeSound(destructionSound);
@@ -3819,6 +3965,122 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    public static final class AiTournamentParticipant {
+        public final String label;
+        public final String displayName;
+        public final AiDrivingPersonality personality;
+
+        public AiTournamentParticipant(String label, String displayName, AiDrivingPersonality personality) {
+            if (label == null || label.length() == 0) {
+                throw new IllegalArgumentException("Ai tournament participant label is required.");
+            }
+            if (personality == null) {
+                throw new IllegalArgumentException("Ai tournament participant personality is required.");
+            }
+            this.label = label;
+            this.displayName = displayName == null || displayName.length() == 0 ? label : displayName;
+            this.personality = personality;
+        }
+    }
+
+    public static final class AiTournamentConfig {
+        public final Array<AiTournamentParticipant> participants = new Array<AiTournamentParticipant>();
+        public final Array<ArenaMap> maps = new Array<ArenaMap>();
+        public int rounds = 12;
+        public long seed = 1L;
+        public boolean skipCountdown = true;
+
+        public AiTournamentConfig addParticipant(AiTournamentParticipant participant) {
+            participants.add(participant);
+            return this;
+        }
+
+        public AiTournamentConfig addParticipant(
+                String label,
+                String displayName,
+                AiDrivingPersonality personality) {
+            participants.add(new AiTournamentParticipant(label, displayName, personality));
+            return this;
+        }
+
+        public AiTournamentConfig addMap(ArenaMap map) {
+            if (map != null) {
+                maps.add(map);
+            }
+            return this;
+        }
+
+        public AiTournamentConfig withRounds(int rounds) {
+            this.rounds = rounds;
+            return this;
+        }
+
+        public AiTournamentConfig withSeed(long seed) {
+            this.seed = seed;
+            return this;
+        }
+
+        public AiTournamentConfig withSkipCountdown(boolean skipCountdown) {
+            this.skipCountdown = skipCountdown;
+            return this;
+        }
+    }
+
+    public static final class AiTournamentEntry {
+        public final String label;
+        public final String displayName;
+        public int entrants;
+        public int samples;
+        public int wins;
+        public int totalPlacementPoints;
+        public int totalAwardedPoints;
+        public int totalPickupPoints;
+
+        private AiTournamentEntry(String label, String displayName) {
+            this.label = label;
+            this.displayName = displayName == null || displayName.length() == 0 ? label : displayName;
+        }
+
+        public float getAveragePlacementPoints() {
+            return samples == 0 ? 0f : (float) totalPlacementPoints / samples;
+        }
+
+        public float getAverageAwardedPoints() {
+            return samples == 0 ? 0f : (float) totalAwardedPoints / samples;
+        }
+
+        public float getAveragePickupPoints() {
+            return samples == 0 ? 0f : (float) totalPickupPoints / samples;
+        }
+
+        public float getWinRate() {
+            return samples == 0 ? 0f : (float) wins / samples;
+        }
+    }
+
+    public static final class AiTournamentResult {
+        public final long seed;
+        public final int rounds;
+        public final int participantCount;
+        public final Array<AiTournamentEntry> entries = new Array<AiTournamentEntry>();
+
+        private AiTournamentResult(long seed, int rounds, int participantCount) {
+            this.seed = seed;
+            this.rounds = rounds;
+            this.participantCount = participantCount;
+        }
+
+        public AiTournamentEntry getEntry(String label) {
+            for (int i = 0; i < entries.size; i++) {
+                AiTournamentEntry entry = entries.get(i);
+                if (entry.label.equals(label)) {
+                    return entry;
+                }
+            }
+            return null;
+        }
+    }
+
     private static final class CarTemplate {
         private final int vehicleId;
         private final String name;
@@ -3826,6 +4088,7 @@ public class RatassGame extends ApplicationAdapter {
         private final Color color;
         private final AiDrivingPersonality personality;
         private final String spritePath;
+        private final String statsLabel;
         private Texture spriteTexture;
         private int totalPoints;
         private int roundFinishPosition;
@@ -3839,13 +4102,15 @@ public class RatassGame extends ApplicationAdapter {
                 boolean playerControlled,
                 Color color,
                 AiDrivingPersonality personality,
-                String spritePath) {
+                String spritePath,
+                String statsLabel) {
             this.vehicleId = vehicleId;
             this.name = name;
             this.playerControlled = playerControlled;
             this.color = color;
             this.personality = personality;
             this.spritePath = spritePath;
+            this.statsLabel = statsLabel == null || statsLabel.length() == 0 ? name : statsLabel;
         }
     }
 

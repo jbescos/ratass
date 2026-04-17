@@ -32,3 +32,12 @@ modern JDK such as Java 17.
 The browser build output is written to `html/target/ratass-html-1.0/`.
 The Android module is still kept in the repository but is not part of the Maven
 reactor yet.
+
+## AI self-play tuning
+
+You can run the headless evolution tool against the real match simulation from
+the shaded desktop jar:
+
+`java -cp desktop/target/ratass-desktop-1.0.jar com.github.jbescos.ai.tuning.AiEvolutionMain --preset balanced --generations 4 --population 8 --rounds 10 --verify-rounds 20 --copies 3 --field-size 12 --seed 7`
+
+Replace `balanced` with `brawler`, `interceptor`, `survivor`, or `all`.

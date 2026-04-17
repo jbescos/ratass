@@ -29,6 +29,10 @@ public final class AiDrivingPersonality {
     public final float recoveryThrottle;
     public final float stuckDuration;
     public final float stuckReverseThrottle;
+    public final float targetLockBonus;
+    public final float pickupThreatWeight;
+    public final float empoweredThreatAvoidance;
+    public final float flankOffsetDistance;
 
     private AiDrivingPersonality(Builder builder) {
         if (builder.id == null || builder.id.length() == 0) {
@@ -66,10 +70,52 @@ public final class AiDrivingPersonality {
         recoveryThrottle = builder.recoveryThrottle;
         stuckDuration = builder.stuckDuration;
         stuckReverseThrottle = builder.stuckReverseThrottle;
+        targetLockBonus = builder.targetLockBonus;
+        pickupThreatWeight = builder.pickupThreatWeight;
+        empoweredThreatAvoidance = builder.empoweredThreatAvoidance;
+        flankOffsetDistance = builder.flankOffsetDistance;
     }
 
     public static Builder builder(String id, String displayName) {
         return new Builder(id, displayName);
+    }
+
+    public Builder copyBuilder() {
+        return copyBuilder(id, displayName);
+    }
+
+    public Builder copyBuilder(String id, String displayName) {
+        return builder(id, displayName)
+                .recoveryEdgeDistance(recoveryEdgeDistance)
+                .cautionEdgeDistance(cautionEdgeDistance)
+                .outwardVelocityThreshold(outwardVelocityThreshold)
+                .maxTargetLeadTime(maxTargetLeadTime)
+                .stagingDistance(stagingDistance)
+                .stagingVelocityFactor(stagingVelocityFactor)
+                .commitPushOffsetDistance(commitPushOffsetDistance)
+                .commitAlignmentThreshold(commitAlignmentThreshold)
+                .commitDistanceSq(commitDistanceSq)
+                .centerAssistWeight(centerAssistWeight)
+                .targetEdgeThreatWeight(targetEdgeThreatWeight)
+                .targetCenterDistanceWeight(targetCenterDistanceWeight)
+                .targetApproachAlignmentWeight(targetApproachAlignmentWeight)
+                .targetDistancePenaltyWeight(targetDistancePenaltyWeight)
+                .targetPlayerBias(targetPlayerBias)
+                .attackTurnGain(attackTurnGain)
+                .recoveryTurnGain(recoveryTurnGain)
+                .reverseAttackAngle(reverseAttackAngle)
+                .cautiousAttackAngle(cautiousAttackAngle)
+                .cautiousAttackThrottle(cautiousAttackThrottle)
+                .closeTargetDistanceSq(closeTargetDistanceSq)
+                .closeTargetThrottle(closeTargetThrottle)
+                .recoveryReverseAngle(recoveryReverseAngle)
+                .recoveryThrottle(recoveryThrottle)
+                .stuckDuration(stuckDuration)
+                .stuckReverseThrottle(stuckReverseThrottle)
+                .targetLockBonus(targetLockBonus)
+                .pickupThreatWeight(pickupThreatWeight)
+                .empoweredThreatAvoidance(empoweredThreatAvoidance)
+                .flankOffsetDistance(flankOffsetDistance);
     }
 
     public static final class Builder {
@@ -102,6 +148,10 @@ public final class AiDrivingPersonality {
         private float recoveryThrottle = 0.85f;
         private float stuckDuration = 0.65f;
         private float stuckReverseThrottle = -0.72f;
+        private float targetLockBonus = 0.70f;
+        private float pickupThreatWeight = 0.85f;
+        private float empoweredThreatAvoidance = 0.72f;
+        private float flankOffsetDistance = 0.52f;
 
         private Builder(String id, String displayName) {
             this.id = id;
@@ -235,6 +285,26 @@ public final class AiDrivingPersonality {
 
         public Builder stuckReverseThrottle(float value) {
             stuckReverseThrottle = value;
+            return this;
+        }
+
+        public Builder targetLockBonus(float value) {
+            targetLockBonus = value;
+            return this;
+        }
+
+        public Builder pickupThreatWeight(float value) {
+            pickupThreatWeight = value;
+            return this;
+        }
+
+        public Builder empoweredThreatAvoidance(float value) {
+            empoweredThreatAvoidance = value;
+            return this;
+        }
+
+        public Builder flankOffsetDistance(float value) {
+            flankOffsetDistance = value;
             return this;
         }
 
