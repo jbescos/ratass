@@ -8,6 +8,7 @@ import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
@@ -42,12 +43,22 @@ import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.SpawnPoint;
 import com.github.jbescos.gameplay.maps.ArenaMaps;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Random;
 
 public class RatassGame extends ApplicationAdapter {
+    private static final String GAME_PROPERTIES_RESOURCE = "game.properties";
+    private static final String GAME_PROPERTIES_FILE = "assets/game.properties";
+    private static final String THEME_PROPERTY = "theme";
+    private static final String INFERNAL_CAR_SHEET_PATH = "infernalCars.png";
+    private static final int BACKGROUND_ALPHA_CUTOUT_THRESHOLD = 5;
+    private static final int BACKGROUND_ALPHA_OPAQUE_THRESHOLD = 16;
     private static final float WORLD_WIDTH = 32f;
     private static final float WORLD_HEIGHT = 18f;
     private static final float EDGE_FALLOFF_MARGIN = 0.35f;
@@ -303,7 +314,7 @@ public class RatassGame extends ApplicationAdapter {
                     "d8b89b");
 
     // Keep the active 20-car roster distinct; reserve cars continue as car21+ in assets/cars.
-    private static final CarVisual[] CAR_VISUALS = new CarVisual[] {
+    private static final CarVisual[] NORMAL_CAR_VISUALS = new CarVisual[] {
             new CarVisual("cars/car11.png", Color.valueOf("f42934")),
             new CarVisual("cars/car01.png", Color.valueOf("fde14b")),
             new CarVisual("cars/car02.png", Color.valueOf("f2ecea")),
@@ -324,6 +335,28 @@ public class RatassGame extends ApplicationAdapter {
             new CarVisual("cars/car18.png", Color.valueOf("f46925")),
             new CarVisual("cars/car20.png", Color.valueOf("87c538")),
             new CarVisual("cars/car33.png", Color.valueOf("363c49"))
+    };
+    private static final CarVisual[] INFERNAL_CAR_VISUALS = new CarVisual[] {
+            infernalCar(37, 46, 101, 215, "9b3c30"),
+            infernalCar(179, 48, 113, 210, "5f6064"),
+            infernalCar(335, 42, 102, 218, "be832f"),
+            infernalCar(490, 43, 96, 215, "6f675e"),
+            infernalCar(635, 37, 107, 218, "8f342d"),
+            infernalCar(787, 52, 103, 207, "9d7a62"),
+            infernalCar(938, 47, 99, 212, "4f5357"),
+            infernalCar(1083, 42, 105, 223, "70706f"),
+            infernalCar(1245, 42, 93, 189, "6a574e"),
+            infernalCar(1389, 48, 98, 213, "6f5180"),
+            infernalCar(38, 301, 97, 200, "3d3f44"),
+            infernalCar(185, 294, 99, 213, "9f4135"),
+            infernalCar(334, 294, 101, 210, "8d7966"),
+            infernalCar(487, 291, 101, 212, "ad3129"),
+            infernalCar(640, 296, 97, 209, "bf8837"),
+            infernalCar(788, 296, 100, 202, "54575a"),
+            infernalCar(940, 299, 94, 204, "6e4e3f"),
+            infernalCar(1084, 302, 105, 203, "4c4948"),
+            infernalCar(1242, 294, 98, 209, "8c7b63"),
+            infernalCar(1389, 296, 98, 206, "c68a33")
     };
 
     private final Array<Car> cars = new Array<Car>();
@@ -353,6 +386,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector3 hudTouchPoint = new Vector3();
     private final Vector3 carLabelProjection = new Vector3();
     private final ImpactContactListener impactContactListener = new ImpactContactListener();
+    private final VisualTheme visualTheme = loadConfiguredVisualTheme();
     private final Comparator<CarTemplate> leaderboardComparator = new Comparator<CarTemplate>() {
         @Override
         public int compare(CarTemplate left, CarTemplate right) {
@@ -387,6 +421,7 @@ public class RatassGame extends ApplicationAdapter {
     private Sound suddenDeathSound;
     private Sound timeoutSound;
     private World world;
+    private Texture infernalCarsTexture;
 
     private MapProgression mapProgression;
     private ArenaMap currentMap;
@@ -462,6 +497,7 @@ public class RatassGame extends ApplicationAdapter {
         labelFont.getData().setScale(LABEL_FONT_SCALE);
 
         loadSounds();
+        loadThemeTextures();
         Gdx.input.setCatchKey(Input.Keys.BACK, true);
         createRoster();
         loadCarSprites();
@@ -479,17 +515,17 @@ public class RatassGame extends ApplicationAdapter {
                 true,
                 new Color(playerVisual.color),
                 null,
-                playerVisual.spritePath,
+                playerVisual,
                 "player");
 
         for (int i = 0; i < ENEMY_NAMES.length && roster.size < TOTAL_CARS; i++) {
             CarVisual visual = getCarVisual(i + 1);
-            addRosterTemplate(
+                addRosterTemplate(
                     ENEMY_NAMES[i],
                     false,
                     new Color(visual.color),
                     ENEMY_PERSONALITIES[i % ENEMY_PERSONALITIES.length],
-                    visual.spritePath,
+                    visual,
                     ENEMY_PERSONALITIES[i % ENEMY_PERSONALITIES.length].id);
         }
 
@@ -502,7 +538,7 @@ public class RatassGame extends ApplicationAdapter {
                     false,
                     new Color(visual.color),
                     ENEMY_PERSONALITIES[enemyIndex % ENEMY_PERSONALITIES.length],
-                    visual.spritePath,
+                    visual,
                     ENEMY_PERSONALITIES[enemyIndex % ENEMY_PERSONALITIES.length].id);
         }
     }
@@ -521,7 +557,7 @@ public class RatassGame extends ApplicationAdapter {
                     false,
                     new Color(visual.color),
                     participant.personality,
-                    visual.spritePath,
+                    visual,
                     participant.label);
         }
     }
@@ -531,7 +567,7 @@ public class RatassGame extends ApplicationAdapter {
             boolean playerControlled,
             Color color,
             AiDrivingPersonality personality,
-            String spritePath,
+            CarVisual visual,
             String statsLabel) {
         roster.add(new CarTemplate(
                 roster.size,
@@ -539,7 +575,7 @@ public class RatassGame extends ApplicationAdapter {
                 playerControlled,
                 color,
                 personality,
-                spritePath,
+                visual,
                 statsLabel));
     }
 
@@ -639,14 +675,50 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private CarVisual getCarVisual(int rosterIndex) {
-        return CAR_VISUALS[rosterIndex % CAR_VISUALS.length];
+        CarVisual[] visuals =
+                visualTheme == VisualTheme.NORMAL
+                        ? NORMAL_CAR_VISUALS
+                        : INFERNAL_CAR_VISUALS;
+        return visuals[rosterIndex % visuals.length];
     }
 
     private void loadCarSprites() {
         for (int i = 0; i < roster.size; i++) {
             CarTemplate template = roster.get(i);
-            disposeTexture(template.spriteTexture);
-            template.spriteTexture = loadTexture(template.spritePath);
+            if (template.ownsSpriteTexture) {
+                disposeTexture(template.spriteTexture);
+            }
+            template.spriteTexture = null;
+            template.ownsSpriteTexture = false;
+            template.spriteSourceX = 0;
+            template.spriteSourceY = 0;
+            template.spriteSourceWidth = 0;
+            template.spriteSourceHeight = 0;
+
+            if (template.visual == null) {
+                continue;
+            }
+
+            if (template.visual.sharedTexture) {
+                template.spriteTexture = infernalCarsTexture;
+            } else {
+                template.spriteTexture = loadTexture(template.visual.spritePath, template.visual.stripDarkBackground);
+                template.ownsSpriteTexture = template.spriteTexture != null;
+            }
+
+            if (template.spriteTexture == null) {
+                continue;
+            }
+
+            if (template.visual.hasSourceRegion()) {
+                template.spriteSourceX = template.visual.spriteSourceX;
+                template.spriteSourceY = template.visual.spriteSourceY;
+                template.spriteSourceWidth = template.visual.spriteSourceWidth;
+                template.spriteSourceHeight = template.visual.spriteSourceHeight;
+            } else {
+                template.spriteSourceWidth = template.spriteTexture.getWidth();
+                template.spriteSourceHeight = template.spriteTexture.getHeight();
+            }
         }
     }
 
@@ -672,18 +744,77 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private void loadThemeTextures() {
+        disposeTexture(infernalCarsTexture);
+        infernalCarsTexture = null;
+
+        if (visualTheme == VisualTheme.INFERNAL) {
+            infernalCarsTexture = loadTexture(INFERNAL_CAR_SHEET_PATH, true);
+        }
+    }
+
     private Texture loadTexture(String path) {
+        return loadTexture(path, false);
+    }
+
+    private Texture loadTexture(String path, boolean stripDarkBackground) {
         if (!Gdx.files.internal(path).exists()) {
             return null;
         }
         try {
-            Texture texture = new Texture(Gdx.files.internal(path));
+            Texture texture;
+            if (stripDarkBackground) {
+                Pixmap source = new Pixmap(Gdx.files.internal(path));
+                Pixmap masked = createMaskedPixmap(source);
+                source.dispose();
+                texture = new Texture(masked);
+                masked.dispose();
+            } else {
+                texture = new Texture(Gdx.files.internal(path));
+            }
             texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
             return texture;
         } catch (RuntimeException exception) {
             Gdx.app.error("RatassGame", "Could not load texture " + path, exception);
             return null;
         }
+    }
+
+    private Pixmap createMaskedPixmap(Pixmap source) {
+        Pixmap masked = new Pixmap(source.getWidth(), source.getHeight(), Pixmap.Format.RGBA8888);
+        int background = source.getPixel(0, 0);
+        int bgR = (background >>> 24) & 0xff;
+        int bgG = (background >>> 16) & 0xff;
+        int bgB = (background >>> 8) & 0xff;
+
+        for (int y = 0; y < source.getHeight(); y++) {
+            for (int x = 0; x < source.getWidth(); x++) {
+                int pixel = source.getPixel(x, y);
+                int red = (pixel >>> 24) & 0xff;
+                int green = (pixel >>> 16) & 0xff;
+                int blue = (pixel >>> 8) & 0xff;
+                int alpha = computeMaskedAlpha(red, green, blue, bgR, bgG, bgB);
+                masked.drawPixel(x, y, (red << 24) | (green << 16) | (blue << 8) | alpha);
+            }
+        }
+        return masked;
+    }
+
+    private int computeMaskedAlpha(int red, int green, int blue, int bgR, int bgG, int bgB) {
+        int maxDifference = Math.max(
+                Math.max(Math.abs(red - bgR), Math.abs(green - bgG)),
+                Math.abs(blue - bgB));
+        if (maxDifference <= BACKGROUND_ALPHA_CUTOUT_THRESHOLD) {
+            return 0;
+        }
+        if (maxDifference >= BACKGROUND_ALPHA_OPAQUE_THRESHOLD) {
+            return 255;
+        }
+
+        float normalized =
+                (float) (maxDifference - BACKGROUND_ALPHA_CUTOUT_THRESHOLD)
+                        / (BACKGROUND_ALPHA_OPAQUE_THRESHOLD - BACKGROUND_ALPHA_CUTOUT_THRESHOLD);
+        return Math.round(normalized * 255f);
     }
 
     private int calculateSidebarWidth(int width) {
@@ -2413,10 +2544,10 @@ public class RatassGame extends ApplicationAdapter {
                     1f,
                     1f,
                     spriteAngleDeg,
-                    0,
-                    0,
-                    sprite.getWidth(),
-                    sprite.getHeight(),
+                    car.template.spriteSourceX,
+                    car.template.spriteSourceY,
+                    car.template.spriteSourceWidth,
+                    car.template.spriteSourceHeight,
                     false,
                     false);
         }
@@ -3244,6 +3375,40 @@ public class RatassGame extends ApplicationAdapter {
         return Color.valueOf(value.length() == 6 ? value + "ff" : value);
     }
 
+    private static VisualTheme loadConfiguredVisualTheme() {
+        Properties properties = new Properties();
+
+        InputStream resourceStream = RatassGame.class.getClassLoader().getResourceAsStream(GAME_PROPERTIES_RESOURCE);
+        if (resourceStream != null) {
+            try (InputStream input = resourceStream) {
+                properties.load(input);
+                return VisualTheme.from(properties.getProperty(THEME_PROPERTY));
+            } catch (IOException exception) {
+                // Fall through to the filesystem fallback.
+            }
+        }
+
+        try (InputStream input = new FileInputStream(GAME_PROPERTIES_FILE)) {
+            properties.clear();
+            properties.load(input);
+            return VisualTheme.from(properties.getProperty(THEME_PROPERTY));
+        } catch (IOException exception) {
+            return VisualTheme.INFERNAL;
+        }
+    }
+
+    private static CarVisual infernalCar(int x, int y, int width, int height, String color) {
+        return new CarVisual(
+                INFERNAL_CAR_SHEET_PATH,
+                x,
+                y,
+                width,
+                height,
+                true,
+                true,
+                Color.valueOf(color));
+    }
+
     private void disposeSound(Sound sound) {
         if (sound != null) {
             sound.dispose();
@@ -3262,8 +3427,12 @@ public class RatassGame extends ApplicationAdapter {
             world.dispose();
         }
         for (int i = 0; i < roster.size; i++) {
-            disposeTexture(roster.get(i).spriteTexture);
+            CarTemplate template = roster.get(i);
+            if (template.ownsSpriteTexture) {
+                disposeTexture(template.spriteTexture);
+            }
         }
+        disposeTexture(infernalCarsTexture);
         if (shapeRenderer != null) {
             shapeRenderer.dispose();
         }
@@ -4098,9 +4267,14 @@ public class RatassGame extends ApplicationAdapter {
         private final boolean playerControlled;
         private final Color color;
         private final AiDrivingPersonality personality;
-        private final String spritePath;
+        private final CarVisual visual;
         private final String statsLabel;
         private Texture spriteTexture;
+        private boolean ownsSpriteTexture;
+        private int spriteSourceX;
+        private int spriteSourceY;
+        private int spriteSourceWidth;
+        private int spriteSourceHeight;
         private int totalPoints;
         private int roundFinishPosition;
         private int lastRoundAwardedPoints;
@@ -4113,14 +4287,14 @@ public class RatassGame extends ApplicationAdapter {
                 boolean playerControlled,
                 Color color,
                 AiDrivingPersonality personality,
-                String spritePath,
+                CarVisual visual,
                 String statsLabel) {
             this.vehicleId = vehicleId;
             this.name = name;
             this.playerControlled = playerControlled;
             this.color = color;
             this.personality = personality;
-            this.spritePath = spritePath;
+            this.visual = visual;
             this.statsLabel = statsLabel == null || statsLabel.length() == 0 ? name : statsLabel;
         }
     }
@@ -4140,6 +4314,25 @@ public class RatassGame extends ApplicationAdapter {
         CROSS,
         DIAGONAL,
         FORTRESS
+    }
+
+    private enum VisualTheme {
+        NORMAL,
+        INFERNAL;
+
+        private static VisualTheme from(String value) {
+            if (value == null) {
+                return INFERNAL;
+            }
+            String normalized = value.trim();
+            if ("normal".equalsIgnoreCase(normalized)) {
+                return NORMAL;
+            }
+            if ("infernal".equalsIgnoreCase(normalized)) {
+                return INFERNAL;
+            }
+            return INFERNAL;
+        }
     }
 
     private static final class MapTheme {
@@ -4178,10 +4371,38 @@ public class RatassGame extends ApplicationAdapter {
     private static final class CarVisual {
         private final String spritePath;
         private final Color color;
+        private final int spriteSourceX;
+        private final int spriteSourceY;
+        private final int spriteSourceWidth;
+        private final int spriteSourceHeight;
+        private final boolean stripDarkBackground;
+        private final boolean sharedTexture;
 
         private CarVisual(String spritePath, Color color) {
+            this(spritePath, 0, 0, 0, 0, false, false, color);
+        }
+
+        private CarVisual(
+                String spritePath,
+                int spriteSourceX,
+                int spriteSourceY,
+                int spriteSourceWidth,
+                int spriteSourceHeight,
+                boolean stripDarkBackground,
+                boolean sharedTexture,
+                Color color) {
             this.spritePath = spritePath;
             this.color = color;
+            this.spriteSourceX = spriteSourceX;
+            this.spriteSourceY = spriteSourceY;
+            this.spriteSourceWidth = spriteSourceWidth;
+            this.spriteSourceHeight = spriteSourceHeight;
+            this.stripDarkBackground = stripDarkBackground;
+            this.sharedTexture = sharedTexture;
+        }
+
+        private boolean hasSourceRegion() {
+            return spriteSourceWidth > 0 && spriteSourceHeight > 0;
         }
     }
 }
