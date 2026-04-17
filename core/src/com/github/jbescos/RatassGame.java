@@ -2527,7 +2527,7 @@ public class RatassGame extends ApplicationAdapter {
 
             Texture sprite = car.template.spriteTexture;
             float angleDeg = car.body.getAngle() * MathUtils.radiansToDegrees;
-            float spriteAngleDeg = angleDeg + CAR_SPRITE_ROTATION_OFFSET_DEG;
+            float spriteAngleDeg = angleDeg + car.template.visual.spriteRotationOffsetDeg;
             float centerX = car.body.getPosition().x;
             float centerY = car.body.getPosition().y;
             float spriteWidth = car.getWidth() * CAR_SPRITE_WIDTH_SCALE;
@@ -3406,6 +3406,7 @@ public class RatassGame extends ApplicationAdapter {
                 height,
                 true,
                 true,
+                0f,
                 Color.valueOf(color));
     }
 
@@ -4377,9 +4378,19 @@ public class RatassGame extends ApplicationAdapter {
         private final int spriteSourceHeight;
         private final boolean stripDarkBackground;
         private final boolean sharedTexture;
+        private final float spriteRotationOffsetDeg;
 
         private CarVisual(String spritePath, Color color) {
-            this(spritePath, 0, 0, 0, 0, false, false, color);
+            this(
+                    spritePath,
+                    0,
+                    0,
+                    0,
+                    0,
+                    false,
+                    false,
+                    CAR_SPRITE_ROTATION_OFFSET_DEG,
+                    color);
         }
 
         private CarVisual(
@@ -4390,6 +4401,7 @@ public class RatassGame extends ApplicationAdapter {
                 int spriteSourceHeight,
                 boolean stripDarkBackground,
                 boolean sharedTexture,
+                float spriteRotationOffsetDeg,
                 Color color) {
             this.spritePath = spritePath;
             this.color = color;
@@ -4399,6 +4411,7 @@ public class RatassGame extends ApplicationAdapter {
             this.spriteSourceHeight = spriteSourceHeight;
             this.stripDarkBackground = stripDarkBackground;
             this.sharedTexture = sharedTexture;
+            this.spriteRotationOffsetDeg = spriteRotationOffsetDeg;
         }
 
         private boolean hasSourceRegion() {
