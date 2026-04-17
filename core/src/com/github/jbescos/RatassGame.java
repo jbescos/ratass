@@ -3476,6 +3476,8 @@ public class RatassGame extends ApplicationAdapter {
         private static final float GROWTH_MASS_MULTIPLIER = 10f;
         private static final float DRIVE_FORCE = 96f;
         private static final float REVERSE_FORCE = 74f;
+        private static final float BRAKE_FORCE = 138f;
+        private static final float BRAKE_SPEED_THRESHOLD = 0.45f;
         private static final float PLAYER_TURN_TORQUE = 48f;
         private static final float AI_TURN_TORQUE = 38f;
         private static final float LATERAL_GRIP = 0.72f;
@@ -3649,10 +3651,19 @@ public class RatassGame extends ApplicationAdapter {
             float longitudinalForceMultiplier = getMassMultiplier();
 
             float engineForce = 0f;
-            if (throttle > 0f) {
-                engineForce = throttle * DRIVE_FORCE * longitudinalForceMultiplier;
-            } else if (throttle < 0f) {
-                engineForce = throttle * REVERSE_FORCE * longitudinalForceMultiplier;
+            if (throttle != 0f) {
+                boolean braking =
+                        (throttle > 0f && signedForwardSpeed < -BRAKE_SPEED_THRESHOLD)
+                                || (throttle < 0f && signedForwardSpeed > BRAKE_SPEED_THRESHOLD);
+                float driveForce;
+                if (braking) {
+                    driveForce = BRAKE_FORCE;
+                } else if (throttle > 0f) {
+                    driveForce = DRIVE_FORCE;
+                } else {
+                    driveForce = REVERSE_FORCE;
+                }
+                engineForce = throttle * driveForce * longitudinalForceMultiplier;
             }
 
             if (engineForce != 0f) {
