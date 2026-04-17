@@ -115,25 +115,25 @@ public class RatassGame extends ApplicationAdapter {
     private static final float IMPACT_SOUND_COOLDOWN = 0.06f;
     private static final float DESTRUCTION_SOUND_COOLDOWN = 0.08f;
     private static final String[] ENEMY_NAMES = new String[] {
-            "Cinder",
-            "Frost",
-            "Moss",
-            "Volt",
-            "Riot",
-            "Slate",
-            "Tango",
-            "Brick",
-            "Blitz",
-            "Orbit",
-            "Knurl",
-            "Viper",
-            "Torque",
-            "Crush",
-            "Rivet",
-            "Dune",
-            "Glitch",
-            "Piston",
-            "Grit"
+            "Brim",
+            "Cinderskull",
+            "Hellion",
+            "Malice",
+            "Ashfang",
+            "Dreadcoil",
+            "Embermaw",
+            "Ruin",
+            "Hex",
+            "Scorch",
+            "Nightfire",
+            "Ravager",
+            "Obsidian",
+            "Vex",
+            "Doomspark",
+            "Sableclaw",
+            "Torment",
+            "Pyre",
+            "Wrath"
     };
 
     private static final AiDrivingPersonality[] ENEMY_PERSONALITIES =
