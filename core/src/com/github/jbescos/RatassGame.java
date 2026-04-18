@@ -98,8 +98,6 @@ public class RatassGame extends ApplicationAdapter {
     private static final int ROUND_SPAWN_ATTEMPTS = 3200;
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
-    private static final float CAMERA_SHAKE_BASE_DURATION = 0.22f;
-    private static final float CAMERA_SHAKE_MAX_OFFSET = 0.42f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
     private static final float SUDDEN_DEATH_TIE_SPEED_MARGIN = 0.08f;
     private static final float HUD_SIDEBAR_RATIO = 0.29f;
@@ -453,8 +451,6 @@ public class RatassGame extends ApplicationAdapter {
     private float sidebarHudWidth;
     private float impactSoundCooldown;
     private float destructionSoundCooldown;
-    private float cameraShakeTimer;
-    private float cameraShakeStrength;
     private float smoothedCameraZoom = 1f;
     private float eventCalloutTimer;
     private boolean touchRestartPressed;
@@ -889,25 +885,11 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void updatePresentationState(float delta) {
-        cameraShakeTimer = Math.max(0f, cameraShakeTimer - delta);
-        if (cameraShakeTimer == 0f) {
-            cameraShakeStrength = 0f;
-        }
         eventCalloutTimer = Math.max(0f, eventCalloutTimer - delta);
         if (eventCalloutTimer == 0f) {
             eventCalloutTitle = "";
             eventCalloutSubline = "";
         }
-    }
-
-    private void triggerCameraShake(float strength) {
-        if (strength <= 0f) {
-            return;
-        }
-        cameraShakeTimer = Math.max(cameraShakeTimer, CAMERA_SHAKE_BASE_DURATION + strength * 0.05f);
-        cameraShakeStrength = Math.min(
-                CAMERA_SHAKE_MAX_OFFSET,
-                Math.max(cameraShakeStrength, strength));
     }
 
     private void announceEvent(String title, String subline, Color color) {
@@ -1117,8 +1099,6 @@ public class RatassGame extends ApplicationAdapter {
         destructionEffects.clear();
         accumulator = 0f;
         effectClock = 0f;
-        cameraShakeTimer = 0f;
-        cameraShakeStrength = 0f;
         growthPickupActive = false;
         pointPickupActive = false;
         hasLastGrowthPickupPosition = false;
@@ -1283,7 +1263,6 @@ public class RatassGame extends ApplicationAdapter {
         effect.rotationDeg = MathUtils.random(360f);
         effect.scale = 0.62f + MathUtils.random(0.28f) + car.getSizeScale() * 0.07f;
         destructionEffects.add(effect);
-        triggerCameraShake(0.24f + car.getSizeScale() * 0.04f);
     }
 
     private void updateWorldCamera() {
@@ -1344,10 +1323,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         clampCameraToArena(cameraSmoothedPosition, smoothedCameraZoom);
-        float shake = cameraShakeTimer > 0f
-                ? cameraShakeStrength * MathUtils.clamp(cameraShakeTimer / CAMERA_SHAKE_BASE_DURATION, 0f, 1f)
-                : 0f;
-        applyWorldCamera(smoothedCameraZoom, shake);
+        applyWorldCamera(smoothedCameraZoom);
     }
 
     private void clampCameraToArena(Vector2 position, float zoom) {
@@ -1363,14 +1339,10 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void applyWorldCamera(float zoom) {
-        applyWorldCamera(zoom, 0f);
-    }
-
-    private void applyWorldCamera(float zoom, float shake) {
         worldCamera.zoom = zoom;
         worldCamera.position.set(
-                cameraSmoothedPosition.x + MathUtils.randomTriangular(-shake, shake),
-                cameraSmoothedPosition.y + MathUtils.randomTriangular(-shake, shake),
+                cameraSmoothedPosition.x,
+                cameraSmoothedPosition.y,
                 0f);
         worldCamera.update();
     }
@@ -1614,7 +1586,6 @@ public class RatassGame extends ApplicationAdapter {
         car.template.roundPickupPoints++;
         car.setGrowthBoost(true);
         playSound(pickupSound, 0.72f);
-        triggerCameraShake(0.18f);
         if (car.playerControlled) {
             announceEvent("MASS CORE", "You are huge for 10 seconds.", new Color(0.99f, 0.85f, 0.28f, 1f));
         }
@@ -1630,7 +1601,6 @@ public class RatassGame extends ApplicationAdapter {
         pointPickupActive = false;
         car.grantRamCharge();
         playSound(pickupSound, 0.64f);
-        triggerCameraShake(0.14f);
         if (car.playerControlled) {
             announceEvent(
                     "RAM CORE",
@@ -3728,7 +3698,6 @@ public class RatassGame extends ApplicationAdapter {
             float impactStrength = totalNormalImpulse + closingSpeed * Car.IMPACT_STRENGTH_SPEED_FACTOR;
             if (!roundOver && preRoundCountdownTimer <= 0f) {
                 playImpactSound(impactStrength);
-                triggerCameraShake(MathUtils.clamp(impactStrength / 48f, 0.08f, 0.22f));
             }
 
             if (suddenDeathActive) {
@@ -3771,12 +3740,10 @@ public class RatassGame extends ApplicationAdapter {
             if (carARamHit) {
                 carA.consumeRamCharge();
                 announceRamImpact(carA, carB);
-                triggerCameraShake(0.28f);
             }
             if (carBRamHit) {
                 carB.consumeRamCharge();
                 announceRamImpact(carB, carA);
-                triggerCameraShake(0.28f);
             }
 
         }
