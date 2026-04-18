@@ -57,6 +57,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final String GAME_PROPERTIES_RESOURCE = "game.properties";
     private static final String GAME_PROPERTIES_FILE = "assets/game.properties";
     private static final String THEME_PROPERTY = "theme";
+    private static final String CAMERA_FOLLOW_BEHIND_PROPERTY = "camera.follow.behind";
     private static final String INFERNAL_CAR_SHEET_PATH = "infernalCars.png";
     private static final int BACKGROUND_ALPHA_CUTOUT_THRESHOLD = 5;
     private static final int BACKGROUND_ALPHA_OPAQUE_THRESHOLD = 16;
@@ -89,9 +90,16 @@ public class RatassGame extends ApplicationAdapter {
     private static final float CAMERA_VERTICAL_PADDING = 3f;
     private static final float MIN_WORLD_CAMERA_ZOOM = 0.90f;
     private static final float PLAYER_CAMERA_ZOOM = 1.04f;
-    private static final float PLAYER_CAMERA_SPEED_ZOOM_OUT = 0.22f;
+    private static final float PLAYER_CAMERA_SPEED_ZOOM_OUT = 0.46f;
     private static final float PLAYER_CAMERA_GROWTH_ZOOM_OUT = 0.14f;
-    private static final float PLAYER_CAMERA_MAX_ZOOM = 1.34f;
+    private static final float PLAYER_CAMERA_MAX_ZOOM = 1.58f;
+    private static final float PLAYER_CAMERA_FOLLOW_LEAD_DISTANCE = 0.10f;
+    private static final float PLAYER_CAMERA_FOLLOW_LEAD_SPEED_BONUS = 0.28f;
+    private static final float PLAYER_CAMERA_DIRECTION_LERP_SPEED = 3.8f;
+    private static final float PLAYER_CAMERA_DIRECTION_MIN_SPEED = 2.2f;
+    private static final float PLAYER_CAMERA_DIRECTION_SPIN_DAMPING = 0.22f;
+    private static final float PLAYER_CAMERA_DIRECTION_IMPACT_DAMPING = 0.48f;
+    private static final float PLAYER_CAMERA_DIRECTION_RETURN_SPEED = 1.9f;
     private static final float PLAYER_CAMERA_LOOK_AHEAD_TIME = 0.15f;
     private static final float PLAYER_CAMERA_MAX_LOOK_AHEAD = 2.35f;
     private static final float PLAYER_CAMERA_FOLLOW_LERP_SPEED = 7.5f;
@@ -394,11 +402,17 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector2 cameraTargetPosition = new Vector2();
     private final Vector2 cameraSmoothedPosition = new Vector2();
     private final Vector2 cameraLookAhead = new Vector2();
+    private final Vector2 cameraForwardDirection = new Vector2();
+    private final Vector2 cameraSmoothedForwardDirection = new Vector2(0f, 1f);
+    private final Vector2 cameraChaseOffset = new Vector2();
+    private final Vector2 cameraRightDirection = new Vector2(1f, 0f);
     private final Color eventCalloutColor = new Color();
     private final Vector3 hudTouchPoint = new Vector3();
     private final Vector3 carLabelProjection = new Vector3();
     private final ImpactContactListener impactContactListener = new ImpactContactListener();
     private final VisualTheme visualTheme = loadConfiguredVisualTheme();
+    private final boolean followCameraBehind =
+            loadConfiguredBooleanProperty(CAMERA_FOLLOW_BEHIND_PROPERTY, false);
     private final Comparator<CarTemplate> leaderboardComparator = new Comparator<CarTemplate>() {
         @Override
         public int compare(CarTemplate left, CarTemplate right) {
@@ -983,7 +997,14 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
+        updateCarRenderTransforms(MathUtils.clamp(accumulator / PHYSICS_STEP, 0f, 1f));
         updateAudioState(delta);
+    }
+
+    private void updateCarRenderTransforms(float alpha) {
+        for (int i = 0; i < cars.size; i++) {
+            cars.get(i).updateRenderTransform(alpha);
+        }
     }
 
     private void stepSimulation(float delta) {
@@ -1011,6 +1032,9 @@ public class RatassGame extends ApplicationAdapter {
             freezeCarsForCountdown();
         }
 
+        for (int i = 0; i < cars.size; i++) {
+            cars.get(i).capturePreviousTransform();
+        }
         world.step(delta, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
         processPendingCollisionEliminations();
         checkForEliminations();
@@ -1273,6 +1297,7 @@ public class RatassGame extends ApplicationAdapter {
         if (currentMap == null) {
             cameraTargetPosition.set(0f, 0f);
             cameraSmoothedPosition.set(cameraTargetPosition);
+            cameraSmoothedForwardDirection.set(0f, 1f);
             smoothedCameraZoom = 1f;
             cameraInitialized = true;
             applyWorldCamera(1f);
@@ -1289,29 +1314,95 @@ public class RatassGame extends ApplicationAdapter {
 
         float targetZoom = Math.max(MIN_WORLD_CAMERA_ZOOM, Math.max(zoomX, zoomY));
         cameraTargetPosition.set(focusPoint);
+        float delta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
 
-        if (playerCar != null && playerCar.active && playerCar.body != null) {
-            Vector2 playerPosition = playerCar.body.getPosition();
+        boolean playerCameraActive = playerCar != null && playerCar.active && playerCar.body != null;
+
+        if (playerCameraActive) {
+            Vector2 playerPosition = playerCar.getRenderPosition();
             Vector2 playerVelocity = playerCar.body.getLinearVelocity();
-            cameraLookAhead.set(playerVelocity).scl(PLAYER_CAMERA_LOOK_AHEAD_TIME);
-            if (cameraLookAhead.len2() > PLAYER_CAMERA_MAX_LOOK_AHEAD * PLAYER_CAMERA_MAX_LOOK_AHEAD) {
-                cameraLookAhead.setLength(PLAYER_CAMERA_MAX_LOOK_AHEAD);
-            }
-
-            cameraTargetPosition.set(playerPosition).add(cameraLookAhead);
+            float playerSpeed = playerVelocity.len();
+            float speedFactor = MathUtils.clamp(playerSpeed / Car.MAX_SPEED, 0f, 1f);
             targetZoom = MathUtils.clamp(
                     PLAYER_CAMERA_ZOOM
-                            + MathUtils.clamp(playerVelocity.len() / Car.MAX_SPEED, 0f, 1f)
-                                    * PLAYER_CAMERA_SPEED_ZOOM_OUT
+                            + speedFactor * PLAYER_CAMERA_SPEED_ZOOM_OUT
                             + MathUtils.clamp(playerCar.getSizeScale() - 1f, 0f, 1f)
                                     * PLAYER_CAMERA_GROWTH_ZOOM_OUT,
                     PLAYER_CAMERA_ZOOM,
                     PLAYER_CAMERA_MAX_ZOOM);
+            if (followCameraBehind) {
+                playerCar.getRenderForwardDirection(cameraForwardDirection);
+                if (!cameraForwardDirection.isZero(0.0001f)) {
+                    cameraForwardDirection.nor();
+                } else {
+                    cameraForwardDirection.set(cameraSmoothedForwardDirection);
+                }
+
+                if (!cameraInitialized || delta <= 0f) {
+                    cameraSmoothedForwardDirection.set(cameraForwardDirection);
+                } else if (playerSpeed >= PLAYER_CAMERA_DIRECTION_MIN_SPEED) {
+                    float spinDamping =
+                            1f
+                                    / (1f
+                                            + Math.abs(playerCar.body.getAngularVelocity())
+                                                    * PLAYER_CAMERA_DIRECTION_SPIN_DAMPING);
+                    float impactDamping =
+                            playerCar.getRecentImpactTime() > 0f
+                                    ? PLAYER_CAMERA_DIRECTION_IMPACT_DAMPING
+                                    : 1f;
+                    float directionAlpha =
+                            1f
+                                    - (float)
+                                            Math.exp(
+                                                    -PLAYER_CAMERA_DIRECTION_LERP_SPEED
+                                                            * spinDamping
+                                                            * impactDamping
+                                                            * delta);
+                    cameraSmoothedForwardDirection
+                            .lerp(cameraForwardDirection, directionAlpha)
+                            .nor();
+                } else {
+                    float slowDirectionAlpha =
+                            1f
+                                    - (float)
+                                            Math.exp(
+                                                    -PLAYER_CAMERA_DIRECTION_RETURN_SPEED
+                                                            * PLAYER_CAMERA_DIRECTION_IMPACT_DAMPING
+                                                            * delta);
+                    cameraSmoothedForwardDirection
+                            .lerp(cameraForwardDirection, slowDirectionAlpha)
+                            .nor();
+                }
+
+                cameraChaseOffset
+                        .set(cameraSmoothedForwardDirection)
+                        .scl(PLAYER_CAMERA_FOLLOW_LEAD_DISTANCE
+                                + speedFactor * PLAYER_CAMERA_FOLLOW_LEAD_SPEED_BONUS);
+                cameraTargetPosition.set(playerPosition).add(cameraChaseOffset);
+            } else {
+                cameraLookAhead.set(playerVelocity).scl(PLAYER_CAMERA_LOOK_AHEAD_TIME);
+                if (cameraLookAhead.len2() > PLAYER_CAMERA_MAX_LOOK_AHEAD * PLAYER_CAMERA_MAX_LOOK_AHEAD) {
+                    cameraLookAhead.setLength(PLAYER_CAMERA_MAX_LOOK_AHEAD);
+                }
+                cameraSmoothedForwardDirection.set(0f, 1f);
+                cameraTargetPosition.set(playerPosition).add(cameraLookAhead);
+            }
+        } else if (!cameraInitialized || delta <= 0f) {
+            cameraSmoothedForwardDirection.set(0f, 1f);
+        } else {
+            float directionReturnAlpha =
+                    1f
+                            - (float)
+                                    Math.exp(
+                                            -PLAYER_CAMERA_DIRECTION_RETURN_SPEED
+                                                    * delta);
+            cameraSmoothedForwardDirection.lerp(cameraLookAhead.set(0f, 1f), directionReturnAlpha).nor();
         }
 
-        clampCameraToArena(cameraTargetPosition, targetZoom);
+        if (!playerCameraActive || !followCameraBehind) {
+            clampCameraToArena(cameraTargetPosition, targetZoom);
+        }
 
-        float delta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
         if (!cameraInitialized || delta <= 0f) {
             cameraSmoothedPosition.set(cameraTargetPosition);
             smoothedCameraZoom = targetZoom;
@@ -1322,24 +1413,53 @@ public class RatassGame extends ApplicationAdapter {
             smoothedCameraZoom += (targetZoom - smoothedCameraZoom) * alpha;
         }
 
-        clampCameraToArena(cameraSmoothedPosition, smoothedCameraZoom);
+        if (!playerCameraActive || !followCameraBehind) {
+            clampCameraToArena(cameraSmoothedPosition, smoothedCameraZoom);
+        }
         applyWorldCamera(smoothedCameraZoom);
     }
 
     private void clampCameraToArena(Vector2 position, float zoom) {
         float halfViewportWidth = worldCamera.viewportWidth * zoom * 0.5f;
         float halfViewportHeight = worldCamera.viewportHeight * zoom * 0.5f;
-        float minX = mapBounds.x + halfViewportWidth;
-        float maxX = mapBounds.x + mapBounds.width - halfViewportWidth;
-        float minY = mapBounds.y + halfViewportHeight;
-        float maxY = mapBounds.y + mapBounds.height - halfViewportHeight;
+        if (cameraSmoothedForwardDirection.isZero(0.0001f)) {
+            cameraSmoothedForwardDirection.set(0f, 1f);
+        }
+
+        cameraRightDirection.set(
+                cameraSmoothedForwardDirection.y,
+                -cameraSmoothedForwardDirection.x);
+
+        float halfWorldX =
+                Math.abs(cameraRightDirection.x) * halfViewportWidth
+                        + Math.abs(cameraSmoothedForwardDirection.x) * halfViewportHeight;
+        float halfWorldY =
+                Math.abs(cameraRightDirection.y) * halfViewportWidth
+                        + Math.abs(cameraSmoothedForwardDirection.y) * halfViewportHeight;
+
+        float minX = mapBounds.x + halfWorldX;
+        float maxX = mapBounds.x + mapBounds.width - halfWorldX;
+        float minY = mapBounds.y + halfWorldY;
+        float maxY = mapBounds.y + mapBounds.height - halfWorldY;
 
         position.x = minX > maxX ? focusPoint.x : MathUtils.clamp(position.x, minX, maxX);
         position.y = minY > maxY ? focusPoint.y : MathUtils.clamp(position.y, minY, maxY);
     }
 
     private void applyWorldCamera(float zoom) {
+        if (followCameraBehind && cameraSmoothedForwardDirection.isZero(0.0001f)) {
+            cameraSmoothedForwardDirection.set(0f, 1f);
+        }
         worldCamera.zoom = zoom;
+        if (followCameraBehind) {
+            worldCamera.up.set(
+                    cameraSmoothedForwardDirection.x,
+                    cameraSmoothedForwardDirection.y,
+                    0f);
+        } else {
+            worldCamera.up.set(0f, 1f, 0f);
+        }
+        worldCamera.direction.set(0f, 0f, -1f);
         worldCamera.position.set(
                 cameraSmoothedPosition.x,
                 cameraSmoothedPosition.y,
@@ -2462,9 +2582,10 @@ public class RatassGame extends ApplicationAdapter {
                 continue;
             }
 
-            float angleDeg = car.body.getAngle() * MathUtils.radiansToDegrees;
-            float centerX = car.body.getPosition().x;
-            float centerY = car.body.getPosition().y;
+            float angleDeg = car.getRenderAngleDeg();
+            Vector2 renderPosition = car.getRenderPosition();
+            float centerX = renderPosition.x;
+            float centerY = renderPosition.y;
             float carWidth = car.getWidth();
             float carHeight = car.getHeight();
             float carScale = car.getSizeScale();
@@ -2519,10 +2640,11 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             Texture sprite = car.template.spriteTexture;
-            float angleDeg = car.body.getAngle() * MathUtils.radiansToDegrees;
+            float angleDeg = car.getRenderAngleDeg();
             float spriteAngleDeg = angleDeg + car.template.visual.spriteRotationOffsetDeg;
-            float centerX = car.body.getPosition().x;
-            float centerY = car.body.getPosition().y;
+            Vector2 renderPosition = car.getRenderPosition();
+            float centerX = renderPosition.x;
+            float centerY = renderPosition.y;
             float spriteWidth = car.getWidth() * CAR_SPRITE_WIDTH_SCALE;
             float spriteHeight = car.getHeight() * CAR_SPRITE_HEIGHT_SCALE;
 
@@ -3038,7 +3160,7 @@ public class RatassGame extends ApplicationAdapter {
                 continue;
             }
 
-            Vector2 position = car.body.getPosition();
+            Vector2 position = car.getRenderPosition();
             float markerRadius =
                     (SIDEBAR_MINIMAP_MARKER_RADIUS
                                     + (car.hasGrowthBoost() ? SIDEBAR_MINIMAP_BIG_CAR_RADIUS_BOOST : 0f))
@@ -3114,9 +3236,10 @@ public class RatassGame extends ApplicationAdapter {
                 continue;
             }
 
+            Vector2 renderPosition = car.getRenderPosition();
             carLabelProjection.set(
-                    car.body.getPosition().x,
-                    car.body.getPosition().y + car.getHeight() * 0.92f,
+                    renderPosition.x,
+                    renderPosition.y + car.getHeight() * 0.92f,
                     0f);
             worldViewport.project(carLabelProjection);
             carLabelProjection.y = Gdx.graphics.getHeight() - carLabelProjection.y;
@@ -3494,13 +3617,39 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private static VisualTheme loadConfiguredVisualTheme() {
+        return VisualTheme.from(loadConfiguredProperty(THEME_PROPERTY));
+    }
+
+    private static boolean loadConfiguredBooleanProperty(String propertyName, boolean defaultValue) {
+        String value = loadConfiguredProperty(propertyName);
+        if (value == null) {
+            return defaultValue;
+        }
+
+        String normalized = value.trim();
+        if ("true".equalsIgnoreCase(normalized)
+                || "1".equals(normalized)
+                || "yes".equalsIgnoreCase(normalized)
+                || "on".equalsIgnoreCase(normalized)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(normalized)
+                || "0".equals(normalized)
+                || "no".equalsIgnoreCase(normalized)
+                || "off".equalsIgnoreCase(normalized)) {
+            return false;
+        }
+        return defaultValue;
+    }
+
+    private static String loadConfiguredProperty(String propertyName) {
         Properties properties = new Properties();
 
         InputStream resourceStream = RatassGame.class.getClassLoader().getResourceAsStream(GAME_PROPERTIES_RESOURCE);
         if (resourceStream != null) {
             try (InputStream input = resourceStream) {
                 properties.load(input);
-                return VisualTheme.from(properties.getProperty(THEME_PROPERTY));
+                return properties.getProperty(propertyName);
             } catch (IOException exception) {
                 // Fall through to the filesystem fallback.
             }
@@ -3509,9 +3658,9 @@ public class RatassGame extends ApplicationAdapter {
         try (InputStream input = new FileInputStream(GAME_PROPERTIES_FILE)) {
             properties.clear();
             properties.load(input);
-            return VisualTheme.from(properties.getProperty(THEME_PROPERTY));
+            return properties.getProperty(propertyName);
         } catch (IOException exception) {
-            return VisualTheme.INFERNAL;
+            return null;
         }
     }
 
@@ -3805,6 +3954,8 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 pendingImpactImpulse = new Vector2();
         private final Vector2 impactRecoveryPoint = new Vector2();
         private final Vector2 impactOutward = new Vector2();
+        private final Vector2 previousRenderPosition = new Vector2();
+        private final Vector2 renderPosition = new Vector2();
 
         private Body body;
         private boolean active = true;
@@ -3817,6 +3968,8 @@ public class RatassGame extends ApplicationAdapter {
         private float controlLockTimer;
         private float recentImpactTimer;
         private float ramChargeTimer;
+        private float previousRenderAngleRad;
+        private float renderAngleRad;
 
         private Car(Body body, CarTemplate template) {
             this.body = body;
@@ -3826,6 +3979,58 @@ public class RatassGame extends ApplicationAdapter {
             color = template.color;
             aiController = playerControlled ? null : new CarAiController(template.personality);
             rebuildCollisionFixture();
+            syncRenderTransformToBody();
+        }
+
+        private void syncRenderTransformToBody() {
+            if (body == null) {
+                previousRenderPosition.setZero();
+                renderPosition.setZero();
+                previousRenderAngleRad = 0f;
+                renderAngleRad = 0f;
+                return;
+            }
+
+            previousRenderPosition.set(body.getPosition());
+            renderPosition.set(previousRenderPosition);
+            previousRenderAngleRad = body.getAngle();
+            renderAngleRad = previousRenderAngleRad;
+        }
+
+        private void capturePreviousTransform() {
+            if (body == null) {
+                return;
+            }
+
+            previousRenderPosition.set(body.getPosition());
+            previousRenderAngleRad = body.getAngle();
+        }
+
+        private void updateRenderTransform(float alpha) {
+            if (body == null) {
+                return;
+            }
+
+            float clampedAlpha = MathUtils.clamp(alpha, 0f, 1f);
+            renderPosition.set(previousRenderPosition).lerp(body.getPosition(), clampedAlpha);
+
+            float angleDelta =
+                    MathUtils.atan2(
+                            MathUtils.sin(body.getAngle() - previousRenderAngleRad),
+                            MathUtils.cos(body.getAngle() - previousRenderAngleRad));
+            renderAngleRad = previousRenderAngleRad + angleDelta * clampedAlpha;
+        }
+
+        private Vector2 getRenderPosition() {
+            return renderPosition;
+        }
+
+        private float getRenderAngleDeg() {
+            return renderAngleRad * MathUtils.radiansToDegrees;
+        }
+
+        private Vector2 getRenderForwardDirection(Vector2 out) {
+            return out.set(-MathUtils.sin(renderAngleRad), MathUtils.cos(renderAngleRad));
         }
 
         private void step(
