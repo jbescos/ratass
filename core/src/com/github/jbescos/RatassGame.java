@@ -15,6 +15,7 @@ import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Matrix4;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
@@ -80,16 +81,17 @@ public class RatassGame extends ApplicationAdapter {
     private static final float GROWTH_DURATION = 10f;
     private static final float RAM_CHARGE_DURATION = 8f;
     private static final float DESTRUCTION_EFFECT_DURATION = 0.65f;
-    private static final int TOTAL_CARS = 12;
+    private static final int TOTAL_CARS = 20;
     private static final float ROUND_START_COUNTDOWN = 3f;
     private static final float ROUND_TIME_LIMIT = 20f;
     private static final float ROUND_TIMEOUT_LIMIT = 35f;
     private static final float CAMERA_HORIZONTAL_PADDING = 4f;
     private static final float CAMERA_VERTICAL_PADDING = 3f;
     private static final float MIN_WORLD_CAMERA_ZOOM = 0.90f;
-    private static final float PLAYER_CAMERA_ZOOM = 0.72f;
-    private static final float PLAYER_CAMERA_SPEED_ZOOM_OUT = 0.10f;
-    private static final float PLAYER_CAMERA_GROWTH_ZOOM_OUT = 0.05f;
+    private static final float PLAYER_CAMERA_ZOOM = 1.04f;
+    private static final float PLAYER_CAMERA_SPEED_ZOOM_OUT = 0.22f;
+    private static final float PLAYER_CAMERA_GROWTH_ZOOM_OUT = 0.14f;
+    private static final float PLAYER_CAMERA_MAX_ZOOM = 1.34f;
     private static final float PLAYER_CAMERA_LOOK_AHEAD_TIME = 0.15f;
     private static final float PLAYER_CAMERA_MAX_LOOK_AHEAD = 2.35f;
     private static final float PLAYER_CAMERA_FOLLOW_LERP_SPEED = 7.5f;
@@ -105,6 +107,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final float HUD_SIDEBAR_PREFERRED_MIN_WIDTH = 260f;
     private static final float HUD_SIDEBAR_MAX_WIDTH = 420f;
     private static final float HUD_MIN_PLAYFIELD_WIDTH = 320f;
+    private static final float SIDEBAR_CARD_MARGIN = 12f;
+    private static final float SIDEBAR_CONTENT_MARGIN = 18f;
+    private static final float SIDEBAR_MINIMAP_GAP = 10f;
+    private static final float SIDEBAR_MINIMAP_MIN_HEIGHT = 64f;
+    private static final float SIDEBAR_MINIMAP_LABEL_HEIGHT = 18f;
+    private static final float SIDEBAR_MINIMAP_PADDING = 12f;
+    private static final float SIDEBAR_MINIMAP_MARKER_RADIUS = 3.2f;
+    private static final float SIDEBAR_MINIMAP_PLAYER_RING_RADIUS = 6.2f;
+    private static final float SIDEBAR_MINIMAP_BIG_CAR_RADIUS_BOOST = 1.4f;
     private static final float HUD_FONT_SCALE = 1.18f;
     private static final float TITLE_FONT_SCALE = 2.25f;
     private static final float LEADERBOARD_FONT_SCALE = 0.96f;
@@ -379,6 +390,9 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle throttlePadBounds = new Rectangle();
     private final Rectangle reversePadBounds = new Rectangle();
     private final Rectangle restartButtonBounds = new Rectangle();
+    private final Rectangle sidebarMinimapBounds = new Rectangle();
+    private final Matrix4 minimapTransform = new Matrix4();
+    private final Matrix4 hudTransform = new Matrix4();
     private final Vector2 cameraTargetPosition = new Vector2();
     private final Vector2 cameraSmoothedPosition = new Vector2();
     private final Vector2 cameraLookAhead = new Vector2();
@@ -1025,7 +1039,6 @@ public class RatassGame extends ApplicationAdapter {
                 updateRoundTimer(delta);
                 if (!roundOver) {
                     updateGrowthPickup(delta);
-                    updatePointPickup();
                 }
             }
         }
@@ -1147,7 +1160,6 @@ public class RatassGame extends ApplicationAdapter {
         cameraInitialized = false;
         updateWorldCamera();
         spawnGrowthPickup();
-        spawnPointPickup();
     }
 
     private void freezeCarsForCountdown() {
@@ -1315,7 +1327,7 @@ public class RatassGame extends ApplicationAdapter {
                             + MathUtils.clamp(playerCar.getSizeScale() - 1f, 0f, 1f)
                                     * PLAYER_CAMERA_GROWTH_ZOOM_OUT,
                     PLAYER_CAMERA_ZOOM,
-                    MIN_WORLD_CAMERA_ZOOM);
+                    PLAYER_CAMERA_MAX_ZOOM);
         }
 
         clampCameraToArena(cameraTargetPosition, targetZoom);
@@ -1795,7 +1807,6 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawBackdrop(theme);
         drawArena(theme);
-        drawPointPickup();
         drawGrowthPickup();
         drawCarEffects();
         shapeRenderer.end();
@@ -1812,25 +1823,34 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void drawBackdrop(MapTheme theme) {
-        shapeRenderer.setColor(theme.backdropBase);
-        shapeRenderer.rect(-WORLD_WIDTH, -WORLD_HEIGHT, WORLD_WIDTH * 2f, WORLD_HEIGHT * 2f);
+        float backdropMarginX = Math.max(WORLD_WIDTH, mapBounds.width * 0.75f);
+        float backdropMarginY = Math.max(WORLD_HEIGHT, mapBounds.height * 0.75f);
+        float backdropMinX = mapBounds.x - backdropMarginX;
+        float backdropMaxX = mapBounds.x + mapBounds.width + backdropMarginX;
+        float backdropMinY = mapBounds.y - backdropMarginY;
+        float backdropMaxY = mapBounds.y + mapBounds.height + backdropMarginY;
+        float backdropWidth = backdropMaxX - backdropMinX;
+        float backdropHeight = backdropMaxY - backdropMinY;
 
-        for (float y = -WORLD_HEIGHT; y < WORLD_HEIGHT; y += 3.25f) {
-            boolean majorBand = (((int) ((y + WORLD_HEIGHT) / 3.25f)) & 1) == 0;
+        shapeRenderer.setColor(theme.backdropBase);
+        shapeRenderer.rect(backdropMinX, backdropMinY, backdropWidth, backdropHeight);
+
+        for (float y = backdropMinY; y < backdropMaxY; y += 3.25f) {
+            boolean majorBand = (((int) ((y - backdropMinY) / 3.25f)) & 1) == 0;
             setShapeColor(theme.backdropLine, majorBand ? 0.12f : 0.06f);
-            shapeRenderer.rect(-WORLD_WIDTH, y, WORLD_WIDTH * 2f, majorBand ? 1.35f : 0.72f);
+            shapeRenderer.rect(backdropMinX, y, backdropWidth, majorBand ? 1.35f : 0.72f);
         }
 
-        for (float x = -WORLD_WIDTH; x <= WORLD_WIDTH; x += 3.1f) {
+        for (float x = backdropMinX; x <= backdropMaxX; x += 3.1f) {
             float alpha = Math.abs(x - focusPoint.x) < mapBounds.width * 0.44f ? 0.15f : 0.08f;
             setShapeColor(theme.backdropLine, alpha);
-            shapeRenderer.rect(x, -WORLD_HEIGHT, 0.16f, WORLD_HEIGHT * 2f);
+            shapeRenderer.rect(x, backdropMinY, 0.16f, backdropHeight);
         }
 
-        for (float y = -WORLD_HEIGHT; y <= WORLD_HEIGHT; y += 2.6f) {
+        for (float y = backdropMinY; y <= backdropMaxY; y += 2.6f) {
             float alpha = Math.abs(y - focusPoint.y) < mapBounds.height * 0.42f ? 0.08f : 0.04f;
             setShapeColor(theme.backdropGlow, alpha);
-            shapeRenderer.rect(-WORLD_WIDTH, y, WORLD_WIDTH * 2f, 0.10f);
+            shapeRenderer.rect(backdropMinX, y, backdropWidth, 0.10f);
         }
 
         drawBackdropMotif(theme);
@@ -2004,11 +2024,14 @@ public class RatassGame extends ApplicationAdapter {
                         0.12f);
                 break;
             case DIAGONAL:
-                for (float offset = -WORLD_WIDTH * 1.35f; offset <= WORLD_WIDTH * 1.35f; offset += 6.2f) {
+                float diagonalSpan =
+                        Math.max(mapBounds.width, mapBounds.height)
+                                + Math.max(WORLD_WIDTH, WORLD_HEIGHT) * 2f;
+                for (float offset = centerX - diagonalSpan; offset <= centerX + diagonalSpan; offset += 6.2f) {
                     drawRotatedRect(
                             offset,
                             centerY,
-                            WORLD_WIDTH * 1.8f,
+                            diagonalSpan * 1.8f,
                             0.64f,
                             28f,
                             theme.backdropGlow.r,
@@ -2019,7 +2042,7 @@ public class RatassGame extends ApplicationAdapter {
                 drawRotatedRect(
                         centerX,
                         centerY,
-                        WORLD_WIDTH * 1.7f,
+                        diagonalSpan * 1.7f,
                         0.22f,
                         -28f,
                         theme.accent.r,
@@ -2703,6 +2726,7 @@ public class RatassGame extends ApplicationAdapter {
 
         if (sidebarWidth > 0f) {
             drawSidebarPanel(sidebarX, sidebarWidth, hudHeight);
+            drawSidebarMinimap(sidebarX, sidebarWidth, hudHeight, currentTheme());
         }
 
         spriteBatch.begin();
@@ -2725,6 +2749,7 @@ public class RatassGame extends ApplicationAdapter {
 
         drawSidebarSummary(sidebarX, sidebarWidth, hudHeight);
         drawLeaderboard(sidebarX, sidebarWidth, hudHeight);
+        drawSidebarMinimapOverlay(sidebarX, sidebarWidth, hudHeight);
         drawSidebarFooter(sidebarX, sidebarWidth);
         drawCarLabels();
 
@@ -2844,8 +2869,23 @@ public class RatassGame extends ApplicationAdapter {
         float footerCardHeight = getSidebarFooterCardHeight();
 
         shapeRenderer.setColor(0.10f, 0.13f, 0.17f, 0.95f);
-        shapeRenderer.rect(sidebarX + 12f, hudHeight - 22f - summaryCardHeight, sidebarWidth - 24f, summaryCardHeight);
-        shapeRenderer.rect(sidebarX + 12f, 10f, sidebarWidth - 24f, footerCardHeight);
+        shapeRenderer.rect(
+                sidebarX + SIDEBAR_CARD_MARGIN,
+                hudHeight - 22f - summaryCardHeight,
+                sidebarWidth - SIDEBAR_CARD_MARGIN * 2f,
+                summaryCardHeight);
+        shapeRenderer.rect(
+                sidebarX + SIDEBAR_CARD_MARGIN,
+                10f,
+                sidebarWidth - SIDEBAR_CARD_MARGIN * 2f,
+                footerCardHeight);
+        if (getSidebarMinimapBounds(sidebarX, sidebarWidth, hudHeight, sidebarMinimapBounds)) {
+            shapeRenderer.rect(
+                    sidebarMinimapBounds.x,
+                    sidebarMinimapBounds.y,
+                    sidebarMinimapBounds.width,
+                    sidebarMinimapBounds.height);
+        }
         shapeRenderer.end();
 
         Gdx.gl.glDisable(GL20.GL_BLEND);
@@ -2899,11 +2939,11 @@ public class RatassGame extends ApplicationAdapter {
         leaderboardEntries.addAll(roster);
         leaderboardEntries.sort(leaderboardComparator);
 
-        float x = sidebarX + 18f;
-        float rightX = sidebarX + sidebarWidth - 18f;
-        float y = hudHeight - 22f - getSidebarSummaryCardHeight() - 16f;
-        float headingStep = Math.max(18f, leaderboardFont.getLineHeight() + 2f);
-        float rowStep = Math.max(16f, leaderboardFont.getLineHeight() + 1f);
+        float x = sidebarX + SIDEBAR_CONTENT_MARGIN;
+        float rightX = sidebarX + sidebarWidth - SIDEBAR_CONTENT_MARGIN;
+        float y = getSidebarLeaderboardStartY(hudHeight);
+        float headingStep = getSidebarLeaderboardHeadingStep();
+        float rowStep = getSidebarLeaderboardRowStep();
 
         leaderboardFont.setColor(0.98f, 0.95f, 0.84f, 1f);
         leaderboardFont.draw(spriteBatch, "Rank", x, y);
@@ -2936,6 +2976,138 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private void drawSidebarMinimap(float sidebarX, float sidebarWidth, float hudHeight, MapTheme theme) {
+        if (currentMap == null
+                || !getSidebarMinimapBounds(sidebarX, sidebarWidth, hudHeight, sidebarMinimapBounds)) {
+            return;
+        }
+
+        currentMap.getBounds(mapBounds);
+
+        float innerX = sidebarMinimapBounds.x + SIDEBAR_MINIMAP_PADDING;
+        float innerY = sidebarMinimapBounds.y + SIDEBAR_MINIMAP_PADDING;
+        float innerWidth = sidebarMinimapBounds.width - SIDEBAR_MINIMAP_PADDING * 2f;
+        float innerHeight =
+                sidebarMinimapBounds.height
+                        - SIDEBAR_MINIMAP_PADDING * 2f
+                        - SIDEBAR_MINIMAP_LABEL_HEIGHT;
+        if (innerWidth <= 0f || innerHeight <= 0f || mapBounds.width <= 0f || mapBounds.height <= 0f) {
+            return;
+        }
+
+        float minimapScale = Math.min(innerWidth / mapBounds.width, innerHeight / mapBounds.height);
+        if (minimapScale <= 0f) {
+            return;
+        }
+
+        float minimapWidth = mapBounds.width * minimapScale;
+        float minimapHeight = mapBounds.height * minimapScale;
+        float offsetX = innerX + (innerWidth - minimapWidth) * 0.5f - mapBounds.x * minimapScale;
+        float offsetY = innerY + (innerHeight - minimapHeight) * 0.5f - mapBounds.y * minimapScale;
+
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+
+        shapeRenderer.setColor(theme.backdropBase.r, theme.backdropBase.g, theme.backdropBase.b, 0.94f);
+        shapeRenderer.rect(innerX, innerY, innerWidth, innerHeight);
+
+        shapeRenderer.setColor(theme.backdropGlow.r, theme.backdropGlow.g, theme.backdropGlow.b, 0.16f);
+        shapeRenderer.rect(
+                innerX + (innerWidth - minimapWidth) * 0.5f,
+                innerY + (innerHeight - minimapHeight) * 0.5f,
+                minimapWidth,
+                minimapHeight);
+
+        shapeRenderer.setColor(theme.accent.r, theme.accent.g, theme.accent.b, 0.26f);
+        shapeRenderer.rect(innerX, innerY, innerWidth, 2f);
+        shapeRenderer.rect(innerX, innerY + innerHeight - 2f, innerWidth, 2f);
+        shapeRenderer.rect(innerX, innerY, 2f, innerHeight);
+        shapeRenderer.rect(innerX + innerWidth - 2f, innerY, 2f, innerHeight);
+        shapeRenderer.end();
+
+        minimapTransform
+                .idt()
+                .translate(offsetX, offsetY, 0f)
+                .scale(minimapScale, minimapScale, 1f);
+        shapeRenderer.setTransformMatrix(minimapTransform);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        setShapeColor(theme.edge, 0.92f);
+        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
+            currentMap.getSolidZone(i).draw(shapeRenderer, 0f, 0f, 0.24f);
+        }
+
+        setShapeColor(theme.surface, 0.96f);
+        for (int i = 0; i < currentMap.getSolidZoneCount(); i++) {
+            currentMap.getSolidZone(i).draw(shapeRenderer, 0f, 0f, 0f);
+        }
+
+        if (currentMap.getHoleZoneCount() > 0) {
+            setShapeColor(theme.edge, 0.80f);
+            for (int i = 0; i < currentMap.getHoleZoneCount(); i++) {
+                currentMap.getHoleZone(i).draw(shapeRenderer, 0f, 0f, 0.18f);
+            }
+
+            setShapeColor(VOID, 1f);
+            for (int i = 0; i < currentMap.getHoleZoneCount(); i++) {
+                currentMap.getHoleZone(i).draw(shapeRenderer, 0f, 0f, 0f);
+            }
+        }
+
+        if (growthPickupActive) {
+            float pickupRadius = 3.1f / minimapScale;
+            shapeRenderer.setColor(1f, 0.88f, 0.28f, 0.94f);
+            shapeRenderer.circle(growthPickupPosition.x, growthPickupPosition.y, pickupRadius, 18);
+        }
+
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null) {
+                continue;
+            }
+
+            Vector2 position = car.body.getPosition();
+            float markerRadius =
+                    (SIDEBAR_MINIMAP_MARKER_RADIUS
+                                    + (car.hasGrowthBoost() ? SIDEBAR_MINIMAP_BIG_CAR_RADIUS_BOOST : 0f))
+                            / minimapScale;
+
+            shapeRenderer.setColor(0.03f, 0.04f, 0.05f, 0.90f);
+            shapeRenderer.circle(position.x, position.y, markerRadius + 1.2f / minimapScale, 20);
+
+            if (car.playerControlled) {
+                shapeRenderer.setColor(1f, 0.95f, 0.62f, 0.92f);
+                shapeRenderer.circle(
+                        position.x,
+                        position.y,
+                        SIDEBAR_MINIMAP_PLAYER_RING_RADIUS / minimapScale,
+                        24);
+            }
+
+            shapeRenderer.setColor(car.color.r, car.color.g, car.color.b, 0.98f);
+            shapeRenderer.circle(position.x, position.y, markerRadius, 20);
+        }
+
+        shapeRenderer.end();
+        shapeRenderer.setTransformMatrix(hudTransform.idt());
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawSidebarMinimapOverlay(float sidebarX, float sidebarWidth, float hudHeight) {
+        if (!getSidebarMinimapBounds(sidebarX, sidebarWidth, hudHeight, sidebarMinimapBounds)) {
+            return;
+        }
+
+        leaderboardFont.setColor(0.98f, 0.95f, 0.84f, 1f);
+        leaderboardFont.draw(
+                spriteBatch,
+                "Arena Scan",
+                sidebarMinimapBounds.x + SIDEBAR_CONTENT_MARGIN - SIDEBAR_CARD_MARGIN,
+                sidebarMinimapBounds.y + sidebarMinimapBounds.height - SIDEBAR_MINIMAP_PADDING);
+    }
+
     private String buildLeaderboardRowState(CarTemplate template, boolean active) {
         if (roundOver) {
             return "+" + template.lastRoundAwardedPoints;
@@ -2943,14 +3115,8 @@ public class RatassGame extends ApplicationAdapter {
         if (template.roundFinishPosition > 0) {
             return "OUT#" + template.roundFinishPosition;
         }
-        if (active && template.currentCar.hasGrowthBoost() && template.currentCar.hasRamCharge()) {
-            return "BIG RAM";
-        }
         if (active && template.currentCar.hasGrowthBoost()) {
             return "BIG";
-        }
-        if (active && template.currentCar.hasRamCharge()) {
-            return "RAM";
         }
         return active ? "IN" : "";
     }
@@ -2990,9 +3156,6 @@ public class RatassGame extends ApplicationAdapter {
             if (car.hasGrowthBoost()) {
                 label += " BIG";
             }
-            if (car.hasRamCharge()) {
-                label += " RAM";
-            }
 
             glyphLayout.setText(labelFont, label);
             if (car.playerControlled) {
@@ -3021,6 +3184,47 @@ public class RatassGame extends ApplicationAdapter {
 
     private float getSidebarFooterCardHeight() {
         return Math.max(82f, leaderboardFont.getLineHeight() * 4.3f);
+    }
+
+    private float getSidebarLeaderboardStartY(float hudHeight) {
+        return hudHeight - 22f - getSidebarSummaryCardHeight() - 16f;
+    }
+
+    private float getSidebarLeaderboardHeadingStep() {
+        return Math.max(18f, leaderboardFont.getLineHeight() + 2f);
+    }
+
+    private float getSidebarLeaderboardRowStep() {
+        return Math.max(16f, leaderboardFont.getLineHeight() + 1f);
+    }
+
+    private float getSidebarLeaderboardBottomY(float hudHeight) {
+        return getSidebarLeaderboardStartY(hudHeight)
+                - getSidebarLeaderboardHeadingStep()
+                - roster.size * getSidebarLeaderboardRowStep();
+    }
+
+    private boolean getSidebarMinimapBounds(
+            float sidebarX,
+            float sidebarWidth,
+            float hudHeight,
+            Rectangle out) {
+        float top = getSidebarLeaderboardBottomY(hudHeight) - SIDEBAR_MINIMAP_GAP;
+        float bottom = 10f + getSidebarFooterCardHeight() + SIDEBAR_MINIMAP_GAP;
+        float height = top - bottom;
+        if (sidebarWidth <= 0f
+                || sidebarWidth <= SIDEBAR_CARD_MARGIN * 2f
+                || height < SIDEBAR_MINIMAP_MIN_HEIGHT) {
+            out.set(0f, 0f, 0f, 0f);
+            return false;
+        }
+
+        out.set(
+                sidebarX + SIDEBAR_CARD_MARGIN,
+                bottom,
+                sidebarWidth - SIDEBAR_CARD_MARGIN * 2f,
+                height);
+        return true;
     }
 
     private int getAliveCarCount() {
@@ -3057,7 +3261,6 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private String buildSidebarStateText() {
-        Car ramChargeHolder = findActiveRamChargeCar();
         if (preRoundCountdownTimer > 0f) {
             return "Starts in " + MathUtils.ceil(preRoundCountdownTimer) + "s";
         }
@@ -3076,22 +3279,6 @@ public class RatassGame extends ApplicationAdapter {
                 return owner + " BIG  |  wipe " + getRoundTimeoutSecondsLeft() + "s";
             }
             return owner + " BIG " + MathUtils.ceil(growthBoostTimer)
-                    + "s"
-                    + (ramChargeHolder != null
-                    ? "  |  RAM "
-                    + (ramChargeHolder.playerControlled ? "YOU " : ramChargeHolder.name + " ")
-                    + MathUtils.ceil(ramChargeHolder.getRamChargeTimeLeft()) + "s"
-                    : "")
-                    + "  |  SD " + getSuddenDeathSecondsLeft() + "s";
-        }
-
-        if (ramChargeHolder != null) {
-            String owner = ramChargeHolder.playerControlled ? "YOU" : ramChargeHolder.name;
-            if (suddenDeathActive) {
-                return owner + " RAM " + MathUtils.ceil(ramChargeHolder.getRamChargeTimeLeft())
-                        + "s  |  wipe " + getRoundTimeoutSecondsLeft() + "s";
-            }
-            return owner + " RAM " + MathUtils.ceil(ramChargeHolder.getRamChargeTimeLeft())
                     + "s  |  SD " + getSuddenDeathSecondsLeft() + "s";
         }
 
@@ -3100,21 +3287,15 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         if (growthPickupActive) {
-            return (pointPickupActive ? "Mass + ram core live" : "Mass core live")
-                    + "  |  SD " + getSuddenDeathSecondsLeft() + "s";
-        }
-
-        if (pointPickupActive) {
-            return "Ram core live  |  SD " + getSuddenDeathSecondsLeft() + "s";
+            return "Mass core live  |  SD " + getSuddenDeathSecondsLeft() + "s";
         }
 
         return "Sudden death in " + getSuddenDeathSecondsLeft() + "s";
     }
 
     private String buildObjectiveText() {
-        Car ramChargeHolder = findActiveRamChargeCar();
         if (preRoundCountdownTimer > 0f) {
-            return "Prepare for the horn. First car out gets 1 point, the mass core makes one car huge, the ram core powers one brutal hit, sudden death starts at 20s, and the arena wipes at 35s.";
+            return "Prepare for the horn. First car out gets 1 point, the mass core makes one car huge, sudden death starts at 20s, and the arena wipes at 35s.";
         }
 
         if (roundOver) {
@@ -3135,11 +3316,6 @@ public class RatassGame extends ApplicationAdapter {
                     : boostedCar.name + " has the mass core for ")
                     + MathUtils.ceil(growthBoostTimer)
                     + " more seconds. "
-                    + (ramChargeHolder != null
-                    ? (ramChargeHolder.playerControlled
-                    ? "You hold the ram core. "
-                    : ramChargeHolder.name + " holds the ram core. ")
-                    : pointPickupActive ? "Ram core live. " : "")
                     + "Sudden death in "
                     + getSuddenDeathSecondsLeft()
                     + "s, wipe in "
@@ -3147,31 +3323,8 @@ public class RatassGame extends ApplicationAdapter {
                     + "s.";
         }
 
-        if (ramChargeHolder != null) {
-            return (ramChargeHolder.playerControlled
-                    ? "Ram core active: your next clean hit will slam harder for "
-                    : ramChargeHolder.name + " holds the ram core for ")
-                    + MathUtils.ceil(ramChargeHolder.getRamChargeTimeLeft())
-                    + " more seconds. Sudden death in "
-                    + getSuddenDeathSecondsLeft()
-                    + "s, wipe in "
-                    + getRoundTimeoutSecondsLeft()
-                    + "s.";
-        }
-
         if (growthPickupActive) {
-            return currentMap.getName()
-                    + (pointPickupActive
-                    ? ": mass core and ram core live. Sudden death in "
-                    : ": mass core live. Sudden death in ")
-                    + getSuddenDeathSecondsLeft()
-                    + "s, wipe in "
-                    + getRoundTimeoutSecondsLeft()
-                    + "s.";
-        }
-
-        if (pointPickupActive) {
-            return currentMap.getName() + ": ram core live. Sudden death in "
+            return currentMap.getName() + ": mass core live. Sudden death in "
                     + getSuddenDeathSecondsLeft()
                     + "s, wipe in "
                     + getRoundTimeoutSecondsLeft()
@@ -3189,11 +3342,6 @@ public class RatassGame extends ApplicationAdapter {
         if (boostedCar != null && boostedCar.active) {
             return (boostedCar.playerControlled ? "The big YOU" : boostedCar.name + " in big form")
                     + " destroys every car it hits.";
-        }
-        Car ramChargeHolder = findActiveRamChargeCar();
-        if (ramChargeHolder != null) {
-            return (ramChargeHolder.playerControlled ? "Your ram core" : ramChargeHolder.name + "'s ram core")
-                    + " still launches much harder.";
         }
         return "The slower car in every hit is destroyed.";
     }
@@ -3644,16 +3792,16 @@ public class RatassGame extends ApplicationAdapter {
         private static final float FIXTURE_RESTITUTION = 0.46f;
         private static final float GROWTH_SCALE = 1.40f;
         private static final float GROWTH_MASS_MULTIPLIER = 10f;
-        private static final float DRIVE_FORCE = 96f;
-        private static final float REVERSE_FORCE = 74f;
-        private static final float BRAKE_FORCE = 138f;
+        private static final float DRIVE_FORCE = 192f;
+        private static final float REVERSE_FORCE = 148f;
+        private static final float BRAKE_FORCE = 276f;
         private static final float BRAKE_SPEED_THRESHOLD = 0.45f;
         private static final float PLAYER_TURN_TORQUE = 48f;
         private static final float AI_TURN_TORQUE = 38f;
         private static final float LATERAL_GRIP = 0.72f;
         private static final float ANGULAR_GRIP = 0.23f;
         private static final float FORWARD_DRAG = 1.55f;
-        private static final float MAX_SPEED = 15.2f;
+        private static final float MAX_SPEED = 30.4f;
         private static final float GROWTH_TURN_MULTIPLIER = 0.90f;
         private static final float MAX_GROWTH_SPEED_MULTIPLIER = 1.06f;
         private static final float MIN_COLLISION_RESPONSE_IMPULSE = 3.6f;
@@ -3668,7 +3816,7 @@ public class RatassGame extends ApplicationAdapter {
         private static final float IMPACT_SLIDE_DURATION = 0.54f;
         private static final float IMPACT_SLIDE_REFERENCE = 18f;
         private static final float BOOSTED_VS_NORMAL_REBOUND_MULTIPLIER = 0.85f;
-        private static final float NORMAL_VS_BOOSTED_REBOUND_MULTIPLIER = 3.15f;
+        private static final float NORMAL_VS_BOOSTED_REBOUND_MULTIPLIER = 31.5f;
         private static final float BOOSTED_VS_BOOSTED_REBOUND_MULTIPLIER = 1.70f;
         private static final float RAM_CHARGE_ATTACKER_REBOUND_MULTIPLIER = 0.70f;
         private static final float RAM_CHARGE_VICTIM_REBOUND_MULTIPLIER = 1.85f;

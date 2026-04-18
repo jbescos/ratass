@@ -60,7 +60,6 @@ public final class CarAiController {
     private static final float EMPOWERED_CLOSING_SPEED_THRESHOLD = 1.2f;
     private static final float EVASIVE_STRAFE_DISTANCE = 0.88f;
     private static final float BOOSTED_TARGET_BONUS = 1.85f;
-    private static final float RAM_CHARGE_TARGET_BONUS = 1.35f;
     private static final float LEADER_TARGET_BONUS = 1.75f;
     private static final float GRUDGE_TARGET_BONUS = 2.65f;
     private static final float DOGPILE_TARGET_BONUS = 1.85f;
@@ -952,9 +951,6 @@ public final class CarAiController {
             }
             if (candidate.hasGrowthBoost()) {
                 score += BOOSTED_TARGET_BONUS;
-            }
-            if (candidate.hasRamCharge()) {
-                score += RAM_CHARGE_TARGET_BONUS;
             }
             if (candidate.getScore() == topScore && candidate.getScore() > self.getScore()) {
                 score += LEADER_TARGET_BONUS;
