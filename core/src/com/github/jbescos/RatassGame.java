@@ -2625,7 +2625,9 @@ public class RatassGame extends ApplicationAdapter {
         pixmap.fill();
 
         for (int pixelY = 0; pixelY < textureHeight; pixelY++) {
-            float worldY = arenaBounds.y + (pixelY + 0.5f) * arenaBounds.height / textureHeight;
+            float worldY =
+                    arenaBounds.y
+                            + (textureHeight - pixelY - 0.5f) * arenaBounds.height / textureHeight;
             for (int pixelX = 0; pixelX < textureWidth; pixelX++) {
                 float worldX = arenaBounds.x + (pixelX + 0.5f) * arenaBounds.width / textureWidth;
                 if (!map.approximateSupports(worldX, worldY)) {
