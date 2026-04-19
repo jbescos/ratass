@@ -378,6 +378,8 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<DestructionEffect> destructionEffects = new Array<DestructionEffect>();
     private final Array<CarVisual> themeCarVisuals = new Array<CarVisual>();
     private final Array<String> themeEnemyNames = new Array<String>();
+    private final LinkedHashMap<String, Texture> arenaSurfaceTextureCache =
+            new LinkedHashMap<String, Texture>();
     private final GlyphLayout glyphLayout = new GlyphLayout();
     private final Color tint = new Color();
     private final Rectangle mapBounds = new Rectangle();
@@ -474,6 +476,7 @@ public class RatassGame extends ApplicationAdapter {
     private boolean pointPickupActive;
     private boolean hasLastGrowthPickupPosition;
     private boolean hasLastPointPickupPosition;
+    private boolean leaderboardDirty = true;
     private boolean roundOver;
     private boolean roundStartSoundPlayed;
     private boolean roundTimedOut;
@@ -554,6 +557,7 @@ public class RatassGame extends ApplicationAdapter {
                     visual,
                     personality.id);
         }
+        invalidateLeaderboard();
     }
 
     private int getConfiguredEnemyCount() {
@@ -595,6 +599,7 @@ public class RatassGame extends ApplicationAdapter {
                     visual,
                     participant.label);
         }
+        invalidateLeaderboard();
     }
 
     private void addRosterTemplate(
@@ -1418,7 +1423,6 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         currentMap = mapProgression.getCurrentMap();
-        disposeTexture(arenaSurfaceTexture);
         arenaSurfaceTexture = null;
         cameraInitialized = false;
         updateWorldCamera();
@@ -1474,6 +1478,8 @@ public class RatassGame extends ApplicationAdapter {
 
         cameraInitialized = false;
         updateWorldCamera();
+        warmArenaSurfaceTextures();
+        invalidateLeaderboard();
         spawnGrowthPickup();
     }
 
@@ -1551,6 +1557,8 @@ public class RatassGame extends ApplicationAdapter {
         if (winner != null && winner.playerControlled) {
             playerWins++;
         }
+
+        invalidateLeaderboard();
     }
 
     private void eliminateCar(Car car) {
@@ -1569,6 +1577,7 @@ public class RatassGame extends ApplicationAdapter {
         }
         car.pendingElimination = false;
         car.eliminate(world);
+        invalidateLeaderboard();
     }
 
     private void queueCollisionElimination(Car car) {
@@ -2051,6 +2060,7 @@ public class RatassGame extends ApplicationAdapter {
         car.template.totalPoints++;
         car.template.roundPickupPoints++;
         car.setGrowthBoost(true);
+        invalidateLeaderboard();
         playSound(pickupSound, 0.72f);
         if (car.playerControlled) {
             announceEvent("MASS CORE", "You are huge for 10 seconds.", new Color(0.99f, 0.85f, 0.28f, 1f));
@@ -2236,7 +2246,7 @@ public class RatassGame extends ApplicationAdapter {
         worldViewport.apply();
         shapeRenderer.setProjectionMatrix(worldCamera.combined);
         spriteBatch.setProjectionMatrix(worldCamera.combined);
-        ensureArenaSurfaceTexture(theme);
+        ensureArenaSurfaceTexture();
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
@@ -2554,19 +2564,59 @@ public class RatassGame extends ApplicationAdapter {
                 mapBounds.height);
     }
 
-    private void ensureArenaSurfaceTexture(MapTheme theme) {
+    private void ensureArenaSurfaceTexture() {
         if (currentMap == null || arenaSurfaceTexture != null || Gdx.gl == null) {
             return;
         }
 
+        arenaSurfaceTexture = arenaSurfaceTextureCache.get(buildArenaSurfaceCacheKey(currentMap));
+    }
+
+    private void warmArenaSurfaceTextures() {
+        if (currentMap == null || Gdx.gl == null) {
+            return;
+        }
+
+        arenaSurfaceTexture = getOrCreateArenaSurfaceTexture(currentMap, currentTheme());
+    }
+
+    private Texture getOrCreateArenaSurfaceTexture(ArenaMap map, MapTheme theme) {
+        if (map == null || Gdx.gl == null) {
+            return null;
+        }
+
+        String cacheKey = buildArenaSurfaceCacheKey(map);
+        Texture texture = arenaSurfaceTextureCache.get(cacheKey);
+        if (texture != null) {
+            return texture;
+        }
+
+        texture = buildArenaSurfaceTexture(map, theme);
+        if (texture != null) {
+            arenaSurfaceTextureCache.put(cacheKey, texture);
+        }
+        return texture;
+    }
+
+    private String buildArenaSurfaceCacheKey(ArenaMap map) {
+        String mapId = map.getId();
+        return configuredThemeName + ":" + (mapId == null ? Integer.toHexString(map.hashCode()) : mapId);
+    }
+
+    private Texture buildArenaSurfaceTexture(ArenaMap map, MapTheme theme) {
+        Rectangle arenaBounds = new Rectangle();
+        Vector2 arenaFocus = new Vector2();
+        map.getBounds(arenaBounds);
+        map.getFocusPoint(arenaFocus);
+
         int textureWidth =
                 MathUtils.clamp(
-                        MathUtils.ceil(mapBounds.width * ARENA_PIXEL_ART_PIXELS_PER_WORLD_UNIT),
+                        MathUtils.ceil(arenaBounds.width * ARENA_PIXEL_ART_PIXELS_PER_WORLD_UNIT),
                         ARENA_PIXEL_ART_MIN_TEXTURE_SIZE,
                         ARENA_PIXEL_ART_MAX_TEXTURE_SIZE);
         int textureHeight =
                 MathUtils.clamp(
-                        MathUtils.ceil(mapBounds.height * ARENA_PIXEL_ART_PIXELS_PER_WORLD_UNIT),
+                        MathUtils.ceil(arenaBounds.height * ARENA_PIXEL_ART_PIXELS_PER_WORLD_UNIT),
                         ARENA_PIXEL_ART_MIN_TEXTURE_SIZE,
                         ARENA_PIXEL_ART_MAX_TEXTURE_SIZE);
 
@@ -2575,32 +2625,44 @@ public class RatassGame extends ApplicationAdapter {
         pixmap.fill();
 
         for (int pixelY = 0; pixelY < textureHeight; pixelY++) {
-            float worldY = mapBounds.y + (pixelY + 0.5f) * mapBounds.height / textureHeight;
+            float worldY = arenaBounds.y + (pixelY + 0.5f) * arenaBounds.height / textureHeight;
             for (int pixelX = 0; pixelX < textureWidth; pixelX++) {
-                float worldX = mapBounds.x + (pixelX + 0.5f) * mapBounds.width / textureWidth;
-                if (!currentMap.supports(worldX, worldY)) {
+                float worldX = arenaBounds.x + (pixelX + 0.5f) * arenaBounds.width / textureWidth;
+                if (!map.approximateSupports(worldX, worldY)) {
                     continue;
                 }
 
+                float hazardDepth = map.approximateDistanceToHazard(worldX, worldY);
                 pixmap.drawPixel(
                         pixelX,
                         pixelY,
-                        buildArenaSurfacePixel(theme, worldX, worldY, pixelX, pixelY));
+                        buildArenaSurfacePixel(
+                                theme,
+                                arenaBounds,
+                                arenaFocus,
+                                hazardDepth,
+                                worldX,
+                                worldY,
+                                pixelX,
+                                pixelY));
             }
         }
 
-        arenaSurfaceTexture = new Texture(pixmap);
-        arenaSurfaceTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        Texture texture = new Texture(pixmap);
+        texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         pixmap.dispose();
+        return texture;
     }
 
     private int buildArenaSurfacePixel(
             MapTheme theme,
+            Rectangle arenaBounds,
+            Vector2 arenaFocus,
+            float hazardDepth,
             float worldX,
             float worldY,
             int pixelX,
             int pixelY) {
-        float hazardDepth = currentMap.distanceToHazard(worldX, worldY);
         float centerBlend = smooth01(MathUtils.clamp(hazardDepth / 1.9f, 0f, 1f));
         float rimBlend = 1f - smooth01(MathUtils.clamp(hazardDepth / 0.55f, 0f, 1f));
         float checker =
@@ -2631,7 +2693,15 @@ public class RatassGame extends ApplicationAdapter {
             softMix += 0.04f;
         }
 
-        float accentMix = computeArenaSurfaceAccentMix(theme.decorStyle, worldX, worldY, pixelX, pixelY);
+        float accentMix =
+                computeArenaSurfaceAccentMix(
+                        theme.decorStyle,
+                        arenaBounds,
+                        arenaFocus,
+                        worldX,
+                        worldY,
+                        pixelX,
+                        pixelY);
         float edgeHighlightMix = rimBlend * 0.12f;
 
         red = MathUtils.lerp(red, theme.edge.r, darkMix);
@@ -2659,6 +2729,8 @@ public class RatassGame extends ApplicationAdapter {
 
     private float computeArenaSurfaceAccentMix(
             MapDecorStyle decorStyle,
+            Rectangle arenaBounds,
+            Vector2 arenaFocus,
             float worldX,
             float worldY,
             int pixelX,
@@ -2666,9 +2738,9 @@ public class RatassGame extends ApplicationAdapter {
         float accentMix = 0f;
         switch (decorStyle) {
             case RUNWAY:
-                boolean horizontalRunway = mapBounds.width >= mapBounds.height;
-                float runwayCross = horizontalRunway ? worldY - focusPoint.y : worldX - focusPoint.x;
-                float runwayAlong = horizontalRunway ? worldX - mapBounds.x : worldY - mapBounds.y;
+                boolean horizontalRunway = arenaBounds.width >= arenaBounds.height;
+                float runwayCross = horizontalRunway ? worldY - arenaFocus.y : worldX - arenaFocus.x;
+                float runwayAlong = horizontalRunway ? worldX - arenaBounds.x : worldY - arenaBounds.y;
                 if (Math.abs(runwayCross) < 0.18f
                         && ((int) Math.floor(runwayAlong * 3.5f) & 3) < 2) {
                     accentMix += 0.26f;
@@ -2678,7 +2750,7 @@ public class RatassGame extends ApplicationAdapter {
                 }
                 break;
             case ORBIT:
-                float orbitDistance = Vector2.dst(worldX, worldY, focusPoint.x, focusPoint.y);
+                float orbitDistance = Vector2.dst(worldX, worldY, arenaFocus.x, arenaFocus.y);
                 if (isNearRepeatingLine(orbitDistance, 1.65f, 0.07f)) {
                     accentMix += 0.16f;
                 }
@@ -2687,10 +2759,10 @@ public class RatassGame extends ApplicationAdapter {
                 }
                 break;
             case CROSS:
-                if (Math.abs(worldX - focusPoint.x) < 0.14f || Math.abs(worldY - focusPoint.y) < 0.14f) {
+                if (Math.abs(worldX - arenaFocus.x) < 0.14f || Math.abs(worldY - arenaFocus.y) < 0.14f) {
                     accentMix += 0.20f;
                 }
-                if (Math.abs(worldX - focusPoint.x) < 0.52f || Math.abs(worldY - focusPoint.y) < 0.52f) {
+                if (Math.abs(worldX - arenaFocus.x) < 0.52f || Math.abs(worldY - arenaFocus.y) < 0.52f) {
                     accentMix += 0.07f;
                 }
                 break;
@@ -2703,8 +2775,8 @@ public class RatassGame extends ApplicationAdapter {
                 }
                 break;
             case FORTRESS:
-                float insetX = Math.min(worldX - mapBounds.x, mapBounds.x + mapBounds.width - worldX);
-                float insetY = Math.min(worldY - mapBounds.y, mapBounds.y + mapBounds.height - worldY);
+                float insetX = Math.min(worldX - arenaBounds.x, arenaBounds.x + arenaBounds.width - worldX);
+                float insetY = Math.min(worldY - arenaBounds.y, arenaBounds.y + arenaBounds.height - worldY);
                 float inset = Math.min(insetX, insetY);
                 if (Math.abs(inset - 0.55f) < 0.06f || Math.abs(inset - 1.15f) < 0.06f) {
                     accentMix += 0.15f;
@@ -2717,8 +2789,8 @@ public class RatassGame extends ApplicationAdapter {
                 break;
             case GRID:
             default:
-                if (isNearRepeatingLine(worldX - mapBounds.x, 0.82f, 0.05f)
-                        || isNearRepeatingLine(worldY - mapBounds.y, 0.82f, 0.05f)) {
+                if (isNearRepeatingLine(worldX - arenaBounds.x, 0.82f, 0.05f)
+                        || isNearRepeatingLine(worldY - arenaBounds.y, 0.82f, 0.05f)) {
                     accentMix += 0.10f;
                 }
                 if (pixelX % (int) ARENA_PIXEL_ART_DECOR_GRID == 0
@@ -3618,9 +3690,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void drawLeaderboard(float sidebarX, float sidebarWidth, float hudHeight) {
-        leaderboardEntries.clear();
-        leaderboardEntries.addAll(roster);
-        leaderboardEntries.sort(leaderboardComparator);
+        refreshLeaderboardEntries();
 
         SidebarLeaderboardLayout layout = getSidebarLeaderboardLayout(sidebarWidth, hudHeight);
         float x = sidebarX + SIDEBAR_CONTENT_MARGIN;
@@ -3668,6 +3738,21 @@ public class RatassGame extends ApplicationAdapter {
                 font.draw(spriteBatch, left, columnX, rowY);
             }
         }
+    }
+
+    private void refreshLeaderboardEntries() {
+        if (!leaderboardDirty) {
+            return;
+        }
+
+        leaderboardEntries.clear();
+        leaderboardEntries.addAll(roster);
+        leaderboardEntries.sort(leaderboardComparator);
+        leaderboardDirty = false;
+    }
+
+    private void invalidateLeaderboard() {
+        leaderboardDirty = true;
     }
 
     private void drawSidebarMinimap(float sidebarX, float sidebarWidth, float hudHeight, MapTheme theme) {
@@ -4242,11 +4327,15 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private MapTheme currentTheme() {
-        if (currentMap == null) {
+        return themeForMap(currentMap);
+    }
+
+    private MapTheme themeForMap(ArenaMap map) {
+        if (map == null) {
             return DEFAULT_MAP_THEME;
         }
 
-        String mapId = currentMap.getId();
+        String mapId = map.getId();
         if (mapId == null) {
             return DEFAULT_MAP_THEME;
         }
@@ -4388,6 +4477,14 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private void disposeArenaSurfaceTextures() {
+        for (Texture texture : arenaSurfaceTextureCache.values()) {
+            disposeTexture(texture);
+        }
+        arenaSurfaceTextureCache.clear();
+        arenaSurfaceTexture = null;
+    }
+
     @Override
     public void dispose() {
         if (world != null) {
@@ -4399,7 +4496,7 @@ public class RatassGame extends ApplicationAdapter {
                 disposeTexture(template.spriteTexture);
             }
         }
-        disposeTexture(arenaSurfaceTexture);
+        disposeArenaSurfaceTextures();
         disposeThemeCarVisualTextures();
         disposeTexture(themeCarsTexture);
         if (shapeRenderer != null) {

@@ -159,9 +159,9 @@ public final class CarAiController {
                 growthPickupActive
                         && growthPickupPosition != null
                         && !self.hasGrowthBoost()
-                        && arenaMap.distanceToHazard(growthPickupPosition) >= POWER_PICKUP_EDGE_MARGIN;
+                        && approximateHazardDistance(arenaMap, growthPickupPosition) >= POWER_PICKUP_EDGE_MARGIN;
 
-        float nearestHazard = arenaMap.distanceToHazard(position);
+        float nearestHazard = approximateHazardDistance(arenaMap, position);
         float awayFromSafetyVelocity = 0f;
         arenaMap.findRecoveryPoint(position, centerBias);
         centerBias.sub(position);
@@ -198,14 +198,14 @@ public final class CarAiController {
                         && pointPickupActive
                         && pointPickupPosition != null
                         && !self.hasRamCharge()
-                        && arenaMap.distanceToHazard(pointPickupPosition) >= POWER_PICKUP_EDGE_MARGIN
+                        && approximateHazardDistance(arenaMap, pointPickupPosition) >= POWER_PICKUP_EDGE_MARGIN
                         && nearestHazard >= personality.recoveryEdgeDistance + 0.15f;
 
         float targetDistanceSq = Float.MAX_VALUE;
         if (chasePointPickup) {
             if (targetBody != null) {
                 targetDistanceSq = position.dst2(targetBody.getPosition());
-                float targetEdgeDistance = arenaMap.distanceToHazard(targetBody.getPosition());
+                float targetEdgeDistance = approximateHazardDistance(arenaMap, targetBody.getPosition());
                 boolean targetPrime =
                         target.hasGrowthBoost()
                                 || targetEdgeDistance < POINT_PICKUP_TARGET_EDGE_OVERRIDE_DISTANCE;
@@ -301,7 +301,7 @@ public final class CarAiController {
                     pushAlignment = targetLead.dot(attackVector);
                 }
 
-                float targetEdge = arenaMap.distanceToHazard(targetPosition);
+                float targetEdge = approximateHazardDistance(arenaMap, targetPosition);
                 boolean commitPush =
                         targetEdge < EDGE_ATTACK_COMMIT_DISTANCE
                                 || (pushAlignment > personality.commitAlignmentThreshold
@@ -522,7 +522,7 @@ public final class CarAiController {
         if (growthPickupActive
                 && growthPickupPosition != null
                 && !target.hasGrowthBoost()
-                && arenaMap.distanceToHazard(growthPickupPosition) >= POWER_PICKUP_EDGE_MARGIN) {
+                && approximateHazardDistance(arenaMap, growthPickupPosition) >= POWER_PICKUP_EDGE_MARGIN) {
             bestScore =
                     planPickupContestOption(position, target, targetBody, growthPickupPosition, 1.35f, out);
         }
@@ -530,7 +530,7 @@ public final class CarAiController {
         if (pointPickupActive
                 && pointPickupPosition != null
                 && !target.hasRamCharge()
-                && arenaMap.distanceToHazard(pointPickupPosition) >= POWER_PICKUP_EDGE_MARGIN) {
+                && approximateHazardDistance(arenaMap, pointPickupPosition) >= POWER_PICKUP_EDGE_MARGIN) {
             float score =
                     planPickupContestOption(position, target, targetBody, pointPickupPosition, 1f, alternateVector);
             if (score > bestScore) {
@@ -621,7 +621,8 @@ public final class CarAiController {
                 .scl(EVASIVE_STRAFE_DISTANCE * personality.empoweredThreatAvoidance);
         alternateVector.set(out).add(flankVector);
         pickupInterceptPoint.set(out).sub(flankVector);
-        if (arenaMap.distanceToHazard(alternateVector) >= arenaMap.distanceToHazard(pickupInterceptPoint)) {
+        if (approximateHazardDistance(arenaMap, alternateVector)
+                >= approximateHazardDistance(arenaMap, pickupInterceptPoint)) {
             out.set(alternateVector);
         } else {
             out.set(pickupInterceptPoint);
@@ -644,8 +645,8 @@ public final class CarAiController {
         flankVector.set(-pushDirection.y, pushDirection.x).scl(flankDistance);
         alternateVector.set(out).add(flankVector);
         pickupInterceptPoint.set(out).sub(flankVector);
-        float positiveHazard = arenaMap.distanceToHazard(alternateVector);
-        float negativeHazard = arenaMap.distanceToHazard(pickupInterceptPoint);
+        float positiveHazard = approximateHazardDistance(arenaMap, alternateVector);
+        float negativeHazard = approximateHazardDistance(arenaMap, pickupInterceptPoint);
         if (positiveHazard > negativeHazard + 0.05f) {
             out.set(alternateVector);
         } else if (negativeHazard > positiveHazard + 0.05f) {
@@ -945,7 +946,7 @@ public final class CarAiController {
 
             Vector2 candidatePosition = candidateBody.getPosition();
             float distance = myPosition.dst(candidatePosition);
-            float candidateEdgeDistance = arenaMap.distanceToHazard(candidatePosition);
+            float candidateEdgeDistance = approximateHazardDistance(arenaMap, candidatePosition);
             float edgeThreat = 4.8f - candidateEdgeDistance;
             float edgeVulnerability = Math.max(0f, EDGE_VULNERABILITY_DISTANCE - candidateEdgeDistance);
             float outwardVelocity = computeOutwardVelocity(arenaMap, candidatePosition, candidateBody);
@@ -1006,5 +1007,9 @@ public final class CarAiController {
         }
 
         return best;
+    }
+
+    private float approximateHazardDistance(ArenaMap arenaMap, Vector2 point) {
+        return arenaMap == null || point == null ? 0f : arenaMap.approximateDistanceToHazard(point);
     }
 }
