@@ -10,6 +10,8 @@ remaining wins the round.
 ## Controls
 
 - `WASD` or arrow keys: drive and steer
+- `Space`: handbrake for drifting
+- `Space + W + A/D`: pivot-spin from a stop
 - `R` or `Enter`: restart the round
 - `Esc`: quit
 

@@ -68,6 +68,13 @@ public final class CarAiController {
     private static final float EDGE_VULNERABILITY_DISTANCE = 2.9f;
     private static final float EDGE_VULNERABILITY_BONUS = 2.4f;
     private static final float EDGE_OUTWARD_SPEED_BONUS = 0.9f;
+    private static final float AI_HANDBRAKE_TURN_THRESHOLD = 0.42f;
+    private static final float AI_HANDBRAKE_PIVOT_SPEED_SQ = 1.55f;
+    private static final float AI_HANDBRAKE_DRIFT_MIN_SPEED_SQ = 5.2f;
+    private static final float AI_HANDBRAKE_PIVOT_ANGLE = 0.88f;
+    private static final float AI_HANDBRAKE_RECOVERY_ANGLE = 0.34f;
+    private static final float AI_HANDBRAKE_ATTACK_ANGLE = 0.48f;
+    private static final float AI_HANDBRAKE_PIVOT_THROTTLE = 0.82f;
 
     private final AiDrivingPersonality personality;
     private final AiControlDecision decision = new AiControlDecision();
@@ -348,6 +355,7 @@ public final class CarAiController {
         float desiredHeading = desiredVector.angleRad();
         float angleError = desiredHeading - currentHeading;
         angleError = MathUtils.atan2(MathUtils.sin(angleError), MathUtils.cos(angleError));
+        float absAngleError = Math.abs(angleError);
 
         boolean defensiveDriving = recovering || evadingThreat;
         float turnGain = defensiveDriving ? personality.recoveryTurnGain : personality.attackTurnGain;
@@ -361,7 +369,7 @@ public final class CarAiController {
 
         float throttle;
         if (defensiveDriving) {
-            if (Math.abs(angleError) > personality.recoveryReverseAngle) {
+            if (absAngleError > personality.recoveryReverseAngle) {
                 throttle = speedSq <= LOW_SPEED_PIVOT_SPEED_SQ
                         ? LOW_SPEED_PIVOT_THROTTLE
                         : RECOVERY_REVERSE_THROTTLE;
@@ -378,18 +386,18 @@ public final class CarAiController {
         } else if (disengaging) {
             throttle = DISENGAGE_REVERSE_THROTTLE;
         } else if (charging) {
-            if (Math.abs(angleError) > personality.reverseAttackAngle) {
+            if (absAngleError > personality.reverseAttackAngle) {
                 throttle = CHARGE_ATTACK_THROTTLE;
-            } else if (Math.abs(angleError) > personality.cautiousAttackAngle) {
+            } else if (absAngleError > personality.cautiousAttackAngle) {
                 throttle = Math.max(personality.cautiousAttackThrottle, CHARGE_ATTACK_THROTTLE);
             } else {
                 throttle = FULL_ATTACK_THROTTLE;
             }
-        } else if (Math.abs(angleError) > personality.reverseAttackAngle) {
+        } else if (absAngleError > personality.reverseAttackAngle) {
             throttle = speedSq <= LOW_SPEED_PIVOT_SPEED_SQ
                     ? LOW_SPEED_PIVOT_THROTTLE
                     : ATTACK_REVERSE_THROTTLE;
-        } else if (Math.abs(angleError) > personality.cautiousAttackAngle) {
+        } else if (absAngleError > personality.cautiousAttackAngle) {
             throttle = personality.cautiousAttackThrottle;
         } else if (desiredVector.len2() < personality.closeTargetDistanceSq) {
             throttle = personality.closeTargetThrottle;
@@ -455,7 +463,32 @@ public final class CarAiController {
             resetStuckProgress(position);
         }
 
-        return decision.set(throttle, turn);
+        float absTurn = Math.abs(turn);
+        boolean handbrakePivot =
+                !disengaging
+                        && absTurn >= AI_HANDBRAKE_TURN_THRESHOLD
+                        && speedSq <= AI_HANDBRAKE_PIVOT_SPEED_SQ
+                        && (absAngleError >= AI_HANDBRAKE_PIVOT_ANGLE
+                        || charging
+                        || escapingOscillation);
+        boolean handbrake = false;
+        if (handbrakePivot) {
+            throttle = Math.max(throttle, AI_HANDBRAKE_PIVOT_THROTTLE);
+            handbrake = true;
+        } else if (!disengaging
+                && throttle > 0.18f
+                && absTurn >= AI_HANDBRAKE_TURN_THRESHOLD
+                && speedSq >= AI_HANDBRAKE_DRIFT_MIN_SPEED_SQ
+                && (absAngleError
+                                >= (defensiveDriving
+                                ? AI_HANDBRAKE_RECOVERY_ANGLE
+                                : AI_HANDBRAKE_ATTACK_ANGLE)
+                        || charging
+                        || escapingOscillation)) {
+            handbrake = true;
+        }
+
+        return decision.set(throttle, turn, handbrake);
     }
 
     private void refreshTargetLock(AiVehicleView target) {

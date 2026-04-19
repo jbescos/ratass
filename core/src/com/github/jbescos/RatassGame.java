@@ -456,6 +456,7 @@ public class RatassGame extends ApplicationAdapter {
     private float effectClock;
     private float frameThrottleInput;
     private float frameTurnInput;
+    private boolean frameHandbrakeInput;
     private float preRoundCountdownTimer;
     private float roundTimer;
     private float touchThrottleInput;
@@ -631,6 +632,7 @@ public class RatassGame extends ApplicationAdapter {
         mapProgression = new MapProgression(maps, new Random(config.seed ^ 0x9E3779B97F4A7C15L));
         frameThrottleInput = 0f;
         frameTurnInput = 0f;
+        frameHandbrakeInput = false;
         roundNumber = 0;
         playerWins = 0;
 
@@ -963,6 +965,7 @@ public class RatassGame extends ApplicationAdapter {
         updateTouchState();
         frameThrottleInput = readPlayerThrottle();
         frameTurnInput = readPlayerTurn();
+        frameHandbrakeInput = readPlayerHandbrake();
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
                 || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
@@ -1022,6 +1025,7 @@ public class RatassGame extends ApplicationAdapter {
                     allowControl,
                     frameThrottleInput,
                     frameTurnInput,
+                    frameHandbrakeInput,
                     growthPickupActive,
                     growthPickupPosition,
                     pointPickupActive,
@@ -1552,6 +1556,10 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         return MathUtils.clamp(turn, -1f, 1f);
+    }
+
+    private boolean readPlayerHandbrake() {
+        return Gdx.input.isKeyPressed(Input.Keys.SPACE);
     }
 
     private void updateTouchState() {
@@ -2589,6 +2597,108 @@ public class RatassGame extends ApplicationAdapter {
             float carWidth = car.getWidth();
             float carHeight = car.getHeight();
             float carScale = car.getSizeScale();
+            float handbrakeIntensity = car.getHandbrakeVisualIntensity();
+
+            if (handbrakeIntensity > 0f) {
+                float spinIntensity = car.getHandbrakeSpinVisualIntensity();
+                float turnDirection = car.getHandbrakeTurnDirection();
+                float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * (12f + i * 0.35f));
+                float rearOffsetY = -carHeight * 0.34f;
+                float wheelOffsetX = carWidth * 0.26f;
+                float trailAngle = angleDeg + turnDirection * (18f + spinIntensity * 24f);
+
+                drawOffsetRotatedRect(
+                        centerX,
+                        centerY,
+                        -wheelOffsetX,
+                        rearOffsetY - carHeight * 0.06f,
+                        carWidth * (0.12f + handbrakeIntensity * 0.08f),
+                        carHeight * (0.38f + handbrakeIntensity * 0.14f),
+                        trailAngle,
+                        1f,
+                        0.82f,
+                        0.42f,
+                        0.10f + handbrakeIntensity * 0.10f + spinIntensity * 0.06f);
+                drawOffsetRotatedRect(
+                        centerX,
+                        centerY,
+                        wheelOffsetX,
+                        rearOffsetY - carHeight * 0.06f,
+                        carWidth * (0.12f + handbrakeIntensity * 0.08f),
+                        carHeight * (0.38f + handbrakeIntensity * 0.14f),
+                        trailAngle,
+                        1f,
+                        0.82f,
+                        0.42f,
+                        0.10f + handbrakeIntensity * 0.10f + spinIntensity * 0.06f);
+
+                drawOffsetCircle(
+                        centerX,
+                        centerY,
+                        -wheelOffsetX,
+                        rearOffsetY,
+                        angleDeg,
+                        carWidth * (0.16f + handbrakeIntensity * 0.10f + pulse * 0.03f),
+                        1f,
+                        0.94f,
+                        0.84f,
+                        0.10f + handbrakeIntensity * 0.10f,
+                        18);
+                drawOffsetCircle(
+                        centerX,
+                        centerY,
+                        wheelOffsetX,
+                        rearOffsetY,
+                        angleDeg,
+                        carWidth * (0.16f + handbrakeIntensity * 0.10f + pulse * 0.03f),
+                        1f,
+                        0.94f,
+                        0.84f,
+                        0.10f + handbrakeIntensity * 0.10f,
+                        18);
+                drawOffsetCircle(
+                        centerX,
+                        centerY,
+                        0f,
+                        rearOffsetY - carHeight * 0.10f,
+                        angleDeg,
+                        carWidth * (0.18f + handbrakeIntensity * 0.11f),
+                        car.color.r,
+                        car.color.g,
+                        car.color.b,
+                        0.05f + handbrakeIntensity * 0.06f,
+                        18);
+
+                if (spinIntensity > 0f) {
+                    float spinDeg = effectClock * (360f + spinIntensity * 160f) * turnDirection;
+                    drawRotatedRect(
+                            centerX,
+                            centerY,
+                            carWidth * (1.85f + pulse * 0.08f),
+                            carHeight * 0.10f,
+                            spinDeg,
+                            1f,
+                            0.78f,
+                            0.24f,
+                            0.18f * spinIntensity);
+                    drawRotatedRect(
+                            centerX,
+                            centerY,
+                            carWidth * 0.28f,
+                            carHeight * (1.75f + pulse * 0.10f),
+                            spinDeg - 90f,
+                            1f,
+                            0.92f,
+                            0.44f,
+                            0.14f * spinIntensity);
+                    shapeRenderer.setColor(1f, 0.84f, 0.32f, 0.10f * spinIntensity);
+                    shapeRenderer.circle(
+                            centerX,
+                            centerY,
+                            Math.max(carWidth, carHeight) * (0.76f + pulse * 0.04f),
+                            26);
+                }
+            }
 
             if (car.hasGrowthBoost()) {
                 float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 6f + i * 0.4f);
@@ -2762,6 +2872,26 @@ public class RatassGame extends ApplicationAdapter {
                         0.74f * alpha);
             }
         }
+    }
+
+    private void drawOffsetCircle(
+            float centerX,
+            float centerY,
+            float offsetX,
+            float offsetY,
+            float angleDeg,
+            float radius,
+            float r,
+            float g,
+            float b,
+            float a,
+            int segments) {
+        float cos = MathUtils.cosDeg(angleDeg);
+        float sin = MathUtils.sinDeg(angleDeg);
+        float rotatedX = centerX + offsetX * cos - offsetY * sin;
+        float rotatedY = centerY + offsetX * sin + offsetY * cos;
+        shapeRenderer.setColor(r, g, b, a);
+        shapeRenderer.circle(rotatedX, rotatedY, radius, segments);
     }
 
     private void drawOffsetRotatedRect(
@@ -3268,7 +3398,7 @@ public class RatassGame extends ApplicationAdapter {
         if (touchControlsEnabled) {
             return "Touch: steer left, gas top-right, reverse bottom-right.";
         }
-        return "WASD or Arrow Keys: drive and steer   Esc: quit";
+        return "WASD/Arrows: drive   Space: handbrake/drift   Space+W+A/D: spin   Esc: quit";
     }
 
     private float getSidebarSummaryCardHeight() {
@@ -3917,6 +4047,20 @@ public class RatassGame extends ApplicationAdapter {
         private static final float LATERAL_GRIP = 0.72f;
         private static final float ANGULAR_GRIP = 0.23f;
         private static final float FORWARD_DRAG = 1.55f;
+        private static final float HANDBRAKE_LATERAL_GRIP_MULTIPLIER = 0.26f;
+        private static final float HANDBRAKE_ANGULAR_GRIP_MULTIPLIER = 0.42f;
+        private static final float HANDBRAKE_PIVOT_ANGULAR_GRIP_MULTIPLIER = 0.18f;
+        private static final float HANDBRAKE_FORWARD_DRAG_MULTIPLIER = 1.18f;
+        private static final float HANDBRAKE_DRIVE_FORCE_MULTIPLIER = 0.78f;
+        private static final float HANDBRAKE_TURN_TORQUE_MULTIPLIER = 1.42f;
+        private static final float HANDBRAKE_STEERING_FLOOR = 0.92f;
+        private static final float HANDBRAKE_PIVOT_SPEED_SQ = 1.35f;
+        private static final float HANDBRAKE_PIVOT_MIN_TURN = 0.20f;
+        private static final float HANDBRAKE_PIVOT_DRIVE_FORCE_MULTIPLIER = 0.18f;
+        private static final float HANDBRAKE_PIVOT_TURN_TORQUE_MULTIPLIER = 3.15f;
+        private static final float HANDBRAKE_PIVOT_LINEAR_DAMPING = 0.74f;
+        private static final float HANDBRAKE_PIVOT_STEERING_STRENGTH = 1.12f;
+        private static final float HANDBRAKE_VISUAL_FADE_SPEED = 5.4f;
         private static final float MAX_SPEED = 30.4f;
         private static final float GROWTH_TURN_MULTIPLIER = 0.90f;
         private static final float MAX_GROWTH_SPEED_MULTIPLIER = 1.06f;
@@ -3970,6 +4114,9 @@ public class RatassGame extends ApplicationAdapter {
         private float ramChargeTimer;
         private float previousRenderAngleRad;
         private float renderAngleRad;
+        private float handbrakeVisualIntensity;
+        private float handbrakeSpinVisualIntensity;
+        private float handbrakeTurnDirection = 1f;
 
         private Car(Body body, CarTemplate template) {
             this.body = body;
@@ -4040,6 +4187,7 @@ public class RatassGame extends ApplicationAdapter {
                 boolean allowControl,
                 float playerThrottle,
                 float playerTurn,
+                boolean playerHandbrake,
                 boolean growthPickupActive,
                 Vector2 growthPickupPosition,
                 boolean pointPickupActive,
@@ -4050,29 +4198,42 @@ public class RatassGame extends ApplicationAdapter {
 
             advanceCombatTimers(delta);
             float impactSlideFactor = advanceImpactSlide(delta);
-            applyGrip(impactSlideFactor);
             applyPendingImpactImpulse();
+
+            float throttle = 0f;
+            float turn = 0f;
+            boolean handbrake = false;
+
+            if (allowControl && controlLockTimer <= 0f) {
+                if (playerControlled) {
+                    throttle = playerThrottle;
+                    turn = playerTurn;
+                    handbrake = playerHandbrake;
+                } else {
+                    AiControlDecision decision =
+                            aiController.plan(
+                                    delta,
+                                    this,
+                                    arenaMap,
+                                    cars,
+                                    growthPickupActive,
+                                    growthPickupPosition,
+                                    pointPickupActive,
+                                    pointPickupPosition);
+                    throttle = decision.throttle;
+                    turn = decision.turn;
+                    handbrake = decision.handbrake;
+                }
+            }
+
+            boolean handbrakePivot = shouldUseHandbrakePivot(handbrake, throttle, turn);
+            applyGrip(impactSlideFactor, handbrake, handbrakePivot);
 
             if (!allowControl || controlLockTimer > 0f) {
                 return;
             }
 
-            if (playerControlled) {
-                drive(playerThrottle, playerTurn);
-                return;
-            }
-
-            AiControlDecision decision =
-                    aiController.plan(
-                            delta,
-                            this,
-                            arenaMap,
-                            cars,
-                            growthPickupActive,
-                            growthPickupPosition,
-                            pointPickupActive,
-                            pointPickupPosition);
-            drive(decision.throttle, decision.turn);
+            drive(throttle, turn, handbrake, handbrakePivot);
         }
 
         private void updateAxes() {
@@ -4096,6 +4257,10 @@ public class RatassGame extends ApplicationAdapter {
             }
             controlLockTimer = Math.max(0f, controlLockTimer - delta);
             ramChargeTimer = Math.max(0f, ramChargeTimer - delta);
+            handbrakeVisualIntensity = Math.max(0f, handbrakeVisualIntensity - delta * HANDBRAKE_VISUAL_FADE_SPEED);
+            handbrakeSpinVisualIntensity = Math.max(
+                    0f,
+                    handbrakeSpinVisualIntensity - delta * (HANDBRAKE_VISUAL_FADE_SPEED + 1.2f));
         }
 
         private float advanceImpactSlide(float delta) {
@@ -4111,7 +4276,14 @@ public class RatassGame extends ApplicationAdapter {
             return slideFactor;
         }
 
-        private void applyGrip(float impactSlideFactor) {
+        private boolean shouldUseHandbrakePivot(boolean handbrake, float throttle, float turn) {
+            return handbrake
+                    && throttle > 0.1f
+                    && Math.abs(turn) >= HANDBRAKE_PIVOT_MIN_TURN
+                    && body.getLinearVelocity().len2() <= HANDBRAKE_PIVOT_SPEED_SQ;
+        }
+
+        private void applyGrip(float impactSlideFactor, boolean handbrake, boolean handbrakePivot) {
             updateAxes();
 
             float gripMultiplier = MathUtils.clamp(1f - 0.68f * impactSlideFactor, 0.18f, 1f);
@@ -4120,6 +4292,15 @@ public class RatassGame extends ApplicationAdapter {
                 gripMultiplier *= 0.58f;
                 dragMultiplier *= 0.76f;
             }
+            float angularGripMultiplier = 1f;
+            if (handbrake) {
+                gripMultiplier *= HANDBRAKE_LATERAL_GRIP_MULTIPLIER;
+                dragMultiplier *= HANDBRAKE_FORWARD_DRAG_MULTIPLIER;
+                angularGripMultiplier =
+                        handbrakePivot
+                                ? HANDBRAKE_PIVOT_ANGULAR_GRIP_MULTIPLIER
+                                : HANDBRAKE_ANGULAR_GRIP_MULTIPLIER;
+            }
             float longitudinalForceMultiplier = getMassMultiplier();
 
             float lateralSpeed = sidewaysAxis.dot(body.getLinearVelocity());
@@ -4127,15 +4308,27 @@ public class RatassGame extends ApplicationAdapter {
             body.applyLinearImpulse(working, body.getWorldCenter(), true);
 
             body.applyAngularImpulse(
-                    -body.getAngularVelocity() * body.getInertia() * ANGULAR_GRIP * gripMultiplier,
+                    -body.getAngularVelocity()
+                            * body.getInertia()
+                            * ANGULAR_GRIP
+                            * gripMultiplier
+                            * angularGripMultiplier,
                     true);
 
             float forwardSpeed = forwardAxis.dot(body.getLinearVelocity());
             working.set(forwardAxis).scl(-forwardSpeed * FORWARD_DRAG * dragMultiplier * longitudinalForceMultiplier);
             body.applyForceToCenter(working, true);
+
+            if (handbrakePivot) {
+                working.set(body.getLinearVelocity()).scl(HANDBRAKE_PIVOT_LINEAR_DAMPING);
+                if (working.len2() < 0.01f) {
+                    working.setZero();
+                }
+                body.setLinearVelocity(working);
+            }
         }
 
-        private void drive(float throttle, float turn) {
+        private void drive(float throttle, float turn, boolean handbrake, boolean handbrakePivot) {
             updateAxes();
             float signedForwardSpeed = forwardAxis.dot(body.getLinearVelocity());
             float longitudinalForceMultiplier = getMassMultiplier();
@@ -4146,12 +4339,14 @@ public class RatassGame extends ApplicationAdapter {
                         (throttle > 0f && signedForwardSpeed < -BRAKE_SPEED_THRESHOLD)
                                 || (throttle < 0f && signedForwardSpeed > BRAKE_SPEED_THRESHOLD);
                 float driveForce;
-                if (braking) {
+                if (handbrakePivot) {
+                    driveForce = DRIVE_FORCE * HANDBRAKE_PIVOT_DRIVE_FORCE_MULTIPLIER;
+                } else if (braking) {
                     driveForce = BRAKE_FORCE;
                 } else if (throttle > 0f) {
-                    driveForce = DRIVE_FORCE;
+                    driveForce = DRIVE_FORCE * (handbrake ? HANDBRAKE_DRIVE_FORCE_MULTIPLIER : 1f);
                 } else {
-                    driveForce = REVERSE_FORCE;
+                    driveForce = REVERSE_FORCE * (handbrake ? HANDBRAKE_DRIVE_FORCE_MULTIPLIER : 1f);
                 }
                 engineForce = throttle * driveForce * longitudinalForceMultiplier;
             }
@@ -4171,6 +4366,14 @@ public class RatassGame extends ApplicationAdapter {
                 turnTorque = AI_TURN_TORQUE;
             }
 
+            if (handbrake) {
+                steeringStrength = Math.max(steeringStrength, HANDBRAKE_STEERING_FLOOR);
+                turnTorque *= HANDBRAKE_TURN_TORQUE_MULTIPLIER;
+            }
+            if (handbrakePivot) {
+                steeringStrength = Math.max(steeringStrength, HANDBRAKE_PIVOT_STEERING_STRENGTH);
+                turnTorque *= HANDBRAKE_PIVOT_TURN_TORQUE_MULTIPLIER;
+            }
             if (growthBoosted) {
                 steeringStrength = MathUtils.clamp(steeringStrength * 0.96f, 0.30f, 1.3f);
                 turnTorque *= GROWTH_TURN_MULTIPLIER;
@@ -4184,6 +4387,7 @@ public class RatassGame extends ApplicationAdapter {
                 steeringDirection = -1f;
             }
             body.applyTorque(turn * steeringDirection * turnTorque * steeringStrength, true);
+            updateHandbrakeVisuals(handbrake, handbrakePivot, turn);
 
             float currentSpeed = body.getLinearVelocity().len();
             float maxSpeed = MAX_SPEED * (growthBoosted ? MAX_GROWTH_SPEED_MULTIPLIER : 1f);
@@ -4191,6 +4395,22 @@ public class RatassGame extends ApplicationAdapter {
                 working.set(body.getLinearVelocity()).scl(maxSpeed / currentSpeed);
                 body.setLinearVelocity(working);
             }
+        }
+
+        private void updateHandbrakeVisuals(boolean handbrake, boolean handbrakePivot, float turn) {
+            if (!handbrake || Math.abs(turn) < 0.08f) {
+                return;
+            }
+
+            float speed = body.getLinearVelocity().len();
+            float driftStrength = MathUtils.clamp(Math.abs(turn) * (0.38f + speed * 0.10f), 0f, 1f);
+            handbrakeVisualIntensity = Math.max(handbrakeVisualIntensity, driftStrength);
+            if (handbrakePivot) {
+                handbrakeSpinVisualIntensity = Math.max(
+                        handbrakeSpinVisualIntensity,
+                        MathUtils.clamp(0.55f + Math.abs(turn) * 0.45f, 0f, 1f));
+            }
+            handbrakeTurnDirection = turn < 0f ? -1f : 1f;
         }
 
         private void absorbCollision(
@@ -4352,6 +4572,8 @@ public class RatassGame extends ApplicationAdapter {
             controlLockTimer = 0f;
             recentImpactTimer = 0f;
             lastAttackerId = -1;
+            handbrakeVisualIntensity = 0f;
+            handbrakeSpinVisualIntensity = 0f;
         }
 
         private void rebuildCollisionFixture() {
@@ -4395,6 +4617,18 @@ public class RatassGame extends ApplicationAdapter {
 
         private float getSizeScale() {
             return sizeScale;
+        }
+
+        private float getHandbrakeVisualIntensity() {
+            return handbrakeVisualIntensity;
+        }
+
+        private float getHandbrakeSpinVisualIntensity() {
+            return handbrakeSpinVisualIntensity;
+        }
+
+        private float getHandbrakeTurnDirection() {
+            return handbrakeTurnDirection;
         }
 
         private float getGrowthPickupReach() {
