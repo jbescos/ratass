@@ -4,6 +4,7 @@ import com.badlogic.gdx.Application.ApplicationType;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
@@ -46,32 +47,42 @@ import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.SpawnPoint;
 import com.github.jbescos.gameplay.maps.ArenaMaps;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Random;
 
 public class RatassGame extends ApplicationAdapter {
     private static final String GAME_PROPERTIES_RESOURCE = "game.properties";
     private static final String GAME_PROPERTIES_FILE = "assets/game.properties";
+    private static final String SETTINGS_PREFS_NAME = "ratass-settings";
     private static final String THEME_PROPERTY = "theme";
+    private static final String THEME_PREF_KEY = THEME_PROPERTY;
     private static final String DEFAULT_THEME_NAME = "infernal";
     private static final String CAMERA_FOLLOW_BEHIND_PROPERTY = "camera.follow.behind";
+    private static final String CAMERA_FOLLOW_BEHIND_PREF_KEY = CAMERA_FOLLOW_BEHIND_PROPERTY;
+    private static final String CAR_COUNT_PROPERTY = "cars.count";
+    private static final String CAR_COUNT_PREF_KEY = CAR_COUNT_PROPERTY;
     private static final String THEME_DIRECTORY = "theme";
     private static final String THEME_CAR_SHEET_PATH = "cars/cars.png";
     private static final String THEME_ENEMY_NAMES_PATH = "enemy-names.txt";
+    private static final ThemeChoice[] THEME_CHOICES = new ThemeChoice[] {
+            new ThemeChoice("infernal", "Infernal"),
+            new ThemeChoice("luxury", "Luxury Cars"),
+            new ThemeChoice("classical", "Classical Cars"),
+            new ThemeChoice("circus", "Circus Cars")
+    };
     private static final int THEME_CAR_SHEET_COLUMNS = 12;
     private static final int THEME_CAR_SHEET_ROWS = 5;
     private static final int THEME_CAR_TEXTURE_PADDING = 2;
     private static final int BACKGROUND_ALPHA_CUTOUT_THRESHOLD = 5;
     private static final int BACKGROUND_ALPHA_OPAQUE_THRESHOLD = 16;
+    private static final int DEFAULT_CAR_COUNT = 20;
+    private static final int MIN_CAR_COUNT = 2;
+    private static final int MAX_CAR_COUNT = 61;
     private static final float ARENA_PIXEL_ART_PIXELS_PER_WORLD_UNIT = 12f;
     private static final int ARENA_PIXEL_ART_MIN_TEXTURE_SIZE = 128;
     private static final int ARENA_PIXEL_ART_MAX_TEXTURE_SIZE = 512;
@@ -144,6 +155,13 @@ public class RatassGame extends ApplicationAdapter {
     private static final float TITLE_FONT_SCALE = 2.25f;
     private static final float LEADERBOARD_FONT_SCALE = 0.96f;
     private static final float LABEL_FONT_SCALE = 0.86f;
+    private static final float MENU_BUTTON_WIDTH = 340f;
+    private static final float MENU_BUTTON_HEIGHT = 56f;
+    private static final float MENU_BUTTON_GAP = 18f;
+    private static final float MENU_OPTION_ROW_WIDTH = 560f;
+    private static final float MENU_OPTION_ROW_HEIGHT = 54f;
+    private static final float MENU_OPTION_STEP_BUTTON_WIDTH = 58f;
+    private static final float MENU_MIN_SIDE_MARGIN = 24f;
     private static final float CAR_SPRITE_WIDTH_SCALE = 1.16f;
     private static final float CAR_SPRITE_HEIGHT_SCALE = 1.14f;
     private static final float CAR_SPRITE_ROTATION_OFFSET_DEG = 180f;
@@ -391,6 +409,16 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector2 lastPointPickupPosition = new Vector2();
     private final Vector2 spawnCandidate = new Vector2();
     private final Array<SpawnPoint> roundSpawns = new Array<SpawnPoint>();
+    private final Rectangle menuNewGameBounds = new Rectangle();
+    private final Rectangle menuOptionsBounds = new Rectangle();
+    private final Rectangle optionsThemeBounds = new Rectangle();
+    private final Rectangle optionsThemePrevBounds = new Rectangle();
+    private final Rectangle optionsThemeNextBounds = new Rectangle();
+    private final Rectangle optionsCarsBounds = new Rectangle();
+    private final Rectangle optionsCarsPrevBounds = new Rectangle();
+    private final Rectangle optionsCarsNextBounds = new Rectangle();
+    private final Rectangle optionsCameraBounds = new Rectangle();
+    private final Rectangle optionsBackBounds = new Rectangle();
     private final Rectangle steerPadBounds = new Rectangle();
     private final Rectangle throttlePadBounds = new Rectangle();
     private final Rectangle reversePadBounds = new Rectangle();
@@ -409,9 +437,6 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector3 hudTouchPoint = new Vector3();
     private final Vector3 carLabelProjection = new Vector3();
     private final ImpactContactListener impactContactListener = new ImpactContactListener();
-    private final String configuredThemeName = loadConfiguredThemeName();
-    private final boolean followCameraBehind =
-            loadConfiguredBooleanProperty(CAMERA_FOLLOW_BEHIND_PROPERTY, false);
     private final Comparator<CarTemplate> leaderboardComparator = new Comparator<CarTemplate>() {
         @Override
         public int compare(CarTemplate left, CarTemplate right) {
@@ -449,6 +474,7 @@ public class RatassGame extends ApplicationAdapter {
     private Texture arenaSurfaceTexture;
     private Texture themeCarsTexture;
 
+    private GameMode gameMode = GameMode.MAIN_MENU;
     private MapProgression mapProgression;
     private ArenaMap currentMap;
     private float accumulator;
@@ -487,11 +513,17 @@ public class RatassGame extends ApplicationAdapter {
     private int finishPositionCounter;
     private int timeoutSharedPoints;
     private int timeoutSurvivorCount;
+    private int selectedThemeIndex;
+    private int selectedCarCount = DEFAULT_CAR_COUNT;
+    private int mainMenuSelection;
+    private int optionsMenuSelection;
     private Car boostedCar;
     private Car playerCar;
     private Car winner;
     private String eventCalloutTitle = "";
     private String eventCalloutSubline = "";
+    private String configuredThemeName = DEFAULT_THEME_NAME;
+    private boolean followCameraBehind;
 
     @Override
     public void create() {
@@ -522,16 +554,74 @@ public class RatassGame extends ApplicationAdapter {
         labelFont.setUseIntegerPositions(false);
         labelFont.getData().setScale(LABEL_FONT_SCALE);
 
+        loadMenuSettings();
+        Gdx.input.setCatchKey(Input.Keys.BACK, true);
+        resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+    }
+
+    private void startNewGame() {
+        disposeRosterSpriteTextures();
+        disposeArenaSurfaceTextures();
         loadThemeEnemyNames();
         loadThemeTextures();
         loadSounds();
-        Gdx.input.setCatchKey(Input.Keys.BACK, true);
         createRoster();
         loadCarSprites();
         mapProgression = new MapProgression(ArenaMaps.createDefaultSet());
 
+        roundNumber = 0;
+        playerWins = 0;
+        accumulator = 0f;
+        roundOverTimer = 0f;
+        effectClock = 0f;
+        eventCalloutTimer = 0f;
+        cameraInitialized = false;
+        gameMode = GameMode.PLAYING;
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         resetRound(false);
+    }
+
+    private void loadMenuSettings() {
+        configuredThemeName = normalizeThemeName(loadConfiguredThemeName());
+        followCameraBehind = loadConfiguredBooleanProperty(CAMERA_FOLLOW_BEHIND_PROPERTY, false);
+        selectedCarCount = loadConfiguredIntProperty(CAR_COUNT_PROPERTY, DEFAULT_CAR_COUNT);
+
+        Preferences preferences = loadPreferences();
+        if (preferences != null) {
+            configuredThemeName =
+                    normalizeThemeName(preferences.getString(THEME_PREF_KEY, configuredThemeName));
+            followCameraBehind =
+                    preferences.getBoolean(CAMERA_FOLLOW_BEHIND_PREF_KEY, followCameraBehind);
+            selectedCarCount = preferences.getInteger(CAR_COUNT_PREF_KEY, selectedCarCount);
+        }
+
+        selectedThemeIndex = findThemeIndex(configuredThemeName);
+        configuredThemeName = THEME_CHOICES[selectedThemeIndex].name;
+        selectedCarCount = clampCarCount(selectedCarCount);
+    }
+
+    private Preferences loadPreferences() {
+        if (Gdx.app == null) {
+            return null;
+        }
+        try {
+            return Gdx.app.getPreferences(SETTINGS_PREFS_NAME);
+        } catch (RuntimeException exception) {
+            Gdx.app.error("RatassGame", "Could not load game preferences.", exception);
+            return null;
+        }
+    }
+
+    private void saveMenuSettings() {
+        Preferences preferences = loadPreferences();
+        if (preferences == null) {
+            return;
+        }
+
+        preferences.putString(THEME_PREF_KEY, configuredThemeName);
+        preferences.putBoolean(CAMERA_FOLLOW_BEHIND_PREF_KEY, followCameraBehind);
+        preferences.putInteger(CAR_COUNT_PREF_KEY, selectedCarCount);
+        preferences.flush();
     }
 
     private void createRoster() {
@@ -561,7 +651,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private int getConfiguredEnemyCount() {
-        return themeEnemyNames.size > 0 ? themeEnemyNames.size : DEFAULT_ENEMY_NAMES.length;
+        return Math.max(1, selectedCarCount - 1);
     }
 
     private String getEnemyName(int enemyIndex) {
@@ -726,6 +816,17 @@ public class RatassGame extends ApplicationAdapter {
         return themeCarVisuals.size > 0 ? themeCarVisuals.size : NORMAL_CAR_VISUALS.length;
     }
 
+    private void disposeRosterSpriteTextures() {
+        for (int i = 0; i < roster.size; i++) {
+            CarTemplate template = roster.get(i);
+            if (template.ownsSpriteTexture) {
+                disposeTexture(template.spriteTexture);
+            }
+            template.spriteTexture = null;
+            template.ownsSpriteTexture = false;
+        }
+    }
+
     private void loadCarSprites() {
         for (int i = 0; i < roster.size; i++) {
             CarTemplate template = roster.get(i);
@@ -769,6 +870,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void loadSounds() {
+        disposeGameSounds();
         impactSound = loadSound("audio/impact.wav");
         pickupSound = loadSound("audio/pickup.wav");
         destructionSound = loadSound("audio/destroy.wav");
@@ -776,6 +878,23 @@ public class RatassGame extends ApplicationAdapter {
         roundStartSound = loadSound("audio/start.wav");
         suddenDeathSound = loadSound("audio/sudden_death.wav");
         timeoutSound = loadSound("audio/timeout.wav");
+    }
+
+    private void disposeGameSounds() {
+        disposeSound(impactSound);
+        disposeSound(pickupSound);
+        disposeSound(destructionSound);
+        disposeSound(countdownSound);
+        disposeSound(roundStartSound);
+        disposeSound(suddenDeathSound);
+        disposeSound(timeoutSound);
+        impactSound = null;
+        pickupSound = null;
+        destructionSound = null;
+        countdownSound = null;
+        roundStartSound = null;
+        suddenDeathSound = null;
+        timeoutSound = null;
     }
 
     private Sound loadSound(String path) {
@@ -881,6 +1000,13 @@ public class RatassGame extends ApplicationAdapter {
         FileHandle themed = resolveThemedAssetHandle(relativePath);
         if (themed != null) {
             return themed;
+        }
+        if (!DEFAULT_THEME_NAME.equals(configuredThemeName)) {
+            FileHandle defaultThemed =
+                    Gdx.files.internal(THEME_DIRECTORY + "/" + DEFAULT_THEME_NAME + "/" + relativePath);
+            if (defaultThemed.exists()) {
+                return defaultThemed;
+            }
         }
         FileHandle fallback = Gdx.files.internal(relativePath);
         return fallback.exists() ? fallback : null;
@@ -1272,6 +1398,14 @@ public class RatassGame extends ApplicationAdapter {
     public void render() {
         float delta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
 
+        if (gameMode != GameMode.PLAYING) {
+            effectClock += delta;
+            updateMenuLayout(hudViewport.getWorldWidth(), hudViewport.getWorldHeight());
+            handleMenuInput();
+            renderMenu();
+            return;
+        }
+
         updateTouchState();
         frameThrottleInput = readPlayerThrottle();
         frameTurnInput = readPlayerTurn();
@@ -1286,6 +1420,392 @@ public class RatassGame extends ApplicationAdapter {
         update(delta);
         renderWorld();
         renderHud();
+    }
+
+    private void handleMenuInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
+                || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
+            if (gameMode == GameMode.OPTIONS_MENU) {
+                gameMode = GameMode.MAIN_MENU;
+                return;
+            }
+            Gdx.app.exit();
+            return;
+        }
+
+        if (gameMode == GameMode.MAIN_MENU) {
+            handleMainMenuInput();
+        } else if (gameMode == GameMode.OPTIONS_MENU) {
+            handleOptionsMenuInput();
+        }
+
+        if (Gdx.input.justTouched()) {
+            hudTouchPoint.set(Gdx.input.getX(), Gdx.input.getY(), 0f);
+            hudViewport.unproject(hudTouchPoint);
+            handleMenuClick(hudTouchPoint.x, hudTouchPoint.y);
+        }
+    }
+
+    private void handleMainMenuInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.UP)
+                || Gdx.input.isKeyJustPressed(Input.Keys.W)) {
+            mainMenuSelection = Math.max(0, mainMenuSelection - 1);
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)
+                || Gdx.input.isKeyJustPressed(Input.Keys.S)) {
+            mainMenuSelection = Math.min(1, mainMenuSelection + 1);
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.O)) {
+            gameMode = GameMode.OPTIONS_MENU;
+            optionsMenuSelection = 0;
+            return;
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)
+                || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+            if (mainMenuSelection == 0) {
+                startNewGame();
+            } else {
+                gameMode = GameMode.OPTIONS_MENU;
+                optionsMenuSelection = 0;
+            }
+        }
+    }
+
+    private void handleOptionsMenuInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.UP)
+                || Gdx.input.isKeyJustPressed(Input.Keys.W)) {
+            optionsMenuSelection = Math.max(0, optionsMenuSelection - 1);
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)
+                || Gdx.input.isKeyJustPressed(Input.Keys.S)) {
+            optionsMenuSelection = Math.min(3, optionsMenuSelection + 1);
+        }
+
+        if (optionsMenuSelection == 0) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
+                cycleTheme(-1);
+            }
+            if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
+                cycleTheme(1);
+            }
+        } else if (optionsMenuSelection == 1) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
+                changeCarCount(-1);
+            }
+            if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
+                changeCarCount(1);
+            }
+        }
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)
+                || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+            if (optionsMenuSelection == 0) {
+                cycleTheme(1);
+            } else if (optionsMenuSelection == 1) {
+                changeCarCount(1);
+            } else if (optionsMenuSelection == 2) {
+                toggleCameraMode();
+            } else {
+                gameMode = GameMode.MAIN_MENU;
+                mainMenuSelection = 0;
+            }
+        }
+    }
+
+    private void handleMenuClick(float x, float y) {
+        if (gameMode == GameMode.MAIN_MENU) {
+            if (menuNewGameBounds.contains(x, y)) {
+                mainMenuSelection = 0;
+                startNewGame();
+            } else if (menuOptionsBounds.contains(x, y)) {
+                mainMenuSelection = 1;
+                optionsMenuSelection = 0;
+                gameMode = GameMode.OPTIONS_MENU;
+            }
+            return;
+        }
+
+        if (optionsThemePrevBounds.contains(x, y)) {
+            optionsMenuSelection = 0;
+            cycleTheme(-1);
+        } else if (optionsThemeNextBounds.contains(x, y) || optionsThemeBounds.contains(x, y)) {
+            optionsMenuSelection = 0;
+            cycleTheme(1);
+        } else if (optionsCarsPrevBounds.contains(x, y)) {
+            optionsMenuSelection = 1;
+            changeCarCount(-1);
+        } else if (optionsCarsNextBounds.contains(x, y) || optionsCarsBounds.contains(x, y)) {
+            optionsMenuSelection = 1;
+            changeCarCount(1);
+        } else if (optionsCameraBounds.contains(x, y)) {
+            optionsMenuSelection = 2;
+            toggleCameraMode();
+        } else if (optionsBackBounds.contains(x, y)) {
+            optionsMenuSelection = 3;
+            mainMenuSelection = 0;
+            gameMode = GameMode.MAIN_MENU;
+        }
+    }
+
+    private void updateMenuLayout(float hudWidth, float hudHeight) {
+        float width = Math.max(1f, hudWidth);
+        float height = Math.max(1f, hudHeight);
+        float centerX = width * 0.5f;
+        float availableWidth = Math.max(1f, width - MENU_MIN_SIDE_MARGIN * 2f);
+        float buttonWidth = Math.min(MENU_BUTTON_WIDTH, availableWidth);
+        float buttonX = centerX - buttonWidth * 0.5f;
+        float firstButtonY = height * 0.48f;
+
+        menuNewGameBounds.set(buttonX, firstButtonY, buttonWidth, MENU_BUTTON_HEIGHT);
+        menuOptionsBounds.set(
+                buttonX,
+                firstButtonY - MENU_BUTTON_HEIGHT - MENU_BUTTON_GAP,
+                buttonWidth,
+                MENU_BUTTON_HEIGHT);
+
+        float rowWidth = Math.min(MENU_OPTION_ROW_WIDTH, availableWidth);
+        float rowX = centerX - rowWidth * 0.5f;
+        float rowGap = Math.min(MENU_BUTTON_GAP, Math.max(10f, height * 0.035f));
+        float rowHeight = Math.min(MENU_OPTION_ROW_HEIGHT, Math.max(42f, height * 0.12f));
+        float rowY = height * 0.55f;
+        float stepButtonWidth =
+                Math.min(MENU_OPTION_STEP_BUTTON_WIDTH, Math.max(32f, rowWidth * 0.18f));
+        stepButtonWidth = Math.min(stepButtonWidth, rowWidth * 0.26f);
+
+        optionsThemeBounds.set(rowX, rowY, rowWidth, rowHeight);
+        optionsThemePrevBounds.set(rowX, rowY, stepButtonWidth, rowHeight);
+        optionsThemeNextBounds.set(
+                rowX + rowWidth - stepButtonWidth,
+                rowY,
+                stepButtonWidth,
+                rowHeight);
+        optionsCarsBounds.set(
+                rowX,
+                rowY - rowHeight - rowGap,
+                rowWidth,
+                rowHeight);
+        optionsCarsPrevBounds.set(
+                rowX,
+                rowY - rowHeight - rowGap,
+                stepButtonWidth,
+                rowHeight);
+        optionsCarsNextBounds.set(
+                rowX + rowWidth - stepButtonWidth,
+                rowY - rowHeight - rowGap,
+                stepButtonWidth,
+                rowHeight);
+        optionsCameraBounds.set(
+                rowX,
+                rowY - (rowHeight + rowGap) * 2f,
+                rowWidth,
+                rowHeight);
+        optionsBackBounds.set(
+                centerX - buttonWidth * 0.5f,
+                rowY - (rowHeight + rowGap) * 3f - rowGap * 0.45f,
+                buttonWidth,
+                rowHeight);
+    }
+
+    private void cycleTheme(int direction) {
+        selectedThemeIndex = selectedThemeIndex + direction;
+        if (selectedThemeIndex < 0) {
+            selectedThemeIndex = THEME_CHOICES.length - 1;
+        } else if (selectedThemeIndex >= THEME_CHOICES.length) {
+            selectedThemeIndex = 0;
+        }
+        configuredThemeName = THEME_CHOICES[selectedThemeIndex].name;
+        saveMenuSettings();
+    }
+
+    private void toggleCameraMode() {
+        followCameraBehind = !followCameraBehind;
+        saveMenuSettings();
+    }
+
+    private void changeCarCount(int delta) {
+        selectedCarCount = clampCarCount(selectedCarCount + delta);
+        saveMenuSettings();
+    }
+
+    private void renderMenu() {
+        hudViewport.apply();
+        ScreenUtils.clear(0.045f, 0.055f, 0.065f, 1f);
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        spriteBatch.setProjectionMatrix(hudCamera.combined);
+
+        float hudWidth = hudViewport.getWorldWidth();
+        float hudHeight = hudViewport.getWorldHeight();
+        drawMenuBackdrop(hudWidth, hudHeight);
+
+        if (gameMode == GameMode.MAIN_MENU) {
+            drawMainMenu(hudWidth, hudHeight);
+        } else {
+            drawOptionsMenu(hudWidth, hudHeight);
+        }
+    }
+
+    private void drawMenuBackdrop(float hudWidth, float hudHeight) {
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+
+        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 1.5f);
+        shapeRenderer.setColor(0.08f, 0.10f, 0.12f, 1f);
+        shapeRenderer.rect(0f, 0f, hudWidth, hudHeight);
+
+        shapeRenderer.setColor(0.55f, 0.40f, 0.14f, 0.13f + pulse * 0.04f);
+        shapeRenderer.rect(0f, hudHeight * 0.66f, hudWidth, 3f);
+        shapeRenderer.rect(0f, hudHeight * 0.31f, hudWidth, 2f);
+        for (int i = 0; i < 9; i++) {
+            float x = (i + 0.5f) * hudWidth / 9f;
+            shapeRenderer.rect(x - 1f, hudHeight * 0.15f, 2f, hudHeight * 0.72f);
+        }
+
+        shapeRenderer.setColor(0.96f, 0.78f, 0.22f, 0.10f);
+        shapeRenderer.triangle(
+                hudWidth * 0.18f,
+                hudHeight * 0.18f,
+                hudWidth * 0.50f,
+                hudHeight * 0.74f,
+                hudWidth * 0.82f,
+                hudHeight * 0.18f);
+
+        shapeRenderer.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawMainMenu(float hudWidth, float hudHeight) {
+        drawMenuButton(menuNewGameBounds, "New Game", mainMenuSelection == 0);
+        drawMenuButton(menuOptionsBounds, "Options", mainMenuSelection == 1);
+
+        spriteBatch.begin();
+        titleFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+        drawTextCentered(titleFont, "RATASS", hudWidth * 0.5f, hudHeight * 0.73f);
+
+        hudFont.setColor(0.76f, 0.84f, 0.88f, 1f);
+        drawTextCentered(hudFont, getCurrentTheme().displayName, hudWidth * 0.5f, hudHeight * 0.65f);
+        spriteBatch.end();
+    }
+
+    private void drawOptionsMenu(float hudWidth, float hudHeight) {
+        drawOptionRow(optionsThemeBounds, optionsMenuSelection == 0);
+        drawOptionRow(optionsCarsBounds, optionsMenuSelection == 1);
+        drawOptionRow(optionsCameraBounds, optionsMenuSelection == 2);
+        drawMenuButton(optionsBackBounds, "Back", optionsMenuSelection == 3);
+
+        drawMenuStepButton(optionsThemePrevBounds, "<", optionsMenuSelection == 0);
+        drawMenuStepButton(optionsThemeNextBounds, ">", optionsMenuSelection == 0);
+        drawMenuStepButton(optionsCarsPrevBounds, "<", optionsMenuSelection == 1);
+        drawMenuStepButton(optionsCarsNextBounds, ">", optionsMenuSelection == 1);
+
+        spriteBatch.begin();
+        titleFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+        drawTextCentered(titleFont, "Options", hudWidth * 0.5f, hudHeight * 0.73f);
+
+        hudFont.setColor(0.82f, 0.88f, 0.91f, 1f);
+        hudFont.draw(
+                spriteBatch,
+                "Theme",
+                optionsThemeBounds.x + optionsThemePrevBounds.width + 18f,
+                optionsThemeBounds.y + optionsThemeBounds.height * 0.62f);
+        hudFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+        drawTextRight(
+                hudFont,
+                getCurrentTheme().displayName,
+                optionsThemeBounds.x + optionsThemeBounds.width - optionsThemeNextBounds.width - 18f,
+                optionsThemeBounds.y + optionsThemeBounds.height * 0.62f);
+
+        hudFont.setColor(0.82f, 0.88f, 0.91f, 1f);
+        hudFont.draw(
+                spriteBatch,
+                "Cars",
+                optionsCarsBounds.x + optionsCarsPrevBounds.width + 18f,
+                optionsCarsBounds.y + optionsCarsBounds.height * 0.62f);
+        hudFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+        drawTextRight(
+                hudFont,
+                String.valueOf(selectedCarCount),
+                optionsCarsBounds.x + optionsCarsBounds.width - optionsCarsNextBounds.width - 18f,
+                optionsCarsBounds.y + optionsCarsBounds.height * 0.62f);
+
+        hudFont.setColor(0.82f, 0.88f, 0.91f, 1f);
+        hudFont.draw(
+                spriteBatch,
+                "Camera",
+                optionsCameraBounds.x + 22f,
+                optionsCameraBounds.y + optionsCameraBounds.height * 0.62f);
+        hudFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+        drawTextRight(
+                hudFont,
+                followCameraBehind ? "Chase" : "Top Down",
+                optionsCameraBounds.x + optionsCameraBounds.width - 22f,
+                optionsCameraBounds.y + optionsCameraBounds.height * 0.62f);
+        spriteBatch.end();
+    }
+
+    private void drawMenuButton(Rectangle bounds, String label, boolean selected) {
+        drawButtonBox(bounds, selected, 0.12f, 0.15f, 0.18f);
+        spriteBatch.begin();
+        tint.set(selected ? 1f : 0.92f, selected ? 0.90f : 0.96f, selected ? 0.58f : 0.98f, 1f);
+        hudFont.setColor(tint);
+        drawTextCentered(hudFont, label, bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.60f);
+        spriteBatch.end();
+    }
+
+    private void drawMenuStepButton(Rectangle bounds, String label, boolean selected) {
+        drawButtonBox(bounds, selected, 0.10f, 0.13f, 0.16f);
+        spriteBatch.begin();
+        tint.set(selected ? 1f : 0.82f, selected ? 0.90f : 0.88f, selected ? 0.58f : 0.91f, 1f);
+        hudFont.setColor(tint);
+        drawTextCentered(hudFont, label, bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.60f);
+        spriteBatch.end();
+    }
+
+    private void drawOptionRow(Rectangle bounds, boolean selected) {
+        drawButtonBox(bounds, selected, 0.08f, 0.10f, 0.13f);
+    }
+
+    private void drawButtonBox(Rectangle bounds, boolean selected, float red, float green, float blue) {
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        if (selected) {
+            shapeRenderer.setColor(0.72f, 0.51f, 0.18f, 0.42f);
+        } else {
+            shapeRenderer.setColor(red, green, blue, 0.86f);
+        }
+        shapeRenderer.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+        shapeRenderer.end();
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        if (selected) {
+            shapeRenderer.setColor(1f, 0.82f, 0.34f, 0.86f);
+        } else {
+            shapeRenderer.setColor(0.62f, 0.70f, 0.75f, 0.34f);
+        }
+        shapeRenderer.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+        shapeRenderer.end();
+
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawTextCentered(BitmapFont font, String text, float centerX, float baselineY) {
+        glyphLayout.setText(font, text);
+        font.draw(spriteBatch, text, centerX - glyphLayout.width * 0.5f, baselineY);
+    }
+
+    private void drawTextRight(BitmapFont font, String text, float rightX, float baselineY) {
+        glyphLayout.setText(font, text);
+        font.draw(spriteBatch, text, rightX - glyphLayout.width, baselineY);
+    }
+
+    private ThemeChoice getCurrentTheme() {
+        return THEME_CHOICES[selectedThemeIndex];
     }
 
     private void update(float delta) {
@@ -4423,6 +4943,33 @@ public class RatassGame extends ApplicationAdapter {
         return normalized.length() == 0 ? DEFAULT_THEME_NAME : normalized;
     }
 
+    private static int findThemeIndex(String themeName) {
+        String normalized = normalizeThemeName(themeName);
+        for (int i = 0; i < THEME_CHOICES.length; i++) {
+            if (THEME_CHOICES[i].name.equals(normalized)) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private static String normalizeThemeName(String themeName) {
+        if (themeName == null) {
+            return DEFAULT_THEME_NAME;
+        }
+        String normalized = themeName.trim().toLowerCase();
+        if (normalized.length() == 0) {
+            return DEFAULT_THEME_NAME;
+        }
+        for (int i = 0; i < THEME_CHOICES.length; i++) {
+            ThemeChoice choice = THEME_CHOICES[i];
+            if (choice.name.equals(normalized) || choice.displayName.toLowerCase().equals(normalized)) {
+                return choice.name;
+            }
+        }
+        return DEFAULT_THEME_NAME;
+    }
+
     private static boolean loadConfiguredBooleanProperty(String propertyName, boolean defaultValue) {
         String value = loadConfiguredProperty(propertyName);
         if (value == null) {
@@ -4445,26 +4992,103 @@ public class RatassGame extends ApplicationAdapter {
         return defaultValue;
     }
 
-    private static String loadConfiguredProperty(String propertyName) {
-        Properties properties = new Properties();
+    private static int loadConfiguredIntProperty(String propertyName, int defaultValue) {
+        String value = loadConfiguredProperty(propertyName);
+        if (value == null) {
+            return defaultValue;
+        }
 
-        InputStream resourceStream = RatassGame.class.getClassLoader().getResourceAsStream(GAME_PROPERTIES_RESOURCE);
-        if (resourceStream != null) {
-            try (InputStream input = resourceStream) {
-                properties.load(input);
-                return properties.getProperty(propertyName);
-            } catch (IOException exception) {
-                // Fall through to the filesystem fallback.
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException exception) {
+            return defaultValue;
+        }
+    }
+
+    private static int clampCarCount(int carCount) {
+        return MathUtils.clamp(carCount, MIN_CAR_COUNT, MAX_CAR_COUNT);
+    }
+
+    private static String loadConfiguredProperty(String propertyName) {
+        Map<String, String> properties = loadConfiguredProperties();
+        return properties.get(propertyName);
+    }
+
+    private static Map<String, String> loadConfiguredProperties() {
+        Map<String, String> properties = new LinkedHashMap<String, String>();
+
+        loadPropertiesFromInternalFile(properties, GAME_PROPERTIES_RESOURCE);
+        loadPropertiesFromLocalFile(properties, GAME_PROPERTIES_FILE);
+        return properties;
+    }
+
+    private static void loadPropertiesFromInternalFile(Map<String, String> properties, String path) {
+        if (Gdx.files == null) {
+            return;
+        }
+
+        try {
+            FileHandle handle = Gdx.files.internal(path);
+            if (handle == null || !handle.exists()) {
+                return;
+            }
+            parseProperties(properties, handle.readString("UTF-8"));
+        } catch (RuntimeException exception) {
+            // Internal files can be unavailable in headless tooling.
+        }
+    }
+
+    private static void loadPropertiesFromLocalFile(Map<String, String> properties, String path) {
+        if (Gdx.files == null) {
+            return;
+        }
+
+        try {
+            FileHandle handle = Gdx.files.local(path);
+            if (handle == null || !handle.exists()) {
+                return;
+            }
+            parseProperties(properties, handle.readString("UTF-8"));
+        } catch (RuntimeException exception) {
+            // Local overrides are optional.
+        }
+    }
+
+    private static void parseProperties(Map<String, String> properties, String content) {
+        if (content == null) {
+            return;
+        }
+
+        String[] lines = content.split("\\r?\\n");
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (line.length() == 0 || line.startsWith("#") || line.startsWith("!")) {
+                continue;
+            }
+
+            int separator = findPropertySeparator(line);
+            if (separator <= 0) {
+                continue;
+            }
+
+            String key = line.substring(0, separator).trim();
+            String value = line.substring(separator + 1).trim();
+            if (key.length() > 0) {
+                properties.put(key, value);
             }
         }
+    }
 
-        try (InputStream input = new FileInputStream(GAME_PROPERTIES_FILE)) {
-            properties.clear();
-            properties.load(input);
-            return properties.getProperty(propertyName);
-        } catch (IOException exception) {
-            return null;
+    private static int findPropertySeparator(String line) {
+        int equalsIndex = line.indexOf('=');
+        int colonIndex = line.indexOf(':');
+        if (equalsIndex < 0) {
+            return colonIndex;
         }
+        if (colonIndex < 0) {
+            return equalsIndex;
+        }
+        return Math.min(equalsIndex, colonIndex);
     }
 
     private void disposeSound(Sound sound) {
@@ -4492,12 +5116,7 @@ public class RatassGame extends ApplicationAdapter {
         if (world != null) {
             world.dispose();
         }
-        for (int i = 0; i < roster.size; i++) {
-            CarTemplate template = roster.get(i);
-            if (template.ownsSpriteTexture) {
-                disposeTexture(template.spriteTexture);
-            }
-        }
+        disposeRosterSpriteTextures();
         disposeArenaSurfaceTextures();
         disposeThemeCarVisualTextures();
         disposeTexture(themeCarsTexture);
@@ -4519,13 +5138,7 @@ public class RatassGame extends ApplicationAdapter {
         if (labelFont != null) {
             labelFont.dispose();
         }
-        disposeSound(impactSound);
-        disposeSound(pickupSound);
-        disposeSound(destructionSound);
-        disposeSound(countdownSound);
-        disposeSound(roundStartSound);
-        disposeSound(suddenDeathSound);
-        disposeSound(timeoutSound);
+        disposeGameSounds();
     }
 
     private void announceRamImpact(Car attacker, Car victim) {
@@ -5493,6 +6106,12 @@ public class RatassGame extends ApplicationAdapter {
         private float scale;
     }
 
+    private enum GameMode {
+        MAIN_MENU,
+        OPTIONS_MENU,
+        PLAYING
+    }
+
     private enum MapDecorStyle {
         GRID,
         RUNWAY,
@@ -5500,6 +6119,16 @@ public class RatassGame extends ApplicationAdapter {
         CROSS,
         DIAGONAL,
         FORTRESS
+    }
+
+    private static final class ThemeChoice {
+        private final String name;
+        private final String displayName;
+
+        private ThemeChoice(String name, String displayName) {
+            this.name = name;
+            this.displayName = displayName;
+        }
     }
 
     private static final class MapTheme {
