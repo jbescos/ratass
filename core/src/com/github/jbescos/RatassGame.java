@@ -66,6 +66,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final String CAMERA_FOLLOW_BEHIND_PREF_KEY = CAMERA_FOLLOW_BEHIND_PROPERTY;
     private static final String CAR_COUNT_PROPERTY = "cars.count";
     private static final String CAR_COUNT_PREF_KEY = CAR_COUNT_PROPERTY;
+    private static final String PLAYER_CAR_PROPERTY = "cars.player.index";
+    private static final String PLAYER_CAR_PREF_KEY = PLAYER_CAR_PROPERTY;
     private static final String THEME_DIRECTORY = "theme";
     private static final String THEME_CAR_SHEET_PATH = "cars/cars.png";
     private static final String THEME_ENEMY_NAMES_PATH = "enemy-names.txt";
@@ -81,8 +83,14 @@ public class RatassGame extends ApplicationAdapter {
     private static final int BACKGROUND_ALPHA_CUTOUT_THRESHOLD = 5;
     private static final int BACKGROUND_ALPHA_OPAQUE_THRESHOLD = 16;
     private static final int DEFAULT_CAR_COUNT = 20;
+    private static final int DEFAULT_PLAYER_CAR_INDEX = 0;
     private static final int MIN_CAR_COUNT = 2;
     private static final int MAX_CAR_COUNT = 61;
+    private static final int OPTIONS_THEME_SELECTION = 0;
+    private static final int OPTIONS_CARS_SELECTION = 1;
+    private static final int OPTIONS_PLAYER_CAR_SELECTION = 2;
+    private static final int OPTIONS_CAMERA_SELECTION = 3;
+    private static final int OPTIONS_BACK_SELECTION = 4;
     private static final float ARENA_PIXEL_ART_PIXELS_PER_WORLD_UNIT = 12f;
     private static final int ARENA_PIXEL_ART_MIN_TEXTURE_SIZE = 128;
     private static final int ARENA_PIXEL_ART_MAX_TEXTURE_SIZE = 512;
@@ -162,6 +170,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final float MENU_OPTION_ROW_HEIGHT = 54f;
     private static final float MENU_OPTION_STEP_BUTTON_WIDTH = 58f;
     private static final float MENU_MIN_SIDE_MARGIN = 24f;
+    private static final float MENU_OPTIONS_COLUMN_GAP = 24f;
+    private static final float MENU_CAR_PREVIEW_MAX_WIDTH = 620f;
+    private static final float MENU_CAR_PREVIEW_MIN_WIDTH = 240f;
+    private static final float MENU_CAR_SHEET_ASPECT = 3f / 2f;
     private static final float CAR_SPRITE_WIDTH_SCALE = 1.16f;
     private static final float CAR_SPRITE_HEIGHT_SCALE = 1.14f;
     private static final float CAR_SPRITE_ROTATION_OFFSET_DEG = 180f;
@@ -395,6 +407,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<Car> pendingCollisionEliminations = new Array<Car>();
     private final Array<DestructionEffect> destructionEffects = new Array<DestructionEffect>();
     private final Array<CarVisual> themeCarVisuals = new Array<CarVisual>();
+    private final Array<Rectangle> menuCarSheetSourceBounds = new Array<Rectangle>();
     private final Array<String> themeEnemyNames = new Array<String>();
     private final LinkedHashMap<String, Texture> arenaSurfaceTextureCache =
             new LinkedHashMap<String, Texture>();
@@ -417,8 +430,12 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle optionsCarsBounds = new Rectangle();
     private final Rectangle optionsCarsPrevBounds = new Rectangle();
     private final Rectangle optionsCarsNextBounds = new Rectangle();
+    private final Rectangle optionsPlayerCarBounds = new Rectangle();
+    private final Rectangle optionsPlayerCarPrevBounds = new Rectangle();
+    private final Rectangle optionsPlayerCarNextBounds = new Rectangle();
     private final Rectangle optionsCameraBounds = new Rectangle();
     private final Rectangle optionsBackBounds = new Rectangle();
+    private final Rectangle optionsCarSheetBounds = new Rectangle();
     private final Rectangle steerPadBounds = new Rectangle();
     private final Rectangle throttlePadBounds = new Rectangle();
     private final Rectangle reversePadBounds = new Rectangle();
@@ -473,6 +490,7 @@ public class RatassGame extends ApplicationAdapter {
     private World world;
     private Texture arenaSurfaceTexture;
     private Texture themeCarsTexture;
+    private Texture menuCarSheetTexture;
 
     private GameMode gameMode = GameMode.MAIN_MENU;
     private MapProgression mapProgression;
@@ -515,6 +533,7 @@ public class RatassGame extends ApplicationAdapter {
     private int timeoutSurvivorCount;
     private int selectedThemeIndex;
     private int selectedCarCount = DEFAULT_CAR_COUNT;
+    private int selectedPlayerCarIndex = DEFAULT_PLAYER_CAR_INDEX;
     private int mainMenuSelection;
     private int optionsMenuSelection;
     private Car boostedCar;
@@ -523,6 +542,7 @@ public class RatassGame extends ApplicationAdapter {
     private String eventCalloutTitle = "";
     private String eventCalloutSubline = "";
     private String configuredThemeName = DEFAULT_THEME_NAME;
+    private String menuCarSheetThemeName = "";
     private boolean followCameraBehind;
 
     @Override
@@ -562,8 +582,15 @@ public class RatassGame extends ApplicationAdapter {
     private void startNewGame() {
         disposeRosterSpriteTextures();
         disposeArenaSurfaceTextures();
+        disposeMenuCarPreview();
         loadThemeEnemyNames();
         loadThemeTextures();
+        int clampedPlayerCarIndex =
+                clampPlayerCarIndex(selectedPlayerCarIndex, getAvailableCarVisualCount());
+        if (clampedPlayerCarIndex != selectedPlayerCarIndex) {
+            selectedPlayerCarIndex = clampedPlayerCarIndex;
+            saveMenuSettings();
+        }
         loadSounds();
         createRoster();
         loadCarSprites();
@@ -585,6 +612,8 @@ public class RatassGame extends ApplicationAdapter {
         configuredThemeName = normalizeThemeName(loadConfiguredThemeName());
         followCameraBehind = loadConfiguredBooleanProperty(CAMERA_FOLLOW_BEHIND_PROPERTY, false);
         selectedCarCount = loadConfiguredIntProperty(CAR_COUNT_PROPERTY, DEFAULT_CAR_COUNT);
+        selectedPlayerCarIndex =
+                loadConfiguredIntProperty(PLAYER_CAR_PROPERTY, DEFAULT_PLAYER_CAR_INDEX);
 
         Preferences preferences = loadPreferences();
         if (preferences != null) {
@@ -593,11 +622,14 @@ public class RatassGame extends ApplicationAdapter {
             followCameraBehind =
                     preferences.getBoolean(CAMERA_FOLLOW_BEHIND_PREF_KEY, followCameraBehind);
             selectedCarCount = preferences.getInteger(CAR_COUNT_PREF_KEY, selectedCarCount);
+            selectedPlayerCarIndex =
+                    preferences.getInteger(PLAYER_CAR_PREF_KEY, selectedPlayerCarIndex);
         }
 
         selectedThemeIndex = findThemeIndex(configuredThemeName);
         configuredThemeName = THEME_CHOICES[selectedThemeIndex].name;
         selectedCarCount = clampCarCount(selectedCarCount);
+        selectedPlayerCarIndex = Math.max(0, selectedPlayerCarIndex);
     }
 
     private Preferences loadPreferences() {
@@ -621,12 +653,13 @@ public class RatassGame extends ApplicationAdapter {
         preferences.putString(THEME_PREF_KEY, configuredThemeName);
         preferences.putBoolean(CAMERA_FOLLOW_BEHIND_PREF_KEY, followCameraBehind);
         preferences.putInteger(CAR_COUNT_PREF_KEY, selectedCarCount);
+        preferences.putInteger(PLAYER_CAR_PREF_KEY, selectedPlayerCarIndex);
         preferences.flush();
     }
 
     private void createRoster() {
         roster.clear();
-        CarVisual playerVisual = getCarVisual(0);
+        CarVisual playerVisual = getPlayerCarVisual();
         addRosterTemplate(
                 "You",
                 true,
@@ -666,8 +699,13 @@ public class RatassGame extends ApplicationAdapter {
 
     private CarVisual getEnemyCarVisual(int enemyIndex) {
         int carVisualCount = getAvailableCarVisualCount();
-        if (carVisualCount > 0 && getConfiguredEnemyCount() >= carVisualCount) {
-            return getCarVisual(enemyIndex);
+        if (carVisualCount > 1) {
+            int playerCarIndex = clampPlayerCarIndex(selectedPlayerCarIndex, carVisualCount);
+            int visualIndex = enemyIndex % (carVisualCount - 1);
+            if (visualIndex >= playerCarIndex) {
+                visualIndex++;
+            }
+            return getCarVisual(visualIndex);
         }
         return getCarVisual(enemyIndex + 1);
     }
@@ -810,6 +848,10 @@ public class RatassGame extends ApplicationAdapter {
             return themeCarVisuals.get(rosterIndex % themeCarVisuals.size);
         }
         return NORMAL_CAR_VISUALS[rosterIndex % NORMAL_CAR_VISUALS.length];
+    }
+
+    private CarVisual getPlayerCarVisual() {
+        return getCarVisual(selectedPlayerCarIndex);
     }
 
     private int getAvailableCarVisualCount() {
@@ -957,6 +999,83 @@ public class RatassGame extends ApplicationAdapter {
             disposeTexture(themeCarsTexture);
             themeCarsTexture = null;
         }
+    }
+
+    private void ensureMenuCarPreviewLoaded() {
+        if (configuredThemeName.equals(menuCarSheetThemeName)) {
+            return;
+        }
+
+        disposeMenuCarPreview();
+        menuCarSheetThemeName = configuredThemeName;
+
+        FileHandle carSheetHandle = resolveThemedAssetHandle(THEME_CAR_SHEET_PATH);
+        if (carSheetHandle == null || !carSheetHandle.exists()) {
+            return;
+        }
+
+        Pixmap source = null;
+        Pixmap masked = null;
+        try {
+            source = new Pixmap(carSheetHandle);
+            masked = createMaskedPixmap(source);
+            List<ThemeCarComponent> components = detectThemeCarComponents(masked);
+            for (int i = 0; i < components.size(); i++) {
+                ThemeCarComponent component = components.get(i);
+                menuCarSheetSourceBounds.add(
+                        new Rectangle(
+                                component.minX,
+                                component.minY,
+                                component.getWidth(),
+                                component.getHeight()));
+            }
+
+            menuCarSheetTexture = new Texture(carSheetHandle);
+            menuCarSheetTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+            clampSelectedPlayerCarToMenuPreview();
+        } catch (RuntimeException exception) {
+            Gdx.app.error("RatassGame", "Could not load menu car sheet " + carSheetHandle.path(), exception);
+            disposeTexture(menuCarSheetTexture);
+            menuCarSheetTexture = null;
+            menuCarSheetSourceBounds.clear();
+        } finally {
+            if (masked != null) {
+                masked.dispose();
+            }
+            if (source != null) {
+                source.dispose();
+            }
+        }
+    }
+
+    private void disposeMenuCarPreview() {
+        disposeTexture(menuCarSheetTexture);
+        menuCarSheetTexture = null;
+        menuCarSheetThemeName = "";
+        menuCarSheetSourceBounds.clear();
+    }
+
+    private void clampSelectedPlayerCarToMenuPreview() {
+        int carCount = getMenuSelectableCarCount();
+        int clampedPlayerCarIndex = clampPlayerCarIndex(selectedPlayerCarIndex, carCount);
+        if (clampedPlayerCarIndex != selectedPlayerCarIndex) {
+            selectedPlayerCarIndex = clampedPlayerCarIndex;
+            saveMenuSettings();
+        }
+    }
+
+    private int getMenuSelectableCarCount() {
+        if (menuCarSheetSourceBounds.size > 0) {
+            return menuCarSheetSourceBounds.size;
+        }
+        return getAvailableCarVisualCount();
+    }
+
+    private float getMenuCarSheetAspect() {
+        if (menuCarSheetTexture != null && menuCarSheetTexture.getHeight() > 0) {
+            return menuCarSheetTexture.getWidth() / (float) menuCarSheetTexture.getHeight();
+        }
+        return MENU_CAR_SHEET_ASPECT;
     }
 
     private Texture loadTexture(String path) {
@@ -1478,10 +1597,10 @@ public class RatassGame extends ApplicationAdapter {
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)
                 || Gdx.input.isKeyJustPressed(Input.Keys.S)) {
-            optionsMenuSelection = Math.min(3, optionsMenuSelection + 1);
+            optionsMenuSelection = Math.min(OPTIONS_BACK_SELECTION, optionsMenuSelection + 1);
         }
 
-        if (optionsMenuSelection == 0) {
+        if (optionsMenuSelection == OPTIONS_THEME_SELECTION) {
             if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
                     || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
                 cycleTheme(-1);
@@ -1490,7 +1609,7 @@ public class RatassGame extends ApplicationAdapter {
                     || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
                 cycleTheme(1);
             }
-        } else if (optionsMenuSelection == 1) {
+        } else if (optionsMenuSelection == OPTIONS_CARS_SELECTION) {
             if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
                     || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
                 changeCarCount(-1);
@@ -1499,15 +1618,26 @@ public class RatassGame extends ApplicationAdapter {
                     || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
                 changeCarCount(1);
             }
+        } else if (optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
+                changePlayerCar(-1);
+            }
+            if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
+                changePlayerCar(1);
+            }
         }
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)
                 || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
-            if (optionsMenuSelection == 0) {
+            if (optionsMenuSelection == OPTIONS_THEME_SELECTION) {
                 cycleTheme(1);
-            } else if (optionsMenuSelection == 1) {
+            } else if (optionsMenuSelection == OPTIONS_CARS_SELECTION) {
                 changeCarCount(1);
-            } else if (optionsMenuSelection == 2) {
+            } else if (optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION) {
+                changePlayerCar(1);
+            } else if (optionsMenuSelection == OPTIONS_CAMERA_SELECTION) {
                 toggleCameraMode();
             } else {
                 gameMode = GameMode.MAIN_MENU;
@@ -1530,22 +1660,31 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         if (optionsThemePrevBounds.contains(x, y)) {
-            optionsMenuSelection = 0;
+            optionsMenuSelection = OPTIONS_THEME_SELECTION;
             cycleTheme(-1);
         } else if (optionsThemeNextBounds.contains(x, y) || optionsThemeBounds.contains(x, y)) {
-            optionsMenuSelection = 0;
+            optionsMenuSelection = OPTIONS_THEME_SELECTION;
             cycleTheme(1);
         } else if (optionsCarsPrevBounds.contains(x, y)) {
-            optionsMenuSelection = 1;
+            optionsMenuSelection = OPTIONS_CARS_SELECTION;
             changeCarCount(-1);
         } else if (optionsCarsNextBounds.contains(x, y) || optionsCarsBounds.contains(x, y)) {
-            optionsMenuSelection = 1;
+            optionsMenuSelection = OPTIONS_CARS_SELECTION;
             changeCarCount(1);
+        } else if (optionsPlayerCarPrevBounds.contains(x, y)) {
+            optionsMenuSelection = OPTIONS_PLAYER_CAR_SELECTION;
+            changePlayerCar(-1);
+        } else if (optionsPlayerCarNextBounds.contains(x, y)
+                || optionsPlayerCarBounds.contains(x, y)) {
+            optionsMenuSelection = OPTIONS_PLAYER_CAR_SELECTION;
+            changePlayerCar(1);
+        } else if (selectPlayerCarFromPreview(x, y)) {
+            optionsMenuSelection = OPTIONS_PLAYER_CAR_SELECTION;
         } else if (optionsCameraBounds.contains(x, y)) {
-            optionsMenuSelection = 2;
+            optionsMenuSelection = OPTIONS_CAMERA_SELECTION;
             toggleCameraMode();
         } else if (optionsBackBounds.contains(x, y)) {
-            optionsMenuSelection = 3;
+            optionsMenuSelection = OPTIONS_BACK_SELECTION;
             mainMenuSelection = 0;
             gameMode = GameMode.MAIN_MENU;
         }
@@ -1567,11 +1706,57 @@ public class RatassGame extends ApplicationAdapter {
                 buttonWidth,
                 MENU_BUTTON_HEIGHT);
 
+        if (gameMode == GameMode.OPTIONS_MENU) {
+            ensureMenuCarPreviewLoaded();
+        }
+
+        float rowGap = Math.min(MENU_BUTTON_GAP, Math.max(8f, height * 0.025f));
+        float rowHeight = Math.min(MENU_OPTION_ROW_HEIGHT, Math.max(40f, height * 0.095f));
+        float rowsHeight = rowHeight * 5f + rowGap * 4f;
         float rowWidth = Math.min(MENU_OPTION_ROW_WIDTH, availableWidth);
         float rowX = centerX - rowWidth * 0.5f;
-        float rowGap = Math.min(MENU_BUTTON_GAP, Math.max(10f, height * 0.035f));
-        float rowHeight = Math.min(MENU_OPTION_ROW_HEIGHT, Math.max(42f, height * 0.12f));
-        float rowY = height * 0.55f;
+        float rowTopY = Math.min(height * 0.67f, height - Math.max(74f, height * 0.14f));
+        rowTopY = Math.max(rowTopY, MENU_MIN_SIDE_MARGIN + rowsHeight);
+        float previewAspect = getMenuCarSheetAspect();
+        float previewWidth = 0f;
+        float previewHeight = 0f;
+        float previewX = 0f;
+        float previewY = 0f;
+
+        boolean sideBySide = availableWidth >= 820f && height >= 520f;
+        if (sideBySide) {
+            rowWidth = Math.min(420f, Math.max(320f, availableWidth * 0.42f));
+            previewWidth =
+                    Math.min(
+                            MENU_CAR_PREVIEW_MAX_WIDTH,
+                            availableWidth - rowWidth - MENU_OPTIONS_COLUMN_GAP);
+            sideBySide = previewWidth >= MENU_CAR_PREVIEW_MIN_WIDTH;
+        }
+
+        if (sideBySide) {
+            float layoutWidth = rowWidth + MENU_OPTIONS_COLUMN_GAP + previewWidth;
+            rowX = centerX - layoutWidth * 0.5f;
+            previewX = rowX + rowWidth + MENU_OPTIONS_COLUMN_GAP;
+            previewHeight = previewWidth / previewAspect;
+            previewY = rowTopY - previewHeight;
+        } else {
+            float titleBand = Math.max(72f, height * 0.16f);
+            float availablePreviewHeight =
+                    Math.max(
+                            72f,
+                            height - titleBand - rowGap - rowsHeight - MENU_MIN_SIDE_MARGIN);
+            previewWidth = Math.min(rowWidth, availableWidth);
+            previewHeight = Math.min(previewWidth / previewAspect, availablePreviewHeight);
+            previewWidth = Math.min(previewWidth, previewHeight * previewAspect);
+            previewX = centerX - previewWidth * 0.5f;
+            previewY = height - titleBand - previewHeight;
+            rowTopY = previewY - rowGap;
+            rowTopY = Math.max(rowTopY, MENU_MIN_SIDE_MARGIN + rowsHeight);
+        }
+
+        optionsCarSheetBounds.set(previewX, previewY, previewWidth, previewHeight);
+
+        float rowY = rowTopY - rowHeight;
         float stepButtonWidth =
                 Math.min(MENU_OPTION_STEP_BUTTON_WIDTH, Math.max(32f, rowWidth * 0.18f));
         stepButtonWidth = Math.min(stepButtonWidth, rowWidth * 0.26f);
@@ -1598,15 +1783,30 @@ public class RatassGame extends ApplicationAdapter {
                 rowY - rowHeight - rowGap,
                 stepButtonWidth,
                 rowHeight);
-        optionsCameraBounds.set(
+        optionsPlayerCarBounds.set(
                 rowX,
                 rowY - (rowHeight + rowGap) * 2f,
                 rowWidth,
                 rowHeight);
+        optionsPlayerCarPrevBounds.set(
+                rowX,
+                rowY - (rowHeight + rowGap) * 2f,
+                stepButtonWidth,
+                rowHeight);
+        optionsPlayerCarNextBounds.set(
+                rowX + rowWidth - stepButtonWidth,
+                rowY - (rowHeight + rowGap) * 2f,
+                stepButtonWidth,
+                rowHeight);
+        optionsCameraBounds.set(
+                rowX,
+                rowY - (rowHeight + rowGap) * 3f,
+                rowWidth,
+                rowHeight);
         optionsBackBounds.set(
-                centerX - buttonWidth * 0.5f,
-                rowY - (rowHeight + rowGap) * 3f - rowGap * 0.45f,
-                buttonWidth,
+                rowX,
+                rowY - (rowHeight + rowGap) * 4f,
+                rowWidth,
                 rowHeight);
     }
 
@@ -1618,6 +1818,7 @@ public class RatassGame extends ApplicationAdapter {
             selectedThemeIndex = 0;
         }
         configuredThemeName = THEME_CHOICES[selectedThemeIndex].name;
+        disposeMenuCarPreview();
         saveMenuSettings();
     }
 
@@ -1629,6 +1830,78 @@ public class RatassGame extends ApplicationAdapter {
     private void changeCarCount(int delta) {
         selectedCarCount = clampCarCount(selectedCarCount + delta);
         saveMenuSettings();
+    }
+
+    private void changePlayerCar(int delta) {
+        ensureMenuCarPreviewLoaded();
+        int carCount = getMenuSelectableCarCount();
+        if (carCount <= 0) {
+            return;
+        }
+
+        selectedPlayerCarIndex += delta;
+        while (selectedPlayerCarIndex < 0) {
+            selectedPlayerCarIndex += carCount;
+        }
+        while (selectedPlayerCarIndex >= carCount) {
+            selectedPlayerCarIndex -= carCount;
+        }
+        saveMenuSettings();
+    }
+
+    private boolean selectPlayerCarFromPreview(float x, float y) {
+        if (menuCarSheetTexture == null
+                || menuCarSheetSourceBounds.size == 0
+                || !optionsCarSheetBounds.contains(x, y)) {
+            return false;
+        }
+
+        float sourceX =
+                (x - optionsCarSheetBounds.x)
+                        / optionsCarSheetBounds.width
+                        * menuCarSheetTexture.getWidth();
+        float sourceY =
+                (optionsCarSheetBounds.y + optionsCarSheetBounds.height - y)
+                        / optionsCarSheetBounds.height
+                        * menuCarSheetTexture.getHeight();
+        int selectedIndex = findMenuCarIndexAtSourcePosition(sourceX, sourceY);
+        if (selectedIndex < 0) {
+            selectedIndex = findNearestMenuCarIndex(sourceX, sourceY);
+        }
+        if (selectedIndex < 0) {
+            return true;
+        }
+
+        selectedPlayerCarIndex = selectedIndex;
+        saveMenuSettings();
+        return true;
+    }
+
+    private int findMenuCarIndexAtSourcePosition(float sourceX, float sourceY) {
+        for (int i = 0; i < menuCarSheetSourceBounds.size; i++) {
+            if (menuCarSheetSourceBounds.get(i).contains(sourceX, sourceY)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int findNearestMenuCarIndex(float sourceX, float sourceY) {
+        int nearestIndex = -1;
+        float nearestDistanceSquared = Float.MAX_VALUE;
+        for (int i = 0; i < menuCarSheetSourceBounds.size; i++) {
+            Rectangle sourceBounds = menuCarSheetSourceBounds.get(i);
+            float centerX = sourceBounds.x + sourceBounds.width * 0.5f;
+            float centerY = sourceBounds.y + sourceBounds.height * 0.5f;
+            float deltaX = sourceX - centerX;
+            float deltaY = sourceY - centerY;
+            float distanceSquared = deltaX * deltaX + deltaY * deltaY;
+            if (distanceSquared < nearestDistanceSquared) {
+                nearestDistanceSquared = distanceSquared;
+                nearestIndex = i;
+            }
+        }
+        return nearestIndex;
     }
 
     private void renderMenu() {
@@ -1692,19 +1965,30 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void drawOptionsMenu(float hudWidth, float hudHeight) {
-        drawOptionRow(optionsThemeBounds, optionsMenuSelection == 0);
-        drawOptionRow(optionsCarsBounds, optionsMenuSelection == 1);
-        drawOptionRow(optionsCameraBounds, optionsMenuSelection == 2);
-        drawMenuButton(optionsBackBounds, "Back", optionsMenuSelection == 3);
+        drawOptionRow(optionsThemeBounds, optionsMenuSelection == OPTIONS_THEME_SELECTION);
+        drawOptionRow(optionsCarsBounds, optionsMenuSelection == OPTIONS_CARS_SELECTION);
+        drawOptionRow(optionsPlayerCarBounds, optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION);
+        drawOptionRow(optionsCameraBounds, optionsMenuSelection == OPTIONS_CAMERA_SELECTION);
+        drawMenuButton(optionsBackBounds, "Back", optionsMenuSelection == OPTIONS_BACK_SELECTION);
 
-        drawMenuStepButton(optionsThemePrevBounds, "<", optionsMenuSelection == 0);
-        drawMenuStepButton(optionsThemeNextBounds, ">", optionsMenuSelection == 0);
-        drawMenuStepButton(optionsCarsPrevBounds, "<", optionsMenuSelection == 1);
-        drawMenuStepButton(optionsCarsNextBounds, ">", optionsMenuSelection == 1);
+        drawCarSheetPreview();
+
+        drawMenuStepButton(optionsThemePrevBounds, "<", optionsMenuSelection == OPTIONS_THEME_SELECTION);
+        drawMenuStepButton(optionsThemeNextBounds, ">", optionsMenuSelection == OPTIONS_THEME_SELECTION);
+        drawMenuStepButton(optionsCarsPrevBounds, "<", optionsMenuSelection == OPTIONS_CARS_SELECTION);
+        drawMenuStepButton(optionsCarsNextBounds, ">", optionsMenuSelection == OPTIONS_CARS_SELECTION);
+        drawMenuStepButton(
+                optionsPlayerCarPrevBounds,
+                "<",
+                optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION);
+        drawMenuStepButton(
+                optionsPlayerCarNextBounds,
+                ">",
+                optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION);
 
         spriteBatch.begin();
         titleFont.setColor(0.98f, 0.92f, 0.76f, 1f);
-        drawTextCentered(titleFont, "Options", hudWidth * 0.5f, hudHeight * 0.73f);
+        drawTextCentered(titleFont, "Options", hudWidth * 0.5f, getOptionsTitleBaseline(hudHeight));
 
         hudFont.setColor(0.82f, 0.88f, 0.91f, 1f);
         hudFont.draw(
@@ -1735,6 +2019,22 @@ public class RatassGame extends ApplicationAdapter {
         hudFont.setColor(0.82f, 0.88f, 0.91f, 1f);
         hudFont.draw(
                 spriteBatch,
+                "My Car",
+                optionsPlayerCarBounds.x + optionsPlayerCarPrevBounds.width + 18f,
+                optionsPlayerCarBounds.y + optionsPlayerCarBounds.height * 0.62f);
+        hudFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+        drawTextRight(
+                hudFont,
+                buildPlayerCarMenuValue(),
+                optionsPlayerCarBounds.x
+                        + optionsPlayerCarBounds.width
+                        - optionsPlayerCarNextBounds.width
+                        - 18f,
+                optionsPlayerCarBounds.y + optionsPlayerCarBounds.height * 0.62f);
+
+        hudFont.setColor(0.82f, 0.88f, 0.91f, 1f);
+        hudFont.draw(
+                spriteBatch,
                 "Camera",
                 optionsCameraBounds.x + 22f,
                 optionsCameraBounds.y + optionsCameraBounds.height * 0.62f);
@@ -1745,6 +2045,128 @@ public class RatassGame extends ApplicationAdapter {
                 optionsCameraBounds.x + optionsCameraBounds.width - 22f,
                 optionsCameraBounds.y + optionsCameraBounds.height * 0.62f);
         spriteBatch.end();
+    }
+
+    private float getOptionsTitleBaseline(float hudHeight) {
+        float contentTop =
+                Math.max(
+                        optionsThemeBounds.y + optionsThemeBounds.height,
+                        optionsCarSheetBounds.y + optionsCarSheetBounds.height);
+        return Math.min(hudHeight - 30f, contentTop + Math.max(34f, hudHeight * 0.045f));
+    }
+
+    private String buildPlayerCarMenuValue() {
+        int carCount = getMenuSelectableCarCount();
+        if (carCount <= 0) {
+            return String.valueOf(selectedPlayerCarIndex + 1);
+        }
+        int displayIndex = clampPlayerCarIndex(selectedPlayerCarIndex, carCount) + 1;
+        return displayIndex + "/" + carCount;
+    }
+
+    private void drawCarSheetPreview() {
+        if (menuCarSheetTexture == null
+                || optionsCarSheetBounds.width <= 0f
+                || optionsCarSheetBounds.height <= 0f) {
+            return;
+        }
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0.035f, 0.042f, 0.050f, 0.92f);
+        shapeRenderer.rect(
+                optionsCarSheetBounds.x,
+                optionsCarSheetBounds.y,
+                optionsCarSheetBounds.width,
+                optionsCarSheetBounds.height);
+        shapeRenderer.end();
+
+        spriteBatch.begin();
+        spriteBatch.setColor(1f, 1f, 1f, 1f);
+        spriteBatch.draw(
+                menuCarSheetTexture,
+                optionsCarSheetBounds.x,
+                optionsCarSheetBounds.y,
+                optionsCarSheetBounds.width,
+                optionsCarSheetBounds.height);
+        spriteBatch.end();
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        drawSelectedPlayerCarFrame();
+        shapeRenderer.end();
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        shapeRenderer.setColor(0.62f, 0.70f, 0.75f, 0.58f);
+        shapeRenderer.rect(
+                optionsCarSheetBounds.x,
+                optionsCarSheetBounds.y,
+                optionsCarSheetBounds.width,
+                optionsCarSheetBounds.height);
+        shapeRenderer.end();
+
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawSelectedPlayerCarFrame() {
+        if (menuCarSheetSourceBounds.size == 0 || menuCarSheetTexture == null) {
+            return;
+        }
+
+        int selectedIndex = clampPlayerCarIndex(selectedPlayerCarIndex, menuCarSheetSourceBounds.size);
+        Rectangle sourceBounds = menuCarSheetSourceBounds.get(selectedIndex);
+        float scaleX = optionsCarSheetBounds.width / menuCarSheetTexture.getWidth();
+        float scaleY = optionsCarSheetBounds.height / menuCarSheetTexture.getHeight();
+        float frameX = optionsCarSheetBounds.x + sourceBounds.x * scaleX;
+        float frameY =
+                optionsCarSheetBounds.y
+                        + optionsCarSheetBounds.height
+                        - (sourceBounds.y + sourceBounds.height) * scaleY;
+        float frameWidth = sourceBounds.width * scaleX;
+        float frameHeight = sourceBounds.height * scaleY;
+        float padding = Math.max(3f, Math.min(frameWidth, frameHeight) * 0.14f);
+        frameX = Math.max(optionsCarSheetBounds.x, frameX - padding);
+        frameY = Math.max(optionsCarSheetBounds.y, frameY - padding);
+        frameWidth =
+                Math.min(
+                        optionsCarSheetBounds.x + optionsCarSheetBounds.width - frameX,
+                        frameWidth + padding * 2f);
+        frameHeight =
+                Math.min(
+                        optionsCarSheetBounds.y + optionsCarSheetBounds.height - frameY,
+                        frameHeight + padding * 2f);
+
+        shapeRenderer.setColor(0.05f, 0.90f, 1f, 0.10f);
+        shapeRenderer.rect(frameX, frameY, frameWidth, frameHeight);
+
+        float thickness = Math.max(2f, Math.min(frameWidth, frameHeight) * 0.055f);
+        shapeRenderer.setColor(0.01f, 0.012f, 0.015f, 0.96f);
+        drawFrameEdges(frameX, frameY, frameWidth, frameHeight, thickness * 2.4f);
+        shapeRenderer.setColor(0.00f, 0.95f, 1.00f, 0.98f);
+        drawFrameEdges(
+                frameX + thickness * 0.55f,
+                frameY + thickness * 0.55f,
+                Math.max(0f, frameWidth - thickness * 1.1f),
+                Math.max(0f, frameHeight - thickness * 1.1f),
+                thickness);
+        shapeRenderer.setColor(1f, 1f, 1f, 0.92f);
+        drawFrameEdges(
+                frameX + thickness * 1.7f,
+                frameY + thickness * 1.7f,
+                Math.max(0f, frameWidth - thickness * 3.4f),
+                Math.max(0f, frameHeight - thickness * 3.4f),
+                Math.max(1f, thickness * 0.42f));
+    }
+
+    private void drawFrameEdges(float x, float y, float width, float height, float thickness) {
+        if (width <= 0f || height <= 0f || thickness <= 0f) {
+            return;
+        }
+        shapeRenderer.rect(x, y, width, thickness);
+        shapeRenderer.rect(x, y + height - thickness, width, thickness);
+        shapeRenderer.rect(x, y, thickness, height);
+        shapeRenderer.rect(x + width - thickness, y, thickness, height);
     }
 
     private void drawMenuButton(Rectangle bounds, String label, boolean selected) {
@@ -5009,6 +5431,13 @@ public class RatassGame extends ApplicationAdapter {
         return MathUtils.clamp(carCount, MIN_CAR_COUNT, MAX_CAR_COUNT);
     }
 
+    private static int clampPlayerCarIndex(int playerCarIndex, int carCount) {
+        if (carCount <= 0) {
+            return Math.max(0, playerCarIndex);
+        }
+        return MathUtils.clamp(playerCarIndex, 0, carCount - 1);
+    }
+
     private static String loadConfiguredProperty(String propertyName) {
         Map<String, String> properties = loadConfiguredProperties();
         return properties.get(propertyName);
@@ -5120,6 +5549,7 @@ public class RatassGame extends ApplicationAdapter {
         disposeArenaSurfaceTextures();
         disposeThemeCarVisualTextures();
         disposeTexture(themeCarsTexture);
+        disposeMenuCarPreview();
         if (shapeRenderer != null) {
             shapeRenderer.dispose();
         }
