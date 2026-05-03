@@ -1,5 +1,9 @@
 package com.github.jbescos.ai;
 
+import com.badlogic.gdx.ai.fsm.DefaultStateMachine;
+import com.badlogic.gdx.ai.fsm.State;
+import com.badlogic.gdx.ai.fsm.StateMachine;
+import com.badlogic.gdx.ai.msg.Telegram;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.physics.box2d.Body;
@@ -18,18 +22,15 @@ public final class CarAiController {
     private static final float EMERGENCY_RECOVERY_EDGE_DISTANCE = 1.1f;
     private static final float EMERGENCY_RECOVERY_THROTTLE = 1f;
     private static final float RECOVERY_REVERSE_THROTTLE = -0.58f;
-    private static final float ATTACK_REVERSE_THROTTLE = -0.42f;
     private static final float FULL_ATTACK_THROTTLE = 1f;
-    private static final float CHARGE_ATTACK_THROTTLE = 0.82f;
     private static final float LOW_SPEED_PIVOT_SPEED_SQ = 1.1f;
-    private static final float LOW_SPEED_PIVOT_THROTTLE = 0.18f;
+    private static final float LOW_SPEED_PIVOT_THROTTLE = 0.50f;
     private static final float STUCK_PROGRESS_SPEED_SQ = 4.2f;
     private static final float STUCK_PROGRESS_DISTANCE_SQ = 0.48f;
     private static final float STUCK_PROGRESS_RESET_DISTANCE_SQ = 1.44f;
     private static final float STUCK_MIN_COMMAND_THROTTLE = 0.45f;
     private static final float STUCK_DISENGAGE_DURATION = 0.62f;
     private static final float STUCK_CHARGE_DURATION = 0.95f;
-    private static final float DISENGAGE_REVERSE_THROTTLE = -1f;
     private static final float DISENGAGE_TURN_GAIN_MULTIPLIER = 1.18f;
     private static final float CHARGE_TURN_GAIN_MULTIPLIER = 1.20f;
     private static final float STUCK_RESET_DURATION = 1.1f;
@@ -68,15 +69,24 @@ public final class CarAiController {
     private static final float EDGE_VULNERABILITY_DISTANCE = 2.9f;
     private static final float EDGE_VULNERABILITY_BONUS = 2.4f;
     private static final float EDGE_OUTWARD_SPEED_BONUS = 0.9f;
-    private static final float AI_HANDBRAKE_TURN_THRESHOLD = 0.42f;
-    private static final float AI_HANDBRAKE_PIVOT_SPEED_SQ = 1.55f;
-    private static final float AI_HANDBRAKE_DRIFT_MIN_SPEED_SQ = 5.2f;
-    private static final float AI_HANDBRAKE_PIVOT_ANGLE = 0.88f;
-    private static final float AI_HANDBRAKE_RECOVERY_ANGLE = 0.34f;
-    private static final float AI_HANDBRAKE_ATTACK_ANGLE = 0.48f;
-    private static final float AI_HANDBRAKE_PIVOT_THROTTLE = 0.82f;
+    private static final float AI_TARGET_ANGULAR_SPEED = 1.85f;
+    private static final float AI_SPIN_TARGET_ANGULAR_SPEED = 0.52f;
+    private static final float AI_TURN_RESPONSE = 0.76f;
+    private static final float AI_MAX_TURN = 0.86f;
+    private static final float AI_SPIN_MAX_TURN = 0.68f;
+    private static final float AI_SPIN_STABILIZE_ANGULAR_SPEED = 1.85f;
+    private static final float AI_SPIN_STABILIZE_THROTTLE = 0.42f;
+    private static final float AI_FORWARD_MISALIGNED_MIN_THROTTLE = 0.38f;
+    private static final float AI_FORWARD_ALIGNED_THROTTLE_WEIGHT = 0.62f;
+    private static final float AI_RECOVERY_REVERSE_ANGLE = 2.28f;
+    private static final float AI_PICKUP_MIN_THROTTLE = 0.62f;
+    private static final float AI_ESCAPE_TURN_SPEED = 1.15f;
+    private static final float REVERSE_STEERING_SPEED = 0.25f;
+    private static final float REVERSE_STEERING_THROTTLE = -0.1f;
 
     private final AiDrivingPersonality personality;
+    private final StateMachine<CarAiController, AiMode> modeMachine =
+            new DefaultStateMachine<CarAiController, AiMode>(this, AiMode.IDLE);
     private final AiControlDecision decision = new AiControlDecision();
     private final Vector2 forwardAxis = new Vector2();
     private final Vector2 desiredVector = new Vector2();
@@ -133,12 +143,14 @@ public final class CarAiController {
             Vector2 pointPickupPosition) {
         if (self == null || !self.isActive()) {
             clearAttackResetState();
+            changeMode(AiMode.IDLE);
             return decision.set(0f, 0f);
         }
 
         Body body = self.getBody();
         if (body == null) {
             clearAttackResetState();
+            changeMode(AiMode.IDLE);
             return decision.set(0f, 0f);
         }
 
@@ -221,6 +233,7 @@ public final class CarAiController {
 
         if (!recovering && !chaseGrowthPickup && !chasePointPickup && targetBody == null) {
             clearAttackResetState();
+            changeMode(AiMode.IDLE);
             return decision.set(0f, 0f);
         }
 
@@ -351,59 +364,43 @@ public final class CarAiController {
             }
         }
 
+        float speedSq = body.getLinearVelocity().len2();
         float currentHeading = body.getAngle() + MathUtils.HALF_PI;
         float desiredHeading = desiredVector.angleRad();
-        float angleError = desiredHeading - currentHeading;
-        angleError = MathUtils.atan2(MathUtils.sin(angleError), MathUtils.cos(angleError));
-        float absAngleError = Math.abs(angleError);
+        float frontAngleError = normalizeAngle(desiredHeading - currentHeading);
+        float absFrontAngleError = Math.abs(frontAngleError);
+        float desiredDistanceSq = desiredVector.len2();
+        float angularVelocity = body.getAngularVelocity();
+        float signedForwardSpeed = body.getWorldVector(working.set(0f, 1f)).dot(body.getLinearVelocity());
 
         boolean defensiveDriving = recovering || evadingThreat;
-        float turnGain = defensiveDriving ? personality.recoveryTurnGain : personality.attackTurnGain;
-        if (disengaging) {
-            turnGain *= DISENGAGE_TURN_GAIN_MULTIPLIER;
-        } else if (charging) {
-            turnGain *= CHARGE_TURN_GAIN_MULTIPLIER;
-        }
-        float turn = MathUtils.clamp(angleError * turnGain, -1f, 1f);
-        float speedSq = body.getLinearVelocity().len2();
+        AiMode mode =
+                determineMode(
+                        recovering,
+                        evadingThreat,
+                        chaseGrowthPickup,
+                        chasePointPickup,
+                        contestPickup,
+                        disengaging,
+                        charging);
+        changeMode(mode);
 
-        float throttle;
-        if (defensiveDriving) {
-            if (absAngleError > personality.recoveryReverseAngle) {
-                throttle = speedSq <= LOW_SPEED_PIVOT_SPEED_SQ
-                        ? LOW_SPEED_PIVOT_THROTTLE
-                        : RECOVERY_REVERSE_THROTTLE;
-            } else if (recovering && nearestHazard < EMERGENCY_RECOVERY_EDGE_DISTANCE) {
-                throttle = EMERGENCY_RECOVERY_THROTTLE;
-            } else {
-                throttle = evadingThreat
-                        ? MathUtils.clamp(
-                                personality.recoveryThrottle + personality.empoweredThreatAvoidance * 0.10f,
-                                personality.recoveryThrottle,
-                                EMERGENCY_RECOVERY_THROTTLE)
-                        : personality.recoveryThrottle;
-            }
-        } else if (disengaging) {
-            throttle = DISENGAGE_REVERSE_THROTTLE;
-        } else if (charging) {
-            if (absAngleError > personality.reverseAttackAngle) {
-                throttle = CHARGE_ATTACK_THROTTLE;
-            } else if (absAngleError > personality.cautiousAttackAngle) {
-                throttle = Math.max(personality.cautiousAttackThrottle, CHARGE_ATTACK_THROTTLE);
-            } else {
-                throttle = FULL_ATTACK_THROTTLE;
-            }
-        } else if (absAngleError > personality.reverseAttackAngle) {
-            throttle = speedSq <= LOW_SPEED_PIVOT_SPEED_SQ
-                    ? LOW_SPEED_PIVOT_THROTTLE
-                    : ATTACK_REVERSE_THROTTLE;
-        } else if (absAngleError > personality.cautiousAttackAngle) {
-            throttle = personality.cautiousAttackThrottle;
-        } else if (desiredVector.len2() < personality.closeTargetDistanceSq) {
-            throttle = personality.closeTargetThrottle;
-        } else {
-            throttle = FULL_ATTACK_THROTTLE;
-        }
+        float throttle =
+                chooseThrottle(
+                        mode,
+                        absFrontAngleError,
+                        speedSq,
+                        nearestHazard,
+                        desiredDistanceSq,
+                        evadingThreat);
+        float steeringDirection = getSteeringDirection(signedForwardSpeed, throttle);
+        float steeringAngleError = getSteeringAngleError(desiredHeading, currentHeading, throttle);
+        float turn =
+                computeDampedTurn(
+                        steeringAngleError,
+                        getTurnGain(mode, defensiveDriving),
+                        angularVelocity,
+                        steeringDirection);
 
         boolean stuckEligible =
                 !chaseGrowthPickup
@@ -427,19 +424,23 @@ public final class CarAiController {
         }
 
         if (stuckEligible && stuckTimer > personality.stuckDuration && chargeTimer <= 0f) {
-            engageStuckRecovery(turn, position);
+            engageStuckRecovery(steeringAngleError, position);
             disengaging = true;
             charging = false;
+            mode = AiMode.DISENGAGE;
+            changeMode(mode);
         } else if (stuckTimer > STUCK_RESET_DURATION) {
             resetStuckProgress(position);
         }
 
         if (disengaging) {
             throttle = personality.stuckReverseThrottle;
-            turn = stuckTurnDirection;
+            steeringDirection = getSteeringDirection(signedForwardSpeed, throttle);
+            turn = computeEscapeTurn(stuckTurnDirection, angularVelocity, steeringDirection);
         } else if (charging) {
             throttle = FULL_ATTACK_THROTTLE;
-            turn = stuckTurnDirection;
+            steeringDirection = getSteeringDirection(signedForwardSpeed, throttle);
+            turn = computeEscapeTurn(stuckTurnDirection, angularVelocity, steeringDirection);
         }
 
         updateOscillationState(
@@ -454,8 +455,11 @@ public final class CarAiController {
                 charging);
 
         if (oscillationEscapeTimer > 0f) {
+            mode = AiMode.ESCAPE;
+            changeMode(mode);
             throttle = OSCILLATION_ESCAPE_THROTTLE;
-            turn = stuckTurnDirection;
+            steeringDirection = getSteeringDirection(signedForwardSpeed, throttle);
+            turn = computeEscapeTurn(stuckTurnDirection, angularVelocity, steeringDirection);
             escapingOscillation = true;
         }
 
@@ -463,32 +467,190 @@ public final class CarAiController {
             resetStuckProgress(position);
         }
 
-        float absTurn = Math.abs(turn);
-        boolean handbrakePivot =
-                !disengaging
-                        && absTurn >= AI_HANDBRAKE_TURN_THRESHOLD
-                        && speedSq <= AI_HANDBRAKE_PIVOT_SPEED_SQ
-                        && (absAngleError >= AI_HANDBRAKE_PIVOT_ANGLE
-                        || charging
-                        || escapingOscillation);
-        boolean handbrake = false;
-        if (handbrakePivot) {
-            throttle = Math.max(throttle, AI_HANDBRAKE_PIVOT_THROTTLE);
-            handbrake = true;
-        } else if (!disengaging
-                && throttle > 0.18f
-                && absTurn >= AI_HANDBRAKE_TURN_THRESHOLD
-                && speedSq >= AI_HANDBRAKE_DRIFT_MIN_SPEED_SQ
-                && (absAngleError
-                                >= (defensiveDriving
-                                ? AI_HANDBRAKE_RECOVERY_ANGLE
-                                : AI_HANDBRAKE_ATTACK_ANGLE)
-                        || charging
-                        || escapingOscillation)) {
-            handbrake = true;
+        if (Math.abs(angularVelocity) >= AI_SPIN_STABILIZE_ANGULAR_SPEED) {
+            throttle = calmThrottleWhileSpinning(throttle);
+            steeringDirection = getSteeringDirection(signedForwardSpeed, throttle);
+            steeringAngleError = getSteeringAngleError(desiredHeading, currentHeading, throttle);
+            turn =
+                    computeDampedTurn(
+                            steeringAngleError,
+                            getTurnGain(mode, defensiveDriving),
+                            angularVelocity,
+                            steeringDirection);
         }
 
-        return decision.set(throttle, turn, handbrake);
+        return decision.set(throttle, turn);
+    }
+
+    private AiMode determineMode(
+            boolean recovering,
+            boolean evadingThreat,
+            boolean chaseGrowthPickup,
+            boolean chasePointPickup,
+            boolean contestPickup,
+            boolean disengaging,
+            boolean charging) {
+        if (disengaging) {
+            return AiMode.DISENGAGE;
+        }
+        if (charging) {
+            return AiMode.CHARGE;
+        }
+        if (recovering) {
+            return AiMode.RECOVER;
+        }
+        if (evadingThreat) {
+            return AiMode.EVADE;
+        }
+        if (chaseGrowthPickup || chasePointPickup || contestPickup) {
+            return AiMode.PICKUP;
+        }
+        return AiMode.ATTACK;
+    }
+
+    private void changeMode(AiMode mode) {
+        if (modeMachine.getCurrentState() != mode) {
+            modeMachine.changeState(mode);
+        }
+        modeMachine.update();
+    }
+
+    private float chooseThrottle(
+            AiMode mode,
+            float absFrontAngleError,
+            float speedSq,
+            float nearestHazard,
+            float desiredDistanceSq,
+            boolean evadingThreat) {
+        if (mode == AiMode.DISENGAGE) {
+            return personality.stuckReverseThrottle;
+        }
+        if (mode == AiMode.CHARGE || mode == AiMode.ESCAPE) {
+            return scaleForwardThrottle(FULL_ATTACK_THROTTLE, absFrontAngleError, 0.72f);
+        }
+        if (mode == AiMode.RECOVER) {
+            if (absFrontAngleError > AI_RECOVERY_REVERSE_ANGLE && speedSq > LOW_SPEED_PIVOT_SPEED_SQ) {
+                return RECOVERY_REVERSE_THROTTLE;
+            }
+            float base =
+                    nearestHazard < EMERGENCY_RECOVERY_EDGE_DISTANCE
+                            ? EMERGENCY_RECOVERY_THROTTLE
+                            : personality.recoveryThrottle;
+            return scaleForwardThrottle(base, absFrontAngleError, AI_FORWARD_MISALIGNED_MIN_THROTTLE);
+        }
+        if (mode == AiMode.EVADE) {
+            float base =
+                    MathUtils.clamp(
+                            personality.recoveryThrottle + personality.empoweredThreatAvoidance * 0.10f,
+                            personality.recoveryThrottle,
+                            EMERGENCY_RECOVERY_THROTTLE);
+            return scaleForwardThrottle(base, absFrontAngleError, AI_FORWARD_MISALIGNED_MIN_THROTTLE);
+        }
+        if (mode == AiMode.PICKUP) {
+            return scaleForwardThrottle(
+                    Math.max(AI_PICKUP_MIN_THROTTLE, personality.recoveryThrottle),
+                    absFrontAngleError,
+                    AI_PICKUP_MIN_THROTTLE);
+        }
+
+        float baseThrottle;
+        if (absFrontAngleError > personality.cautiousAttackAngle) {
+            baseThrottle = Math.max(personality.cautiousAttackThrottle, AI_FORWARD_MISALIGNED_MIN_THROTTLE);
+        } else if (desiredDistanceSq < personality.closeTargetDistanceSq) {
+            baseThrottle = personality.closeTargetThrottle;
+        } else {
+            baseThrottle = FULL_ATTACK_THROTTLE;
+        }
+        if (evadingThreat) {
+            baseThrottle = Math.max(baseThrottle, personality.recoveryThrottle);
+        }
+        return scaleForwardThrottle(baseThrottle, absFrontAngleError, AI_FORWARD_MISALIGNED_MIN_THROTTLE);
+    }
+
+    private float scaleForwardThrottle(float baseThrottle, float absFrontAngleError, float minimumThrottle) {
+        float alignment = MathUtils.clamp(1f - absFrontAngleError / MathUtils.PI, 0f, 1f);
+        float scaled =
+                baseThrottle
+                        * ((1f - AI_FORWARD_ALIGNED_THROTTLE_WEIGHT)
+                                + alignment * AI_FORWARD_ALIGNED_THROTTLE_WEIGHT);
+        return MathUtils.clamp(Math.max(minimumThrottle, scaled), 0f, 1f);
+    }
+
+    private float getTurnGain(AiMode mode, boolean defensiveDriving) {
+        float turnGain = defensiveDriving ? personality.recoveryTurnGain : personality.attackTurnGain;
+        if (mode == AiMode.DISENGAGE) {
+            turnGain *= DISENGAGE_TURN_GAIN_MULTIPLIER;
+        } else if (mode == AiMode.CHARGE) {
+            turnGain *= CHARGE_TURN_GAIN_MULTIPLIER;
+        }
+        return turnGain;
+    }
+
+    private float getSteeringAngleError(float desiredHeading, float currentHeading, float throttle) {
+        float effectiveDesiredHeading =
+                throttle < REVERSE_STEERING_THROTTLE
+                        ? desiredHeading + MathUtils.PI
+                        : desiredHeading;
+        return normalizeAngle(effectiveDesiredHeading - currentHeading);
+    }
+
+    private float computeDampedTurn(
+            float angleError,
+            float turnGain,
+            float angularVelocity,
+            float steeringDirection) {
+        float absAngularVelocity = Math.abs(angularVelocity);
+        boolean stabilizingSpin = absAngularVelocity >= AI_SPIN_STABILIZE_ANGULAR_SPEED;
+        float targetAngularSpeed = stabilizingSpin ? AI_SPIN_TARGET_ANGULAR_SPEED : AI_TARGET_ANGULAR_SPEED;
+        float desiredAngularVelocity =
+                MathUtils.clamp(angleError * turnGain, -targetAngularSpeed, targetAngularSpeed);
+        float turnDemand = (desiredAngularVelocity - angularVelocity) * AI_TURN_RESPONSE;
+        float maxTurn = stabilizingSpin ? AI_SPIN_MAX_TURN : AI_MAX_TURN;
+        return MathUtils.clamp(turnDemand * steeringDirection, -maxTurn, maxTurn);
+    }
+
+    private float computeEscapeTurn(
+            float desiredTurnDirection,
+            float angularVelocity,
+            float steeringDirection) {
+        float desiredAngularVelocity = desiredTurnDirection * AI_ESCAPE_TURN_SPEED;
+        float absAngularVelocity = Math.abs(angularVelocity);
+        if (absAngularVelocity >= AI_SPIN_STABILIZE_ANGULAR_SPEED) {
+            desiredAngularVelocity =
+                    MathUtils.clamp(
+                            desiredAngularVelocity,
+                            -AI_SPIN_TARGET_ANGULAR_SPEED,
+                            AI_SPIN_TARGET_ANGULAR_SPEED);
+        }
+        float maxTurn = absAngularVelocity >= AI_SPIN_STABILIZE_ANGULAR_SPEED ? AI_SPIN_MAX_TURN : AI_MAX_TURN;
+        return MathUtils.clamp(
+                (desiredAngularVelocity - angularVelocity) * AI_TURN_RESPONSE * steeringDirection,
+                -maxTurn,
+                maxTurn);
+    }
+
+    private float calmThrottleWhileSpinning(float throttle) {
+        if (throttle > AI_SPIN_STABILIZE_THROTTLE) {
+            return AI_SPIN_STABILIZE_THROTTLE;
+        }
+        if (throttle < -AI_SPIN_STABILIZE_THROTTLE) {
+            return -AI_SPIN_STABILIZE_THROTTLE;
+        }
+        return throttle;
+    }
+
+    private float normalizeAngle(float angle) {
+        return MathUtils.atan2(MathUtils.sin(angle), MathUtils.cos(angle));
+    }
+
+    private float getSteeringDirection(float signedForwardSpeed, float throttle) {
+        if (signedForwardSpeed < -REVERSE_STEERING_SPEED) {
+            return -1f;
+        }
+        if (signedForwardSpeed < REVERSE_STEERING_SPEED && throttle < REVERSE_STEERING_THROTTLE) {
+            return -1f;
+        }
+        return 1f;
     }
 
     private void refreshTargetLock(AiVehicleView target) {
@@ -1007,6 +1169,34 @@ public final class CarAiController {
         }
 
         return best;
+    }
+
+    private enum AiMode implements State<CarAiController> {
+        IDLE,
+        RECOVER,
+        EVADE,
+        PICKUP,
+        ATTACK,
+        DISENGAGE,
+        CHARGE,
+        ESCAPE;
+
+        @Override
+        public void enter(CarAiController controller) {
+        }
+
+        @Override
+        public void update(CarAiController controller) {
+        }
+
+        @Override
+        public void exit(CarAiController controller) {
+        }
+
+        @Override
+        public boolean onMessage(CarAiController controller, Telegram telegram) {
+            return false;
+        }
     }
 
     private float approximateHazardDistance(ArenaMap arenaMap, Vector2 point) {
