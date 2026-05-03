@@ -85,15 +85,13 @@ public class RatassGame extends ApplicationAdapter {
     };
     private static final int THEME_CAR_STANDARD_COLUMNS = 10;
     private static final int THEME_CAR_MIN_COLUMNS = 10;
-    private static final int THEME_CAR_MAX_COLUMNS = 12;
+    private static final int THEME_CAR_MAX_COLUMNS = 10;
     private static final int THEME_CAR_SHEET_ROWS = 5;
     private static final int THEME_CAR_TEXTURE_PADDING = 2;
     private static final int BACKGROUND_ALPHA_CUTOUT_THRESHOLD = 5;
     private static final int BACKGROUND_ALPHA_OPAQUE_THRESHOLD = 16;
     private static final int THEME_CAR_GLOBAL_SCAN_MIN_COUNT = 45;
-    private static final int THEME_CAR_GRID_BACKGROUND_DISTANCE = 38;
-    private static final int THEME_CAR_GRID_BACKGROUND_DARK_MAX = 60;
-    private static final int THEME_CAR_GRID_BACKGROUND_DARK_SPREAD = 22;
+    private static final int THEME_CAR_GRID_BACKGROUND_DISTANCE = 18;
     private static final int THEME_CAR_GRID_PROJECTION_SPREAD = 20;
     private static final int THEME_CAR_GRID_PROJECTION_BRIGHTNESS = 68;
     private static final int THEME_CAR_GRID_PROJECTION_DISTANCE = 32;
@@ -1063,7 +1061,7 @@ public class RatassGame extends ApplicationAdapter {
         try {
             source = new Pixmap(carSheetHandle);
             scan = scanThemeCarSheet(source);
-            themeCarVisuals.addAll(extractCarVisualsFromSheet(scan.masked, scan.components));
+            themeCarVisuals.addAll(extractCarVisualsFromSheet(source, scan.masked, scan.components));
         } catch (RuntimeException exception) {
             Gdx.app.error("RatassGame", "Could not load themed car sheet " + carSheetHandle.path(), exception);
             disposeThemeCarVisualTextures();
@@ -1243,15 +1241,18 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private ThemeCarSheetScan scanThemeCarSheet(Pixmap source) {
-        Pixmap globalMasked = createMaskedPixmap(source);
-        List<ThemeCarComponent> globalComponents = detectThemeCarComponents(globalMasked);
-        if (isReliableGlobalCarScan(globalComponents, source.getWidth(), source.getHeight())) {
-            return new ThemeCarSheetScan(
-                    globalMasked,
-                    limitThemeCarComponents(globalComponents),
-                    0f);
+        boolean sourceHasTransparentBackground = (source.getPixel(0, 0) & 0xff) < 255;
+        if (sourceHasTransparentBackground) {
+            Pixmap globalMasked = createMaskedPixmap(source);
+            List<ThemeCarComponent> globalComponents = detectThemeCarComponents(globalMasked);
+            if (isReliableGlobalCarScan(globalComponents, source.getWidth(), source.getHeight())) {
+                return new ThemeCarSheetScan(
+                        globalMasked,
+                        limitThemeCarComponents(globalComponents),
+                        0f);
+            }
+            globalMasked.dispose();
         }
-        globalMasked.dispose();
 
         ThemeCarSheetScan bestScan = null;
         for (int columns = THEME_CAR_MIN_COLUMNS; columns <= THEME_CAR_MAX_COLUMNS; columns++) {
@@ -1590,7 +1591,7 @@ public class RatassGame extends ApplicationAdapter {
                     continue;
                 }
 
-                masked.drawPixel(sourceX, sourceY, pixel);
+                masked.drawPixel(sourceX, sourceY, forceOpaquePixel(pixel));
                 pixels.add(sourceY * sheetWidth + sourceX);
                 minX = Math.min(minX, sourceX);
                 minY = Math.min(minY, sourceY);
@@ -1618,6 +1619,12 @@ public class RatassGame extends ApplicationAdapter {
                 && cellX <= rowMaxX[cellY]
                 && cellY >= columnMinY[cellX]
                 && cellY <= columnMaxY[cellX];
+    }
+
+    private boolean isInsideThemeCarRowSpan(int cellX, int cellY, int[] rowMinX, int[] rowMaxX) {
+        return rowMaxX[cellY] >= rowMinX[cellY]
+                && cellX >= rowMinX[cellY]
+                && cellX <= rowMaxX[cellY];
     }
 
     private int enqueueGridBackgroundPixel(
@@ -1727,14 +1734,10 @@ public class RatassGame extends ApplicationAdapter {
         int red = (pixel >>> 24) & 0xff;
         int green = (pixel >>> 16) & 0xff;
         int blue = (pixel >>> 8) & 0xff;
-        int brightness = Math.max(Math.max(red, green), blue);
-        int spread = brightness - Math.min(Math.min(red, green), blue);
         int maxDifference = Math.max(
                 Math.max(Math.abs(red - backgroundColor[0]), Math.abs(green - backgroundColor[1])),
                 Math.abs(blue - backgroundColor[2]));
-        return maxDifference <= THEME_CAR_GRID_BACKGROUND_DISTANCE
-                || (brightness <= THEME_CAR_GRID_BACKGROUND_DARK_MAX
-                        && spread <= THEME_CAR_GRID_BACKGROUND_DARK_SPREAD);
+        return maxDifference <= THEME_CAR_GRID_BACKGROUND_DISTANCE;
     }
 
     private float calculateCoefficientOfVariation(IntArray values) {
@@ -1761,10 +1764,10 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private Array<CarVisual> extractCarVisualsFromSheet(
-            Pixmap masked, List<ThemeCarComponent> components) {
+            Pixmap source, Pixmap masked, List<ThemeCarComponent> components) {
         Array<CarVisual> visuals = new Array<CarVisual>();
         for (int i = 0; i < components.size(); i++) {
-            CarVisual visual = createThemeCarVisual(masked, components.get(i));
+            CarVisual visual = createThemeCarVisual(source, masked, components.get(i));
             if (visual != null) {
                 visuals.add(visual);
             }
@@ -1919,7 +1922,8 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private CarVisual createThemeCarVisual(Pixmap masked, ThemeCarComponent component) {
+    private CarVisual createThemeCarVisual(
+            Pixmap source, Pixmap masked, ThemeCarComponent component) {
         int spriteWidth = component.getWidth();
         int spriteHeight = component.getHeight();
         Pixmap spritePixmap =
@@ -1927,15 +1931,48 @@ public class RatassGame extends ApplicationAdapter {
                         spriteWidth + THEME_CAR_TEXTURE_PADDING * 2,
                         spriteHeight + THEME_CAR_TEXTURE_PADDING * 2,
                         Pixmap.Format.RGBA8888);
+        spritePixmap.setColor(0f, 0f, 0f, 0f);
+        spritePixmap.fill();
         int sheetWidth = masked.getWidth();
+        boolean[] carPixels = new boolean[spriteWidth * spriteHeight];
+        int[] rowMinX = new int[spriteHeight];
+        int[] rowMaxX = new int[spriteHeight];
+        for (int y = 0; y < spriteHeight; y++) {
+            rowMinX[y] = spriteWidth;
+            rowMaxX[y] = -1;
+        }
         for (int i = 0; i < component.pixels.size; i++) {
             int pixelIndex = component.pixels.get(i);
             int pixelY = pixelIndex / sheetWidth;
             int pixelX = pixelIndex - pixelY * sheetWidth;
+            int localX = pixelX - component.minX;
+            int localY = pixelY - component.minY;
+            if (localX < 0 || localX >= spriteWidth || localY < 0 || localY >= spriteHeight) {
+                continue;
+            }
+            carPixels[localY * spriteWidth + localX] = true;
+            rowMinX[localY] = Math.min(rowMinX[localY], localX);
+            rowMaxX[localY] = Math.max(rowMaxX[localY], localX);
             spritePixmap.drawPixel(
-                    pixelX - component.minX + THEME_CAR_TEXTURE_PADDING,
-                    pixelY - component.minY + THEME_CAR_TEXTURE_PADDING,
-                    masked.getPixel(pixelX, pixelY));
+                    localX + THEME_CAR_TEXTURE_PADDING,
+                    localY + THEME_CAR_TEXTURE_PADDING,
+                    forceOpaquePixel(source.getPixel(pixelX, pixelY)));
+        }
+
+        for (int localY = 0; localY < spriteHeight; localY++) {
+            for (int localX = 0; localX < spriteWidth; localX++) {
+                if (carPixels[localY * spriteWidth + localX]
+                        || !isInsideThemeCarRowSpan(localX, localY, rowMinX, rowMaxX)) {
+                    continue;
+                }
+
+                int fillPixel =
+                        forceOpaquePixel(source.getPixel(component.minX + localX, component.minY + localY));
+                spritePixmap.drawPixel(
+                        localX + THEME_CAR_TEXTURE_PADDING,
+                        localY + THEME_CAR_TEXTURE_PADDING,
+                        fillPixel);
+            }
         }
 
         Texture texture = new Texture(spritePixmap);
@@ -1946,6 +1983,10 @@ public class RatassGame extends ApplicationAdapter {
                         new Rectangle(0f, 0f, spritePixmap.getWidth(), spritePixmap.getHeight()));
         spritePixmap.dispose();
         return new CarVisual(texture, 0f, color);
+    }
+
+    private int forceOpaquePixel(int pixel) {
+        return (pixel & 0xffffff00) | 0xff;
     }
 
     private void disposeThemeCarVisualTextures() {
