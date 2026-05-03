@@ -35,7 +35,6 @@ import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Array;
-import com.badlogic.gdx.utils.IntArray;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
@@ -48,11 +47,8 @@ import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.SpawnPoint;
 import com.github.jbescos.gameplay.maps.ArenaMaps;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
@@ -83,19 +79,8 @@ public class RatassGame extends ApplicationAdapter {
             new ThemeChoice("animals", "Animal Cars"),
             new ThemeChoice("monsters", "Monster Cars")
     };
-    private static final int THEME_CAR_STANDARD_COLUMNS = 10;
-    private static final int THEME_CAR_MIN_COLUMNS = 10;
-    private static final int THEME_CAR_MAX_COLUMNS = 10;
+    private static final int THEME_CAR_COLUMNS = 10;
     private static final int THEME_CAR_SHEET_ROWS = 5;
-    private static final int THEME_CAR_TEXTURE_PADDING = 2;
-    private static final int BACKGROUND_ALPHA_CUTOUT_THRESHOLD = 5;
-    private static final int BACKGROUND_ALPHA_OPAQUE_THRESHOLD = 16;
-    private static final int THEME_CAR_GLOBAL_SCAN_MIN_COUNT = 45;
-    private static final int THEME_CAR_GRID_BACKGROUND_DISTANCE = 18;
-    private static final int THEME_CAR_GRID_PROJECTION_SPREAD = 20;
-    private static final int THEME_CAR_GRID_PROJECTION_BRIGHTNESS = 68;
-    private static final int THEME_CAR_GRID_PROJECTION_DISTANCE = 32;
-    private static final int THEME_CAR_GRID_MIN_PIXELS = 96;
     private static final int DEFAULT_CAR_COUNT = 20;
     private static final int DEFAULT_PLAYER_CAR_INDEX = 0;
     private static final int MIN_CAR_COUNT = 2;
@@ -931,12 +916,10 @@ public class RatassGame extends ApplicationAdapter {
                 continue;
             }
 
-            if (template.visual.texture != null) {
-                template.spriteTexture = template.visual.texture;
-            } else if (template.visual.sharedTexture) {
+            if (template.visual.sharedTexture) {
                 template.spriteTexture = themeCarsTexture;
             } else {
-                template.spriteTexture = loadTexture(template.visual.spritePath, template.visual.stripDarkBackground);
+                template.spriteTexture = loadTexture(template.visual.spritePath);
                 template.ownsSpriteTexture = template.spriteTexture != null;
             }
 
@@ -1046,7 +1029,6 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void loadThemeTextures() {
-        disposeThemeCarVisualTextures();
         disposeTexture(themeCarsTexture);
         themeCarsTexture = null;
         themeCarVisuals.clear();
@@ -1057,21 +1039,17 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         Pixmap source = null;
-        ThemeCarSheetScan scan = null;
         try {
             source = new Pixmap(carSheetHandle);
-            scan = scanThemeCarSheet(source);
-            themeCarVisuals.addAll(extractCarVisualsFromSheet(source, scan.masked, scan.components));
+            themeCarsTexture = new Texture(carSheetHandle);
+            themeCarsTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+            themeCarVisuals.addAll(createThemeCarVisualsFromFixedGrid(source));
         } catch (RuntimeException exception) {
             Gdx.app.error("RatassGame", "Could not load themed car sheet " + carSheetHandle.path(), exception);
-            disposeThemeCarVisualTextures();
             themeCarVisuals.clear();
             disposeTexture(themeCarsTexture);
             themeCarsTexture = null;
         } finally {
-            if (scan != null) {
-                scan.dispose();
-            }
             if (source != null) {
                 source.dispose();
             }
@@ -1091,36 +1069,19 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
-        Pixmap source = null;
-        ThemeCarSheetScan scan = null;
         try {
-            source = new Pixmap(carSheetHandle);
-            scan = scanThemeCarSheet(source);
-            for (int i = 0; i < scan.components.size(); i++) {
-                ThemeCarComponent component = scan.components.get(i);
-                menuCarSheetSourceBounds.add(
-                        new Rectangle(
-                                component.minX,
-                                component.minY,
-                                component.getWidth(),
-                                component.getHeight()));
-            }
-
             menuCarSheetTexture = new Texture(carSheetHandle);
             menuCarSheetTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+            addThemeCarGridBounds(
+                    menuCarSheetTexture.getWidth(),
+                    menuCarSheetTexture.getHeight(),
+                    menuCarSheetSourceBounds);
             clampSelectedPlayerCarToMenuPreview();
         } catch (RuntimeException exception) {
             Gdx.app.error("RatassGame", "Could not load menu car sheet " + carSheetHandle.path(), exception);
             disposeTexture(menuCarSheetTexture);
             menuCarSheetTexture = null;
             menuCarSheetSourceBounds.clear();
-        } finally {
-            if (scan != null) {
-                scan.dispose();
-            }
-            if (source != null) {
-                source.dispose();
-            }
         }
     }
 
@@ -1154,26 +1115,48 @@ public class RatassGame extends ApplicationAdapter {
         return MENU_CAR_SHEET_ASPECT;
     }
 
-    private Texture loadTexture(String path) {
-        return loadTexture(path, false);
+    private Array<CarVisual> createThemeCarVisualsFromFixedGrid(Pixmap source) {
+        Array<CarVisual> visuals = new Array<CarVisual>();
+        for (int i = 0; i < MAX_CAR_COUNT; i++) {
+            Rectangle sourceBounds = getThemeCarCellBounds(i, source.getWidth(), source.getHeight());
+            visuals.add(
+                    new CarVisual(
+                            null,
+                            Math.round(sourceBounds.x),
+                            Math.round(sourceBounds.y),
+                            Math.round(sourceBounds.width),
+                            Math.round(sourceBounds.height),
+                            true,
+                            CAR_SPRITE_ROTATION_OFFSET_DEG,
+                            sampleSpriteColor(source, sourceBounds)));
+        }
+        return visuals;
     }
 
-    private Texture loadTexture(String path, boolean stripDarkBackground) {
+    private void addThemeCarGridBounds(
+            int sheetWidth, int sheetHeight, Array<Rectangle> targetBounds) {
+        for (int i = 0; i < MAX_CAR_COUNT; i++) {
+            targetBounds.add(getThemeCarCellBounds(i, sheetWidth, sheetHeight));
+        }
+    }
+
+    private Rectangle getThemeCarCellBounds(int index, int sheetWidth, int sheetHeight) {
+        int column = index % THEME_CAR_COLUMNS;
+        int row = index / THEME_CAR_COLUMNS;
+        int x0 = Math.round(column * sheetWidth / (float) THEME_CAR_COLUMNS);
+        int x1 = Math.round((column + 1) * sheetWidth / (float) THEME_CAR_COLUMNS);
+        int y0 = Math.round(row * sheetHeight / (float) THEME_CAR_SHEET_ROWS);
+        int y1 = Math.round((row + 1) * sheetHeight / (float) THEME_CAR_SHEET_ROWS);
+        return new Rectangle(x0, y0, x1 - x0, y1 - y0);
+    }
+
+    private Texture loadTexture(String path) {
         FileHandle handle = resolveAssetHandle(path);
         if (handle == null || !handle.exists()) {
             return null;
         }
         try {
-            Texture texture;
-            if (stripDarkBackground) {
-                Pixmap source = new Pixmap(handle);
-                Pixmap masked = createMaskedPixmap(source);
-                source.dispose();
-                texture = new Texture(masked);
-                masked.dispose();
-            } else {
-                texture = new Texture(handle);
-            }
+            Texture texture = new Texture(handle);
             texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
             return texture;
         } catch (RuntimeException exception) {
@@ -1215,786 +1198,6 @@ public class RatassGame extends ApplicationAdapter {
         return fallback.exists() ? fallback : null;
     }
 
-    private Pixmap createMaskedPixmap(Pixmap source) {
-        Pixmap masked = new Pixmap(source.getWidth(), source.getHeight(), Pixmap.Format.RGBA8888);
-        int background = source.getPixel(0, 0);
-        int bgR = (background >>> 24) & 0xff;
-        int bgG = (background >>> 16) & 0xff;
-        int bgB = (background >>> 8) & 0xff;
-        int bgA = background & 0xff;
-        boolean useSourceAlpha = bgA < 255;
-
-        for (int y = 0; y < source.getHeight(); y++) {
-            for (int x = 0; x < source.getWidth(); x++) {
-                int pixel = source.getPixel(x, y);
-                int red = (pixel >>> 24) & 0xff;
-                int green = (pixel >>> 16) & 0xff;
-                int blue = (pixel >>> 8) & 0xff;
-                int alpha =
-                        useSourceAlpha
-                                ? pixel & 0xff
-                                : computeMaskedAlpha(red, green, blue, bgR, bgG, bgB);
-                masked.drawPixel(x, y, (red << 24) | (green << 16) | (blue << 8) | alpha);
-            }
-        }
-        return masked;
-    }
-
-    private ThemeCarSheetScan scanThemeCarSheet(Pixmap source) {
-        boolean sourceHasTransparentBackground = (source.getPixel(0, 0) & 0xff) < 255;
-        if (sourceHasTransparentBackground) {
-            Pixmap globalMasked = createMaskedPixmap(source);
-            List<ThemeCarComponent> globalComponents = detectThemeCarComponents(globalMasked);
-            if (isReliableGlobalCarScan(globalComponents, source.getWidth(), source.getHeight())) {
-                return new ThemeCarSheetScan(
-                        globalMasked,
-                        limitThemeCarComponents(globalComponents),
-                        0f);
-            }
-            globalMasked.dispose();
-        }
-
-        ThemeCarSheetScan bestScan = null;
-        for (int columns = THEME_CAR_MIN_COLUMNS; columns <= THEME_CAR_MAX_COLUMNS; columns++) {
-            ThemeCarSheetScan candidate = scanThemeCarSheetGrid(source, columns);
-            if (candidate.components.isEmpty()) {
-                candidate.dispose();
-                continue;
-            }
-            if (bestScan == null || candidate.score < bestScan.score) {
-                if (bestScan != null) {
-                    bestScan.dispose();
-                }
-                bestScan = candidate;
-            } else {
-                candidate.dispose();
-            }
-        }
-
-        if (bestScan != null) {
-            return bestScan;
-        }
-
-        Pixmap fallbackMasked = createMaskedPixmap(source);
-        return new ThemeCarSheetScan(
-                fallbackMasked,
-                limitThemeCarComponents(detectThemeCarComponents(fallbackMasked)),
-                Float.MAX_VALUE);
-    }
-
-    private boolean isReliableGlobalCarScan(
-            List<ThemeCarComponent> components, int sheetWidth, int sheetHeight) {
-        if (components.size() < THEME_CAR_GLOBAL_SCAN_MIN_COUNT) {
-            return false;
-        }
-
-        float maxExpectedWidth = sheetWidth / (float) THEME_CAR_STANDARD_COLUMNS * 1.45f;
-        float maxExpectedHeight = sheetHeight / (float) THEME_CAR_SHEET_ROWS * 1.45f;
-        for (int i = 0; i < components.size(); i++) {
-            ThemeCarComponent component = components.get(i);
-            if (component.getWidth() > maxExpectedWidth
-                    || component.getHeight() > maxExpectedHeight) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private List<ThemeCarComponent> limitThemeCarComponents(List<ThemeCarComponent> components) {
-        if (components.size() <= MAX_CAR_COUNT) {
-            return components;
-        }
-        return new ArrayList<ThemeCarComponent>(components.subList(0, MAX_CAR_COUNT));
-    }
-
-    private ThemeCarSheetScan scanThemeCarSheetGrid(Pixmap source, int columns) {
-        int[] xBounds = buildThemeCarGridBounds(source, columns, true);
-        int[] yBounds = buildThemeCarGridBounds(source, THEME_CAR_SHEET_ROWS, false);
-        Pixmap masked = new Pixmap(source.getWidth(), source.getHeight(), Pixmap.Format.RGBA8888);
-        masked.setColor(0f, 0f, 0f, 0f);
-        masked.fill();
-
-        List<ThemeCarComponent> components = new ArrayList<ThemeCarComponent>();
-        IntArray widths = new IntArray();
-        IntArray heights = new IntArray();
-        int emptyCells = 0;
-        int edgeTouchCells = 0;
-
-        for (int row = 0; row < THEME_CAR_SHEET_ROWS; row++) {
-            for (int column = 0; column < columns; column++) {
-                int x0 = xBounds[column];
-                int x1 = xBounds[column + 1];
-                int y0 = yBounds[row];
-                int y1 = yBounds[row + 1];
-                ThemeCarComponent component = extractGridCellCar(source, masked, x0, y0, x1, y1);
-                if (component == null) {
-                    emptyCells++;
-                    continue;
-                }
-
-                components.add(component);
-                widths.add(component.getWidth());
-                heights.add(component.getHeight());
-                if (component.minX - x0 < 4
-                        || x1 - component.maxX <= 4
-                        || component.minY - y0 < 4
-                        || y1 - component.maxY <= 4) {
-                    edgeTouchCells++;
-                }
-            }
-        }
-
-        float score =
-                emptyCells * 5000f
-                        + edgeTouchCells * 100f
-                        + calculateCoefficientOfVariation(widths) * 5000f
-                        + calculateCoefficientOfVariation(heights) * 1000f;
-        return new ThemeCarSheetScan(
-                masked,
-                limitThemeCarComponents(components),
-                score);
-    }
-
-    private int[] buildThemeCarGridBounds(Pixmap source, int cellCount, boolean horizontalAxis) {
-        int length = horizontalAxis ? source.getWidth() : source.getHeight();
-        int[] projection = new int[length];
-        int background = source.getPixel(0, 0);
-        int bgR = (background >>> 24) & 0xff;
-        int bgG = (background >>> 16) & 0xff;
-        int bgB = (background >>> 8) & 0xff;
-        int bgA = background & 0xff;
-        boolean useSourceAlpha = bgA < 255;
-
-        for (int y = 0; y < source.getHeight(); y++) {
-            for (int x = 0; x < source.getWidth(); x++) {
-                if (!isGridProjectionPixel(source.getPixel(x, y), bgR, bgG, bgB, useSourceAlpha)) {
-                    continue;
-                }
-                if (horizontalAxis) {
-                    projection[x]++;
-                } else {
-                    projection[y]++;
-                }
-            }
-        }
-
-        int[] bounds = new int[cellCount + 1];
-        bounds[0] = 0;
-        bounds[cellCount] = length;
-        float averageCellSize = length / (float) cellCount;
-        int separatorWindow = Math.max(6, Math.round(averageCellSize * 0.33f));
-        for (int i = 1; i < cellCount; i++) {
-            int expected = Math.round(i * averageCellSize);
-            int min = Math.max(1, expected - separatorWindow);
-            int max = Math.min(length - 2, expected + separatorWindow);
-            int best = expected;
-            int bestProjection = Integer.MAX_VALUE;
-            int bestDistance = Integer.MAX_VALUE;
-            for (int candidate = min; candidate <= max; candidate++) {
-                int candidateProjection = projection[candidate];
-                int candidateDistance = Math.abs(candidate - expected);
-                if (candidateProjection < bestProjection
-                        || (candidateProjection == bestProjection
-                                && candidateDistance < bestDistance)) {
-                    best = candidate;
-                    bestProjection = candidateProjection;
-                    bestDistance = candidateDistance;
-                }
-            }
-            bounds[i] = best;
-        }
-
-        for (int i = 1; i < cellCount; i++) {
-            int expected = Math.round(i * averageCellSize);
-            int min = bounds[i - 1] + 2;
-            int max = length - (cellCount - i) * 2;
-            if (bounds[i] < min || bounds[i] > max) {
-                bounds[i] = MathUtils.clamp(expected, min, max);
-            }
-        }
-        return bounds;
-    }
-
-    private boolean isGridProjectionPixel(
-            int pixel, int bgR, int bgG, int bgB, boolean useSourceAlpha) {
-        int alpha = pixel & 0xff;
-        if (alpha == 0) {
-            return false;
-        }
-        if (useSourceAlpha) {
-            return true;
-        }
-
-        int red = (pixel >>> 24) & 0xff;
-        int green = (pixel >>> 16) & 0xff;
-        int blue = (pixel >>> 8) & 0xff;
-        int brightness = Math.max(Math.max(red, green), blue);
-        int spread = brightness - Math.min(Math.min(red, green), blue);
-        int maxDifference = Math.max(
-                Math.max(Math.abs(red - bgR), Math.abs(green - bgG)),
-                Math.abs(blue - bgB));
-        return spread > THEME_CAR_GRID_PROJECTION_SPREAD
-                || brightness > THEME_CAR_GRID_PROJECTION_BRIGHTNESS
-                || maxDifference > THEME_CAR_GRID_PROJECTION_DISTANCE;
-    }
-
-    private ThemeCarComponent extractGridCellCar(
-            Pixmap source, Pixmap masked, int x0, int y0, int x1, int y1) {
-        int cellWidth = x1 - x0;
-        int cellHeight = y1 - y0;
-        if (cellWidth <= 0 || cellHeight <= 0) {
-            return null;
-        }
-
-        int[] backgroundColor = sampleGridCellBackgroundColor(source, x0, y0, x1, y1);
-        boolean useSourceAlpha = (source.getPixel(0, 0) & 0xff) < 255;
-        boolean[] background = new boolean[cellWidth * cellHeight];
-        int[] queue = new int[cellWidth * cellHeight];
-        int queueTail = 0;
-
-        for (int x = 0; x < cellWidth; x++) {
-            queueTail = enqueueGridBackgroundPixel(
-                    source, background, queue, queueTail, x0, y0, cellWidth, x, 0, backgroundColor, useSourceAlpha);
-            queueTail = enqueueGridBackgroundPixel(
-                    source,
-                    background,
-                    queue,
-                    queueTail,
-                    x0,
-                    y0,
-                    cellWidth,
-                    x,
-                    cellHeight - 1,
-                    backgroundColor,
-                    useSourceAlpha);
-        }
-        for (int y = 0; y < cellHeight; y++) {
-            queueTail = enqueueGridBackgroundPixel(
-                    source, background, queue, queueTail, x0, y0, cellWidth, 0, y, backgroundColor, useSourceAlpha);
-            queueTail = enqueueGridBackgroundPixel(
-                    source,
-                    background,
-                    queue,
-                    queueTail,
-                    x0,
-                    y0,
-                    cellWidth,
-                    cellWidth - 1,
-                    y,
-                    backgroundColor,
-                    useSourceAlpha);
-        }
-
-        int queueHead = 0;
-        while (queueHead < queueTail) {
-            int currentIndex = queue[queueHead++];
-            int currentY = currentIndex / cellWidth;
-            int currentX = currentIndex - currentY * cellWidth;
-            queueTail = enqueueGridBackgroundPixel(
-                    source,
-                    background,
-                    queue,
-                    queueTail,
-                    x0,
-                    y0,
-                    cellWidth,
-                    currentX - 1,
-                    currentY,
-                    backgroundColor,
-                    useSourceAlpha);
-            queueTail = enqueueGridBackgroundPixel(
-                    source,
-                    background,
-                    queue,
-                    queueTail,
-                    x0,
-                    y0,
-                    cellWidth,
-                    currentX + 1,
-                    currentY,
-                    backgroundColor,
-                    useSourceAlpha);
-            queueTail = enqueueGridBackgroundPixel(
-                    source,
-                    background,
-                    queue,
-                    queueTail,
-                    x0,
-                    y0,
-                    cellWidth,
-                    currentX,
-                    currentY - 1,
-                    backgroundColor,
-                    useSourceAlpha);
-            queueTail = enqueueGridBackgroundPixel(
-                    source,
-                    background,
-                    queue,
-                    queueTail,
-                    x0,
-                    y0,
-                    cellWidth,
-                    currentX,
-                    currentY + 1,
-                    backgroundColor,
-                    useSourceAlpha);
-        }
-
-        int[] rowMinX = new int[cellHeight];
-        int[] rowMaxX = new int[cellHeight];
-        int[] columnMinY = new int[cellWidth];
-        int[] columnMaxY = new int[cellWidth];
-        for (int y = 0; y < cellHeight; y++) {
-            rowMinX[y] = cellWidth;
-            rowMaxX[y] = -1;
-        }
-        for (int x = 0; x < cellWidth; x++) {
-            columnMinY[x] = cellHeight;
-            columnMaxY[x] = -1;
-        }
-
-        for (int cellY = 0; cellY < cellHeight; cellY++) {
-            for (int cellX = 0; cellX < cellWidth; cellX++) {
-                int index = cellY * cellWidth + cellX;
-                int sourceX = x0 + cellX;
-                int sourceY = y0 + cellY;
-                int pixel = source.getPixel(sourceX, sourceY);
-                if (background[index] || (pixel & 0xff) == 0) {
-                    continue;
-                }
-
-                rowMinX[cellY] = Math.min(rowMinX[cellY], cellX);
-                rowMaxX[cellY] = Math.max(rowMaxX[cellY], cellX);
-                columnMinY[cellX] = Math.min(columnMinY[cellX], cellY);
-                columnMaxY[cellX] = Math.max(columnMaxY[cellX], cellY);
-            }
-        }
-
-        IntArray pixels = new IntArray();
-        int minX = x1;
-        int minY = y1;
-        int maxX = x0;
-        int maxY = y0;
-        int sheetWidth = source.getWidth();
-        for (int cellY = 0; cellY < cellHeight; cellY++) {
-            for (int cellX = 0; cellX < cellWidth; cellX++) {
-                int index = cellY * cellWidth + cellX;
-                int sourceX = x0 + cellX;
-                int sourceY = y0 + cellY;
-                int pixel = source.getPixel(sourceX, sourceY);
-                if ((pixel & 0xff) == 0) {
-                    continue;
-                }
-                if (background[index]
-                        && !isInsideGridCellCarSilhouette(
-                                cellX, cellY, rowMinX, rowMaxX, columnMinY, columnMaxY)) {
-                    continue;
-                }
-
-                masked.drawPixel(sourceX, sourceY, forceOpaquePixel(pixel));
-                pixels.add(sourceY * sheetWidth + sourceX);
-                minX = Math.min(minX, sourceX);
-                minY = Math.min(minY, sourceY);
-                maxX = Math.max(maxX, sourceX);
-                maxY = Math.max(maxY, sourceY);
-            }
-        }
-
-        if (pixels.size < THEME_CAR_GRID_MIN_PIXELS) {
-            return null;
-        }
-        return new ThemeCarComponent(pixels, minX, minY, maxX, maxY);
-    }
-
-    private boolean isInsideGridCellCarSilhouette(
-            int cellX,
-            int cellY,
-            int[] rowMinX,
-            int[] rowMaxX,
-            int[] columnMinY,
-            int[] columnMaxY) {
-        return rowMaxX[cellY] >= rowMinX[cellY]
-                && columnMaxY[cellX] >= columnMinY[cellX]
-                && cellX >= rowMinX[cellY]
-                && cellX <= rowMaxX[cellY]
-                && cellY >= columnMinY[cellX]
-                && cellY <= columnMaxY[cellX];
-    }
-
-    private boolean isInsideThemeCarRowSpan(int cellX, int cellY, int[] rowMinX, int[] rowMaxX) {
-        return rowMaxX[cellY] >= rowMinX[cellY]
-                && cellX >= rowMinX[cellY]
-                && cellX <= rowMaxX[cellY];
-    }
-
-    private int enqueueGridBackgroundPixel(
-            Pixmap source,
-            boolean[] background,
-            int[] queue,
-            int queueTail,
-            int x0,
-            int y0,
-            int cellWidth,
-            int cellX,
-            int cellY,
-            int[] backgroundColor,
-            boolean useSourceAlpha) {
-        int cellHeight = background.length / cellWidth;
-        if (cellX < 0 || cellX >= cellWidth || cellY < 0 || cellY >= cellHeight) {
-            return queueTail;
-        }
-
-        int index = cellY * cellWidth + cellX;
-        if (background[index]) {
-            return queueTail;
-        }
-
-        int pixel = source.getPixel(x0 + cellX, y0 + cellY);
-        if (!isGridBackgroundPixel(pixel, backgroundColor, useSourceAlpha)) {
-            return queueTail;
-        }
-
-        background[index] = true;
-        queue[queueTail++] = index;
-        return queueTail;
-    }
-
-    private int[] sampleGridCellBackgroundColor(Pixmap source, int x0, int y0, int x1, int y1) {
-        long red = 0L;
-        long green = 0L;
-        long blue = 0L;
-        int samples = 0;
-
-        for (int x = x0; x < x1; x++) {
-            int topPixel = source.getPixel(x, y0);
-            if (isDarkNeutralPixel(topPixel)) {
-                red += (topPixel >>> 24) & 0xff;
-                green += (topPixel >>> 16) & 0xff;
-                blue += (topPixel >>> 8) & 0xff;
-                samples++;
-            }
-            int bottomPixel = source.getPixel(x, y1 - 1);
-            if (isDarkNeutralPixel(bottomPixel)) {
-                red += (bottomPixel >>> 24) & 0xff;
-                green += (bottomPixel >>> 16) & 0xff;
-                blue += (bottomPixel >>> 8) & 0xff;
-                samples++;
-            }
-        }
-        for (int y = y0; y < y1; y++) {
-            int leftPixel = source.getPixel(x0, y);
-            if (isDarkNeutralPixel(leftPixel)) {
-                red += (leftPixel >>> 24) & 0xff;
-                green += (leftPixel >>> 16) & 0xff;
-                blue += (leftPixel >>> 8) & 0xff;
-                samples++;
-            }
-            int rightPixel = source.getPixel(x1 - 1, y);
-            if (isDarkNeutralPixel(rightPixel)) {
-                red += (rightPixel >>> 24) & 0xff;
-                green += (rightPixel >>> 16) & 0xff;
-                blue += (rightPixel >>> 8) & 0xff;
-                samples++;
-            }
-        }
-
-        if (samples == 0) {
-            int fallback = source.getPixel(x0, y0);
-            return new int[] {(fallback >>> 24) & 0xff, (fallback >>> 16) & 0xff, (fallback >>> 8) & 0xff};
-        }
-        return new int[] {
-            Math.round(red / (float) samples),
-            Math.round(green / (float) samples),
-            Math.round(blue / (float) samples)
-        };
-    }
-
-    private boolean isDarkNeutralPixel(int pixel) {
-        if ((pixel & 0xff) == 0) {
-            return true;
-        }
-        int red = (pixel >>> 24) & 0xff;
-        int green = (pixel >>> 16) & 0xff;
-        int blue = (pixel >>> 8) & 0xff;
-        int brightness = Math.max(Math.max(red, green), blue);
-        int spread = brightness - Math.min(Math.min(red, green), blue);
-        return brightness <= 84 && spread <= 40;
-    }
-
-    private boolean isGridBackgroundPixel(
-            int pixel, int[] backgroundColor, boolean useSourceAlpha) {
-        int alpha = pixel & 0xff;
-        if (alpha == 0) {
-            return true;
-        }
-        if (useSourceAlpha) {
-            return false;
-        }
-
-        int red = (pixel >>> 24) & 0xff;
-        int green = (pixel >>> 16) & 0xff;
-        int blue = (pixel >>> 8) & 0xff;
-        int maxDifference = Math.max(
-                Math.max(Math.abs(red - backgroundColor[0]), Math.abs(green - backgroundColor[1])),
-                Math.abs(blue - backgroundColor[2]));
-        return maxDifference <= THEME_CAR_GRID_BACKGROUND_DISTANCE;
-    }
-
-    private float calculateCoefficientOfVariation(IntArray values) {
-        if (values.size == 0) {
-            return 1f;
-        }
-
-        float mean = 0f;
-        for (int i = 0; i < values.size; i++) {
-            mean += values.get(i);
-        }
-        mean /= values.size;
-        if (mean <= 0f) {
-            return 1f;
-        }
-
-        float variance = 0f;
-        for (int i = 0; i < values.size; i++) {
-            float delta = values.get(i) - mean;
-            variance += delta * delta;
-        }
-        variance /= values.size;
-        return (float) Math.sqrt(variance) / mean;
-    }
-
-    private Array<CarVisual> extractCarVisualsFromSheet(
-            Pixmap source, Pixmap masked, List<ThemeCarComponent> components) {
-        Array<CarVisual> visuals = new Array<CarVisual>();
-        for (int i = 0; i < components.size(); i++) {
-            CarVisual visual = createThemeCarVisual(source, masked, components.get(i));
-            if (visual != null) {
-                visuals.add(visual);
-            }
-        }
-        return visuals;
-    }
-
-    private List<ThemeCarComponent> detectThemeCarComponents(Pixmap masked) {
-        int width = masked.getWidth();
-        int height = masked.getHeight();
-        boolean[] visited = new boolean[width * height];
-        int[] queue = new int[width * height];
-        List<ThemeCarComponent> components = new ArrayList<ThemeCarComponent>();
-        int largestPixelCount = 0;
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int index = y * width + x;
-                if (visited[index]) {
-                    continue;
-                }
-                visited[index] = true;
-                if (!isOpaquePixel(masked.getPixel(x, y))) {
-                    continue;
-                }
-
-                IntArray pixels = new IntArray();
-                int queueHead = 0;
-                int queueTail = 0;
-                int minX = x;
-                int maxX = x;
-                int minY = y;
-                int maxY = y;
-                queue[queueTail++] = index;
-
-                while (queueHead < queueTail) {
-                    int currentIndex = queue[queueHead++];
-                    int currentY = currentIndex / width;
-                    int currentX = currentIndex - currentY * width;
-                    pixels.add(currentIndex);
-
-                    minX = Math.min(minX, currentX);
-                    maxX = Math.max(maxX, currentX);
-                    minY = Math.min(minY, currentY);
-                    maxY = Math.max(maxY, currentY);
-
-                    for (int offsetY = -1; offsetY <= 1; offsetY++) {
-                        for (int offsetX = -1; offsetX <= 1; offsetX++) {
-                            if (offsetX == 0 && offsetY == 0) {
-                                continue;
-                            }
-
-                            int neighborX = currentX + offsetX;
-                            int neighborY = currentY + offsetY;
-                            if (neighborX < 0 || neighborX >= width || neighborY < 0 || neighborY >= height) {
-                                continue;
-                            }
-
-                            int neighborIndex = neighborY * width + neighborX;
-                            if (visited[neighborIndex]) {
-                                continue;
-                            }
-                            visited[neighborIndex] = true;
-                            if (!isOpaquePixel(masked.getPixel(neighborX, neighborY))) {
-                                continue;
-                            }
-                            queue[queueTail++] = neighborIndex;
-                        }
-                    }
-                }
-
-                ThemeCarComponent component = new ThemeCarComponent(pixels, minX, minY, maxX, maxY);
-                largestPixelCount = Math.max(largestPixelCount, component.getPixelCount());
-                components.add(component);
-            }
-        }
-
-        if (components.isEmpty()) {
-            return components;
-        }
-
-        int minPixelCount = Math.max(64, largestPixelCount / 24);
-        List<ThemeCarComponent> filtered = new ArrayList<ThemeCarComponent>();
-        for (int i = 0; i < components.size(); i++) {
-            ThemeCarComponent component = components.get(i);
-            if (component.getPixelCount() < minPixelCount
-                    || component.getWidth() < 24
-                    || component.getHeight() < 24) {
-                continue;
-            }
-            filtered.add(component);
-        }
-
-        if (filtered.isEmpty()) {
-            filtered.addAll(components);
-        }
-
-        sortThemeCarComponents(filtered);
-        return filtered;
-    }
-
-    private void sortThemeCarComponents(List<ThemeCarComponent> components) {
-        Collections.sort(
-                components,
-                new Comparator<ThemeCarComponent>() {
-                    @Override
-                    public int compare(ThemeCarComponent left, ThemeCarComponent right) {
-                        return Float.compare(left.getCenterY(), right.getCenterY());
-                    }
-                });
-
-        float averageHeight = 0f;
-        for (int i = 0; i < components.size(); i++) {
-            averageHeight += components.get(i).getHeight();
-        }
-        averageHeight /= components.size();
-        float rowThreshold = Math.max(24f, averageHeight * 0.5f);
-        List<List<ThemeCarComponent>> rows = new ArrayList<List<ThemeCarComponent>>();
-        List<ThemeCarComponent> currentRow = null;
-        float currentRowCenterY = 0f;
-        int currentRowSize = 0;
-
-        for (int i = 0; i < components.size(); i++) {
-            ThemeCarComponent component = components.get(i);
-            if (currentRow == null
-                    || Math.abs(component.getCenterY() - currentRowCenterY) > rowThreshold) {
-                currentRow = new ArrayList<ThemeCarComponent>();
-                rows.add(currentRow);
-                currentRowCenterY = component.getCenterY();
-                currentRowSize = 0;
-            }
-
-            currentRow.add(component);
-            currentRowCenterY =
-                    (currentRowCenterY * currentRowSize + component.getCenterY())
-                            / (currentRowSize + 1f);
-            currentRowSize++;
-        }
-
-        components.clear();
-        for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
-            List<ThemeCarComponent> row = rows.get(rowIndex);
-            Collections.sort(
-                    row,
-                    new Comparator<ThemeCarComponent>() {
-                        @Override
-                        public int compare(ThemeCarComponent left, ThemeCarComponent right) {
-                            return Float.compare(left.getCenterX(), right.getCenterX());
-                        }
-                    });
-            components.addAll(row);
-        }
-    }
-
-    private CarVisual createThemeCarVisual(
-            Pixmap source, Pixmap masked, ThemeCarComponent component) {
-        int spriteWidth = component.getWidth();
-        int spriteHeight = component.getHeight();
-        Pixmap spritePixmap =
-                new Pixmap(
-                        spriteWidth + THEME_CAR_TEXTURE_PADDING * 2,
-                        spriteHeight + THEME_CAR_TEXTURE_PADDING * 2,
-                        Pixmap.Format.RGBA8888);
-        spritePixmap.setColor(0f, 0f, 0f, 0f);
-        spritePixmap.fill();
-        int sheetWidth = masked.getWidth();
-        boolean[] carPixels = new boolean[spriteWidth * spriteHeight];
-        int[] rowMinX = new int[spriteHeight];
-        int[] rowMaxX = new int[spriteHeight];
-        for (int y = 0; y < spriteHeight; y++) {
-            rowMinX[y] = spriteWidth;
-            rowMaxX[y] = -1;
-        }
-        for (int i = 0; i < component.pixels.size; i++) {
-            int pixelIndex = component.pixels.get(i);
-            int pixelY = pixelIndex / sheetWidth;
-            int pixelX = pixelIndex - pixelY * sheetWidth;
-            int localX = pixelX - component.minX;
-            int localY = pixelY - component.minY;
-            if (localX < 0 || localX >= spriteWidth || localY < 0 || localY >= spriteHeight) {
-                continue;
-            }
-            carPixels[localY * spriteWidth + localX] = true;
-            rowMinX[localY] = Math.min(rowMinX[localY], localX);
-            rowMaxX[localY] = Math.max(rowMaxX[localY], localX);
-            spritePixmap.drawPixel(
-                    localX + THEME_CAR_TEXTURE_PADDING,
-                    localY + THEME_CAR_TEXTURE_PADDING,
-                    forceOpaquePixel(source.getPixel(pixelX, pixelY)));
-        }
-
-        for (int localY = 0; localY < spriteHeight; localY++) {
-            for (int localX = 0; localX < spriteWidth; localX++) {
-                if (carPixels[localY * spriteWidth + localX]
-                        || !isInsideThemeCarRowSpan(localX, localY, rowMinX, rowMaxX)) {
-                    continue;
-                }
-
-                int fillPixel =
-                        forceOpaquePixel(source.getPixel(component.minX + localX, component.minY + localY));
-                spritePixmap.drawPixel(
-                        localX + THEME_CAR_TEXTURE_PADDING,
-                        localY + THEME_CAR_TEXTURE_PADDING,
-                        fillPixel);
-            }
-        }
-
-        Texture texture = new Texture(spritePixmap);
-        texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        Color color =
-                sampleSpriteColor(
-                        spritePixmap,
-                        new Rectangle(0f, 0f, spritePixmap.getWidth(), spritePixmap.getHeight()));
-        spritePixmap.dispose();
-        return new CarVisual(texture, 0f, color);
-    }
-
-    private int forceOpaquePixel(int pixel) {
-        return (pixel & 0xffffff00) | 0xff;
-    }
-
-    private void disposeThemeCarVisualTextures() {
-        for (int i = 0; i < themeCarVisuals.size; i++) {
-            disposeTexture(themeCarVisuals.get(i).texture);
-        }
-    }
-
     private Color sampleSpriteColor(Pixmap masked, Rectangle bounds) {
         long red = 0L;
         long green = 0L;
@@ -2025,27 +1228,6 @@ public class RatassGame extends ApplicationAdapter {
 
         float divisor = 255f * (float) samples;
         return new Color(red / divisor, green / divisor, blue / divisor, 1f);
-    }
-
-    private boolean isOpaquePixel(int pixel) {
-        return (pixel & 0xff) > 0;
-    }
-
-    private int computeMaskedAlpha(int red, int green, int blue, int bgR, int bgG, int bgB) {
-        int maxDifference = Math.max(
-                Math.max(Math.abs(red - bgR), Math.abs(green - bgG)),
-                Math.abs(blue - bgB));
-        if (maxDifference <= BACKGROUND_ALPHA_CUTOUT_THRESHOLD) {
-            return 0;
-        }
-        if (maxDifference >= BACKGROUND_ALPHA_OPAQUE_THRESHOLD) {
-            return 255;
-        }
-
-        float normalized =
-                (float) (maxDifference - BACKGROUND_ALPHA_CUTOUT_THRESHOLD)
-                        / (BACKGROUND_ALPHA_OPAQUE_THRESHOLD - BACKGROUND_ALPHA_CUTOUT_THRESHOLD);
-        return Math.round(normalized * 255f);
     }
 
     private int calculateSidebarWidth(int width) {
@@ -6607,7 +5789,6 @@ public class RatassGame extends ApplicationAdapter {
         }
         disposeRosterSpriteTextures();
         disposeArenaSurfaceTextures();
-        disposeThemeCarVisualTextures();
         disposeTexture(themeCarsTexture);
         disposeMenuCarPreview();
         if (shapeRenderer != null) {
@@ -7622,25 +6803,6 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private static final class ThemeCarSheetScan {
-        private final Pixmap masked;
-        private final List<ThemeCarComponent> components;
-        private final float score;
-
-        private ThemeCarSheetScan(
-                Pixmap masked,
-                List<ThemeCarComponent> components,
-                float score) {
-            this.masked = masked;
-            this.components = components;
-            this.score = score;
-        }
-
-        private void dispose() {
-            masked.dispose();
-        }
-    }
-
     private static final class MapTheme {
         private final MapDecorStyle decorStyle;
         private final Color backdropBase;
@@ -7671,42 +6833,6 @@ public class RatassGame extends ApplicationAdapter {
             this.center = center;
             this.accent = accent;
             this.accentSoft = accentSoft;
-        }
-    }
-
-    private static final class ThemeCarComponent {
-        private final IntArray pixels;
-        private final int minX;
-        private final int minY;
-        private final int maxX;
-        private final int maxY;
-
-        private ThemeCarComponent(IntArray pixels, int minX, int minY, int maxX, int maxY) {
-            this.pixels = pixels;
-            this.minX = minX;
-            this.minY = minY;
-            this.maxX = maxX;
-            this.maxY = maxY;
-        }
-
-        private int getPixelCount() {
-            return pixels.size;
-        }
-
-        private int getWidth() {
-            return maxX - minX + 1;
-        }
-
-        private int getHeight() {
-            return maxY - minY + 1;
-        }
-
-        private float getCenterX() {
-            return (minX + maxX) * 0.5f;
-        }
-
-        private float getCenterY() {
-            return (minY + maxY) * 0.5f;
         }
     }
 
@@ -7745,63 +6871,41 @@ public class RatassGame extends ApplicationAdapter {
 
     private static final class CarVisual {
         private final String spritePath;
-        private final Texture texture;
         private final Color color;
         private final int spriteSourceX;
         private final int spriteSourceY;
         private final int spriteSourceWidth;
         private final int spriteSourceHeight;
-        private final boolean stripDarkBackground;
         private final boolean sharedTexture;
         private final float spriteRotationOffsetDeg;
 
         private CarVisual(String spritePath, Color color) {
             this(
                     spritePath,
-                    null,
                     0,
                     0,
                     0,
                     0,
-                    false,
                     false,
                     CAR_SPRITE_ROTATION_OFFSET_DEG,
                     color);
         }
 
-        private CarVisual(Texture texture, float spriteRotationOffsetDeg, Color color) {
-            this(
-                    null,
-                    texture,
-                    0,
-                    0,
-                    0,
-                    0,
-                    false,
-                    false,
-                    spriteRotationOffsetDeg,
-                    color);
-        }
-
         private CarVisual(
                 String spritePath,
-                Texture texture,
                 int spriteSourceX,
                 int spriteSourceY,
                 int spriteSourceWidth,
                 int spriteSourceHeight,
-                boolean stripDarkBackground,
                 boolean sharedTexture,
                 float spriteRotationOffsetDeg,
                 Color color) {
             this.spritePath = spritePath;
-            this.texture = texture;
             this.color = color;
             this.spriteSourceX = spriteSourceX;
             this.spriteSourceY = spriteSourceY;
             this.spriteSourceWidth = spriteSourceWidth;
             this.spriteSourceHeight = spriteSourceHeight;
-            this.stripDarkBackground = stripDarkBackground;
             this.sharedTexture = sharedTexture;
             this.spriteRotationOffsetDeg = spriteRotationOffsetDeg;
         }
