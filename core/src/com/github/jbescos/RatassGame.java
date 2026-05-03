@@ -67,6 +67,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final String CAR_COUNT_PREF_KEY = CAR_COUNT_PROPERTY;
     private static final String PLAYER_CAR_PROPERTY = "cars.player.index";
     private static final String PLAYER_CAR_PREF_KEY = PLAYER_CAR_PROPERTY;
+    private static final String MAP_SCALE_PROPERTY = "map.scale";
+    private static final String MAP_SCALE_PREF_KEY = MAP_SCALE_PROPERTY;
     private static final String THEME_DIRECTORY = "theme";
     private static final String THEME_CAR_SHEET_PATH = "cars/cars.png";
     private static final String THEME_FLAT_CAR_SHEET_PATH = "cars.png";
@@ -88,9 +90,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final int OPTIONS_THEME_SELECTION = 0;
     private static final int OPTIONS_CARS_SELECTION = 1;
     private static final int OPTIONS_PLAYER_CAR_SELECTION = 2;
-    private static final int OPTIONS_CAMERA_SELECTION = 3;
-    private static final int OPTIONS_ZOOM_SELECTION = 4;
-    private static final int OPTIONS_BACK_SELECTION = 5;
+    private static final int OPTIONS_MAP_SCALE_SELECTION = 3;
+    private static final int OPTIONS_CAMERA_SELECTION = 4;
+    private static final int OPTIONS_ZOOM_SELECTION = 5;
+    private static final int OPTIONS_BACK_SELECTION = 6;
     private static final int MAIN_MENU_NEW_GAME_SELECTION = 0;
     private static final int MAIN_MENU_OPTIONS_SELECTION = 1;
     private static final int MAIN_MENU_EXIT_SELECTION = 2;
@@ -137,6 +140,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final float MIN_CAMERA_ZOOM = 0.70f;
     private static final float MAX_CAMERA_ZOOM = 1.50f;
     private static final float CAMERA_ZOOM_STEP = 0.10f;
+    private static final float DEFAULT_MAP_SCALE = 2.00f;
+    private static final float MIN_MAP_SCALE = 1.00f;
+    private static final float MAX_MAP_SCALE = 4.00f;
+    private static final float MAP_SCALE_STEP = 0.25f;
     private static final float PLAYER_CAMERA_FOLLOW_LEAD_DISTANCE = 0.10f;
     private static final float PLAYER_CAMERA_FOLLOW_LEAD_SPEED_BONUS = 0.28f;
     private static final float PLAYER_CAMERA_DIRECTION_LERP_SPEED = 3.8f;
@@ -449,6 +456,9 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle optionsPlayerCarBounds = new Rectangle();
     private final Rectangle optionsPlayerCarPrevBounds = new Rectangle();
     private final Rectangle optionsPlayerCarNextBounds = new Rectangle();
+    private final Rectangle optionsMapScaleBounds = new Rectangle();
+    private final Rectangle optionsMapScaleDownBounds = new Rectangle();
+    private final Rectangle optionsMapScaleUpBounds = new Rectangle();
     private final Rectangle optionsCameraBounds = new Rectangle();
     private final Rectangle optionsZoomBounds = new Rectangle();
     private final Rectangle optionsZoomOutBounds = new Rectangle();
@@ -567,6 +577,7 @@ public class RatassGame extends ApplicationAdapter {
     private boolean followCameraBehind;
     private boolean optionsOpenedFromPause;
     private float cameraZoom = DEFAULT_CAMERA_ZOOM;
+    private float mapScale = DEFAULT_MAP_SCALE;
 
     @Override
     public void create() {
@@ -617,7 +628,7 @@ public class RatassGame extends ApplicationAdapter {
         loadSounds();
         createRoster();
         loadCarSprites();
-        mapProgression = new MapProgression(ArenaMaps.createDefaultSet());
+        mapProgression = new MapProgression(ArenaMaps.createDefaultSet(mapScale));
 
         roundNumber = 0;
         playerWins = 0;
@@ -635,6 +646,7 @@ public class RatassGame extends ApplicationAdapter {
         configuredThemeName = normalizeThemeName(loadConfiguredThemeName());
         followCameraBehind = loadConfiguredBooleanProperty(CAMERA_FOLLOW_BEHIND_PROPERTY, false);
         cameraZoom = loadConfiguredFloatProperty(CAMERA_ZOOM_PROPERTY, DEFAULT_CAMERA_ZOOM);
+        mapScale = loadConfiguredFloatProperty(MAP_SCALE_PROPERTY, DEFAULT_MAP_SCALE);
         selectedCarCount = loadConfiguredIntProperty(CAR_COUNT_PROPERTY, DEFAULT_CAR_COUNT);
         selectedPlayerCarIndex =
                 loadConfiguredIntProperty(PLAYER_CAR_PROPERTY, DEFAULT_PLAYER_CAR_INDEX);
@@ -646,6 +658,7 @@ public class RatassGame extends ApplicationAdapter {
             followCameraBehind =
                     preferences.getBoolean(CAMERA_FOLLOW_BEHIND_PREF_KEY, followCameraBehind);
             cameraZoom = preferences.getFloat(CAMERA_ZOOM_PREF_KEY, cameraZoom);
+            mapScale = preferences.getFloat(MAP_SCALE_PREF_KEY, mapScale);
             selectedCarCount = preferences.getInteger(CAR_COUNT_PREF_KEY, selectedCarCount);
             selectedPlayerCarIndex =
                     preferences.getInteger(PLAYER_CAR_PREF_KEY, selectedPlayerCarIndex);
@@ -654,6 +667,7 @@ public class RatassGame extends ApplicationAdapter {
         selectedThemeIndex = findThemeIndex(configuredThemeName);
         configuredThemeName = THEME_CHOICES[selectedThemeIndex].name;
         cameraZoom = clampCameraZoom(cameraZoom);
+        mapScale = clampMapScale(mapScale);
         selectedCarCount = clampCarCount(selectedCarCount);
         selectedPlayerCarIndex = Math.max(0, selectedPlayerCarIndex);
     }
@@ -679,6 +693,7 @@ public class RatassGame extends ApplicationAdapter {
         preferences.putString(THEME_PREF_KEY, configuredThemeName);
         preferences.putBoolean(CAMERA_FOLLOW_BEHIND_PREF_KEY, followCameraBehind);
         preferences.putFloat(CAMERA_ZOOM_PREF_KEY, cameraZoom);
+        preferences.putFloat(MAP_SCALE_PREF_KEY, mapScale);
         preferences.putInteger(CAR_COUNT_PREF_KEY, selectedCarCount);
         preferences.putInteger(PLAYER_CAR_PREF_KEY, selectedPlayerCarIndex);
         preferences.flush();
@@ -1522,6 +1537,15 @@ public class RatassGame extends ApplicationAdapter {
                     || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
                 changePlayerCar(1);
             }
+        } else if (optionsMenuSelection == OPTIONS_MAP_SCALE_SELECTION && canChangeCarSetupOptions()) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
+                changeMapScale(-1);
+            }
+            if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
+                changeMapScale(1);
+            }
         } else if (optionsMenuSelection == OPTIONS_CAMERA_SELECTION) {
             if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
                     || Gdx.input.isKeyJustPressed(Input.Keys.A)
@@ -1548,6 +1572,8 @@ public class RatassGame extends ApplicationAdapter {
                 changeCarCount(1);
             } else if (optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION && canChangeCarSetupOptions()) {
                 changePlayerCar(1);
+            } else if (optionsMenuSelection == OPTIONS_MAP_SCALE_SELECTION && canChangeCarSetupOptions()) {
+                changeMapScale(1);
             } else if (optionsMenuSelection == OPTIONS_CAMERA_SELECTION) {
                 toggleCameraMode();
             } else if (optionsMenuSelection == OPTIONS_ZOOM_SELECTION) {
@@ -1713,6 +1739,13 @@ public class RatassGame extends ApplicationAdapter {
             changePlayerCar(1);
         } else if (carSetupEnabled && selectPlayerCarFromPreview(x, y)) {
             optionsMenuSelection = OPTIONS_PLAYER_CAR_SELECTION;
+        } else if (carSetupEnabled && optionsMapScaleDownBounds.contains(x, y)) {
+            optionsMenuSelection = OPTIONS_MAP_SCALE_SELECTION;
+            changeMapScale(-1);
+        } else if (carSetupEnabled
+                && (optionsMapScaleUpBounds.contains(x, y) || optionsMapScaleBounds.contains(x, y))) {
+            optionsMenuSelection = OPTIONS_MAP_SCALE_SELECTION;
+            changeMapScale(1);
         } else if (optionsCameraBounds.contains(x, y)) {
             optionsMenuSelection = OPTIONS_CAMERA_SELECTION;
             toggleCameraMode();
@@ -1872,29 +1905,44 @@ public class RatassGame extends ApplicationAdapter {
                 rowY - (rowHeight + rowGap) * 2f,
                 stepButtonWidth,
                 rowHeight);
-        optionsCameraBounds.set(
+        optionsMapScaleBounds.set(
                 rowX,
                 rowY - (rowHeight + rowGap) * 3f,
                 rowWidth,
                 rowHeight);
-        optionsZoomBounds.set(
+        optionsMapScaleDownBounds.set(
+                rowX,
+                rowY - (rowHeight + rowGap) * 3f,
+                stepButtonWidth,
+                rowHeight);
+        optionsMapScaleUpBounds.set(
+                rowX + rowWidth - stepButtonWidth,
+                rowY - (rowHeight + rowGap) * 3f,
+                stepButtonWidth,
+                rowHeight);
+        optionsCameraBounds.set(
                 rowX,
                 rowY - (rowHeight + rowGap) * 4f,
                 rowWidth,
                 rowHeight);
+        optionsZoomBounds.set(
+                rowX,
+                rowY - (rowHeight + rowGap) * 5f,
+                rowWidth,
+                rowHeight);
         optionsZoomOutBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 4f,
+                rowY - (rowHeight + rowGap) * 5f,
                 stepButtonWidth,
                 rowHeight);
         optionsZoomInBounds.set(
                 rowX + rowWidth - stepButtonWidth,
-                rowY - (rowHeight + rowGap) * 4f,
+                rowY - (rowHeight + rowGap) * 5f,
                 stepButtonWidth,
                 rowHeight);
         optionsBackBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 5f,
+                rowY - (rowHeight + rowGap) * 6f,
                 rowWidth,
                 rowHeight);
     }
@@ -1927,6 +1975,15 @@ public class RatassGame extends ApplicationAdapter {
         saveMenuSettings();
         cameraInitialized = false;
         updateWorldCamera();
+    }
+
+    private void changeMapScale(int direction) {
+        float nextScale = clampMapScale(mapScale + direction * MAP_SCALE_STEP);
+        if (Math.abs(nextScale - mapScale) < 0.001f) {
+            return;
+        }
+        mapScale = nextScale;
+        saveMenuSettings();
     }
 
     private void changeCarCount(int delta) {
@@ -2139,6 +2196,10 @@ public class RatassGame extends ApplicationAdapter {
                 optionsPlayerCarBounds,
                 optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION,
                 carSetupEnabled);
+        drawOptionRow(
+                optionsMapScaleBounds,
+                optionsMenuSelection == OPTIONS_MAP_SCALE_SELECTION,
+                carSetupEnabled);
         drawOptionRow(optionsCameraBounds, optionsMenuSelection == OPTIONS_CAMERA_SELECTION, true);
         drawOptionRow(optionsZoomBounds, optionsMenuSelection == OPTIONS_ZOOM_SELECTION, true);
         drawMenuButton(optionsBackBounds, "Back", optionsMenuSelection == OPTIONS_BACK_SELECTION);
@@ -2158,6 +2219,14 @@ public class RatassGame extends ApplicationAdapter {
                     optionsPlayerCarNextBounds,
                     ">",
                     optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION);
+            drawMenuStepButton(
+                    optionsMapScaleDownBounds,
+                    "-",
+                    optionsMenuSelection == OPTIONS_MAP_SCALE_SELECTION);
+            drawMenuStepButton(
+                    optionsMapScaleUpBounds,
+                    "+",
+                    optionsMenuSelection == OPTIONS_MAP_SCALE_SELECTION);
         }
         drawMenuStepButton(optionsZoomOutBounds, "-", optionsMenuSelection == OPTIONS_ZOOM_SELECTION);
         drawMenuStepButton(optionsZoomInBounds, "+", optionsMenuSelection == OPTIONS_ZOOM_SELECTION);
@@ -2208,6 +2277,22 @@ public class RatassGame extends ApplicationAdapter {
                         - 18f,
                 optionsPlayerCarBounds.y + optionsPlayerCarBounds.height * 0.62f);
 
+        setOptionLabelColor(carSetupEnabled);
+        hudFont.draw(
+                spriteBatch,
+                "Map Scale",
+                optionsMapScaleBounds.x + optionsMapScaleDownBounds.width + 18f,
+                optionsMapScaleBounds.y + optionsMapScaleBounds.height * 0.62f);
+        setOptionValueColor(carSetupEnabled);
+        drawTextRight(
+                hudFont,
+                buildMapScaleMenuValue(),
+                optionsMapScaleBounds.x
+                        + optionsMapScaleBounds.width
+                        - optionsMapScaleUpBounds.width
+                        - 18f,
+                optionsMapScaleBounds.y + optionsMapScaleBounds.height * 0.62f);
+
         setOptionLabelColor(true);
         hudFont.draw(
                 spriteBatch,
@@ -2255,6 +2340,19 @@ public class RatassGame extends ApplicationAdapter {
 
     private String buildCameraZoomMenuValue() {
         return Math.round(cameraZoom * 100f) + "%";
+    }
+
+    private String buildMapScaleMenuValue() {
+        int hundredths = Math.round(mapScale * 100f);
+        int whole = hundredths / 100;
+        int fraction = hundredths % 100;
+        if (fraction == 0) {
+            return "x" + whole;
+        }
+        if (fraction % 10 == 0) {
+            return "x" + whole + "." + (fraction / 10);
+        }
+        return "x" + whole + "." + (fraction < 10 ? "0" : "") + fraction;
     }
 
     private void drawCarSheetPreview() {
@@ -3685,6 +3783,9 @@ public class RatassGame extends ApplicationAdapter {
         if (currentMap == null) {
             return;
         }
+        if (currentMap.hasSurfaceImage()) {
+            return;
+        }
 
         float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 2.2f);
 
@@ -3703,6 +3804,9 @@ public class RatassGame extends ApplicationAdapter {
         if (currentMap == null) {
             return;
         }
+        if (currentMap.hasSurfaceImage()) {
+            return;
+        }
 
         drawArenaFrame(theme);
         drawWarningStripes(theme);
@@ -3715,13 +3819,27 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
+        float drawX = mapBounds.x;
+        float drawY = mapBounds.y;
+        float drawWidth = mapBounds.width;
+        float drawHeight = mapBounds.height;
+        float textureAspect = arenaSurfaceTexture.getWidth() / (float) arenaSurfaceTexture.getHeight();
+        float mapAspect = mapBounds.width / mapBounds.height;
+        if (textureAspect > mapAspect) {
+            drawHeight = drawWidth / textureAspect;
+            drawY += (mapBounds.height - drawHeight) * 0.5f;
+        } else if (textureAspect < mapAspect) {
+            drawWidth = drawHeight * textureAspect;
+            drawX += (mapBounds.width - drawWidth) * 0.5f;
+        }
+
         spriteBatch.setColor(1f, 1f, 1f, 1f);
         spriteBatch.draw(
                 arenaSurfaceTexture,
-                mapBounds.x,
-                mapBounds.y,
-                mapBounds.width,
-                mapBounds.height);
+                drawX,
+                drawY,
+                drawWidth,
+                drawHeight);
     }
 
     private void ensureArenaSurfaceTexture() {
@@ -3764,6 +3882,14 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private Texture buildArenaSurfaceTexture(ArenaMap map, MapTheme theme) {
+        if (map.hasSurfaceImage()) {
+            Texture texture = loadTexture(map.getSurfaceImagePath());
+            if (texture != null) {
+                texture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            }
+            return texture;
+        }
+
         Rectangle arenaBounds = new Rectangle();
         Vector2 arenaFocus = new Vector2();
         map.getBounds(arenaBounds);
@@ -5664,6 +5790,10 @@ public class RatassGame extends ApplicationAdapter {
 
     private static float clampCameraZoom(float zoom) {
         return MathUtils.clamp(zoom, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM);
+    }
+
+    private static float clampMapScale(float scale) {
+        return MathUtils.clamp(scale, MIN_MAP_SCALE, MAX_MAP_SCALE);
     }
 
     private static int clampPlayerCarIndex(int playerCarIndex, int carCount) {

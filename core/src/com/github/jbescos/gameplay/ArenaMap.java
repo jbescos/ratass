@@ -13,6 +13,7 @@ public final class ArenaMap {
 
     private final String id;
     private final String name;
+    private final String surfaceImagePath;
     private final Vector2 focusPoint = new Vector2();
     private final Array<ArenaShape> solidZones = new Array<ArenaShape>();
     private final Array<ArenaShape> holeZones = new Array<ArenaShape>();
@@ -40,6 +41,7 @@ public final class ArenaMap {
     private ArenaMap(
             String id,
             String name,
+            String surfaceImagePath,
             Vector2 focusPoint,
             Array<ArenaShape> solidZones,
             Array<ArenaShape> holeZones,
@@ -47,6 +49,7 @@ public final class ArenaMap {
             Array<Vector2> recoveryPoints) {
         this.id = id;
         this.name = name;
+        this.surfaceImagePath = surfaceImagePath;
         this.focusPoint.set(focusPoint);
 
         this.solidZones.addAll(solidZones);
@@ -108,6 +111,14 @@ public final class ArenaMap {
 
     public String getName() {
         return name;
+    }
+
+    public String getSurfaceImagePath() {
+        return surfaceImagePath;
+    }
+
+    public boolean hasSurfaceImage() {
+        return surfaceImagePath != null && surfaceImagePath.length() > 0;
     }
 
     public int getSolidZoneCount() {
@@ -623,6 +634,7 @@ public final class ArenaMap {
     public static final class Builder {
         private final String id;
         private final String name;
+        private String surfaceImagePath;
         private final Vector2 focusPoint = new Vector2();
         private final Array<ArenaShape> solidZones = new Array<ArenaShape>();
         private final Array<ArenaShape> holeZones = new Array<ArenaShape>();
@@ -636,6 +648,11 @@ public final class ArenaMap {
 
         public Builder focusPoint(float x, float y) {
             focusPoint.set(x, y);
+            return this;
+        }
+
+        public Builder surfaceImagePath(String surfaceImagePath) {
+            this.surfaceImagePath = surfaceImagePath;
             return this;
         }
 
@@ -703,6 +720,7 @@ public final class ArenaMap {
             return new ArenaMap(
                     id,
                     name,
+                    surfaceImagePath,
                     focusPoint,
                     solidZones,
                     holeZones,
