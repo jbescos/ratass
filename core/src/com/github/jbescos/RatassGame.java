@@ -159,19 +159,26 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
     private static final float SUDDEN_DEATH_TIE_SPEED_MARGIN = 0.08f;
-    private static final float STALEMATE_BOMB_TRIGGER_TIME = 0.78f;
+    private static final float STALEMATE_BOMB_TRIGGER_TIME = 0.34f;
     private static final float STALEMATE_BOMB_PAIR_COOLDOWN = 2.4f;
     private static final float STALEMATE_BOMB_TIMER_DECAY = 1.65f;
-    private static final float STALEMATE_BOMB_MIN_THROTTLE = 0.36f;
-    private static final float STALEMATE_BOMB_ALIGNMENT = 0.72f;
-    private static final float STALEMATE_BOMB_DISTANCE_PADDING = 0.62f;
-    private static final float STALEMATE_BOMB_MAX_SEPARATION_SPEED = 0.52f;
-    private static final float STALEMATE_BOMB_MAX_PAIR_SPEED = 2.45f;
-    private static final float STALEMATE_BOMB_FUSE_DURATION = 0.38f;
-    private static final float STALEMATE_BOMB_EXPLOSION_DURATION = 0.54f;
-    private static final float STALEMATE_BOMB_BLAST_RADIUS = 4.25f;
-    private static final float STALEMATE_BOMB_IMPULSE = 18.5f;
+    private static final float STALEMATE_BOMB_MIN_THROTTLE = 0.28f;
+    private static final float STALEMATE_BOMB_ALIGNMENT = 0.54f;
+    private static final float STALEMATE_BOMB_CONTACT_ALIGNMENT = 0.30f;
+    private static final float STALEMATE_BOMB_DISTANCE_PADDING = 1.02f;
+    private static final float STALEMATE_BOMB_CONTACT_DISTANCE_PADDING = 1.34f;
+    private static final float STALEMATE_BOMB_MAX_SEPARATION_SPEED = 1.20f;
+    private static final float STALEMATE_BOMB_CONTACT_MAX_SEPARATION_SPEED = 2.20f;
+    private static final float STALEMATE_BOMB_MAX_PAIR_SPEED = 3.80f;
+    private static final float STALEMATE_BOMB_CONTACT_MAX_PAIR_SPEED = 6.60f;
+    private static final float STALEMATE_BOMB_CONTACT_MEMORY = 0.75f;
+    private static final float STALEMATE_BOMB_FUSE_DURATION = 0.62f;
+    private static final float STALEMATE_BOMB_EXPLOSION_DURATION = 0.78f;
+    private static final float STALEMATE_BOMB_BLAST_RADIUS = 4.85f;
+    private static final float STALEMATE_BOMB_IMPULSE = 32.0f;
     private static final float STALEMATE_BOMB_MIN_IMPULSE_FACTOR = 0.24f;
+    private static final float STALEMATE_BOMB_MIN_AWAY_SPEED_FACTOR = 0.55f;
+    private static final float STALEMATE_BOMB_MAX_AWAY_SPEED = 16.5f;
     private static final float STALEMATE_BOMB_NEARBY_DISTANCE = 2.85f;
     private static final float HUD_SIDEBAR_RATIO = 0.29f;
     private static final float HUD_SIDEBAR_MIN_WIDTH = 200f;
@@ -598,6 +605,7 @@ public class RatassGame extends ApplicationAdapter {
     private float cameraZoom = DEFAULT_CAMERA_ZOOM;
     private float mapScale = DEFAULT_MAP_SCALE;
     private float[] pushStalemateTimers = new float[0];
+    private float[] pushStalemateContactTimers = new float[0];
 
     @Override
     public void create() {
@@ -2890,6 +2898,7 @@ public class RatassGame extends ApplicationAdapter {
     private void initializePushStalemateTimers(int carCount) {
         pushStalemateTimerStride = Math.max(0, carCount);
         pushStalemateTimers = new float[pushStalemateTimerStride * pushStalemateTimerStride];
+        pushStalemateContactTimers = new float[pushStalemateTimerStride * pushStalemateTimerStride];
     }
 
     private void updatePushStalemates(float delta, boolean allowControl) {
@@ -2906,13 +2915,19 @@ public class RatassGame extends ApplicationAdapter {
                     continue;
                 }
 
+                float contactTimer = getPushStalemateContactTimer(timerIndex);
+                if (contactTimer > 0f) {
+                    contactTimer = Math.max(0f, contactTimer - delta);
+                    pushStalemateContactTimers[timerIndex] = contactTimer;
+                }
+
                 float timer = pushStalemateTimers[timerIndex];
                 if (timer < 0f) {
                     pushStalemateTimers[timerIndex] = Math.min(0f, timer + delta);
                     continue;
                 }
 
-                if (isPushStalemate(left, right)) {
+                if (isPushStalemate(left, right, contactTimer > 0f)) {
                     timer += delta;
                     if (timer >= STALEMATE_BOMB_TRIGGER_TIME) {
                         if (spawnStalemateBomb(left, right)) {
@@ -2948,15 +2963,49 @@ public class RatassGame extends ApplicationAdapter {
         return minId * pushStalemateTimerStride + maxId;
     }
 
-    private boolean isPushStalemate(Car left, Car right) {
+    private float getPushStalemateContactTimer(int timerIndex) {
+        if (timerIndex < 0 || timerIndex >= pushStalemateContactTimers.length) {
+            return 0f;
+        }
+        return pushStalemateContactTimers[timerIndex];
+    }
+
+    private void markPushStalemateContact(Car left, Car right) {
+        int timerIndex = getPushStalemateTimerIndex(left, right);
+        if (timerIndex < 0 || timerIndex >= pushStalemateContactTimers.length) {
+            return;
+        }
+        pushStalemateContactTimers[timerIndex] = STALEMATE_BOMB_CONTACT_MEMORY;
+    }
+
+    private boolean markPushStalemateContact(Contact contact) {
+        if (contact == null) {
+            return false;
+        }
+
+        Object userDataA = contact.getFixtureA().getBody().getUserData();
+        Object userDataB = contact.getFixtureB().getBody().getUserData();
+        if (!(userDataA instanceof Car) || !(userDataB instanceof Car)) {
+            return false;
+        }
+
+        Car carA = (Car) userDataA;
+        Car carB = (Car) userDataB;
+        if (!carA.active || !carB.active || carA.body == null || carB.body == null) {
+            return false;
+        }
+
+        markPushStalemateContact(carA, carB);
+        return true;
+    }
+
+    private boolean isPushStalemate(Car left, Car right, boolean recentContact) {
         if (left == null
                 || right == null
                 || !left.active
                 || !right.active
                 || left.body == null
-                || right.body == null
-                || !left.hasStalemateDriveCommand()
-                || !right.hasStalemateDriveCommand()) {
+                || right.body == null) {
             return false;
         }
 
@@ -2966,8 +3015,11 @@ public class RatassGame extends ApplicationAdapter {
             return false;
         }
 
-        float maxDistance =
-                (left.getHeight() + right.getHeight()) * 0.55f + STALEMATE_BOMB_DISTANCE_PADDING;
+        float distancePadding =
+                recentContact
+                        ? STALEMATE_BOMB_CONTACT_DISTANCE_PADDING
+                        : STALEMATE_BOMB_DISTANCE_PADDING;
+        float maxDistance = (left.getHeight() + right.getHeight()) * 0.55f + distancePadding;
         if (distanceSq > maxDistance * maxDistance) {
             return false;
         }
@@ -2975,14 +3027,22 @@ public class RatassGame extends ApplicationAdapter {
         float distance = (float) Math.sqrt(distanceSq);
         stalemateDirection.scl(1f / distance);
 
-        if (left.getDriveAlignmentToward(stalemateDirection.x, stalemateDirection.y)
-                        < STALEMATE_BOMB_ALIGNMENT
-                || right.getDriveAlignmentToward(-stalemateDirection.x, -stalemateDirection.y)
-                        < STALEMATE_BOMB_ALIGNMENT) {
+        float requiredAlignment =
+                recentContact ? STALEMATE_BOMB_CONTACT_ALIGNMENT : STALEMATE_BOMB_ALIGNMENT;
+        boolean hasOpposingDriveIntent =
+                left.getDriveIntentAlignmentToward(stalemateDirection.x, stalemateDirection.y)
+                                >= requiredAlignment
+                        && right.getDriveIntentAlignmentToward(
+                                        -stalemateDirection.x,
+                                        -stalemateDirection.y)
+                                >= requiredAlignment;
+        if (!recentContact && !hasOpposingDriveIntent) {
             return false;
         }
 
-        float maxPairSpeedSq = STALEMATE_BOMB_MAX_PAIR_SPEED * STALEMATE_BOMB_MAX_PAIR_SPEED;
+        float maxPairSpeed =
+                recentContact ? STALEMATE_BOMB_CONTACT_MAX_PAIR_SPEED : STALEMATE_BOMB_MAX_PAIR_SPEED;
+        float maxPairSpeedSq = maxPairSpeed * maxPairSpeed;
         if (left.body.getLinearVelocity().len2() > maxPairSpeedSq
                 || right.body.getLinearVelocity().len2() > maxPairSpeedSq) {
             return false;
@@ -2991,8 +3051,15 @@ public class RatassGame extends ApplicationAdapter {
         stalemateRelativeVelocity
                 .set(right.body.getLinearVelocity())
                 .sub(left.body.getLinearVelocity());
-        return Math.abs(stalemateRelativeVelocity.dot(stalemateDirection))
-                <= STALEMATE_BOMB_MAX_SEPARATION_SPEED;
+        float maxSeparationSpeed =
+                recentContact
+                        ? STALEMATE_BOMB_CONTACT_MAX_SEPARATION_SPEED
+                        : STALEMATE_BOMB_MAX_SEPARATION_SPEED;
+        float separationSpeed = stalemateRelativeVelocity.dot(stalemateDirection);
+        if (recentContact) {
+            return separationSpeed <= maxSeparationSpeed;
+        }
+        return Math.abs(separationSpeed) <= maxSeparationSpeed;
     }
 
     private boolean spawnStalemateBomb(Car left, Car right) {
@@ -3015,12 +3082,10 @@ public class RatassGame extends ApplicationAdapter {
         bomb.scale = MathUtils.random(0.88f, 1.16f);
         stalemateBombs.add(bomb);
 
-        if (left.playerControlled || right.playerControlled) {
-            announceEvent(
-                    "STANDOFF",
-                    "Bomb in the middle.",
-                    new Color(1f, 0.62f, 0.20f, 1f));
-        }
+        announceEvent(
+                "STANDOFF",
+                "Bomb in the middle.",
+                new Color(1f, 0.62f, 0.20f, 1f));
         return true;
     }
 
@@ -4929,8 +4994,8 @@ public class RatassGame extends ApplicationAdapter {
         float fuseProgress =
                 1f - MathUtils.clamp(bomb.fuseTimer / STALEMATE_BOMB_FUSE_DURATION, 0f, 1f);
         float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 24f + bomb.rotationDeg);
-        float glowRadius = (0.42f + pulse * 0.10f + fuseProgress * 0.10f) * bomb.scale;
-        float coreRadius = (0.20f + pulse * 0.035f) * bomb.scale;
+        float glowRadius = (0.56f + pulse * 0.16f + fuseProgress * 0.18f) * bomb.scale;
+        float coreRadius = (0.28f + pulse * 0.045f) * bomb.scale;
         float sparkAngle = bomb.rotationDeg + fuseProgress * 220f;
         float sparkX = bomb.position.x + MathUtils.cosDeg(sparkAngle) * glowRadius * 0.78f;
         float sparkY = bomb.position.y + MathUtils.sinDeg(sparkAngle) * glowRadius * 0.78f;
@@ -4970,8 +5035,8 @@ public class RatassGame extends ApplicationAdapter {
                         0f,
                         1f);
         float alpha = MathUtils.clamp(1f - progress, 0f, 1f);
-        float blastRadius = (0.44f + progress * 1.90f) * bomb.scale;
-        float flashRadius = (0.22f + progress * 0.34f) * bomb.scale;
+        float blastRadius = (0.70f + progress * STALEMATE_BOMB_BLAST_RADIUS * 0.78f) * bomb.scale;
+        float flashRadius = (0.34f + progress * 0.62f) * bomb.scale;
 
         shapeRenderer.setColor(1f, 0.26f, 0.06f, 0.30f * alpha);
         shapeRenderer.circle(bomb.position.x, bomb.position.y, blastRadius, 32);
@@ -6311,6 +6376,7 @@ public class RatassGame extends ApplicationAdapter {
     private final class ImpactContactListener implements ContactListener {
         @Override
         public void beginContact(Contact contact) {
+            markPushStalemateContact(contact);
         }
 
         @Override
@@ -6319,6 +6385,7 @@ public class RatassGame extends ApplicationAdapter {
 
         @Override
         public void preSolve(Contact contact, Manifold oldManifold) {
+            markPushStalemateContact(contact);
         }
 
         @Override
@@ -6334,6 +6401,7 @@ public class RatassGame extends ApplicationAdapter {
             if (!carA.active || !carB.active || carA.body == null || carB.body == null) {
                 return;
             }
+            markPushStalemateContact(carA, carB);
 
             Vector2 normal = contact.getWorldManifold().getNormal();
             if (normal.isZero(0.0001f)) {
@@ -6488,6 +6556,7 @@ public class RatassGame extends ApplicationAdapter {
         private float recentImpactTimer;
         private float ramChargeTimer;
         private float lastThrottleCommand;
+        private float lastThrottleIntent;
         private float previousRenderAngleRad;
         private float renderAngleRad;
 
@@ -6593,6 +6662,13 @@ public class RatassGame extends ApplicationAdapter {
                     throttle = decision.throttle;
                     turn = decision.turn;
                 }
+            }
+            if (allowControl) {
+                if (controlLockTimer <= 0f) {
+                    lastThrottleIntent = throttle;
+                }
+            } else {
+                lastThrottleIntent = 0f;
             }
             lastThrottleCommand = allowControl && controlLockTimer <= 0f ? throttle : 0f;
 
@@ -6774,16 +6850,16 @@ public class RatassGame extends ApplicationAdapter {
             impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION);
         }
 
-        private boolean hasStalemateDriveCommand() {
-            return Math.abs(lastThrottleCommand) >= STALEMATE_BOMB_MIN_THROTTLE;
+        private boolean hasStalemateDriveIntent() {
+            return Math.abs(lastThrottleIntent) >= STALEMATE_BOMB_MIN_THROTTLE;
         }
 
-        private float getDriveAlignmentToward(float directionX, float directionY) {
-            if (!hasStalemateDriveCommand() || body == null) {
+        private float getDriveIntentAlignmentToward(float directionX, float directionY) {
+            if (!hasStalemateDriveIntent() || body == null) {
                 return -1f;
             }
 
-            body.getWorldVector(working.set(0f, lastThrottleCommand > 0f ? 1f : -1f));
+            body.getWorldVector(working.set(0f, lastThrottleIntent > 0f ? 1f : -1f));
             return working.x * directionX + working.y * directionY;
         }
 
@@ -6794,13 +6870,24 @@ public class RatassGame extends ApplicationAdapter {
 
             working.set(direction).scl(strength * body.getMass());
             body.applyLinearImpulse(working, body.getWorldCenter(), true);
+            float awaySpeed = body.getLinearVelocity().dot(direction);
+            float minAwaySpeed =
+                    Math.min(
+                            strength * STALEMATE_BOMB_MIN_AWAY_SPEED_FACTOR,
+                            STALEMATE_BOMB_MAX_AWAY_SPEED);
+            if (awaySpeed < minAwaySpeed) {
+                body.setLinearVelocity(
+                        working.set(body.getLinearVelocity())
+                                .mulAdd(direction, minAwaySpeed - awaySpeed));
+            }
             body.applyAngularImpulse(
                     MathUtils.random(-1f, 1f) * body.getInertia() * strength * 0.24f,
                     true);
+            body.setAwake(true);
 
             impactSlideStrength = 1f;
             impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION + 0.18f);
-            controlLockTimer = Math.max(controlLockTimer, 0.28f);
+            controlLockTimer = Math.max(controlLockTimer, 0.72f);
             recentImpactTimer = Math.max(recentImpactTimer, RECENT_IMPACT_DURATION * 0.45f);
         }
 
@@ -6915,6 +7002,7 @@ public class RatassGame extends ApplicationAdapter {
             controlLockTimer = 0f;
             recentImpactTimer = 0f;
             lastThrottleCommand = 0f;
+            lastThrottleIntent = 0f;
             lastAttackerId = -1;
         }
 
