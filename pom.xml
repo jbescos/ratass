@@ -169,6 +169,11 @@
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-antrun-plugin</artifactId>
+                    <version>3.1.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-war-plugin</artifactId>
                     <version>3.4.0</version>
                 </plugin>
@@ -194,6 +199,33 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>generate-theme-manifest</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <mkdir dir="${maven.multiModuleProjectDirectory}/assets/theme"/>
+                                <pathconvert property="ratass.theme.names" pathsep="${line.separator}">
+                                    <dirset dir="${maven.multiModuleProjectDirectory}/assets/theme">
+                                        <include name="*"/>
+                                    </dirset>
+                                    <mapper type="flatten"/>
+                                </pathconvert>
+                                <echo file="${maven.multiModuleProjectDirectory}/assets/theme/themes.txt">${ratass.theme.names}${line.separator}</echo>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 
     <profiles>

@@ -108,6 +108,16 @@ gradle-app.setting
 /html/target/
 /ios/target/
 
+## RL training
+/rl-checkpoints/
+/rl-checkpoints-tactical/
+/.venv-rl/
+/logs/
+__pycache__/
+
+## Generated assets
+/assets/theme/themes.txt
+
 ## OS Specific
 .DS_Store
 Thumbs.db

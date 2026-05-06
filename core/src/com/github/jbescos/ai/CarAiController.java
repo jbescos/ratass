@@ -79,10 +79,13 @@ public final class CarAiController {
     private static final float AI_FORWARD_MISALIGNED_MIN_THROTTLE = 0.38f;
     private static final float AI_FORWARD_ALIGNED_THROTTLE_WEIGHT = 0.62f;
     private static final float AI_RECOVERY_REVERSE_ANGLE = 2.28f;
+    private static final float AI_TACTICAL_RECOVERY_REVERSE_ANGLE = 2.35f;
     private static final float AI_PICKUP_MIN_THROTTLE = 0.62f;
     private static final float AI_ESCAPE_TURN_SPEED = 1.15f;
     private static final float REVERSE_STEERING_SPEED = 0.25f;
     private static final float REVERSE_STEERING_THROTTLE = -0.1f;
+    private static final float TACTICAL_RECOVERY_REVERSE_LOCK_DURATION = 0.48f;
+    private static final float TACTICAL_RECOVERY_REVERSE_RELEASE_ANGLE = 1.45f;
 
     private final AiDrivingPersonality personality;
     private final StateMachine<CarAiController, AiMode> modeMachine =
@@ -113,9 +116,11 @@ public final class CarAiController {
     private float oscillationFlipTimer;
     private float oscillationEscapeTimer;
     private float targetLockTimer;
+    private float recoveryReverseLockTimer;
     private float stuckTurnDirection = 1f;
     private int lockedTargetVehicleId = -1;
     private int lastThrottleSign;
+    private boolean recoveryReverseLocked;
     private int navigationSwitchCount;
     private int oscillationFlipCount;
     private boolean stuckAnchorInitialized;
@@ -123,6 +128,10 @@ public final class CarAiController {
     private boolean navigationAnchorInitialized;
     private boolean committedNavigationTargetInitialized;
     private boolean oscillationAnchorInitialized;
+
+    public static TacticalIntent tacticalIntentFromPolicy(float modeValue, float styleValue) {
+        return TacticalIntent.fromPolicy(modeValue, styleValue);
+    }
 
     public CarAiController(AiDrivingPersonality personality) {
         this.personality = personality == null ? AiDrivingPersonalities.BALANCED : personality;
@@ -141,6 +150,28 @@ public final class CarAiController {
             Vector2 growthPickupPosition,
             boolean pointPickupActive,
             Vector2 pointPickupPosition) {
+        return plan(
+                delta,
+                self,
+                arenaMap,
+                vehicles,
+                growthPickupActive,
+                growthPickupPosition,
+                pointPickupActive,
+                pointPickupPosition,
+                TacticalIntent.defaultIntent());
+    }
+
+    public AiControlDecision plan(
+            float delta,
+            AiVehicleView self,
+            ArenaMap arenaMap,
+            Array<? extends AiVehicleView> vehicles,
+            boolean growthPickupActive,
+            Vector2 growthPickupPosition,
+            boolean pointPickupActive,
+            Vector2 pointPickupPosition,
+            TacticalIntent tacticalIntent) {
         if (self == null || !self.isActive()) {
             clearAttackResetState();
             changeMode(AiMode.IDLE);
@@ -155,6 +186,8 @@ public final class CarAiController {
         }
 
         advanceAttackResetState(delta);
+        TacticalIntent intent =
+                tacticalIntent == null ? TacticalIntent.defaultIntent() : tacticalIntent;
 
         arenaMap.getFocusPoint(arenaFocus);
         Vector2 position = body.getPosition();
@@ -185,7 +218,8 @@ public final class CarAiController {
         boolean recovering =
                 nearestHazard < personality.recoveryEdgeDistance
                         || (nearestHazard < personality.cautionEdgeDistance
-                        && awayFromSafetyVelocity > personality.outwardVelocityThreshold);
+                        && awayFromSafetyVelocity > personality.outwardVelocityThreshold)
+                        || shouldTacticallyRecover(intent, self, nearestHazard, body);
 
         AiVehicleView target = null;
         Body targetBody = null;
@@ -199,7 +233,8 @@ public final class CarAiController {
                     growthPickupActive,
                     growthPickupPosition,
                     pointPickupActive,
-                    pointPickupPosition);
+                    pointPickupPosition,
+                    intent);
             if (target != null) {
                 targetBody = target.getBody();
             }
@@ -315,10 +350,16 @@ public final class CarAiController {
                 }
 
                 float targetEdge = approximateHazardDistance(arenaMap, targetPosition);
+                boolean targetVulnerable =
+                        targetEdge < EDGE_VULNERABILITY_DISTANCE
+                                || target.getRecentImpactTime() > 0f;
                 boolean commitPush =
                         targetEdge < EDGE_ATTACK_COMMIT_DISTANCE
-                                || (pushAlignment > personality.commitAlignmentThreshold
-                                && position.dst2(targetPosition) < personality.commitDistanceSq);
+                                || shouldTacticallyCommit(
+                                        intent,
+                                        pushAlignment,
+                                        position.dst2(targetPosition),
+                                        targetVulnerable);
 
                 disengaging = disengageTimer > 0f;
                 charging = !disengaging && chargeTimer > 0f;
@@ -327,17 +368,21 @@ public final class CarAiController {
                     desiredVector.set(targetPosition);
                 } else if (commitPush) {
                     desiredVector.set(interceptPoint)
-                            .mulAdd(attackVector, personality.commitPushOffsetDistance);
+                            .mulAdd(
+                                    attackVector,
+                                    personality.commitPushOffsetDistance
+                                            * getTacticalPushOffsetScale(intent));
                 } else {
                     float stagingDistance = MathUtils.clamp(
                             personality.stagingDistance
                                     + targetBody.getLinearVelocity().len()
                                     * personality.stagingVelocityFactor,
                             MIN_STAGING_DISTANCE,
-                            MAX_STAGING_DISTANCE);
+                            MAX_STAGING_DISTANCE)
+                            * getTacticalStagingScale(intent);
                     desiredVector.set(interceptPoint)
                             .mulAdd(attackVector, -stagingDistance);
-                    applyFlankOffset(position, arenaMap, attackVector, pushAlignment, desiredVector);
+                    applyFlankOffset(position, arenaMap, attackVector, pushAlignment, desiredVector, intent);
 
                     if (targetEdge > CENTER_ASSIST_TARGET_EDGE_THRESHOLD
                             && nearestHazard > CENTER_ASSIST_SELF_EDGE_THRESHOLD) {
@@ -392,7 +437,15 @@ public final class CarAiController {
                         speedSq,
                         nearestHazard,
                         desiredDistanceSq,
-                        evadingThreat);
+                        evadingThreat,
+                        intent);
+        throttle =
+                stabilizeTacticalRecoveryThrottle(
+                        mode,
+                        intent,
+                        throttle,
+                        absFrontAngleError,
+                        nearestHazard);
         float steeringDirection = getSteeringDirection(signedForwardSpeed, throttle);
         float steeringAngleError = getSteeringAngleError(desiredHeading, currentHeading, throttle);
         float turn =
@@ -521,7 +574,8 @@ public final class CarAiController {
             float speedSq,
             float nearestHazard,
             float desiredDistanceSq,
-            boolean evadingThreat) {
+            boolean evadingThreat,
+            TacticalIntent intent) {
         if (mode == AiMode.DISENGAGE) {
             return personality.stuckReverseThrottle;
         }
@@ -529,14 +583,23 @@ public final class CarAiController {
             return scaleForwardThrottle(FULL_ATTACK_THROTTLE, absFrontAngleError, 0.72f);
         }
         if (mode == AiMode.RECOVER) {
-            if (absFrontAngleError > AI_RECOVERY_REVERSE_ANGLE && speedSq > LOW_SPEED_PIVOT_SPEED_SQ) {
+            float reverseAngle =
+                    intent.mode == TacticalMode.RECOVER
+                            ? AI_TACTICAL_RECOVERY_REVERSE_ANGLE
+                            : AI_RECOVERY_REVERSE_ANGLE;
+            if (absFrontAngleError > reverseAngle
+                    && speedSq > LOW_SPEED_PIVOT_SPEED_SQ) {
                 return RECOVERY_REVERSE_THROTTLE;
             }
             float base =
                     nearestHazard < EMERGENCY_RECOVERY_EDGE_DISTANCE
                             ? EMERGENCY_RECOVERY_THROTTLE
                             : personality.recoveryThrottle;
-            return scaleForwardThrottle(base, absFrontAngleError, AI_FORWARD_MISALIGNED_MIN_THROTTLE);
+            float minimumThrottle =
+                    intent.mode == TacticalMode.RECOVER
+                            ? Math.max(0.66f, AI_FORWARD_MISALIGNED_MIN_THROTTLE)
+                            : AI_FORWARD_MISALIGNED_MIN_THROTTLE;
+            return scaleForwardThrottle(base, absFrontAngleError, minimumThrottle);
         }
         if (mode == AiMode.EVADE) {
             float base =
@@ -564,7 +627,119 @@ public final class CarAiController {
         if (evadingThreat) {
             baseThrottle = Math.max(baseThrottle, personality.recoveryThrottle);
         }
+        if (mode == AiMode.ATTACK) {
+            baseThrottle = applyTacticalAttackThrottle(baseThrottle, intent);
+        }
         return scaleForwardThrottle(baseThrottle, absFrontAngleError, AI_FORWARD_MISALIGNED_MIN_THROTTLE);
+    }
+
+    private float stabilizeTacticalRecoveryThrottle(
+            AiMode mode,
+            TacticalIntent intent,
+            float throttle,
+            float absFrontAngleError,
+            float nearestHazard) {
+        if (mode != AiMode.RECOVER || intent.mode != TacticalMode.RECOVER) {
+            recoveryReverseLocked = false;
+            recoveryReverseLockTimer = 0f;
+            return throttle;
+        }
+
+        if (throttle < -OSCILLATION_DIRECTION_THROTTLE) {
+            recoveryReverseLocked = true;
+            recoveryReverseLockTimer = TACTICAL_RECOVERY_REVERSE_LOCK_DURATION;
+            return throttle;
+        }
+
+        boolean releaseReverse =
+                absFrontAngleError < TACTICAL_RECOVERY_REVERSE_RELEASE_ANGLE
+                        || nearestHazard > personality.cautionEdgeDistance + 0.70f;
+        if (recoveryReverseLocked && recoveryReverseLockTimer > 0f && !releaseReverse) {
+            return RECOVERY_REVERSE_THROTTLE;
+        }
+
+        recoveryReverseLocked = false;
+        recoveryReverseLockTimer = 0f;
+        return throttle;
+    }
+
+    private boolean shouldTacticallyRecover(
+            TacticalIntent intent,
+            AiVehicleView self,
+            float nearestHazard,
+            Body body) {
+        if (intent.mode != TacticalMode.RECOVER) {
+            return false;
+        }
+        return nearestHazard < personality.cautionEdgeDistance + 0.55f
+                || self.getRecentImpactTime() > 0.18f
+                || body.getLinearVelocity().len2() < STUCK_PROGRESS_SPEED_SQ;
+    }
+
+    private boolean shouldTacticallyCommit(
+            TacticalIntent intent,
+            float pushAlignment,
+            float targetDistanceSq,
+            boolean targetVulnerable) {
+        if (intent.mode == TacticalMode.FLANK && !targetVulnerable) {
+            return false;
+        }
+        float aggression = getEffectiveAggression(intent);
+        float alignmentThreshold =
+                personality.commitAlignmentThreshold
+                        - MathUtils.lerp(0f, 0.20f, aggression);
+        float distanceLimit =
+                personality.commitDistanceSq
+                        * MathUtils.lerp(0.80f, 1.45f, aggression);
+        if (intent.mode == TacticalMode.HUNT && targetVulnerable) {
+            alignmentThreshold -= 0.12f;
+            distanceLimit *= 1.25f;
+        }
+        return pushAlignment > alignmentThreshold && targetDistanceSq < distanceLimit;
+    }
+
+    private float getTacticalPushOffsetScale(TacticalIntent intent) {
+        if (intent.mode == TacticalMode.FLANK) {
+            return 0.80f;
+        }
+        if (intent.mode == TacticalMode.HUNT) {
+            return MathUtils.lerp(1.18f, 1.42f, intent.aggression);
+        }
+        return MathUtils.lerp(0.95f, 1.28f, intent.aggression);
+    }
+
+    private float getTacticalStagingScale(TacticalIntent intent) {
+        if (intent.mode == TacticalMode.FLANK) {
+            return MathUtils.lerp(1.18f, 1.48f, 1f - intent.aggression);
+        }
+        if (intent.mode == TacticalMode.HUNT) {
+            return MathUtils.lerp(0.68f, 0.92f, 1f - intent.aggression);
+        }
+        if (intent.mode == TacticalMode.RECOVER) {
+            return 1.22f;
+        }
+        return MathUtils.lerp(1.06f, 0.78f, intent.aggression);
+    }
+
+    private float applyTacticalAttackThrottle(float baseThrottle, TacticalIntent intent) {
+        if (intent.mode == TacticalMode.FLANK) {
+            return MathUtils.lerp(baseThrottle, Math.min(baseThrottle, 0.82f), 0.45f);
+        }
+        float aggression = getEffectiveAggression(intent);
+        return MathUtils.lerp(baseThrottle, FULL_ATTACK_THROTTLE, aggression * 0.38f);
+    }
+
+    private float getEffectiveAggression(TacticalIntent intent) {
+        if (intent.mode == TacticalMode.RECOVER) {
+            return intent.aggression * 0.35f;
+        }
+        if (intent.mode == TacticalMode.FLANK) {
+            return MathUtils.lerp(0.25f, 0.65f, intent.aggression);
+        }
+        if (intent.mode == TacticalMode.HUNT) {
+            return MathUtils.lerp(0.72f, 1f, intent.aggression);
+        }
+        return MathUtils.lerp(0.45f, 1f, intent.aggression);
     }
 
     private float scaleForwardThrottle(float baseThrottle, float absFrontAngleError, float minimumThrottle) {
@@ -797,9 +972,15 @@ public final class CarAiController {
             ArenaMap arenaMap,
             Vector2 pushDirection,
             float pushAlignment,
-            Vector2 out) {
+            Vector2 out,
+            TacticalIntent intent) {
         float flankDistance =
                 personality.flankOffsetDistance * MathUtils.clamp(1f - Math.max(0f, pushAlignment), 0.20f, 1f);
+        if (intent.mode == TacticalMode.FLANK) {
+            flankDistance += MathUtils.lerp(0.36f, 0.86f, 1f - intent.aggression);
+        } else if (intent.mode == TacticalMode.HUNT) {
+            flankDistance *= 0.72f;
+        }
         if (flankDistance <= EPSILON) {
             return;
         }
@@ -809,6 +990,16 @@ public final class CarAiController {
         pickupInterceptPoint.set(out).sub(flankVector);
         float positiveHazard = approximateHazardDistance(arenaMap, alternateVector);
         float negativeHazard = approximateHazardDistance(arenaMap, pickupInterceptPoint);
+        if (intent.mode == TacticalMode.FLANK && Math.abs(intent.flankBias) > 0.22f) {
+            if (intent.flankBias > 0f && positiveHazard >= POWER_PICKUP_EDGE_MARGIN) {
+                out.set(alternateVector);
+                return;
+            }
+            if (intent.flankBias < 0f && negativeHazard >= POWER_PICKUP_EDGE_MARGIN) {
+                out.set(pickupInterceptPoint);
+                return;
+            }
+        }
         if (positiveHazard > negativeHazard + 0.05f) {
             out.set(alternateVector);
         } else if (negativeHazard > positiveHazard + 0.05f) {
@@ -877,6 +1068,12 @@ public final class CarAiController {
             targetLockTimer = Math.max(0f, targetLockTimer - delta);
             if (targetLockTimer == 0f) {
                 lockedTargetVehicleId = -1;
+            }
+        }
+        if (recoveryReverseLockTimer > 0f) {
+            recoveryReverseLockTimer = Math.max(0f, recoveryReverseLockTimer - delta);
+            if (recoveryReverseLockTimer == 0f) {
+                recoveryReverseLocked = false;
             }
         }
     }
@@ -1081,7 +1278,8 @@ public final class CarAiController {
             boolean growthPickupActive,
             Vector2 growthPickupPosition,
             boolean pointPickupActive,
-            Vector2 pointPickupPosition) {
+            Vector2 pointPickupPosition,
+            TacticalIntent intent) {
         AiVehicleView best = null;
         float bestScore = -Float.MAX_VALUE;
         Vector2 myPosition = body.getPosition();
@@ -1131,6 +1329,14 @@ public final class CarAiController {
                             + centerDistanceScore
                             + approachAlignment * personality.targetApproachAlignmentWeight
                             - distance * personality.targetDistancePenaltyWeight
+                            + scoreTacticalTargetBias(
+                                    intent,
+                                    candidate,
+                                    candidateEdgeDistance,
+                                    edgeVulnerability,
+                                    outwardVelocity,
+                                    distance,
+                                    approachAlignment)
                             + scorePickupThreat(
                                     candidate,
                                     candidateBody,
@@ -1171,6 +1377,43 @@ public final class CarAiController {
         return best;
     }
 
+    private float scoreTacticalTargetBias(
+            TacticalIntent intent,
+            AiVehicleView candidate,
+            float candidateEdgeDistance,
+            float edgeVulnerability,
+            float outwardVelocity,
+            float distance,
+            float approachAlignment) {
+        if (intent == null) {
+            return 0f;
+        }
+        float aggression = getEffectiveAggression(intent);
+        float score = 0f;
+        if (intent.mode == TacticalMode.HUNT) {
+            score += edgeVulnerability * MathUtils.lerp(1.5f, 3.8f, aggression);
+            score += outwardVelocity * MathUtils.lerp(0.45f, 1.55f, aggression);
+            if (candidate.getRecentImpactTime() > 0f) {
+                score += MathUtils.lerp(1.0f, 2.4f, aggression);
+            }
+            if (candidateEdgeDistance < EDGE_ATTACK_COMMIT_DISTANCE) {
+                score += 1.35f;
+            }
+        } else if (intent.mode == TacticalMode.ATTACK) {
+            score += approachAlignment * MathUtils.lerp(0.35f, 1.25f, aggression);
+            score -= distance * MathUtils.lerp(0.02f, 0.12f, aggression);
+            if (candidate.getRecentImpactTime() > 0f) {
+                score += 0.55f + aggression * 0.75f;
+            }
+        } else if (intent.mode == TacticalMode.FLANK) {
+            score += MathUtils.clamp(distance - MIN_STAGING_DISTANCE, 0f, 3f) * 0.18f;
+            score += edgeVulnerability * 0.65f;
+        } else if (intent.mode == TacticalMode.RECOVER) {
+            score -= Math.max(0f, EDGE_ATTACK_COMMIT_DISTANCE - candidateEdgeDistance) * 0.50f;
+        }
+        return score;
+    }
+
     private enum AiMode implements State<CarAiController> {
         IDLE,
         RECOVER,
@@ -1196,6 +1439,55 @@ public final class CarAiController {
         @Override
         public boolean onMessage(CarAiController controller, Telegram telegram) {
             return false;
+        }
+    }
+
+    public enum TacticalMode {
+        RECOVER,
+        FLANK,
+        ATTACK,
+        HUNT
+    }
+
+    public static final class TacticalIntent {
+        public final TacticalMode mode;
+        public final float flankBias;
+        public final float aggression;
+
+        private TacticalIntent(TacticalMode mode, float flankBias, float aggression) {
+            this.mode = mode == null ? TacticalMode.ATTACK : mode;
+            this.flankBias = MathUtils.clamp(flankBias, -1f, 1f);
+            this.aggression = MathUtils.clamp(aggression, 0f, 1f);
+        }
+
+        public static TacticalIntent defaultIntent() {
+            return new TacticalIntent(TacticalMode.ATTACK, 0f, 0.62f);
+        }
+
+        public static TacticalIntent recoveryIntent(float styleValue) {
+            return new TacticalIntent(TacticalMode.RECOVER, styleValue, 0.20f);
+        }
+
+        private static TacticalIntent fromPolicy(float modeValue, float styleValue) {
+            float modeSignal = MathUtils.clamp(modeValue, -1f, 1f);
+            float styleSignal = MathUtils.clamp(styleValue, -1f, 1f);
+            TacticalMode mode;
+            if (modeSignal < -0.55f) {
+                mode = TacticalMode.RECOVER;
+            } else if (modeSignal < -0.08f) {
+                mode = TacticalMode.FLANK;
+            } else if (modeSignal < 0.58f) {
+                mode = TacticalMode.ATTACK;
+            } else {
+                mode = TacticalMode.HUNT;
+            }
+
+            float aggression =
+                    MathUtils.clamp(
+                            0.50f + modeSignal * 0.32f + Math.abs(styleSignal) * 0.18f,
+                            0f,
+                            1f);
+            return new TacticalIntent(mode, styleSignal, aggression);
         }
     }
 

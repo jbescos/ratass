@@ -43,6 +43,7 @@ import com.github.jbescos.ai.AiDrivingPersonality;
 import com.github.jbescos.ai.AiDrivingPersonalities;
 import com.github.jbescos.ai.AiVehicleView;
 import com.github.jbescos.ai.CarAiController;
+import com.github.jbescos.ai.rl.RlPolicy;
 import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.SpawnPoint;
@@ -70,10 +71,12 @@ public class RatassGame extends ApplicationAdapter {
     private static final String MAP_SCALE_PROPERTY = "map.scale";
     private static final String MAP_SCALE_PREF_KEY = MAP_SCALE_PROPERTY;
     private static final String THEME_DIRECTORY = "theme";
+    private static final String THEME_MANIFEST_PATH = "themes.txt";
     private static final String THEME_CAR_SHEET_PATH = "cars/cars.png";
     private static final String THEME_FLAT_CAR_SHEET_PATH = "cars.png";
     private static final String THEME_ENEMY_NAMES_PATH = "enemy-names.txt";
-    private static final ThemeChoice[] THEME_CHOICES = new ThemeChoice[] {
+    private static final String RL_ENEMY_POLICY_PATH = "ai/rl_enemy_policy.json";
+    private static final ThemeChoice[] FALLBACK_THEME_CHOICES = new ThemeChoice[] {
             new ThemeChoice("infernal", "Infernal"),
             new ThemeChoice("sport", "Sport Cars"),
             new ThemeChoice("classical", "Classical Cars"),
@@ -159,27 +162,76 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
     private static final float SUDDEN_DEATH_TIE_SPEED_MARGIN = 0.08f;
-    private static final float STALEMATE_BOMB_TRIGGER_TIME = 0.34f;
-    private static final float STALEMATE_BOMB_PAIR_COOLDOWN = 2.4f;
-    private static final float STALEMATE_BOMB_TIMER_DECAY = 1.65f;
-    private static final float STALEMATE_BOMB_MIN_THROTTLE = 0.28f;
-    private static final float STALEMATE_BOMB_ALIGNMENT = 0.54f;
-    private static final float STALEMATE_BOMB_CONTACT_ALIGNMENT = 0.30f;
-    private static final float STALEMATE_BOMB_DISTANCE_PADDING = 1.02f;
-    private static final float STALEMATE_BOMB_CONTACT_DISTANCE_PADDING = 1.34f;
-    private static final float STALEMATE_BOMB_MAX_SEPARATION_SPEED = 1.20f;
-    private static final float STALEMATE_BOMB_CONTACT_MAX_SEPARATION_SPEED = 2.20f;
-    private static final float STALEMATE_BOMB_MAX_PAIR_SPEED = 3.80f;
-    private static final float STALEMATE_BOMB_CONTACT_MAX_PAIR_SPEED = 6.60f;
-    private static final float STALEMATE_BOMB_CONTACT_MEMORY = 0.75f;
-    private static final float STALEMATE_BOMB_FUSE_DURATION = 0.62f;
-    private static final float STALEMATE_BOMB_EXPLOSION_DURATION = 0.78f;
-    private static final float STALEMATE_BOMB_BLAST_RADIUS = 4.85f;
-    private static final float STALEMATE_BOMB_IMPULSE = 32.0f;
-    private static final float STALEMATE_BOMB_MIN_IMPULSE_FACTOR = 0.24f;
-    private static final float STALEMATE_BOMB_MIN_AWAY_SPEED_FACTOR = 0.55f;
-    private static final float STALEMATE_BOMB_MAX_AWAY_SPEED = 16.5f;
-    private static final float STALEMATE_BOMB_NEARBY_DISTANCE = 2.85f;
+    public static final int RL_OBSERVATION_SIZE = 30;
+    public static final int RL_ACTION_SIZE = 2;
+    private static final int RL_DEFAULT_CONTROLLED_AGENTS = 1;
+    private static final int RL_DEFAULT_FIELD_SIZE = 12;
+    private static final int RL_DEFAULT_ACTION_REPEAT = 4;
+    private static final int RL_DEFAULT_MAX_ACTION_STEPS = 1350;
+    private static final float RL_LIVE_DECISION_INTERVAL = 0.08f;
+    private static final float RL_POSITION_NORMALIZER_MIN = 1f;
+    private static final float RL_VELOCITY_NORMALIZER = 18f;
+    private static final float RL_ANGULAR_VELOCITY_NORMALIZER = 8f;
+    private static final float RL_HAZARD_DISTANCE_NORMALIZER = 6f;
+    private static final float RL_ALIVE_STEP_REWARD = 0.002f;
+    private static final float RL_EDGE_RECOVERY_REWARD = 0.090f;
+    private static final float RL_OPPONENT_PRESSURE_REWARD = 0.110f;
+    private static final float RL_OPPONENT_ELIMINATION_REWARD = 1.800f;
+    private static final float RL_IMPACT_CREDIT_REWARD = 0.160f;
+    private static final float RL_WIN_REWARD = 3.000f;
+    private static final float RL_ELIMINATION_PENALTY = 5.200f;
+    private static final float RL_AVOIDABLE_ELIMINATION_PENALTY = 1.700f;
+    private static final float RL_OUTWARD_ELIMINATION_PENALTY = 1.300f;
+    private static final float RL_TIMEOUT_SURVIVOR_PENALTY = 0.300f;
+    private static final float RL_SPIN_STALL_PENALTY = 0.006f;
+    private static final float RL_CONTROL_DEADZONE = 0.06f;
+    private static final float RL_THROTTLE_REVERSAL_HYSTERESIS = 0.86f;
+    private static final float RL_THROTTLE_MOVING_REVERSAL_HYSTERESIS = 0.90f;
+    private static final float RL_THROTTLE_RESPONSE = 0.42f;
+    private static final float RL_TURN_RESPONSE = 0.65f;
+    private static final float RL_ACTION_FLIP_DEADZONE = 0.18f;
+    private static final float RL_FORWARD_SPEED_REWARD = 0.017f;
+    private static final float RL_REVERSE_SPEED_PENALTY = 0.012f;
+    private static final float RL_RAW_THROTTLE_FLIP_PENALTY = 0.026f;
+    private static final float RL_EFFECTIVE_THROTTLE_FLIP_PENALTY = 0.062f;
+    private static final float RL_FORWARD_REVERSE_SPEED_FLIP_PENALTY = 0.034f;
+    private static final float RL_IDLE_DITHER_PENALTY = 0.040f;
+    private static final float RL_OPPONENT_CLOSING_REWARD = 0.060f;
+    private static final float RL_FORWARD_THROTTLE_COMMIT_REWARD = 0.028f;
+    private static final float RL_SAFE_REVERSE_ACTION_PENALTY = 0.030f;
+    private static final float RL_SAFE_REVERSE_BRAKE_PENALTY = 0.018f;
+    private static final float RL_REVERSE_RECOVERY_EDGE_DISTANCE = 1.15f;
+    private static final float RL_REVERSE_RECOVERY_SPEED = 0.12f;
+    private static final float RL_EDGE_DANGER_DISTANCE = 1.55f;
+    private static final float RL_EDGE_DANGER_PENALTY = 0.085f;
+    private static final float RL_EDGE_APPROACH_PENALTY = 0.110f;
+    private static final float RL_SAFE_SPEED_DISTANCE = 2.75f;
+    private static final float RL_SAFE_SPEED_REWARD = 0.018f;
+    private static final float RL_ACCELERATION_REWARD = 0.014f;
+    private static final float RL_EDGE_RECOVERY_SPEED_DISTANCE = 3.05f;
+    private static final float RL_EDGE_RECOVERY_SPEED_REWARD = 0.115f;
+    private static final float RL_EDGE_UNSAFE_SPEED_PENALTY = 0.135f;
+    private static final float RL_EDGE_FAST_APPROACH_PENALTY = 0.130f;
+    private static final float RL_TACTICAL_RECOVERY_EDGE_DISTANCE = 2.55f;
+    private static final float RL_TACTICAL_RECOVERY_SPEED_BUFFER = 0.90f;
+    private static final float RL_TACTICAL_RECOVERY_OUTWARD_DISTANCE = 3.15f;
+    private static final float RL_TACTICAL_RECOVERY_OUTWARD_SPEED = 0.55f;
+    private static final float RL_RECOVERY_MODE_REWARD = 0.075f;
+    private static final float RL_UNSAFE_FLANK_MODE_PENALTY = 0.055f;
+    private static final float RL_UNSAFE_ATTACK_MODE_PENALTY = 0.105f;
+    private static final float RL_CONTACT_STUCK_DISTANCE = 1.18f;
+    private static final float RL_CONTACT_STUCK_SPEED = 0.62f;
+    private static final float RL_CONTACT_STUCK_PENALTY = 0.040f;
+    private static final float RL_CONTACT_DISENGAGE_REWARD = 0.048f;
+    private static final float RL_CONTACT_ESCAPE_SPEED_REWARD = 0.055f;
+    private static final float RL_SAFE_ATTACK_DISTANCE = 2.20f;
+    private static final float RL_FAST_IMPACT_REWARD = 0.220f;
+    private static final float RL_ATTACK_EDGE_PRESSURE_REWARD = 0.170f;
+    private static final float RL_GROWTH_PICKUP_REWARD = 5.000f;
+    private static final float RL_GROWTH_PICKUP_APPROACH_REWARD = 0.200f;
+    private static final float RL_GROWTH_PICKUP_ASSIST_MIN_WEIGHT = 0.35f;
+    private static final float RL_GROWTH_PICKUP_ASSIST_MAX_WEIGHT = 0.78f;
+    private static final float RL_GROWTH_PICKUP_ASSIST_DISTANCE = 32f;
     private static final float HUD_SIDEBAR_RATIO = 0.29f;
     private static final float HUD_SIDEBAR_MIN_WIDTH = 200f;
     private static final float HUD_SIDEBAR_PREFERRED_MIN_WIDTH = 260f;
@@ -445,9 +497,9 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<CarTemplate> leaderboardEntries = new Array<CarTemplate>();
     private final Array<Car> pendingCollisionEliminations = new Array<Car>();
     private final Array<DestructionEffect> destructionEffects = new Array<DestructionEffect>();
-    private final Array<StalemateBomb> stalemateBombs = new Array<StalemateBomb>();
     private final Array<CarVisual> themeCarVisuals = new Array<CarVisual>();
     private final Array<Rectangle> menuCarSheetSourceBounds = new Array<Rectangle>();
+    private final Array<ThemeChoice> themeChoices = new Array<ThemeChoice>();
     private final Array<String> themeEnemyNames = new Array<String>();
     private final LinkedHashMap<String, Texture> arenaSurfaceTextureCache =
             new LinkedHashMap<String, Texture>();
@@ -460,10 +512,6 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector2 pickupCandidate = new Vector2();
     private final Vector2 lastGrowthPickupPosition = new Vector2();
     private final Vector2 lastPointPickupPosition = new Vector2();
-    private final Vector2 stalemateDirection = new Vector2();
-    private final Vector2 stalemateRelativeVelocity = new Vector2();
-    private final Vector2 stalemateBombPosition = new Vector2();
-    private final Vector2 stalemateBombImpulse = new Vector2();
     private final Vector2 spawnCandidate = new Vector2();
     private final Array<SpawnPoint> roundSpawns = new Array<SpawnPoint>();
     private final Rectangle menuNewGameBounds = new Rectangle();
@@ -589,13 +637,13 @@ public class RatassGame extends ApplicationAdapter {
     private int selectedThemeIndex;
     private int selectedCarCount = DEFAULT_CAR_COUNT;
     private int selectedPlayerCarIndex = DEFAULT_PLAYER_CAR_INDEX;
-    private int pushStalemateTimerStride;
     private int mainMenuSelection;
     private int pauseMenuSelection;
     private int optionsMenuSelection;
     private Car boostedCar;
     private Car playerCar;
     private Car winner;
+    private RlPolicy rlEnemyPolicy;
     private String eventCalloutTitle = "";
     private String eventCalloutSubline = "";
     private String configuredThemeName = DEFAULT_THEME_NAME;
@@ -604,8 +652,6 @@ public class RatassGame extends ApplicationAdapter {
     private boolean optionsOpenedFromPause;
     private float cameraZoom = DEFAULT_CAMERA_ZOOM;
     private float mapScale = DEFAULT_MAP_SCALE;
-    private float[] pushStalemateTimers = new float[0];
-    private float[] pushStalemateContactTimers = new float[0];
 
     @Override
     public void create() {
@@ -654,6 +700,7 @@ public class RatassGame extends ApplicationAdapter {
             saveMenuSettings();
         }
         loadSounds();
+        rlEnemyPolicy = loadRlEnemyPolicy();
         createRoster();
         loadCarSprites();
         mapProgression = new MapProgression(ArenaMaps.createDefaultSet(mapScale));
@@ -670,7 +717,152 @@ public class RatassGame extends ApplicationAdapter {
         resetRound(false);
     }
 
+    private RlPolicy loadRlEnemyPolicy() {
+        if (Gdx.files == null) {
+            return null;
+        }
+        try {
+            FileHandle policyFile = Gdx.files.internal(RL_ENEMY_POLICY_PATH);
+            if (!policyFile.exists()) {
+                return null;
+            }
+            RlPolicy policy = RlPolicy.fromJson(policyFile.readString("UTF-8"));
+            if (policy.getObservationSize() != RL_OBSERVATION_SIZE
+                    || policy.getActionSize() != RL_ACTION_SIZE) {
+                throw new IllegalArgumentException("RL policy size does not match the game.");
+            }
+            return policy;
+        } catch (RuntimeException exception) {
+            Gdx.app.error("RatassGame", "Could not load RL enemy policy.", exception);
+            return null;
+        }
+    }
+
+    private void loadThemeChoices() {
+        themeChoices.clear();
+        addFallbackThemeChoices();
+        addThemeChoicesFromManifest();
+        addThemeChoicesFromDirectory();
+        if (themeChoices.size == 0) {
+            for (int i = 0; i < FALLBACK_THEME_CHOICES.length; i++) {
+                addThemeChoiceIfMissing(FALLBACK_THEME_CHOICES[i]);
+            }
+        }
+    }
+
+    private void addFallbackThemeChoices() {
+        for (int i = 0; i < FALLBACK_THEME_CHOICES.length; i++) {
+            addThemeChoiceIfUsable(FALLBACK_THEME_CHOICES[i]);
+        }
+    }
+
+    private void addThemeChoicesFromManifest() {
+        if (Gdx.files == null) {
+            return;
+        }
+        FileHandle manifest =
+                Gdx.files.internal(THEME_DIRECTORY + "/" + THEME_MANIFEST_PATH);
+        if (!manifest.exists()) {
+            return;
+        }
+        try {
+            String[] lines = manifest.readString("UTF-8").split("\\r?\\n");
+            for (int i = 0; i < lines.length; i++) {
+                addThemeChoiceIfUsable(parseThemeChoice(lines[i]));
+            }
+        } catch (RuntimeException exception) {
+            Gdx.app.error("RatassGame", "Could not load theme manifest " + manifest.path(), exception);
+        }
+    }
+
+    private void addThemeChoicesFromDirectory() {
+        if (Gdx.files == null) {
+            return;
+        }
+        try {
+            FileHandle root = Gdx.files.internal(THEME_DIRECTORY);
+            if (!root.exists()) {
+                return;
+            }
+            FileHandle[] listedChildren = root.list();
+            Array<FileHandle> directories = new Array<FileHandle>(listedChildren.length);
+            for (int i = 0; i < listedChildren.length; i++) {
+                FileHandle child = listedChildren[i];
+                if (child.isDirectory()) {
+                    directories.add(child);
+                }
+            }
+            directories.sort(
+                    new Comparator<FileHandle>() {
+                        @Override
+                        public int compare(FileHandle left, FileHandle right) {
+                            return left.name().compareTo(right.name());
+                        }
+                    });
+            for (int i = 0; i < directories.size; i++) {
+                FileHandle directory = directories.get(i);
+                addThemeChoiceIfUsable(
+                        new ThemeChoice(directory.name(), buildThemeDisplayName(directory.name())));
+            }
+        } catch (RuntimeException exception) {
+            Gdx.app.debug("RatassGame", "Could not list theme directory for auto-discovery.", exception);
+        }
+    }
+
+    private ThemeChoice parseThemeChoice(String line) {
+        String trimmed = line.trim();
+        if (trimmed.length() == 0 || trimmed.startsWith("#")) {
+            return null;
+        }
+        int separator = trimmed.indexOf('|');
+        if (separator < 0) {
+            separator = trimmed.indexOf('=');
+        }
+        String name = separator < 0 ? trimmed : trimmed.substring(0, separator).trim();
+        if (name.length() == 0) {
+            return null;
+        }
+        String displayName =
+                separator < 0 ? "" : trimmed.substring(separator + 1).trim();
+        if (displayName.length() == 0) {
+            displayName = buildThemeDisplayName(name);
+        }
+        return new ThemeChoice(name, displayName);
+    }
+
+    private void addThemeChoiceIfUsable(ThemeChoice choice) {
+        if (choice == null || !themeHasCarSheet(choice.name)) {
+            return;
+        }
+        addThemeChoiceIfMissing(choice);
+    }
+
+    private void addThemeChoiceIfMissing(ThemeChoice choice) {
+        if (choice == null || choice.name.length() == 0) {
+            return;
+        }
+        if (findThemeChoiceIndex(choice.name) >= 0) {
+            return;
+        }
+        themeChoices.add(choice);
+    }
+
+    private boolean themeHasCarSheet(String themeName) {
+        return themeAssetExists(themeName, THEME_CAR_SHEET_PATH)
+                || themeAssetExists(themeName, THEME_FLAT_CAR_SHEET_PATH);
+    }
+
+    private boolean themeAssetExists(String themeName, String relativePath) {
+        if (Gdx.files == null || themeName == null || themeName.trim().length() == 0) {
+            return false;
+        }
+        FileHandle handle =
+                Gdx.files.internal(THEME_DIRECTORY + "/" + themeName.trim() + "/" + relativePath);
+        return handle.exists();
+    }
+
     private void loadMenuSettings() {
+        loadThemeChoices();
         configuredThemeName = normalizeThemeName(loadConfiguredThemeName());
         followCameraBehind = loadConfiguredBooleanProperty(CAMERA_FOLLOW_BEHIND_PROPERTY, false);
         cameraZoom = loadConfiguredFloatProperty(CAMERA_ZOOM_PROPERTY, DEFAULT_CAMERA_ZOOM);
@@ -693,7 +885,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         selectedThemeIndex = findThemeIndex(configuredThemeName);
-        configuredThemeName = THEME_CHOICES[selectedThemeIndex].name;
+        configuredThemeName = getCurrentTheme().name;
         cameraZoom = clampCameraZoom(cameraZoom);
         mapScale = clampMapScale(mapScale);
         selectedCarCount = clampCarCount(selectedCarCount);
@@ -739,6 +931,7 @@ public class RatassGame extends ApplicationAdapter {
                 "player");
 
         int enemyCount = getConfiguredEnemyCount();
+        boolean modelControlledEnemies = rlEnemyPolicy != null;
         for (int enemyIndex = 0; enemyIndex < enemyCount; enemyIndex++) {
             CarVisual visual = getEnemyCarVisual(enemyIndex);
             AiDrivingPersonality personality = ENEMY_PERSONALITIES[enemyIndex % ENEMY_PERSONALITIES.length];
@@ -748,7 +941,9 @@ public class RatassGame extends ApplicationAdapter {
                     new Color(visual.color),
                     personality,
                     visual,
-                    personality.id);
+                    personality.id,
+                    false,
+                    modelControlledEnemies);
         }
         invalidateLeaderboard();
     }
@@ -807,6 +1002,45 @@ public class RatassGame extends ApplicationAdapter {
             AiDrivingPersonality personality,
             CarVisual visual,
             String statsLabel) {
+        addRosterTemplate(
+                name,
+                playerControlled,
+                color,
+                personality,
+                visual,
+                statsLabel,
+                false,
+                false);
+    }
+
+    private void addRosterTemplate(
+            String name,
+            boolean playerControlled,
+            Color color,
+            AiDrivingPersonality personality,
+            CarVisual visual,
+            String statsLabel,
+            boolean externallyControlled) {
+        addRosterTemplate(
+                name,
+                playerControlled,
+                color,
+                personality,
+                visual,
+                statsLabel,
+                externallyControlled,
+                false);
+    }
+
+    private void addRosterTemplate(
+            String name,
+            boolean playerControlled,
+            Color color,
+            AiDrivingPersonality personality,
+            CarVisual visual,
+            String statsLabel,
+            boolean externallyControlled,
+            boolean modelControlled) {
         roster.add(new CarTemplate(
                 roster.size,
                 name,
@@ -814,7 +1048,9 @@ public class RatassGame extends ApplicationAdapter {
                 color,
                 personality,
                 visual,
-                statsLabel));
+                statsLabel,
+                externallyControlled,
+                modelControlled));
     }
 
     public static AiTournamentResult runAiTournament(AiTournamentConfig config) {
@@ -1973,13 +2209,19 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void cycleTheme(int direction) {
+        if (themeChoices.size == 0) {
+            loadThemeChoices();
+        }
+        if (themeChoices.size == 0) {
+            return;
+        }
         selectedThemeIndex = selectedThemeIndex + direction;
         if (selectedThemeIndex < 0) {
-            selectedThemeIndex = THEME_CHOICES.length - 1;
-        } else if (selectedThemeIndex >= THEME_CHOICES.length) {
+            selectedThemeIndex = themeChoices.size - 1;
+        } else if (selectedThemeIndex >= themeChoices.size) {
             selectedThemeIndex = 0;
         }
-        configuredThemeName = THEME_CHOICES[selectedThemeIndex].name;
+        configuredThemeName = themeChoices.get(selectedThemeIndex).name;
         disposeMenuCarPreview();
         saveMenuSettings();
     }
@@ -2560,7 +2802,12 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private ThemeChoice getCurrentTheme() {
-        return THEME_CHOICES[selectedThemeIndex];
+        if (themeChoices.size == 0) {
+            return FALLBACK_THEME_CHOICES[0];
+        }
+        int clampedThemeIndex =
+                Math.max(0, Math.min(selectedThemeIndex, themeChoices.size - 1));
+        return themeChoices.get(clampedThemeIndex);
     }
 
     private void update(float delta) {
@@ -2613,10 +2860,9 @@ public class RatassGame extends ApplicationAdapter {
                     growthPickupActive,
                     growthPickupPosition,
                     pointPickupActive,
-                    pointPickupPosition);
+                    pointPickupPosition,
+                    rlEnemyPolicy);
         }
-        updateStalemateBombs(delta);
-
         if (!allowControl && !roundOver) {
             freezeCarsForCountdown();
         }
@@ -2627,7 +2873,6 @@ public class RatassGame extends ApplicationAdapter {
         world.step(delta, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
         processPendingCollisionEliminations();
         checkForEliminations();
-        updatePushStalemates(delta, allowControl);
 
         if (!roundOver) {
             updateRoundState();
@@ -2712,8 +2957,6 @@ public class RatassGame extends ApplicationAdapter {
         cars.clear();
         pendingCollisionEliminations.clear();
         destructionEffects.clear();
-        stalemateBombs.clear();
-        initializePushStalemateTimers(roster.size);
         accumulator = 0f;
         effectClock = 0f;
         growthPickupActive = false;
@@ -2874,265 +3117,6 @@ public class RatassGame extends ApplicationAdapter {
             if (effect.timer <= 0f) {
                 destructionEffects.removeIndex(i);
             }
-        }
-    }
-
-    private void updateStalemateBombs(float delta) {
-        for (int i = stalemateBombs.size - 1; i >= 0; i--) {
-            StalemateBomb bomb = stalemateBombs.get(i);
-            if (!bomb.exploded) {
-                bomb.fuseTimer -= delta;
-                if (bomb.fuseTimer <= 0f) {
-                    explodeStalemateBomb(bomb);
-                }
-                continue;
-            }
-
-            bomb.explosionTimer -= delta;
-            if (bomb.explosionTimer <= 0f) {
-                stalemateBombs.removeIndex(i);
-            }
-        }
-    }
-
-    private void initializePushStalemateTimers(int carCount) {
-        pushStalemateTimerStride = Math.max(0, carCount);
-        pushStalemateTimers = new float[pushStalemateTimerStride * pushStalemateTimerStride];
-        pushStalemateContactTimers = new float[pushStalemateTimerStride * pushStalemateTimerStride];
-    }
-
-    private void updatePushStalemates(float delta, boolean allowControl) {
-        if (!allowControl || roundOver || pushStalemateTimerStride <= 0) {
-            return;
-        }
-
-        for (int leftIndex = 0; leftIndex < cars.size; leftIndex++) {
-            Car left = cars.get(leftIndex);
-            for (int rightIndex = leftIndex + 1; rightIndex < cars.size; rightIndex++) {
-                Car right = cars.get(rightIndex);
-                int timerIndex = getPushStalemateTimerIndex(left, right);
-                if (timerIndex < 0 || timerIndex >= pushStalemateTimers.length) {
-                    continue;
-                }
-
-                float contactTimer = getPushStalemateContactTimer(timerIndex);
-                if (contactTimer > 0f) {
-                    contactTimer = Math.max(0f, contactTimer - delta);
-                    pushStalemateContactTimers[timerIndex] = contactTimer;
-                }
-
-                float timer = pushStalemateTimers[timerIndex];
-                if (timer < 0f) {
-                    pushStalemateTimers[timerIndex] = Math.min(0f, timer + delta);
-                    continue;
-                }
-
-                if (isPushStalemate(left, right, contactTimer > 0f)) {
-                    timer += delta;
-                    if (timer >= STALEMATE_BOMB_TRIGGER_TIME) {
-                        if (spawnStalemateBomb(left, right)) {
-                            timer = -STALEMATE_BOMB_PAIR_COOLDOWN;
-                        } else {
-                            timer = STALEMATE_BOMB_TRIGGER_TIME * 0.5f;
-                        }
-                    }
-                } else {
-                    timer = Math.max(0f, timer - delta * STALEMATE_BOMB_TIMER_DECAY);
-                }
-                pushStalemateTimers[timerIndex] = timer;
-            }
-        }
-    }
-
-    private int getPushStalemateTimerIndex(Car left, Car right) {
-        if (left == null || right == null) {
-            return -1;
-        }
-
-        int leftId = left.template.vehicleId;
-        int rightId = right.template.vehicleId;
-        if (leftId < 0
-                || rightId < 0
-                || leftId >= pushStalemateTimerStride
-                || rightId >= pushStalemateTimerStride) {
-            return -1;
-        }
-
-        int minId = Math.min(leftId, rightId);
-        int maxId = Math.max(leftId, rightId);
-        return minId * pushStalemateTimerStride + maxId;
-    }
-
-    private float getPushStalemateContactTimer(int timerIndex) {
-        if (timerIndex < 0 || timerIndex >= pushStalemateContactTimers.length) {
-            return 0f;
-        }
-        return pushStalemateContactTimers[timerIndex];
-    }
-
-    private void markPushStalemateContact(Car left, Car right) {
-        int timerIndex = getPushStalemateTimerIndex(left, right);
-        if (timerIndex < 0 || timerIndex >= pushStalemateContactTimers.length) {
-            return;
-        }
-        pushStalemateContactTimers[timerIndex] = STALEMATE_BOMB_CONTACT_MEMORY;
-    }
-
-    private boolean markPushStalemateContact(Contact contact) {
-        if (contact == null) {
-            return false;
-        }
-
-        Object userDataA = contact.getFixtureA().getBody().getUserData();
-        Object userDataB = contact.getFixtureB().getBody().getUserData();
-        if (!(userDataA instanceof Car) || !(userDataB instanceof Car)) {
-            return false;
-        }
-
-        Car carA = (Car) userDataA;
-        Car carB = (Car) userDataB;
-        if (!carA.active || !carB.active || carA.body == null || carB.body == null) {
-            return false;
-        }
-
-        markPushStalemateContact(carA, carB);
-        return true;
-    }
-
-    private boolean isPushStalemate(Car left, Car right, boolean recentContact) {
-        if (left == null
-                || right == null
-                || !left.active
-                || !right.active
-                || left.body == null
-                || right.body == null) {
-            return false;
-        }
-
-        stalemateDirection.set(right.body.getPosition()).sub(left.body.getPosition());
-        float distanceSq = stalemateDirection.len2();
-        if (distanceSq <= 0.0001f) {
-            return false;
-        }
-
-        float distancePadding =
-                recentContact
-                        ? STALEMATE_BOMB_CONTACT_DISTANCE_PADDING
-                        : STALEMATE_BOMB_DISTANCE_PADDING;
-        float maxDistance = (left.getHeight() + right.getHeight()) * 0.55f + distancePadding;
-        if (distanceSq > maxDistance * maxDistance) {
-            return false;
-        }
-
-        float distance = (float) Math.sqrt(distanceSq);
-        stalemateDirection.scl(1f / distance);
-
-        float requiredAlignment =
-                recentContact ? STALEMATE_BOMB_CONTACT_ALIGNMENT : STALEMATE_BOMB_ALIGNMENT;
-        boolean hasOpposingDriveIntent =
-                left.getDriveIntentAlignmentToward(stalemateDirection.x, stalemateDirection.y)
-                                >= requiredAlignment
-                        && right.getDriveIntentAlignmentToward(
-                                        -stalemateDirection.x,
-                                        -stalemateDirection.y)
-                                >= requiredAlignment;
-        if (!recentContact && !hasOpposingDriveIntent) {
-            return false;
-        }
-
-        float maxPairSpeed =
-                recentContact ? STALEMATE_BOMB_CONTACT_MAX_PAIR_SPEED : STALEMATE_BOMB_MAX_PAIR_SPEED;
-        float maxPairSpeedSq = maxPairSpeed * maxPairSpeed;
-        if (left.body.getLinearVelocity().len2() > maxPairSpeedSq
-                || right.body.getLinearVelocity().len2() > maxPairSpeedSq) {
-            return false;
-        }
-
-        stalemateRelativeVelocity
-                .set(right.body.getLinearVelocity())
-                .sub(left.body.getLinearVelocity());
-        float maxSeparationSpeed =
-                recentContact
-                        ? STALEMATE_BOMB_CONTACT_MAX_SEPARATION_SPEED
-                        : STALEMATE_BOMB_MAX_SEPARATION_SPEED;
-        float separationSpeed = stalemateRelativeVelocity.dot(stalemateDirection);
-        if (recentContact) {
-            return separationSpeed <= maxSeparationSpeed;
-        }
-        return Math.abs(separationSpeed) <= maxSeparationSpeed;
-    }
-
-    private boolean spawnStalemateBomb(Car left, Car right) {
-        if (left == null
-                || right == null
-                || left.body == null
-                || right.body == null
-                || hasActiveStalemateBombNear(stalemateBombPosition
-                        .set(left.body.getPosition())
-                        .add(right.body.getPosition())
-                        .scl(0.5f))) {
-            return false;
-        }
-
-        StalemateBomb bomb = new StalemateBomb();
-        bomb.position.set(stalemateBombPosition);
-        bomb.fuseTimer = STALEMATE_BOMB_FUSE_DURATION;
-        bomb.explosionTimer = STALEMATE_BOMB_EXPLOSION_DURATION;
-        bomb.rotationDeg = MathUtils.random(360f);
-        bomb.scale = MathUtils.random(0.88f, 1.16f);
-        stalemateBombs.add(bomb);
-
-        announceEvent(
-                "STANDOFF",
-                "Bomb in the middle.",
-                new Color(1f, 0.62f, 0.20f, 1f));
-        return true;
-    }
-
-    private boolean hasActiveStalemateBombNear(Vector2 position) {
-        float nearbyDistanceSq = STALEMATE_BOMB_NEARBY_DISTANCE * STALEMATE_BOMB_NEARBY_DISTANCE;
-        for (int i = 0; i < stalemateBombs.size; i++) {
-            if (stalemateBombs.get(i).position.dst2(position) <= nearbyDistanceSq) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void explodeStalemateBomb(StalemateBomb bomb) {
-        bomb.exploded = true;
-        bomb.fuseTimer = 0f;
-        bomb.explosionTimer = STALEMATE_BOMB_EXPLOSION_DURATION;
-        playDestructionSound(0.72f);
-
-        float blastRadiusSq = STALEMATE_BOMB_BLAST_RADIUS * STALEMATE_BOMB_BLAST_RADIUS;
-        for (int i = 0; i < cars.size; i++) {
-            Car car = cars.get(i);
-            if (!car.active || car.body == null) {
-                continue;
-            }
-
-            stalemateBombImpulse.set(car.body.getPosition()).sub(bomb.position);
-            float distanceSq = stalemateBombImpulse.len2();
-            if (distanceSq > blastRadiusSq) {
-                continue;
-            }
-
-            float distance = (float) Math.sqrt(distanceSq);
-            if (distance <= 0.0001f) {
-                float angle = MathUtils.random(MathUtils.PI2);
-                stalemateBombImpulse.set(MathUtils.cos(angle), MathUtils.sin(angle));
-                distance = 0f;
-            } else {
-                stalemateBombImpulse.scl(1f / distance);
-            }
-
-            float falloff = 1f - MathUtils.clamp(distance / STALEMATE_BOMB_BLAST_RADIUS, 0f, 1f);
-            float strength =
-                    STALEMATE_BOMB_IMPULSE
-                            * (STALEMATE_BOMB_MIN_IMPULSE_FACTOR
-                                    + falloff * (1f - STALEMATE_BOMB_MIN_IMPULSE_FACTOR));
-            car.receiveBombImpulse(stalemateBombImpulse, strength);
         }
     }
 
@@ -3812,7 +3796,6 @@ public class RatassGame extends ApplicationAdapter {
         spriteBatch.end();
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        drawStalemateBombs();
         drawDestructionEffects();
         shapeRenderer.end();
 
@@ -4979,92 +4962,6 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private void drawStalemateBombs() {
-        for (int i = 0; i < stalemateBombs.size; i++) {
-            StalemateBomb bomb = stalemateBombs.get(i);
-            if (bomb.exploded) {
-                drawStalemateBombExplosion(bomb);
-            } else {
-                drawStalemateBombFuse(bomb);
-            }
-        }
-    }
-
-    private void drawStalemateBombFuse(StalemateBomb bomb) {
-        float fuseProgress =
-                1f - MathUtils.clamp(bomb.fuseTimer / STALEMATE_BOMB_FUSE_DURATION, 0f, 1f);
-        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 24f + bomb.rotationDeg);
-        float glowRadius = (0.56f + pulse * 0.16f + fuseProgress * 0.18f) * bomb.scale;
-        float coreRadius = (0.28f + pulse * 0.045f) * bomb.scale;
-        float sparkAngle = bomb.rotationDeg + fuseProgress * 220f;
-        float sparkX = bomb.position.x + MathUtils.cosDeg(sparkAngle) * glowRadius * 0.78f;
-        float sparkY = bomb.position.y + MathUtils.sinDeg(sparkAngle) * glowRadius * 0.78f;
-
-        shapeRenderer.setColor(1f, 0.30f, 0.08f, 0.20f + pulse * 0.12f);
-        shapeRenderer.circle(bomb.position.x, bomb.position.y, glowRadius, 24);
-
-        shapeRenderer.setColor(0.05f, 0.05f, 0.06f, 0.96f);
-        shapeRenderer.circle(bomb.position.x, bomb.position.y, coreRadius, 20);
-
-        shapeRenderer.setColor(0.16f, 0.15f, 0.14f, 1f);
-        shapeRenderer.circle(
-                bomb.position.x - coreRadius * 0.26f,
-                bomb.position.y + coreRadius * 0.18f,
-                coreRadius * 0.36f,
-                12);
-
-        drawRotatedRect(
-                bomb.position.x,
-                bomb.position.y + coreRadius * 0.94f,
-                coreRadius * 0.24f,
-                coreRadius * 0.88f,
-                bomb.rotationDeg + 18f,
-                0.13f,
-                0.09f,
-                0.06f,
-                1f);
-
-        shapeRenderer.setColor(1f, 0.86f, 0.34f, 0.90f);
-        shapeRenderer.circle(sparkX, sparkY, (0.055f + pulse * 0.035f) * bomb.scale, 10);
-    }
-
-    private void drawStalemateBombExplosion(StalemateBomb bomb) {
-        float progress =
-                1f - MathUtils.clamp(
-                        bomb.explosionTimer / STALEMATE_BOMB_EXPLOSION_DURATION,
-                        0f,
-                        1f);
-        float alpha = MathUtils.clamp(1f - progress, 0f, 1f);
-        float blastRadius = (0.70f + progress * STALEMATE_BOMB_BLAST_RADIUS * 0.78f) * bomb.scale;
-        float flashRadius = (0.34f + progress * 0.62f) * bomb.scale;
-
-        shapeRenderer.setColor(1f, 0.26f, 0.06f, 0.30f * alpha);
-        shapeRenderer.circle(bomb.position.x, bomb.position.y, blastRadius, 32);
-
-        shapeRenderer.setColor(1f, 0.86f, 0.30f, 0.54f * alpha);
-        shapeRenderer.circle(bomb.position.x, bomb.position.y, blastRadius * 0.58f, 28);
-
-        shapeRenderer.setColor(1f, 0.97f, 0.78f, 0.82f * alpha);
-        shapeRenderer.circle(bomb.position.x, bomb.position.y, flashRadius, 20);
-
-        for (int shard = 0; shard < 9; shard++) {
-            float angleDeg = bomb.rotationDeg + shard * 40f + progress * 140f;
-            float shardDistance = blastRadius * (0.35f + shard * 0.035f);
-            float shardX = bomb.position.x + MathUtils.cosDeg(angleDeg) * shardDistance;
-            float shardY = bomb.position.y + MathUtils.sinDeg(angleDeg) * shardDistance;
-            drawRotatedRect(
-                    shardX,
-                    shardY,
-                    (0.20f + progress * 0.04f) * bomb.scale,
-                    (0.08f + progress * 0.10f) * bomb.scale,
-                    angleDeg,
-                    1f,
-                    0.48f,
-                    0.12f,
-                    0.72f * alpha);
-        }
-    }
-
     private void drawOffsetCircle(
             float centerX,
             float centerY,
@@ -6079,31 +5976,78 @@ public class RatassGame extends ApplicationAdapter {
         return normalized.length() == 0 ? DEFAULT_THEME_NAME : normalized;
     }
 
-    private static int findThemeIndex(String themeName) {
-        String normalized = normalizeThemeName(themeName);
-        for (int i = 0; i < THEME_CHOICES.length; i++) {
-            if (THEME_CHOICES[i].name.equals(normalized)) {
+    private int findThemeIndex(String themeName) {
+        int index = findThemeChoiceIndex(themeName);
+        return index >= 0 ? index : 0;
+    }
+
+    private int findThemeChoiceIndex(String themeName) {
+        String lookup = toThemeLookupKey(themeName);
+        if (lookup.length() == 0) {
+            return -1;
+        }
+        for (int i = 0; i < themeChoices.size; i++) {
+            ThemeChoice choice = themeChoices.get(i);
+            if (toThemeLookupKey(choice.name).equals(lookup)
+                    || toThemeLookupKey(choice.displayName).equals(lookup)) {
                 return i;
             }
         }
-        return 0;
+        return -1;
     }
 
-    private static String normalizeThemeName(String themeName) {
-        if (themeName == null) {
-            return DEFAULT_THEME_NAME;
+    private String normalizeThemeName(String themeName) {
+        int index = findThemeChoiceIndex(themeName);
+        if (index >= 0) {
+            return themeChoices.get(index).name;
         }
-        String normalized = themeName.trim().toLowerCase();
-        if (normalized.length() == 0) {
-            return DEFAULT_THEME_NAME;
+        int defaultIndex = findThemeChoiceIndex(DEFAULT_THEME_NAME);
+        if (defaultIndex >= 0) {
+            return themeChoices.get(defaultIndex).name;
         }
-        for (int i = 0; i < THEME_CHOICES.length; i++) {
-            ThemeChoice choice = THEME_CHOICES[i];
-            if (choice.name.equals(normalized) || choice.displayName.toLowerCase().equals(normalized)) {
-                return choice.name;
+        return themeChoices.size > 0 ? themeChoices.get(0).name : DEFAULT_THEME_NAME;
+    }
+
+    private String buildThemeDisplayName(String themeName) {
+        ThemeChoice fallback = findFallbackThemeChoice(themeName);
+        if (fallback != null) {
+            return fallback.displayName;
+        }
+        String normalized = themeName == null ? "" : themeName.trim().replace('-', ' ').replace('_', ' ');
+        StringBuilder displayName = new StringBuilder();
+        boolean capitalizeNext = true;
+        for (int i = 0; i < normalized.length(); i++) {
+            char character = normalized.charAt(i);
+            if (Character.isWhitespace(character)) {
+                if (displayName.length() > 0
+                        && displayName.charAt(displayName.length() - 1) != ' ') {
+                    displayName.append(' ');
+                }
+                capitalizeNext = true;
+            } else if (capitalizeNext) {
+                displayName.append(Character.toUpperCase(character));
+                capitalizeNext = false;
+            } else {
+                displayName.append(Character.toLowerCase(character));
             }
         }
-        return DEFAULT_THEME_NAME;
+        return displayName.length() == 0 ? DEFAULT_THEME_NAME : displayName.toString();
+    }
+
+    private static ThemeChoice findFallbackThemeChoice(String themeName) {
+        String lookup = toThemeLookupKey(themeName);
+        for (int i = 0; i < FALLBACK_THEME_CHOICES.length; i++) {
+            ThemeChoice choice = FALLBACK_THEME_CHOICES[i];
+            if (toThemeLookupKey(choice.name).equals(lookup)
+                    || toThemeLookupKey(choice.displayName).equals(lookup)) {
+                return choice;
+            }
+        }
+        return null;
+    }
+
+    private static String toThemeLookupKey(String value) {
+        return value == null ? "" : value.trim().toLowerCase();
     }
 
     private static boolean loadConfiguredBooleanProperty(String propertyName, boolean defaultValue) {
@@ -6376,7 +6320,6 @@ public class RatassGame extends ApplicationAdapter {
     private final class ImpactContactListener implements ContactListener {
         @Override
         public void beginContact(Contact contact) {
-            markPushStalemateContact(contact);
         }
 
         @Override
@@ -6385,7 +6328,6 @@ public class RatassGame extends ApplicationAdapter {
 
         @Override
         public void preSolve(Contact contact, Manifold oldManifold) {
-            markPushStalemateContact(contact);
         }
 
         @Override
@@ -6401,7 +6343,6 @@ public class RatassGame extends ApplicationAdapter {
             if (!carA.active || !carB.active || carA.body == null || carB.body == null) {
                 return;
             }
-            markPushStalemateContact(carA, carB);
 
             Vector2 normal = contact.getWorldManifold().getNormal();
             if (normal.isZero(0.0001f)) {
@@ -6533,8 +6474,13 @@ public class RatassGame extends ApplicationAdapter {
         private final CarTemplate template;
         private final String name;
         private final boolean playerControlled;
+        private final boolean externallyControlled;
+        private final boolean modelControlled;
         private final Color color;
         private final CarAiController aiController;
+        private final AiControlDecision externalControlDecision = new AiControlDecision();
+        private final AiControlDecision rawExternalControlDecision = new AiControlDecision();
+        private final float[] rlObservation = new float[RL_OBSERVATION_SIZE];
         private final Vector2 forwardAxis = new Vector2();
         private final Vector2 sidewaysAxis = new Vector2();
         private final Vector2 working = new Vector2();
@@ -6543,6 +6489,10 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 impactOutward = new Vector2();
         private final Vector2 previousRenderPosition = new Vector2();
         private final Vector2 renderPosition = new Vector2();
+        private final Rectangle rlObservationBounds = new Rectangle();
+        private final Vector2 rlObservationFocus = new Vector2();
+        private final Vector2 rlObservationForward = new Vector2();
+        private final Vector2 rlObservationRecovery = new Vector2();
 
         private Body body;
         private boolean active = true;
@@ -6555,18 +6505,25 @@ public class RatassGame extends ApplicationAdapter {
         private float controlLockTimer;
         private float recentImpactTimer;
         private float ramChargeTimer;
+        private float rlDecisionTimer;
         private float lastThrottleCommand;
-        private float lastThrottleIntent;
         private float previousRenderAngleRad;
         private float renderAngleRad;
+        private float[] rlScratchA;
+        private float[] rlScratchB;
 
         private Car(Body body, CarTemplate template) {
             this.body = body;
             this.template = template;
             name = template.name;
             playerControlled = template.playerControlled;
+            externallyControlled = template.externallyControlled;
+            modelControlled = template.modelControlled;
             color = template.color;
-            aiController = playerControlled ? null : new CarAiController(template.personality);
+            aiController =
+                    playerControlled
+                            ? null
+                            : new CarAiController(template.personality);
             rebuildCollisionFixture();
             syncRenderTransformToBody();
         }
@@ -6632,7 +6589,8 @@ public class RatassGame extends ApplicationAdapter {
                 boolean growthPickupActive,
                 Vector2 growthPickupPosition,
                 boolean pointPickupActive,
-                Vector2 pointPickupPosition) {
+                Vector2 pointPickupPosition,
+                RlPolicy rlPolicy) {
             if (!active || body == null) {
                 return;
             }
@@ -6648,7 +6606,23 @@ public class RatassGame extends ApplicationAdapter {
                 if (playerControlled) {
                     throttle = playerThrottle;
                     turn = playerTurn;
-                } else {
+                } else if (externallyControlled) {
+                    throttle = externalControlDecision.throttle;
+                    turn = externalControlDecision.turn;
+                } else if (modelControlled && rlPolicy != null) {
+                    AiControlDecision decision =
+                            planWithRlPolicy(
+                                    delta,
+                                    rlPolicy,
+                                    arenaMap,
+                                    cars,
+                                    growthPickupActive,
+                                    growthPickupPosition,
+                                    pointPickupActive,
+                                    pointPickupPosition);
+                    throttle = decision.throttle;
+                    turn = decision.turn;
+                } else if (aiController != null) {
                     AiControlDecision decision =
                             aiController.plan(
                                     delta,
@@ -6663,13 +6637,6 @@ public class RatassGame extends ApplicationAdapter {
                     turn = decision.turn;
                 }
             }
-            if (allowControl) {
-                if (controlLockTimer <= 0f) {
-                    lastThrottleIntent = throttle;
-                }
-            } else {
-                lastThrottleIntent = 0f;
-            }
             lastThrottleCommand = allowControl && controlLockTimer <= 0f ? throttle : 0f;
 
             applyGrip(impactSlideFactor);
@@ -6681,9 +6648,219 @@ public class RatassGame extends ApplicationAdapter {
             drive(throttle, turn);
         }
 
+        private AiControlDecision planWithRlPolicy(
+                float delta,
+                RlPolicy policy,
+                ArenaMap arenaMap,
+                Array<Car> cars,
+                boolean growthPickupActive,
+                Vector2 growthPickupPosition,
+                boolean pointPickupActive,
+                Vector2 pointPickupPosition) {
+            rlDecisionTimer -= delta;
+            if (rlDecisionTimer <= 0f) {
+                ensureRlScratch(policy);
+                float positionNormalizer =
+                        getRlPositionNormalizer(
+                                arenaMap,
+                                rlObservationBounds,
+                                rlObservationFocus);
+                fillRlObservation(
+                        rlObservation,
+                        0,
+                        this,
+                        arenaMap,
+                        cars,
+                        growthPickupActive,
+                        growthPickupPosition,
+                        pointPickupActive,
+                        pointPickupPosition,
+                        positionNormalizer,
+                        rlObservationFocus,
+                        rlObservationForward,
+                        rlObservationRecovery);
+                policy.computeAction(
+                        rlObservation,
+                        rlScratchA,
+                        rlScratchB,
+                        rawExternalControlDecision);
+                setExternalTacticalControl(
+                        delta,
+                        rawExternalControlDecision.throttle,
+                        rawExternalControlDecision.turn,
+                        arenaMap,
+                        cars,
+                        growthPickupActive,
+                        growthPickupPosition,
+                        pointPickupActive,
+                        pointPickupPosition);
+                rlDecisionTimer =
+                        RL_LIVE_DECISION_INTERVAL
+                                + (template.vehicleId % 5) * RL_LIVE_DECISION_INTERVAL * 0.11f;
+            }
+            return externalControlDecision;
+        }
+
+        private void setExternalTacticalControl(
+                float delta,
+                float modeSignal,
+                float styleSignal,
+                ArenaMap arenaMap,
+                Array<Car> cars,
+                boolean growthPickupActive,
+                Vector2 growthPickupPosition,
+                boolean pointPickupActive,
+                Vector2 pointPickupPosition) {
+            if (aiController == null) {
+                setExternalControl(0f, 0f);
+                return;
+            }
+
+            boolean forcedRecovery = shouldForceTacticalRecovery(arenaMap);
+            AiControlDecision decision =
+                    aiController.plan(
+                            delta,
+                            this,
+                            arenaMap,
+                            cars,
+                            growthPickupActive,
+                            growthPickupPosition,
+                            pointPickupActive,
+                            pointPickupPosition,
+                            forcedRecovery
+                                    ? CarAiController.TacticalIntent.recoveryIntent(styleSignal)
+                                    : CarAiController.tacticalIntentFromPolicy(
+                                            modeSignal,
+                                            styleSignal));
+            if (forcedRecovery) {
+                setImmediateExternalControl(decision.throttle, decision.turn);
+            } else {
+                setExternalControl(decision.throttle, decision.turn);
+            }
+        }
+
+        private boolean shouldForceTacticalRecovery(ArenaMap arenaMap) {
+            if (arenaMap == null || body == null) {
+                return false;
+            }
+
+            Vector2 position = body.getPosition();
+            float safetyDistance = arenaMap.distanceToSafety(position);
+            if (safetyDistance > 0.02f) {
+                return true;
+            }
+
+            float speedRatio = MathUtils.clamp(body.getLinearVelocity().len() / MAX_SPEED, 0f, 1f);
+            float edgeDistance = arenaMap.approximateDistanceToHazard(position);
+            float dynamicRecoveryDistance =
+                    RL_TACTICAL_RECOVERY_EDGE_DISTANCE
+                            + speedRatio * RL_TACTICAL_RECOVERY_SPEED_BUFFER;
+            if (edgeDistance < dynamicRecoveryDistance) {
+                return true;
+            }
+
+            arenaMap.findRecoveryPoint(position, working);
+            working.sub(position);
+            if (working.isZero(0.0001f)) {
+                return false;
+            }
+
+            working.nor();
+            float recoverySpeed = working.dot(body.getLinearVelocity());
+            return edgeDistance < RL_TACTICAL_RECOVERY_OUTWARD_DISTANCE
+                    && recoverySpeed < -RL_TACTICAL_RECOVERY_OUTWARD_SPEED;
+        }
+
+        private boolean shouldAssistGrowthPickup(
+                ArenaMap arenaMap,
+                boolean growthPickupActive,
+                Vector2 growthPickupPosition) {
+            if (aiController == null
+                    || arenaMap == null
+                    || body == null
+                    || !growthPickupActive
+                    || growthPickupPosition == null
+                    || hasGrowthBoost()) {
+                return false;
+            }
+            if (arenaMap.approximateDistanceToHazard(growthPickupPosition)
+                    < GROWTH_PICKUP_SPAWN_MARGIN) {
+                return false;
+            }
+            return arenaMap.approximateDistanceToHazard(body.getPosition())
+                    >= RL_EDGE_DANGER_DISTANCE;
+        }
+
+        private float getGrowthPickupAssistWeight(Vector2 growthPickupPosition) {
+            if (body == null || growthPickupPosition == null) {
+                return RL_GROWTH_PICKUP_ASSIST_MIN_WEIGHT;
+            }
+            float distance = body.getPosition().dst(growthPickupPosition);
+            float proximity =
+                    1f - MathUtils.clamp(distance / RL_GROWTH_PICKUP_ASSIST_DISTANCE, 0f, 1f);
+            return MathUtils.lerp(
+                    RL_GROWTH_PICKUP_ASSIST_MIN_WEIGHT,
+                    RL_GROWTH_PICKUP_ASSIST_MAX_WEIGHT,
+                    proximity);
+        }
+
+        private void ensureRlScratch(RlPolicy policy) {
+            int scratchSize = policy.getScratchSize();
+            if (rlScratchA == null || rlScratchA.length < scratchSize) {
+                rlScratchA = new float[scratchSize];
+                rlScratchB = new float[scratchSize];
+            }
+        }
+
+        private void setExternalControl(float throttle, float turn) {
+            externalControlDecision.set(
+                    stabilizeRlThrottle(MathUtils.clamp(throttle, -1f, 1f)),
+                    stabilizeRlTurn(MathUtils.clamp(turn, -1f, 1f)));
+        }
+
+        private void setImmediateExternalControl(float throttle, float turn) {
+            externalControlDecision.set(
+                    MathUtils.clamp(throttle, -1f, 1f),
+                    MathUtils.clamp(turn, -1f, 1f));
+        }
+
+        private float stabilizeRlThrottle(float targetThrottle) {
+            float currentThrottle = externalControlDecision.throttle;
+            if (Math.abs(targetThrottle) < RL_CONTROL_DEADZONE) {
+                targetThrottle = 0f;
+            }
+            if (currentThrottle * targetThrottle < 0f) {
+                float signedForwardSpeed = body == null ? 0f : getSignedForwardSpeed();
+                float reversalHysteresis =
+                        Math.abs(signedForwardSpeed) > 0.35f
+                                ? RL_THROTTLE_MOVING_REVERSAL_HYSTERESIS
+                                : RL_THROTTLE_REVERSAL_HYSTERESIS;
+                if (Math.abs(targetThrottle) < reversalHysteresis
+                        || currentThrottle > 0.12f && signedForwardSpeed > 0.35f
+                        || currentThrottle < -0.12f && signedForwardSpeed < -0.35f) {
+                    targetThrottle = 0f;
+                }
+            }
+            float throttle = currentThrottle + (targetThrottle - currentThrottle) * RL_THROTTLE_RESPONSE;
+            return Math.abs(throttle) < RL_CONTROL_DEADZONE ? 0f : MathUtils.clamp(throttle, -1f, 1f);
+        }
+
+        private float stabilizeRlTurn(float targetTurn) {
+            if (Math.abs(targetTurn) < RL_CONTROL_DEADZONE) {
+                targetTurn = 0f;
+            }
+            float turn = externalControlDecision.turn + (targetTurn - externalControlDecision.turn) * RL_TURN_RESPONSE;
+            return Math.abs(turn) < RL_CONTROL_DEADZONE ? 0f : MathUtils.clamp(turn, -1f, 1f);
+        }
+
         private void updateAxes() {
             forwardAxis.set(body.getWorldVector(working.set(0f, 1f)));
             sidewaysAxis.set(body.getWorldVector(working.set(1f, 0f)));
+        }
+
+        private float getSignedForwardSpeed() {
+            updateAxes();
+            return forwardAxis.dot(body.getLinearVelocity());
         }
 
         private void applyPendingImpactImpulse() {
@@ -6850,47 +7027,6 @@ public class RatassGame extends ApplicationAdapter {
             impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION);
         }
 
-        private boolean hasStalemateDriveIntent() {
-            return Math.abs(lastThrottleIntent) >= STALEMATE_BOMB_MIN_THROTTLE;
-        }
-
-        private float getDriveIntentAlignmentToward(float directionX, float directionY) {
-            if (!hasStalemateDriveIntent() || body == null) {
-                return -1f;
-            }
-
-            body.getWorldVector(working.set(0f, lastThrottleIntent > 0f ? 1f : -1f));
-            return working.x * directionX + working.y * directionY;
-        }
-
-        private void receiveBombImpulse(Vector2 direction, float strength) {
-            if (!active || body == null || direction == null || direction.isZero(0.0001f)) {
-                return;
-            }
-
-            working.set(direction).scl(strength * body.getMass());
-            body.applyLinearImpulse(working, body.getWorldCenter(), true);
-            float awaySpeed = body.getLinearVelocity().dot(direction);
-            float minAwaySpeed =
-                    Math.min(
-                            strength * STALEMATE_BOMB_MIN_AWAY_SPEED_FACTOR,
-                            STALEMATE_BOMB_MAX_AWAY_SPEED);
-            if (awaySpeed < minAwaySpeed) {
-                body.setLinearVelocity(
-                        working.set(body.getLinearVelocity())
-                                .mulAdd(direction, minAwaySpeed - awaySpeed));
-            }
-            body.applyAngularImpulse(
-                    MathUtils.random(-1f, 1f) * body.getInertia() * strength * 0.24f,
-                    true);
-            body.setAwake(true);
-
-            impactSlideStrength = 1f;
-            impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION + 0.18f);
-            controlLockTimer = Math.max(controlLockTimer, 0.72f);
-            recentImpactTimer = Math.max(recentImpactTimer, RECENT_IMPACT_DURATION * 0.45f);
-        }
-
         private void clampPendingImpactImpulse() {
             float maxStoredImpulse = MAX_STORED_COLLISION_IMPULSE * COLLISION_BOUNCE_SCALE;
             if (pendingImpactImpulse.len2() > maxStoredImpulse * maxStoredImpulse) {
@@ -7002,7 +7138,8 @@ public class RatassGame extends ApplicationAdapter {
             controlLockTimer = 0f;
             recentImpactTimer = 0f;
             lastThrottleCommand = 0f;
-            lastThrottleIntent = 0f;
+            externalControlDecision.set(0f, 0f);
+            rawExternalControlDecision.set(0f, 0f);
             lastAttackerId = -1;
         }
 
@@ -7054,7 +7191,16 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private String getPersonalityDisplayName() {
-            return aiController == null ? "Player" : aiController.getPersonality().displayName;
+            if (playerControlled) {
+                return "Player";
+            }
+            if (externallyControlled) {
+                return "RL";
+            }
+            if (modelControlled) {
+                return "RL";
+            }
+            return aiController.getPersonality().displayName;
         }
 
         @Override
@@ -7234,6 +7380,1092 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private static float getRlPositionNormalizer(
+            ArenaMap arenaMap,
+            Rectangle observationBounds,
+            Vector2 observationFocus) {
+        if (arenaMap == null) {
+            observationBounds.set(0f, 0f, 1f, 1f);
+            observationFocus.setZero();
+            return RL_POSITION_NORMALIZER_MIN;
+        }
+
+        arenaMap.getBounds(observationBounds);
+        arenaMap.getFocusPoint(observationFocus);
+        return Math.max(
+                RL_POSITION_NORMALIZER_MIN,
+                Math.max(observationBounds.width, observationBounds.height) * 0.5f);
+    }
+
+    private static void fillRlObservation(
+            float[] observations,
+            int offset,
+            Car car,
+            ArenaMap arenaMap,
+            Array<Car> cars,
+            boolean growthPickupActive,
+            Vector2 growthPickupPosition,
+            boolean pointPickupActive,
+            Vector2 pointPickupPosition,
+            float positionNormalizer,
+            Vector2 observationFocus,
+            Vector2 observationForward,
+            Vector2 observationRecovery) {
+        for (int i = 0; i < RL_OBSERVATION_SIZE; i++) {
+            observations[offset + i] = 0f;
+        }
+        if (car == null || !car.active || car.body == null || arenaMap == null) {
+            return;
+        }
+
+        Vector2 position = car.body.getPosition();
+        Vector2 velocity = car.body.getLinearVelocity();
+        car.body.getWorldVector(observationForward.set(0f, 1f));
+        arenaMap.findRecoveryPoint(position, observationRecovery);
+        observationRecovery.sub(position);
+        if (!observationRecovery.isZero(0.0001f)) {
+            observationRecovery.nor();
+        }
+
+        observations[offset] = 1f;
+        observations[offset + 1] =
+                normalizedRlValue(position.x - observationFocus.x, positionNormalizer);
+        observations[offset + 2] =
+                normalizedRlValue(position.y - observationFocus.y, positionNormalizer);
+        observations[offset + 3] = normalizedRlValue(velocity.x, RL_VELOCITY_NORMALIZER);
+        observations[offset + 4] = normalizedRlValue(velocity.y, RL_VELOCITY_NORMALIZER);
+        observations[offset + 5] = observationForward.x;
+        observations[offset + 6] = observationForward.y;
+        observations[offset + 7] =
+                normalizedRlValue(car.body.getAngularVelocity(), RL_ANGULAR_VELOCITY_NORMALIZER);
+        observations[offset + 8] = MathUtils.clamp(velocity.len() / Car.MAX_SPEED, 0f, 1f);
+        observations[offset + 9] =
+                MathUtils.clamp(
+                        arenaMap.approximateDistanceToHazard(position)
+                                / RL_HAZARD_DISTANCE_NORMALIZER,
+                        0f,
+                        1f);
+        observations[offset + 10] =
+                MathUtils.clamp(
+                        arenaMap.distanceToSafety(position) / RL_HAZARD_DISTANCE_NORMALIZER,
+                        0f,
+                        1f);
+        observations[offset + 11] = car.hasGrowthBoost() ? 1f : 0f;
+        observations[offset + 12] = car.hasRamCharge() ? 1f : 0f;
+        observations[offset + 13] =
+                MathUtils.clamp(car.recentImpactTimer / Car.RECENT_IMPACT_DURATION, 0f, 1f);
+
+        Car nearestOpponent = findNearestRlOpponent(car, cars);
+        if (nearestOpponent != null) {
+            Vector2 opponentPosition = nearestOpponent.body.getPosition();
+            Vector2 opponentVelocity = nearestOpponent.body.getLinearVelocity();
+            observations[offset + 14] =
+                    normalizedRlValue(opponentPosition.x - position.x, positionNormalizer);
+            observations[offset + 15] =
+                    normalizedRlValue(opponentPosition.y - position.y, positionNormalizer);
+            observations[offset + 16] =
+                    normalizedRlValue(opponentVelocity.x - velocity.x, RL_VELOCITY_NORMALIZER);
+            observations[offset + 17] =
+                    normalizedRlValue(opponentVelocity.y - velocity.y, RL_VELOCITY_NORMALIZER);
+            observations[offset + 18] = 1f;
+            observations[offset + 19] =
+                    MathUtils.clamp(
+                            arenaMap.approximateDistanceToHazard(opponentPosition)
+                                    / RL_HAZARD_DISTANCE_NORMALIZER,
+                            0f,
+                            1f);
+            observations[offset + 20] = nearestOpponent.hasGrowthBoost() ? 1f : 0f;
+            observations[offset + 21] = nearestOpponent.hasRamCharge() ? 1f : 0f;
+        }
+
+        observations[offset + 22] = observationRecovery.x;
+        observations[offset + 23] = observationRecovery.y;
+        fillRlPickupObservation(
+                observations,
+                offset + 24,
+                growthPickupActive,
+                growthPickupPosition,
+                position,
+                positionNormalizer);
+        fillRlPickupObservation(
+                observations,
+                offset + 27,
+                pointPickupActive,
+                pointPickupPosition,
+                position,
+                positionNormalizer);
+    }
+
+    private static void fillRlPickupObservation(
+            float[] observations,
+            int offset,
+            boolean active,
+            Vector2 pickupPosition,
+            Vector2 carPosition,
+            float positionNormalizer) {
+        if (!active || pickupPosition == null) {
+            observations[offset + 2] = 0f;
+            return;
+        }
+
+        observations[offset] =
+                normalizedRlValue(pickupPosition.x - carPosition.x, positionNormalizer);
+        observations[offset + 1] =
+                normalizedRlValue(pickupPosition.y - carPosition.y, positionNormalizer);
+        observations[offset + 2] = 1f;
+    }
+
+    private static Car findNearestRlOpponent(Car car, Array<Car> cars) {
+        Car nearest = null;
+        float nearestDistanceSq = Float.MAX_VALUE;
+        if (car == null || car.body == null) {
+            return null;
+        }
+
+        Vector2 position = car.body.getPosition();
+        for (int i = 0; i < cars.size; i++) {
+            Car other = cars.get(i);
+            if (other == car || !other.active || other.body == null) {
+                continue;
+            }
+
+            float distanceSq = position.dst2(other.body.getPosition());
+            if (distanceSq < nearestDistanceSq) {
+                nearestDistanceSq = distanceSq;
+                nearest = other;
+            }
+        }
+        return nearest;
+    }
+
+    private static float normalizedRlValue(float value, float normalizer) {
+        return MathUtils.clamp(value / Math.max(0.0001f, normalizer), -1f, 1f);
+    }
+
+    public static final class RlTrainingConfig {
+        public final Array<ArenaMap> maps = new Array<ArenaMap>();
+        public final Array<AiDrivingPersonality> opponentPersonalities =
+                new Array<AiDrivingPersonality>();
+        public int controlledAgentCount = RL_DEFAULT_CONTROLLED_AGENTS;
+        public int fieldSize = RL_DEFAULT_FIELD_SIZE;
+        public int actionRepeat = RL_DEFAULT_ACTION_REPEAT;
+        public int maxActionSteps = RL_DEFAULT_MAX_ACTION_STEPS;
+        public long seed = 1L;
+        public boolean skipCountdown = true;
+
+        public RlTrainingConfig addMap(ArenaMap map) {
+            if (map != null) {
+                maps.add(map);
+            }
+            return this;
+        }
+
+        public RlTrainingConfig addOpponentPersonality(AiDrivingPersonality personality) {
+            if (personality != null) {
+                opponentPersonalities.add(personality);
+            }
+            return this;
+        }
+
+        public RlTrainingConfig withControlledAgentCount(int controlledAgentCount) {
+            this.controlledAgentCount = controlledAgentCount;
+            return this;
+        }
+
+        public RlTrainingConfig withFieldSize(int fieldSize) {
+            this.fieldSize = fieldSize;
+            return this;
+        }
+
+        public RlTrainingConfig withActionRepeat(int actionRepeat) {
+            this.actionRepeat = actionRepeat;
+            return this;
+        }
+
+        public RlTrainingConfig withMaxActionSteps(int maxActionSteps) {
+            this.maxActionSteps = maxActionSteps;
+            return this;
+        }
+
+        public RlTrainingConfig withSeed(long seed) {
+            this.seed = seed;
+            return this;
+        }
+
+        public RlTrainingConfig withSkipCountdown(boolean skipCountdown) {
+            this.skipCountdown = skipCountdown;
+            return this;
+        }
+    }
+
+    public static final class RlStepResult {
+        public final float[] observations;
+        public final float[] rewards;
+        public final float[] effectiveActions;
+        public final boolean[] dones;
+        public final boolean episodeDone;
+        public final int actionStep;
+        public final int winnerAgentIndex;
+        public final String winnerLabel;
+        public final String currentMapId;
+        public final String currentMapName;
+
+        private RlStepResult(
+                float[] observations,
+                float[] rewards,
+                float[] effectiveActions,
+                boolean[] dones,
+                boolean episodeDone,
+                int actionStep,
+                int winnerAgentIndex,
+                String winnerLabel,
+                String currentMapId,
+                String currentMapName) {
+            this.observations = observations;
+            this.rewards = rewards;
+            this.effectiveActions = effectiveActions;
+            this.dones = dones;
+            this.episodeDone = episodeDone;
+            this.actionStep = actionStep;
+            this.winnerAgentIndex = winnerAgentIndex;
+            this.winnerLabel = winnerLabel;
+            this.currentMapId = currentMapId;
+            this.currentMapName = currentMapName;
+        }
+    }
+
+    public static final class RlTrainingEnvironment implements AutoCloseable {
+        private final RlTrainingConfig config;
+        private final RatassGame game = new RatassGame();
+        private final Array<Integer> controlledVehicleIds = new Array<Integer>();
+        private final Rectangle observationBounds = new Rectangle();
+        private final Vector2 observationFocus = new Vector2();
+        private final Vector2 observationForward = new Vector2();
+        private final Vector2 observationRecovery = new Vector2();
+        private final RlAgentSnapshot[] beforeSnapshots;
+        private final RlAgentSnapshot[] afterSnapshots;
+        private final float[] observations;
+        private final float[] rewards;
+        private final float[] effectiveActions;
+        private final float[] currentActionThrottle;
+        private final float[] previousActionThrottle;
+        private final float[] currentActionTurn;
+        private final float[] previousActionTurn;
+        private final boolean[] dones;
+        private final int controlledAgentCount;
+        private int episodeIndex;
+        private int actionStep;
+        private boolean episodeStarted;
+        private boolean episodeDone;
+        private boolean closed;
+
+        public RlTrainingEnvironment(RlTrainingConfig config) {
+            this.config = config == null ? new RlTrainingConfig() : config;
+            controlledAgentCount =
+                    MathUtils.clamp(this.config.controlledAgentCount, 1, MAX_CAR_COUNT - 1);
+            beforeSnapshots = new RlAgentSnapshot[controlledAgentCount];
+            afterSnapshots = new RlAgentSnapshot[controlledAgentCount];
+            for (int i = 0; i < controlledAgentCount; i++) {
+                beforeSnapshots[i] = new RlAgentSnapshot();
+                afterSnapshots[i] = new RlAgentSnapshot();
+            }
+            observations = new float[controlledAgentCount * RL_OBSERVATION_SIZE];
+            rewards = new float[controlledAgentCount];
+            effectiveActions = new float[controlledAgentCount * RL_ACTION_SIZE];
+            currentActionThrottle = new float[controlledAgentCount];
+            previousActionThrottle = new float[controlledAgentCount];
+            currentActionTurn = new float[controlledAgentCount];
+            previousActionTurn = new float[controlledAgentCount];
+            dones = new boolean[controlledAgentCount];
+        }
+
+        public int getControlledAgentCount() {
+            return controlledAgentCount;
+        }
+
+        public int getObservationSize() {
+            return RL_OBSERVATION_SIZE;
+        }
+
+        public int getActionSize() {
+            return RL_ACTION_SIZE;
+        }
+
+        public RlStepResult reset() {
+            ensureOpen();
+            long episodeSeed = config.seed + episodeIndex * 104729L;
+            episodeIndex++;
+            MathUtils.random.setSeed(episodeSeed);
+            Box2D.init();
+
+            Array<ArenaMap> maps =
+                    config.maps.size == 0 ? ArenaMaps.createHeadlessTrainingSet() : config.maps;
+            createRoster();
+            game.mapProgression =
+                    new MapProgression(maps, new Random(episodeSeed ^ 0x9E3779B97F4A7C15L));
+            game.frameThrottleInput = 0f;
+            game.frameTurnInput = 0f;
+            game.roundNumber = 0;
+            game.playerWins = 0;
+            game.resetRound(false);
+            if (config.skipCountdown) {
+                game.preRoundCountdownTimer = 0f;
+                game.countdownCueSecond = 0;
+            }
+
+            actionStep = 0;
+            episodeStarted = true;
+            episodeDone = false;
+            clearRewards();
+            buildObservations();
+            return createResult();
+        }
+
+        public RlStepResult step(float[] actions) {
+            ensureOpen();
+            if (!episodeStarted) {
+                reset();
+            }
+            if (episodeDone) {
+                return createResult();
+            }
+
+            captureSnapshots(beforeSnapshots);
+            applyActions(actions);
+            int repeats = Math.max(1, config.actionRepeat);
+            for (int i = 0; i < repeats && !game.roundOver; i++) {
+                game.stepSimulation(PHYSICS_STEP);
+            }
+            actionStep++;
+
+            if (!game.roundOver && actionStep >= getMaxActionSteps()) {
+                game.triggerRoundTimeout();
+            }
+
+            captureSnapshots(afterSnapshots);
+            episodeDone = game.roundOver || !hasActiveControlledAgent();
+            computeRewards();
+            buildObservations();
+            return createResult();
+        }
+
+        @Override
+        public void close() {
+            if (!closed) {
+                game.dispose();
+                closed = true;
+            }
+        }
+
+        private void createRoster() {
+            game.roster.clear();
+            controlledVehicleIds.clear();
+
+            int controlledAgentCount = getControlledAgentCount();
+            for (int i = 0; i < controlledAgentCount; i++) {
+                CarVisual visual = game.getCarVisual(i);
+                game.addRosterTemplate(
+                        "Learner " + (i + 1),
+                        false,
+                        new Color(visual.color),
+                        AiDrivingPersonalities.BALANCED,
+                        visual,
+                        "learner-" + i,
+                        true);
+                controlledVehicleIds.add(
+                        Integer.valueOf(game.roster.get(game.roster.size - 1).vehicleId));
+            }
+
+            Array<AiDrivingPersonality> opponents =
+                    config.opponentPersonalities.size == 0
+                            ? AiDrivingPersonalities.createPresetList()
+                            : config.opponentPersonalities;
+            int fieldSize = getFieldSize(controlledAgentCount);
+            int opponentIndex = 0;
+            while (game.roster.size < fieldSize) {
+                AiDrivingPersonality personality =
+                        opponents.get(opponentIndex % Math.max(1, opponents.size));
+                CarVisual visual = game.getCarVisual(game.roster.size);
+                game.addRosterTemplate(
+                        personality.displayName + " " + (opponentIndex + 1),
+                        false,
+                        new Color(visual.color),
+                        personality,
+                        visual,
+                        personality.id,
+                        false);
+                opponentIndex++;
+            }
+            game.invalidateLeaderboard();
+        }
+
+        private int getFieldSize(int controlledAgentCount) {
+            int minimumFieldSize = Math.min(MAX_CAR_COUNT, controlledAgentCount + 1);
+            return MathUtils.clamp(config.fieldSize, minimumFieldSize, MAX_CAR_COUNT);
+        }
+
+        private int getMaxActionSteps() {
+            return config.maxActionSteps <= 0
+                    ? RL_DEFAULT_MAX_ACTION_STEPS
+                    : config.maxActionSteps;
+        }
+
+        private void applyActions(float[] actions) {
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                Car car = getControlledCar(agentIndex);
+                if (car == null || !car.active) {
+                    continue;
+                }
+                int actionOffset = agentIndex * RL_ACTION_SIZE;
+                float modeSignal =
+                        actions != null && actionOffset < actions.length
+                                ? actions[actionOffset]
+                                : 0f;
+                float styleSignal =
+                        actions != null && actionOffset + 1 < actions.length
+                                ? actions[actionOffset + 1]
+                                : 0f;
+                modeSignal = MathUtils.clamp(modeSignal, -1f, 1f);
+                styleSignal = MathUtils.clamp(styleSignal, -1f, 1f);
+                previousActionThrottle[agentIndex] = currentActionThrottle[agentIndex];
+                previousActionTurn[agentIndex] = currentActionTurn[agentIndex];
+                currentActionThrottle[agentIndex] = modeSignal;
+                currentActionTurn[agentIndex] = styleSignal;
+                car.setExternalTacticalControl(
+                        PHYSICS_STEP * Math.max(1, config.actionRepeat),
+                        modeSignal,
+                        styleSignal,
+                        game.currentMap,
+                        game.cars,
+                        game.growthPickupActive,
+                        game.growthPickupPosition,
+                        game.pointPickupActive,
+                        game.pointPickupPosition);
+            }
+        }
+
+        private void captureSnapshots(RlAgentSnapshot[] snapshots) {
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                captureSnapshot(agentIndex, snapshots[agentIndex]);
+            }
+        }
+
+        private void captureSnapshot(int agentIndex, RlAgentSnapshot snapshot) {
+            snapshot.clear();
+            Car car = getControlledCar(agentIndex);
+            if (car == null) {
+                return;
+            }
+
+            snapshot.active = car.active && car.body != null;
+            snapshot.vehicleId = car.template.vehicleId;
+            snapshot.score = car.template.totalPoints;
+            snapshot.pickupPoints = car.template.roundPickupPoints;
+            snapshot.finishPosition = car.template.roundFinishPosition;
+            if (!snapshot.active || game.currentMap == null) {
+                return;
+            }
+
+            Vector2 position = car.body.getPosition();
+            snapshot.edgeDistance = game.currentMap.approximateDistanceToHazard(position);
+            snapshot.safetyDistance = game.currentMap.distanceToSafety(position);
+            Vector2 velocity = car.body.getLinearVelocity();
+            snapshot.speed = velocity.len();
+            snapshot.angularSpeed = Math.abs(car.body.getAngularVelocity());
+            snapshot.effectiveThrottle = car.externalControlDecision.throttle;
+            snapshot.growthBoosted = car.hasGrowthBoost();
+            if (game.growthPickupActive) {
+                snapshot.growthPickupActive = true;
+                snapshot.growthPickupDistance = position.dst(game.growthPickupPosition);
+            }
+            car.body.getWorldVector(observationForward.set(0f, 1f));
+            snapshot.forwardSpeed = observationForward.dot(velocity);
+            game.currentMap.findRecoveryPoint(position, observationRecovery);
+            observationRecovery.sub(position);
+            if (!observationRecovery.isZero(0.0001f)) {
+                observationRecovery.nor();
+                snapshot.recoverySpeed = observationRecovery.dot(velocity);
+            }
+
+            float nearestDistanceSq = Float.MAX_VALUE;
+            for (int i = 0; i < game.cars.size; i++) {
+                Car other = game.cars.get(i);
+                if (other == car) {
+                    continue;
+                }
+                if (!other.active) {
+                    if (other.lastAttackerId == snapshot.vehicleId
+                            && other.template.roundFinishPosition > 0) {
+                        snapshot.creditedEliminations++;
+                    }
+                    continue;
+                }
+                if (other.body == null) {
+                    continue;
+                }
+
+                snapshot.aliveOpponents++;
+                if (other.lastAttackerId == snapshot.vehicleId && other.recentImpactTimer > 0f) {
+                    snapshot.attackCreditCount++;
+                }
+
+                float distanceSq = position.dst2(other.body.getPosition());
+                if (distanceSq < nearestDistanceSq) {
+                    nearestDistanceSq = distanceSq;
+                    snapshot.nearestOpponentHazardDistance =
+                            game.currentMap.approximateDistanceToHazard(other.body.getPosition());
+                }
+            }
+            if (nearestDistanceSq < Float.MAX_VALUE) {
+                snapshot.nearestOpponentDistance = (float) Math.sqrt(nearestDistanceSq);
+            }
+            snapshot.recentImpact = car.recentImpactTimer;
+        }
+
+        private void computeRewards() {
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                RlAgentSnapshot before = beforeSnapshots[agentIndex];
+                RlAgentSnapshot after = afterSnapshots[agentIndex];
+                float reward = 0f;
+
+                if (before.active) {
+                    if (!after.active) {
+                        reward -= getEliminationPenalty(before);
+                    } else {
+                        reward += RL_ALIVE_STEP_REWARD;
+                        reward +=
+                                MathUtils.clamp(after.edgeDistance - before.edgeDistance, -1f, 1f)
+                                        * RL_EDGE_RECOVERY_REWARD;
+                        reward -= getEdgeDangerPenalty(before, after);
+                        reward +=
+                                MathUtils.clamp(
+                                                before.nearestOpponentHazardDistance
+                                                        - after.nearestOpponentHazardDistance,
+                                                -1f,
+                                                1f)
+                                        * getAttackSafetyScale(after)
+                                        * RL_OPPONENT_PRESSURE_REWARD;
+                        reward += getOpponentClosingReward(before, after);
+                        reward +=
+                                Math.max(
+                                                0,
+                                                after.creditedEliminations
+                                                        - before.creditedEliminations)
+                                        * RL_OPPONENT_ELIMINATION_REWARD;
+                        reward +=
+                                Math.max(0, after.attackCreditCount - before.attackCreditCount)
+                                        * getAttackSafetyScale(after)
+                                        * RL_IMPACT_CREDIT_REWARD;
+                        reward += getFastImpactReward(before, after);
+                        reward += getContactDisengageReward(before, after);
+                        reward += getContactEscapeSpeedReward(before, after);
+                        reward += getGrowthPickupReward(before, after);
+                        reward += getSpeedControlReward(before, after);
+                        reward += getTacticalModeSafetyReward(agentIndex, after);
+                        reward +=
+                                MathUtils.clamp(after.forwardSpeed / Car.MAX_SPEED, 0f, 1f)
+                                        * getSafeSpeedScale(after)
+                                        * RL_FORWARD_SPEED_REWARD;
+                        reward -=
+                                MathUtils.clamp(-after.forwardSpeed / Car.MAX_SPEED, 0f, 1f)
+                                        * RL_REVERSE_SPEED_PENALTY;
+                        if (!allowsReverseRecovery(after)
+                                && after.effectiveThrottle > RL_ACTION_FLIP_DEADZONE) {
+                            reward +=
+                                    MathUtils.clamp(
+                                                    (after.effectiveThrottle
+                                                                    - RL_ACTION_FLIP_DEADZONE)
+                                                            / (1f - RL_ACTION_FLIP_DEADZONE),
+                                                    0f,
+                                                    1f)
+                                            * getSafeSpeedScale(after)
+                                            * RL_FORWARD_THROTTLE_COMMIT_REWARD;
+                        }
+                        reward -= getActionDitherPenalty(agentIndex, before, after);
+                        if (after.speed < 0.35f && after.angularSpeed > 2.2f) {
+                            reward -= RL_SPIN_STALL_PENALTY;
+                        }
+                    }
+                }
+
+                if (episodeDone) {
+                    int winnerAgentIndex = getWinnerAgentIndex();
+                    if (winnerAgentIndex == agentIndex) {
+                        reward += RL_WIN_REWARD;
+                    } else if (game.roundOver && after.active) {
+                        reward -= RL_TIMEOUT_SURVIVOR_PENALTY;
+                    }
+                }
+
+                rewards[agentIndex] = reward;
+                dones[agentIndex] = episodeDone || !after.active;
+            }
+        }
+
+        private float getEliminationPenalty(RlAgentSnapshot before) {
+            float penalty = RL_ELIMINATION_PENALTY;
+            if (before.safetyDistance <= 0.05f
+                    && before.edgeDistance > RL_EDGE_DANGER_DISTANCE) {
+                float avoidableScale =
+                        MathUtils.clamp(
+                                (before.edgeDistance - RL_EDGE_DANGER_DISTANCE)
+                                        / Math.max(
+                                                0.0001f,
+                                                RL_SAFE_SPEED_DISTANCE - RL_EDGE_DANGER_DISTANCE),
+                                0f,
+                                1f);
+                penalty += avoidableScale * RL_AVOIDABLE_ELIMINATION_PENALTY;
+            }
+            if (before.recoverySpeed < -0.20f) {
+                penalty +=
+                        MathUtils.clamp(-before.recoverySpeed / Car.MAX_SPEED, 0f, 1f)
+                                * RL_OUTWARD_ELIMINATION_PENALTY;
+            }
+            return penalty;
+        }
+
+        private float getEdgeDangerPenalty(RlAgentSnapshot before, RlAgentSnapshot after) {
+            float penalty = 0f;
+            if (after.edgeDistance < RL_EDGE_DANGER_DISTANCE) {
+                penalty +=
+                        (1f - MathUtils.clamp(
+                                after.edgeDistance / RL_EDGE_DANGER_DISTANCE, 0f, 1f))
+                                * RL_EDGE_DANGER_PENALTY;
+            }
+            if (after.edgeDistance < before.edgeDistance
+                    && after.edgeDistance < RL_EDGE_DANGER_DISTANCE * 1.6f) {
+                penalty +=
+                        MathUtils.clamp(before.edgeDistance - after.edgeDistance, 0f, 1f)
+                                * RL_EDGE_APPROACH_PENALTY;
+            }
+            return penalty;
+        }
+
+        private float getOpponentClosingReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+            if (allowsReverseRecovery(after)
+                    || before.nearestOpponentDistance <= 0f
+                    || after.nearestOpponentDistance <= 0f) {
+                return 0f;
+            }
+            float closingDistance =
+                    MathUtils.clamp(
+                            before.nearestOpponentDistance - after.nearestOpponentDistance,
+                            0f,
+                            1f);
+            if (after.nearestOpponentDistance < 0.85f) {
+                closingDistance *= 0.65f;
+            }
+            return closingDistance * getAttackSafetyScale(after) * RL_OPPONENT_CLOSING_REWARD;
+        }
+
+        private float getFastImpactReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+            int newAttackCredits = Math.max(0, after.attackCreditCount - before.attackCreditCount);
+            if (newAttackCredits == 0) {
+                return 0f;
+            }
+            float attackSafety = getAttackSafetyScale(after);
+            float reward =
+                    newAttackCredits
+                            * MathUtils.clamp(before.speed / Car.MAX_SPEED, 0f, 1f)
+                            * attackSafety
+                            * RL_FAST_IMPACT_REWARD;
+            float opponentEdgePressure =
+                    1f - MathUtils.clamp(
+                            after.nearestOpponentHazardDistance / RL_SAFE_ATTACK_DISTANCE,
+                            0f,
+                            1f);
+            reward +=
+                    newAttackCredits
+                            * opponentEdgePressure
+                            * attackSafety
+                            * RL_ATTACK_EDGE_PRESSURE_REWARD;
+            return reward;
+        }
+
+        private float getContactDisengageReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+            if (!isContactStuck(before) || after.nearestOpponentDistance <= 0f) {
+                return 0f;
+            }
+            return MathUtils.clamp(
+                            after.nearestOpponentDistance - before.nearestOpponentDistance,
+                            0f,
+                            1f)
+                    * RL_CONTACT_DISENGAGE_REWARD;
+        }
+
+        private float getContactEscapeSpeedReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+            if (!isContactStuck(before)) {
+                return 0f;
+            }
+            return MathUtils.clamp(after.speed - before.speed, 0f, 1.2f)
+                    * RL_CONTACT_ESCAPE_SPEED_REWARD;
+        }
+
+        private float getSpeedControlReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+            float speedRatio = MathUtils.clamp(after.speed / Car.MAX_SPEED, 0f, 1f);
+            float reward = speedRatio * getSafeSpeedScale(after) * RL_SAFE_SPEED_REWARD;
+
+            if (after.edgeDistance >= RL_EDGE_DANGER_DISTANCE) {
+                reward +=
+                        MathUtils.clamp((after.speed - before.speed) / Car.MAX_SPEED, 0f, 1f)
+                                * RL_ACCELERATION_REWARD;
+            }
+
+            if (after.edgeDistance < RL_EDGE_RECOVERY_SPEED_DISTANCE) {
+                float danger =
+                        1f - MathUtils.clamp(
+                                after.edgeDistance / RL_EDGE_RECOVERY_SPEED_DISTANCE,
+                                0f,
+                                1f);
+                float recoverySpeedRatio =
+                        MathUtils.clamp(after.recoverySpeed / Car.MAX_SPEED, -1f, 1f);
+                if (recoverySpeedRatio > 0f) {
+                    reward += recoverySpeedRatio * danger * RL_EDGE_RECOVERY_SPEED_REWARD;
+                } else {
+                    reward -= -recoverySpeedRatio * danger * RL_EDGE_UNSAFE_SPEED_PENALTY;
+                }
+                if (after.edgeDistance < before.edgeDistance) {
+                    reward -=
+                            MathUtils.clamp(before.edgeDistance - after.edgeDistance, 0f, 1f)
+                                    * speedRatio
+                                    * RL_EDGE_FAST_APPROACH_PENALTY;
+                }
+            }
+
+            return reward;
+        }
+
+        private float getTacticalModeSafetyReward(int agentIndex, RlAgentSnapshot after) {
+            float danger =
+                    after.safetyDistance > 0.05f
+                            ? 1f
+                            : 1f - MathUtils.clamp(
+                                    after.edgeDistance / RL_TACTICAL_RECOVERY_OUTWARD_DISTANCE,
+                                    0f,
+                                    1f);
+            if (danger <= 0f) {
+                return 0f;
+            }
+
+            int modeBucket = getTacticalModeBucket(currentActionThrottle[agentIndex]);
+            if (modeBucket == 0) {
+                return danger * RL_RECOVERY_MODE_REWARD;
+            }
+            if (modeBucket == 1) {
+                return -danger * RL_UNSAFE_FLANK_MODE_PENALTY;
+            }
+            return -danger * RL_UNSAFE_ATTACK_MODE_PENALTY;
+        }
+
+        private float getSafeSpeedScale(RlAgentSnapshot snapshot) {
+            return MathUtils.clamp(
+                    (snapshot.edgeDistance - RL_EDGE_DANGER_DISTANCE)
+                            / Math.max(0.0001f, RL_SAFE_SPEED_DISTANCE - RL_EDGE_DANGER_DISTANCE),
+                    0f,
+                    1f);
+        }
+
+        private float getAttackSafetyScale(RlAgentSnapshot snapshot) {
+            if (snapshot.safetyDistance > 0.05f) {
+                return 0f;
+            }
+            return MathUtils.clamp(
+                    (snapshot.edgeDistance - RL_EDGE_DANGER_DISTANCE)
+                            / Math.max(0.0001f, RL_SAFE_ATTACK_DISTANCE - RL_EDGE_DANGER_DISTANCE),
+                    0f,
+                    1f);
+        }
+
+        private float getGrowthPickupReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+            float reward =
+                    Math.max(0, after.pickupPoints - before.pickupPoints)
+                            * RL_GROWTH_PICKUP_REWARD;
+            if (before.growthBoosted || after.growthBoosted) {
+                return reward;
+            }
+            if (!before.growthPickupActive
+                    || !after.growthPickupActive
+                    || before.growthPickupDistance <= 0f
+                    || after.growthPickupDistance <= 0f
+                    || after.edgeDistance < RL_EDGE_DANGER_DISTANCE) {
+                return reward;
+            }
+            reward +=
+                    MathUtils.clamp(
+                                    before.growthPickupDistance - after.growthPickupDistance,
+                                    -1f,
+                                    1f)
+                            * RL_GROWTH_PICKUP_APPROACH_REWARD;
+            return reward;
+        }
+
+        private float getActionDitherPenalty(
+                int agentIndex,
+                RlAgentSnapshot before,
+                RlAgentSnapshot after) {
+            float penalty = 0f;
+            float previousModeSignal = previousActionThrottle[agentIndex];
+            float currentModeSignal = currentActionThrottle[agentIndex];
+            if (Math.abs(previousModeSignal) >= RL_ACTION_FLIP_DEADZONE
+                    && Math.abs(currentModeSignal) >= RL_ACTION_FLIP_DEADZONE
+                    && getTacticalModeBucket(previousModeSignal)
+                    != getTacticalModeBucket(currentModeSignal)) {
+                penalty += RL_RAW_THROTTLE_FLIP_PENALTY;
+            }
+
+            if (Math.abs(before.effectiveThrottle) >= RL_ACTION_FLIP_DEADZONE
+                    && Math.abs(after.effectiveThrottle) >= RL_ACTION_FLIP_DEADZONE
+                    && before.effectiveThrottle * after.effectiveThrottle < 0f) {
+                penalty += RL_EFFECTIVE_THROTTLE_FLIP_PENALTY;
+            }
+
+            if (Math.abs(before.forwardSpeed) > 0.35f
+                    && Math.abs(after.forwardSpeed) > 0.35f
+                    && before.forwardSpeed * after.forwardSpeed < 0f) {
+                penalty += RL_FORWARD_REVERSE_SPEED_FLIP_PENALTY;
+            }
+
+            if (Math.abs(after.effectiveThrottle) < RL_ACTION_FLIP_DEADZONE
+                    && after.speed < 1.15f
+                    && after.angularSpeed < 1.80f) {
+                penalty +=
+                        RL_IDLE_DITHER_PENALTY
+                                * (1f - Math.abs(after.effectiveThrottle) / RL_ACTION_FLIP_DEADZONE);
+            }
+            if (!allowsReverseRecovery(after)) {
+                if (after.effectiveThrottle < -RL_ACTION_FLIP_DEADZONE) {
+                    penalty +=
+                            RL_SAFE_REVERSE_ACTION_PENALTY
+                                    * MathUtils.clamp(-after.effectiveThrottle, 0f, 1f);
+                }
+                if (after.effectiveThrottle < -RL_ACTION_FLIP_DEADZONE
+                        && after.forwardSpeed > 0.35f) {
+                    penalty +=
+                            MathUtils.clamp(after.forwardSpeed / Car.MAX_SPEED, 0f, 1f)
+                                    * RL_SAFE_REVERSE_BRAKE_PENALTY;
+                }
+            }
+            if (isContactStuck(after)) {
+                penalty +=
+                        (1f - MathUtils.clamp(
+                                after.speed / RL_CONTACT_STUCK_SPEED, 0f, 1f))
+                                * RL_CONTACT_STUCK_PENALTY;
+            }
+            return penalty;
+        }
+
+        private int getTacticalModeBucket(float modeSignal) {
+            if (modeSignal < -0.55f) {
+                return 0;
+            }
+            if (modeSignal < -0.08f) {
+                return 1;
+            }
+            if (modeSignal < 0.58f) {
+                return 2;
+            }
+            return 3;
+        }
+
+        private boolean allowsReverseRecovery(RlAgentSnapshot snapshot) {
+            return snapshot.safetyDistance > 0.05f
+                    || snapshot.edgeDistance < RL_REVERSE_RECOVERY_EDGE_DISTANCE
+                    || snapshot.speed < RL_REVERSE_RECOVERY_SPEED
+                    || snapshot.recentImpact > Car.RECENT_IMPACT_DURATION * 0.45f
+                    || isContactStuck(snapshot);
+        }
+
+        private boolean isContactStuck(RlAgentSnapshot snapshot) {
+            return snapshot.nearestOpponentDistance > 0f
+                    && snapshot.nearestOpponentDistance < RL_CONTACT_STUCK_DISTANCE
+                    && snapshot.speed < RL_CONTACT_STUCK_SPEED;
+        }
+
+        private void buildObservations() {
+            for (int i = 0; i < observations.length; i++) {
+                observations[i] = 0f;
+            }
+            if (game.currentMap == null) {
+                return;
+            }
+
+            float positionNormalizer =
+                    getRlPositionNormalizer(
+                            game.currentMap,
+                            observationBounds,
+                            observationFocus);
+
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                fillRlObservation(
+                        observations,
+                        agentIndex * RL_OBSERVATION_SIZE,
+                        getControlledCar(agentIndex),
+                        game.currentMap,
+                        game.cars,
+                        game.growthPickupActive,
+                        game.growthPickupPosition,
+                        game.pointPickupActive,
+                        game.pointPickupPosition,
+                        positionNormalizer,
+                        observationFocus,
+                        observationForward,
+                        observationRecovery);
+            }
+        }
+
+        private boolean hasActiveControlledAgent() {
+            for (int i = 0; i < getControlledAgentCount(); i++) {
+                Car car = getControlledCar(i);
+                if (car != null && car.active) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private int getWinnerAgentIndex() {
+            if (game.winner == null) {
+                return -1;
+            }
+            int winnerVehicleId = game.winner.template.vehicleId;
+            for (int i = 0; i < controlledVehicleIds.size; i++) {
+                if (controlledVehicleIds.get(i).intValue() == winnerVehicleId) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private String getWinnerLabel() {
+            if (game.winner == null) {
+                return "";
+            }
+            return game.winner.template.statsLabel;
+        }
+
+        private Car getControlledCar(int agentIndex) {
+            if (agentIndex < 0 || agentIndex >= controlledVehicleIds.size) {
+                return null;
+            }
+            int vehicleId = controlledVehicleIds.get(agentIndex).intValue();
+            if (vehicleId < 0 || vehicleId >= game.roster.size) {
+                return null;
+            }
+            return game.roster.get(vehicleId).currentCar;
+        }
+
+        private void clearRewards() {
+            for (int i = 0; i < rewards.length; i++) {
+                rewards[i] = 0f;
+                dones[i] = false;
+                currentActionThrottle[i] = 0f;
+                previousActionThrottle[i] = 0f;
+                currentActionTurn[i] = 0f;
+                previousActionTurn[i] = 0f;
+            }
+        }
+
+        private RlStepResult createResult() {
+            float[] observationCopy = new float[observations.length];
+            float[] rewardCopy = new float[rewards.length];
+            float[] effectiveActionCopy = new float[effectiveActions.length];
+            boolean[] doneCopy = new boolean[dones.length];
+            buildEffectiveActions();
+            System.arraycopy(observations, 0, observationCopy, 0, observations.length);
+            System.arraycopy(rewards, 0, rewardCopy, 0, rewards.length);
+            System.arraycopy(effectiveActions, 0, effectiveActionCopy, 0, effectiveActions.length);
+            System.arraycopy(dones, 0, doneCopy, 0, dones.length);
+            return new RlStepResult(
+                    observationCopy,
+                    rewardCopy,
+                    effectiveActionCopy,
+                    doneCopy,
+                    episodeDone,
+                    actionStep,
+                    getWinnerAgentIndex(),
+                    getWinnerLabel(),
+                    getCurrentMapId(),
+                    getCurrentMapName());
+        }
+
+        private String getCurrentMapId() {
+            return game.currentMap == null ? "" : game.currentMap.getId();
+        }
+
+        private String getCurrentMapName() {
+            return game.currentMap == null ? "" : game.currentMap.getName();
+        }
+
+        private void buildEffectiveActions() {
+            for (int i = 0; i < effectiveActions.length; i++) {
+                effectiveActions[i] = 0f;
+            }
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                Car car = getControlledCar(agentIndex);
+                if (car == null || !car.active) {
+                    continue;
+                }
+                int actionOffset = agentIndex * RL_ACTION_SIZE;
+                effectiveActions[actionOffset] = car.externalControlDecision.throttle;
+                effectiveActions[actionOffset + 1] = car.externalControlDecision.turn;
+            }
+        }
+
+        private void ensureOpen() {
+            if (closed) {
+                throw new IllegalStateException("RL training environment is already closed.");
+            }
+        }
+    }
+
+    private static final class RlAgentSnapshot {
+        private boolean active;
+        private int vehicleId;
+        private int score;
+        private int pickupPoints;
+        private int finishPosition;
+        private int aliveOpponents;
+        private int attackCreditCount;
+        private int creditedEliminations;
+        private boolean growthBoosted;
+        private boolean growthPickupActive;
+        private float edgeDistance;
+        private float safetyDistance;
+        private float nearestOpponentHazardDistance;
+        private float nearestOpponentDistance;
+        private float growthPickupDistance;
+        private float speed;
+        private float effectiveThrottle;
+        private float forwardSpeed;
+        private float recoverySpeed;
+        private float angularSpeed;
+        private float recentImpact;
+
+        private void clear() {
+            active = false;
+            vehicleId = -1;
+            score = 0;
+            pickupPoints = 0;
+            finishPosition = 0;
+            aliveOpponents = 0;
+            attackCreditCount = 0;
+            creditedEliminations = 0;
+            growthBoosted = false;
+            growthPickupActive = false;
+            edgeDistance = 0f;
+            safetyDistance = 0f;
+            nearestOpponentHazardDistance = 0f;
+            nearestOpponentDistance = 0f;
+            growthPickupDistance = 0f;
+            speed = 0f;
+            effectiveThrottle = 0f;
+            forwardSpeed = 0f;
+            recoverySpeed = 0f;
+            angularSpeed = 0f;
+            recentImpact = 0f;
+        }
+    }
+
     private static final class CarTemplate {
         private final int vehicleId;
         private final String name;
@@ -7242,6 +8474,8 @@ public class RatassGame extends ApplicationAdapter {
         private final AiDrivingPersonality personality;
         private final CarVisual visual;
         private final String statsLabel;
+        private final boolean externallyControlled;
+        private final boolean modelControlled;
         private Texture spriteTexture;
         private boolean ownsSpriteTexture;
         private int spriteSourceX;
@@ -7261,7 +8495,9 @@ public class RatassGame extends ApplicationAdapter {
                 Color color,
                 AiDrivingPersonality personality,
                 CarVisual visual,
-                String statsLabel) {
+                String statsLabel,
+                boolean externallyControlled,
+                boolean modelControlled) {
             this.vehicleId = vehicleId;
             this.name = name;
             this.playerControlled = playerControlled;
@@ -7269,6 +8505,8 @@ public class RatassGame extends ApplicationAdapter {
             this.personality = personality;
             this.visual = visual;
             this.statsLabel = statsLabel == null || statsLabel.length() == 0 ? name : statsLabel;
+            this.externallyControlled = externallyControlled;
+            this.modelControlled = modelControlled;
         }
     }
 
@@ -7276,15 +8514,6 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 position = new Vector2();
         private final Color color = new Color();
         private float timer;
-        private float rotationDeg;
-        private float scale;
-    }
-
-    private static final class StalemateBomb {
-        private final Vector2 position = new Vector2();
-        private boolean exploded;
-        private float fuseTimer;
-        private float explosionTimer;
         private float rotationDeg;
         private float scale;
     }
