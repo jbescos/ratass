@@ -17,11 +17,25 @@ function Get-EnvValue {
     return $value
 }
 
+function Resolve-RepoPath {
+    param([string] $PathValue)
+
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return $PathValue
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $PathValue))
+}
+
 function Invoke-Checked {
     param(
         [string] $Executable,
         [string[]] $Arguments
     )
+
+    if (($Executable.Contains("\") -or $Executable.Contains("/")) -and -not (Test-Path $Executable)) {
+        throw "Executable not found: $Executable. Create the virtual environment with: py -3 -m venv .venv-rl; .venv-rl\Scripts\python.exe -m pip install -r tools\rl\requirements.txt"
+    }
 
     Write-Host ("running={0} {1}" -f $Executable, ($Arguments -join " "))
     & $Executable @Arguments
@@ -46,6 +60,8 @@ $NumGpus = Get-EnvValue "RL_NUM_GPUS" "0"
 $MapIds = Get-EnvValue "RL_MAP_IDS" ""
 $BuildBeforeTraining = Get-EnvValue "RL_BUILD_BEFORE_TRAINING" "1"
 $DesktopJar = Get-EnvValue "RL_JAR" "desktop\target\ratass-desktop-1.0.jar"
+$PythonBin = Resolve-RepoPath $PythonBin
+$DesktopJar = Resolve-RepoPath $DesktopJar
 
 $CheckpointFile = Join-Path $CheckpointDir "rllib_checkpoint.json"
 $CommonArgs = @(
