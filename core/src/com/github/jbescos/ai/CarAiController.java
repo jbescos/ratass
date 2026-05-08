@@ -57,6 +57,8 @@ public final class CarAiController {
     private static final float PICKUP_CONTEST_INTERCEPT_TIME = 0.22f;
     private static final float POINT_PICKUP_TARGET_EDGE_OVERRIDE_DISTANCE = 2.35f;
     private static final float POINT_PICKUP_ATTACK_OVERRIDE_DISTANCE_SQ = 12f;
+    private static final float SAFE_ZONE_CENTER_HOLD_RATIO = 0.62f;
+    private static final float SAFE_ZONE_URGENCY_SECONDS = 2.2f;
     private static final float EMPOWERED_THREAT_DISTANCE_SQ = 12.5f;
     private static final float EMPOWERED_CLOSING_SPEED_THRESHOLD = 1.2f;
     private static final float EVASIVE_STRAFE_DISTANCE = 0.88f;
@@ -159,6 +161,10 @@ public final class CarAiController {
                 growthPickupPosition,
                 pointPickupActive,
                 pointPickupPosition,
+                false,
+                null,
+                0f,
+                0f,
                 TacticalIntent.defaultIntent());
     }
 
@@ -171,6 +177,39 @@ public final class CarAiController {
             Vector2 growthPickupPosition,
             boolean pointPickupActive,
             Vector2 pointPickupPosition,
+            boolean safeZoneActive,
+            Vector2 safeZonePosition,
+            float safeZoneRadius,
+            float safeZoneTimeRemaining) {
+        return plan(
+                delta,
+                self,
+                arenaMap,
+                vehicles,
+                growthPickupActive,
+                growthPickupPosition,
+                pointPickupActive,
+                pointPickupPosition,
+                safeZoneActive,
+                safeZonePosition,
+                safeZoneRadius,
+                safeZoneTimeRemaining,
+                TacticalIntent.defaultIntent());
+    }
+
+    public AiControlDecision plan(
+            float delta,
+            AiVehicleView self,
+            ArenaMap arenaMap,
+            Array<? extends AiVehicleView> vehicles,
+            boolean growthPickupActive,
+            Vector2 growthPickupPosition,
+            boolean pointPickupActive,
+            Vector2 pointPickupPosition,
+            boolean safeZoneActive,
+            Vector2 safeZonePosition,
+            float safeZoneRadius,
+            float safeZoneTimeRemaining,
             TacticalIntent tacticalIntent) {
         if (self == null || !self.isActive()) {
             clearAttackResetState();
@@ -200,8 +239,16 @@ public final class CarAiController {
             navigationAnchorInitialized = true;
         }
 
+        boolean chaseSafeZone =
+                shouldChaseSafeZone(
+                        position,
+                        safeZoneActive,
+                        safeZonePosition,
+                        safeZoneRadius,
+                        safeZoneTimeRemaining);
         boolean chaseGrowthPickup =
-                growthPickupActive
+                !chaseSafeZone
+                        && growthPickupActive
                         && growthPickupPosition != null
                         && !self.hasGrowthBoost()
                         && approximateHazardDistance(arenaMap, growthPickupPosition) >= POWER_PICKUP_EDGE_MARGIN;
@@ -215,15 +262,17 @@ public final class CarAiController {
             awayFromSafetyVelocity = -centerBias.dot(body.getLinearVelocity());
         }
 
-        boolean recovering =
+        boolean environmentalRecovery =
                 nearestHazard < personality.recoveryEdgeDistance
                         || (nearestHazard < personality.cautionEdgeDistance
-                        && awayFromSafetyVelocity > personality.outwardVelocityThreshold)
-                        || shouldTacticallyRecover(intent, self, nearestHazard, body);
+                        && awayFromSafetyVelocity > personality.outwardVelocityThreshold);
+        boolean tacticalRecovery =
+                !chaseSafeZone && shouldTacticallyRecover(intent, self, nearestHazard, body);
+        boolean recovering = environmentalRecovery || tacticalRecovery;
 
         AiVehicleView target = null;
         Body targetBody = null;
-        if (!chaseGrowthPickup) {
+        if (!chaseGrowthPickup && !chaseSafeZone) {
             target = findTarget(
                     self,
                     body,
@@ -242,6 +291,7 @@ public final class CarAiController {
 
         boolean chasePointPickup =
                 !chaseGrowthPickup
+                        && !chaseSafeZone
                         && pointPickupActive
                         && pointPickupPosition != null
                         && !self.hasRamCharge()
@@ -262,11 +312,11 @@ public final class CarAiController {
             }
         }
 
-        if (recovering || chaseGrowthPickup || chasePointPickup) {
+        if (recovering || chaseSafeZone || chaseGrowthPickup || chasePointPickup) {
             clearAttackResetState();
         }
 
-        if (!recovering && !chaseGrowthPickup && !chasePointPickup && targetBody == null) {
+        if (!recovering && !chaseSafeZone && !chaseGrowthPickup && !chasePointPickup && targetBody == null) {
             clearAttackResetState();
             changeMode(AiMode.IDLE);
             return decision.set(0f, 0f);
@@ -280,6 +330,9 @@ public final class CarAiController {
 
         if (recovering) {
             arenaMap.findRecoveryPoint(position, desiredVector);
+        } else if (chaseSafeZone) {
+            desiredVector.set(safeZonePosition);
+            arenaMap.clampToPlayable(desiredVector, INTERCEPT_CLAMP_MARGIN);
         } else if (chaseGrowthPickup) {
             desiredVector.set(growthPickupPosition);
             arenaMap.clampToPlayable(desiredVector, INTERCEPT_CLAMP_MARGIN);
@@ -423,6 +476,7 @@ public final class CarAiController {
                 determineMode(
                         recovering,
                         evadingThreat,
+                        chaseSafeZone,
                         chaseGrowthPickup,
                         chasePointPickup,
                         contestPickup,
@@ -457,6 +511,7 @@ public final class CarAiController {
 
         boolean stuckEligible =
                 !chaseGrowthPickup
+                        && !chaseSafeZone
                         && !chasePointPickup
                         && (defensiveDriving || target != null)
                         && disengageTimer <= 0f
@@ -503,6 +558,7 @@ public final class CarAiController {
                 throttle,
                 defensiveDriving,
                 chaseGrowthPickup,
+                chaseSafeZone,
                 chasePointPickup,
                 disengaging,
                 charging);
@@ -538,6 +594,7 @@ public final class CarAiController {
     private AiMode determineMode(
             boolean recovering,
             boolean evadingThreat,
+            boolean chaseSafeZone,
             boolean chaseGrowthPickup,
             boolean chasePointPickup,
             boolean contestPickup,
@@ -555,10 +612,26 @@ public final class CarAiController {
         if (evadingThreat) {
             return AiMode.EVADE;
         }
-        if (chaseGrowthPickup || chasePointPickup || contestPickup) {
+        if (chaseSafeZone || chaseGrowthPickup || chasePointPickup || contestPickup) {
             return AiMode.PICKUP;
         }
         return AiMode.ATTACK;
+    }
+
+    private boolean shouldChaseSafeZone(
+            Vector2 position,
+            boolean safeZoneActive,
+            Vector2 safeZonePosition,
+            float safeZoneRadius,
+            float safeZoneTimeRemaining) {
+        if (!safeZoneActive || safeZonePosition == null || position == null || safeZoneRadius <= 0f) {
+            return false;
+        }
+        float distance = position.dst(safeZonePosition);
+        if (distance > safeZoneRadius * SAFE_ZONE_CENTER_HOLD_RATIO) {
+            return true;
+        }
+        return safeZoneTimeRemaining <= SAFE_ZONE_URGENCY_SECONDS;
     }
 
     private void changeMode(AiMode mode) {
@@ -1106,6 +1179,7 @@ public final class CarAiController {
             float throttle,
             boolean recovering,
             boolean chaseGrowthPickup,
+            boolean chaseSafeZone,
             boolean chasePointPickup,
             boolean disengaging,
             boolean charging) {
@@ -1123,6 +1197,7 @@ public final class CarAiController {
         boolean eligible =
                 !recovering
                         && !chaseGrowthPickup
+                        && !chaseSafeZone
                         && !chasePointPickup
                         && !disengaging
                         && !charging

@@ -6,7 +6,7 @@ import com.badlogic.gdx.utils.JsonValue;
 import com.github.jbescos.ai.AiControlDecision;
 
 public final class RlPolicy {
-    private static final String FORMAT = "ratass-rl-policy-v1";
+    private static final String FORMAT = "ratass-rl-policy-v2";
 
     private final Layer[] layers;
     private final int observationSize;

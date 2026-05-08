@@ -14,7 +14,7 @@ import numpy as np
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-tactical"
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-circle"
 DEFAULT_OUTPUT = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
 OBSERVATION_SIZE = 30
 ACTION_SIZE = 2
@@ -73,8 +73,9 @@ def export_policy(checkpoint_dir: Path, output_file: Path) -> None:
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "format": "ratass-rl-policy-v1",
+        "format": "ratass-rl-policy-v2",
         "source": "ray-rllib-ppo",
+        "objective": "safe-circle-v1",
         "observationSize": OBSERVATION_SIZE,
         "actionSize": ACTION_SIZE,
         "output": "first actionSize outputs are deterministic tactical intent values",

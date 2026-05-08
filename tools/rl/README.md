@@ -21,15 +21,22 @@ python3 -m venv .venv-rl
 pip install -r tools/rl/requirements.txt
 ```
 
+The machine also needs a JDK and Maven because training starts the packaged
+desktop jar through JPype. Java 17+ and Maven 3.9+ are a good baseline. On an
+NVIDIA machine, install the NVIDIA driver first; GPU use is optional and only
+helps the PPO/PyTorch part, while the Java physics rollout still runs on CPU.
+
 ## Train
 
 ```bash
 python tools/rl/train_rllib.py --iterations 25
 ```
 
-The current policy is tactical, not direct throttle/turn. Its default checkpoint
-directory is `rl-checkpoints-tactical`; do not resume older checkpoints from
-`rl-checkpoints`, because those were trained with the previous action meaning.
+The current policy is tactical, not direct throttle/turn. Its exported format is
+`ratass-rl-policy-v2`, which is tied to the safe-circle objective. The default
+checkpoint directory is `rl-checkpoints-circle`; do not resume older checkpoints from
+`rl-checkpoints` or `rl-checkpoints-tactical`, because those were trained with
+previous objective/reward meanings.
 
 Continue from the latest saved checkpoint:
 
@@ -65,7 +72,7 @@ The phase lengths can be tuned with environment variables:
 `RL_WARMUP_ITERATIONS`, `RL_MAP001_ITERATIONS`, `RL_HARD_ITERATIONS`, and
 `RL_MIXED_ITERATIONS`.
 
-The helper starts a fresh warmup phase, then resumes that same tactical checkpoint
+The helper starts a fresh warmup phase, then resumes that same circle checkpoint
 for the later curriculum phases. It defaults to single-process Ray because that
 has produced faster iteration feedback in this project. It also defaults to six
 controlled learners so the shared policy practices
@@ -74,6 +81,34 @@ survival against heuristic opponents.
 
 For quick experiments, one controlled learner is still useful. For the long run,
 multiple controlled learners gives the shared policy more self-play pressure.
+
+For unattended training over days, use the forever helper:
+
+```bash
+bash tools/rl/train_forever.sh
+```
+
+It resumes `rl-checkpoints-circle` when it exists, trains in repeated chunks,
+checkpoints during each chunk, and exports `assets/ai/rl_enemy_policy.json`.
+It only builds the desktop jar before training if the jar is missing. Stop it
+with `Ctrl-C`; the interrupt handler exports the latest saved checkpoint, so at
+most the work since the previous checkpoint is lost.
+
+Useful knobs for the forever helper:
+
+```bash
+RL_FOREVER_ITERATIONS=200 \
+RL_CHECKPOINT_EVERY=10 \
+RL_WORKERS=4 \
+RL_NUM_GPUS=1 \
+bash tools/rl/train_forever.sh
+```
+
+`RL_NUM_GPUS=1` only works if Ray/PyTorch can see a CUDA-enabled Torch install.
+If CUDA is not set up, leave `RL_NUM_GPUS=0`. `RL_MAP_IDS=map001,map006` can be
+used to focus training on specific maps. `RL_PACKAGE_EVERY_CYCLES=1` rebuilds
+the packaged jar after every training chunk if you want each exported policy
+included in `desktop/target/ratass-desktop-1.0.jar`.
 
 ## Export And Use In Game
 
@@ -99,8 +134,8 @@ policy.
   The game maps `mode` to recover/flank/attack/hunt intent and uses `style` for
   flank side and aggression bias.
 - Training opponents still use the existing Java AI.
-- Rewards combine survival, edge recovery, opponent pressure, impact credit,
-  eliminations, and winning.
+- Rewards combine safe-circle approach/survival, edge recovery, opponent pressure,
+  impact credit, eliminations, and final placement.
 
 The policy used in game is deterministic: it uses the first two exported actor
 outputs as tactical intent values, then clamps them into `[-1, 1]`.

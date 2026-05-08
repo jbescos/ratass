@@ -4,12 +4,13 @@ set -euo pipefail
 python_bin="${PYTHON_BIN:-.venv-rl/bin/python}"
 workers="${RL_WORKERS:-0}"
 controlled_agents="${RL_CONTROLLED_AGENTS:-6}"
-field_size="${RL_FIELD_SIZE:-10}"
-max_action_steps="${RL_MAX_ACTION_STEPS:-420}"
+field_size="${RL_FIELD_SIZE:-12}"
+max_action_steps="${RL_MAX_ACTION_STEPS:-900}"
 train_batch_size="${RL_TRAIN_BATCH_SIZE:-4096}"
 minibatch_size="${RL_MINIBATCH_SIZE:-512}"
 checkpoint_every="${RL_CHECKPOINT_EVERY:-20}"
-checkpoint_dir="${RL_CHECKPOINT_DIR:-rl-checkpoints-tactical}"
+checkpoint_dir="${RL_CHECKPOINT_DIR:-rl-checkpoints-circle}"
+num_gpus="${RL_NUM_GPUS:-0}"
 map001_iterations="${RL_MAP001_ITERATIONS:-240}"
 hard_iterations="${RL_HARD_ITERATIONS:-220}"
 
@@ -22,6 +23,7 @@ common_args=(
   --train-batch-size "${train_batch_size}"
   --minibatch-size "${minibatch_size}"
   --checkpoint-every "${checkpoint_every}"
+  --num-gpus "${num_gpus}"
 )
 
 mvn -pl desktop -am package

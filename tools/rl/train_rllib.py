@@ -26,7 +26,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-tactical"
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-circle"
 OBSERVATION_SIZE = 30
 ACTION_SIZE = 2
 
@@ -195,6 +195,8 @@ def build_algorithm(args):
         .environment(RatassMultiAgentEnv, env_config=env_config)
         .framework("torch")
     )
+    if args.num_gpus > 0:
+        config = config.resources(num_gpus=args.num_gpus)
     try:
         config = config.training(
             gamma=args.gamma,
@@ -271,6 +273,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--field-size", type=int, default=12)
     parser.add_argument("--action-repeat", type=int, default=4)
     parser.add_argument("--max-action-steps", type=int, default=1350)
+    parser.add_argument("--num-gpus", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
         "--map-ids",

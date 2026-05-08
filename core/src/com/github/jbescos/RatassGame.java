@@ -130,8 +130,17 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RAM_CHARGE_DURATION = 8f;
     private static final float DESTRUCTION_EFFECT_DURATION = 0.65f;
     private static final float ROUND_START_COUNTDOWN = 3f;
-    private static final float ROUND_TIME_LIMIT = 20f;
-    private static final float ROUND_TIMEOUT_LIMIT = 35f;
+    private static final float SAFE_ZONE_DURATION = 5f;
+    private static final float SAFE_ZONE_INITIAL_RADIUS_RATIO = 0.34f;
+    private static final float SAFE_ZONE_RADIUS_DECAY = 0.86f;
+    private static final float SAFE_ZONE_MIN_RADIUS = 1.15f;
+    private static final float SAFE_ZONE_SPAWN_MARGIN = 0.65f;
+    private static final float SAFE_ZONE_MIN_MOVE_DISTANCE = 4.2f;
+    private static final float SAFE_ZONE_REACHABLE_BUFFER = 5.6f;
+    private static final float SAFE_ZONE_REACHABLE_CAR_RATIO = 0.38f;
+    private static final float SAFE_ZONE_RENDER_SAMPLE_STEP = 0.18f;
+    private static final float SAFE_ZONE_MINIMAP_SAMPLE_STEP = 0.26f;
+    private static final int SAFE_ZONE_SPAWN_ATTEMPTS = 128;
     private static final float CAMERA_HORIZONTAL_PADDING = 4f;
     private static final float CAMERA_VERTICAL_PADDING = 3f;
     private static final float MIN_WORLD_CAMERA_ZOOM = 0.90f;
@@ -161,7 +170,6 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
-    private static final float SUDDEN_DEATH_TIE_SPEED_MARGIN = 0.08f;
     public static final int RL_OBSERVATION_SIZE = 30;
     public static final int RL_ACTION_SIZE = 2;
     private static final int RL_DEFAULT_CONTROLLED_AGENTS = 1;
@@ -182,7 +190,6 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_ELIMINATION_PENALTY = 5.200f;
     private static final float RL_AVOIDABLE_ELIMINATION_PENALTY = 1.700f;
     private static final float RL_OUTWARD_ELIMINATION_PENALTY = 1.300f;
-    private static final float RL_TIMEOUT_SURVIVOR_PENALTY = 0.300f;
     private static final float RL_SPIN_STALL_PENALTY = 0.006f;
     private static final float RL_CONTROL_DEADZONE = 0.06f;
     private static final float RL_THROTTLE_REVERSAL_HYSTERESIS = 0.86f;
@@ -229,6 +236,11 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_ATTACK_EDGE_PRESSURE_REWARD = 0.170f;
     private static final float RL_GROWTH_PICKUP_REWARD = 5.000f;
     private static final float RL_GROWTH_PICKUP_APPROACH_REWARD = 0.200f;
+    private static final float RL_SAFE_ZONE_APPROACH_REWARD = 0.420f;
+    private static final float RL_SAFE_ZONE_INSIDE_REWARD = 0.060f;
+    private static final float RL_SAFE_ZONE_DEADLINE_REWARD = 0.900f;
+    private static final float RL_SAFE_ZONE_MISS_PENALTY = 4.800f;
+    private static final float RL_SAFE_ZONE_URGENCY_PENALTY = 0.080f;
     private static final float RL_GROWTH_PICKUP_ASSIST_MIN_WEIGHT = 0.35f;
     private static final float RL_GROWTH_PICKUP_ASSIST_MAX_WEIGHT = 0.78f;
     private static final float RL_GROWTH_PICKUP_ASSIST_DISTANCE = 32f;
@@ -495,7 +507,6 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<Car> cars = new Array<Car>();
     private final Array<CarTemplate> roster = new Array<CarTemplate>();
     private final Array<CarTemplate> leaderboardEntries = new Array<CarTemplate>();
-    private final Array<Car> pendingCollisionEliminations = new Array<Car>();
     private final Array<DestructionEffect> destructionEffects = new Array<DestructionEffect>();
     private final Array<CarVisual> themeCarVisuals = new Array<CarVisual>();
     private final Array<Rectangle> menuCarSheetSourceBounds = new Array<Rectangle>();
@@ -509,9 +520,11 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector2 focusPoint = new Vector2();
     private final Vector2 growthPickupPosition = new Vector2();
     private final Vector2 pointPickupPosition = new Vector2();
+    private final Vector2 safeZonePosition = new Vector2();
     private final Vector2 pickupCandidate = new Vector2();
     private final Vector2 lastGrowthPickupPosition = new Vector2();
     private final Vector2 lastPointPickupPosition = new Vector2();
+    private final Vector2 lastSafeZonePosition = new Vector2();
     private final Vector2 spawnCandidate = new Vector2();
     private final Array<SpawnPoint> roundSpawns = new Array<SpawnPoint>();
     private final Rectangle menuNewGameBounds = new Rectangle();
@@ -588,8 +601,6 @@ public class RatassGame extends ApplicationAdapter {
     private Sound destructionSound;
     private Sound countdownSound;
     private Sound roundStartSound;
-    private Sound suddenDeathSound;
-    private Sound timeoutSound;
     private Music themeMusic;
     private World world;
     private Texture arenaSurfaceTexture;
@@ -606,6 +617,8 @@ public class RatassGame extends ApplicationAdapter {
     private float frameTurnInput;
     private float preRoundCountdownTimer;
     private float roundTimer;
+    private float safeZoneTimer;
+    private float safeZoneRadius;
     private float touchThrottleInput;
     private float touchTurnInput;
     private float growthBoostTimer;
@@ -621,19 +634,19 @@ public class RatassGame extends ApplicationAdapter {
     private boolean cameraInitialized;
     private boolean growthPickupActive;
     private boolean pointPickupActive;
+    private boolean safeZoneActive;
     private boolean hasLastGrowthPickupPosition;
     private boolean hasLastPointPickupPosition;
+    private boolean hasLastSafeZonePosition;
     private boolean leaderboardDirty = true;
     private boolean roundOver;
     private boolean roundStartSoundPlayed;
-    private boolean roundTimedOut;
-    private boolean suddenDeathActive;
     private int countdownCueSecond;
     private int roundNumber;
     private int playerWins;
     private int finishPositionCounter;
-    private int timeoutSharedPoints;
-    private int timeoutSurvivorCount;
+    private int safeZoneWave;
+    private int safeZoneSequence;
     private int selectedThemeIndex;
     private int selectedCarCount = DEFAULT_CAR_COUNT;
     private int selectedPlayerCarIndex = DEFAULT_PLAYER_CAR_INDEX;
@@ -1101,7 +1114,8 @@ public class RatassGame extends ApplicationAdapter {
             countdownCueSecond = 0;
         }
 
-        int maxStepsPerRound = Math.max(1, MathUtils.ceil(ROUND_TIMEOUT_LIMIT / PHYSICS_STEP) + 300);
+        int maxStepsPerRound =
+                Math.max(1, MathUtils.ceil(SAFE_ZONE_DURATION / PHYSICS_STEP) * 56);
         for (int round = 0; round < config.rounds; round++) {
             int steps = 0;
             while (!roundOver && steps < maxStepsPerRound) {
@@ -1109,7 +1123,7 @@ public class RatassGame extends ApplicationAdapter {
                 steps++;
             }
             if (!roundOver) {
-                triggerRoundTimeout();
+                finishRound(null);
             }
 
             collectTournamentRound(statsByLabel);
@@ -1224,8 +1238,6 @@ public class RatassGame extends ApplicationAdapter {
         destructionSound = loadSound("audio/destroy.wav");
         countdownSound = loadSound("audio/countdown.wav");
         roundStartSound = loadSound("audio/start.wav");
-        suddenDeathSound = loadSound("audio/sudden_death.wav");
-        timeoutSound = loadSound("audio/timeout.wav");
         themeMusic = loadMusic("audio/music.wav");
         playThemeMusic();
     }
@@ -1237,16 +1249,12 @@ public class RatassGame extends ApplicationAdapter {
         disposeSound(destructionSound);
         disposeSound(countdownSound);
         disposeSound(roundStartSound);
-        disposeSound(suddenDeathSound);
-        disposeSound(timeoutSound);
         themeMusic = null;
         impactSound = null;
         pickupSound = null;
         destructionSound = null;
         countdownSound = null;
         roundStartSound = null;
-        suddenDeathSound = null;
-        timeoutSound = null;
     }
 
     private void playThemeMusic() {
@@ -2861,6 +2869,10 @@ public class RatassGame extends ApplicationAdapter {
                     growthPickupPosition,
                     pointPickupActive,
                     pointPickupPosition,
+                    safeZoneActive,
+                    safeZonePosition,
+                    safeZoneRadius,
+                    safeZoneTimer,
                     rlEnemyPolicy);
         }
         if (!allowControl && !roundOver) {
@@ -2871,13 +2883,15 @@ public class RatassGame extends ApplicationAdapter {
             cars.get(i).capturePreviousTransform();
         }
         world.step(delta, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
-        processPendingCollisionEliminations();
         checkForEliminations();
 
         if (!roundOver) {
             updateRoundState();
             if (!roundOver && allowControl) {
                 updateRoundTimer(delta);
+                if (!roundOver) {
+                    updateSafeZone(delta);
+                }
                 if (!roundOver) {
                     updateGrowthPickup(delta);
                 }
@@ -2955,14 +2969,15 @@ public class RatassGame extends ApplicationAdapter {
         world = new World(new Vector2(0f, 0f), true);
         world.setContactListener(impactContactListener);
         cars.clear();
-        pendingCollisionEliminations.clear();
         destructionEffects.clear();
         accumulator = 0f;
         effectClock = 0f;
         growthPickupActive = false;
         pointPickupActive = false;
+        safeZoneActive = false;
         hasLastGrowthPickupPosition = false;
         hasLastPointPickupPosition = false;
+        hasLastSafeZonePosition = false;
         clearEventCallout();
         growthBoostTimer = 0f;
         boostedCar = null;
@@ -2970,15 +2985,15 @@ public class RatassGame extends ApplicationAdapter {
         countdownCueSecond = MathUtils.ceil(ROUND_START_COUNTDOWN) + 1;
         roundStartSoundPlayed = false;
         roundTimer = 0f;
+        safeZoneTimer = 0f;
+        safeZoneRadius = 0f;
         impactSoundCooldown = 0f;
         destructionSoundCooldown = 0f;
         roundOver = false;
         roundOverTimer = 0f;
-        roundTimedOut = false;
-        suddenDeathActive = false;
         winner = null;
-        timeoutSharedPoints = 0;
-        timeoutSurvivorCount = 0;
+        safeZoneWave = 0;
+        safeZoneSequence = 0;
         playerCar = null;
         finishPositionCounter = 0;
         roundNumber++;
@@ -3001,6 +3016,7 @@ public class RatassGame extends ApplicationAdapter {
         updateWorldCamera();
         warmArenaSurfaceTextures();
         invalidateLeaderboard();
+        spawnSafeZone();
         spawnGrowthPickup();
     }
 
@@ -3016,53 +3032,207 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private void processPendingCollisionEliminations() {
-        if (pendingCollisionEliminations.size == 0) {
+    private void updateRoundTimer(float delta) {
+        roundTimer += delta;
+    }
+
+    private void updateSafeZone(float delta) {
+        if (!safeZoneActive) {
+            spawnSafeZone();
+        }
+        if (!safeZoneActive) {
             return;
         }
 
-        for (int i = 0; i < pendingCollisionEliminations.size; i++) {
-            eliminateCar(pendingCollisionEliminations.get(i));
+        safeZoneTimer = Math.max(0f, safeZoneTimer - delta);
+        if (safeZoneTimer > 0f) {
+            return;
         }
-        pendingCollisionEliminations.clear();
+
+        resolveSafeZone();
     }
 
-    private void updateRoundTimer(float delta) {
-        roundTimer = Math.min(ROUND_TIMEOUT_LIMIT, roundTimer + delta);
-        if (!suddenDeathActive && roundTimer >= ROUND_TIME_LIMIT) {
-            suddenDeathActive = true;
-            playSound(suddenDeathSound, 0.72f);
-        }
-        if (roundTimer >= ROUND_TIMEOUT_LIMIT) {
-            triggerRoundTimeout();
-        }
-    }
-
-    private void triggerRoundTimeout() {
-        Array<Car> survivors = new Array<Car>();
+    private void resolveSafeZone() {
+        Array<Car> eliminatedByZone = new Array<Car>();
+        int closingSequence = safeZoneSequence;
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
-            if (car.active && car.body != null) {
-                survivors.add(car);
+            if (!car.active || car.body == null) {
+                continue;
+            }
+            if (isInsideSafeZone(car)) {
+                car.safeZoneSurvivalSequence = closingSequence;
+            } else {
+                eliminatedByZone.add(car);
             }
         }
 
-        roundTimedOut = true;
-        playSound(timeoutSound, 0.78f);
-        timeoutSurvivorCount = survivors.size;
-        if (survivors.size > 0) {
-            timeoutSharedPoints = roster.size - survivors.size + 1;
-            for (int i = 0; i < survivors.size; i++) {
-                survivors.get(i).template.roundFinishPosition = timeoutSharedPoints;
-            }
-            for (int i = 0; i < survivors.size; i++) {
-                eliminateCar(survivors.get(i));
-            }
-        } else {
-            timeoutSharedPoints = 0;
+        safeZoneActive = false;
+        for (int i = 0; i < eliminatedByZone.size; i++) {
+            Car car = eliminatedByZone.get(i);
+            car.eliminatedBySafeZone = true;
+            eliminateCar(car);
         }
 
-        finishRound(null);
+        int aliveCars = getAliveCarCount();
+        if (aliveCars <= 1) {
+            finishRound(findLastAliveCar());
+            return;
+        }
+
+        spawnSafeZone();
+    }
+
+    private boolean isInsideSafeZone(Car car) {
+        if (!safeZoneActive || car == null || car.body == null) {
+            return false;
+        }
+        return getSafeZoneSignedMargin(car.body.getPosition()) >= 0f;
+    }
+
+    private float getSafeZoneSignedMargin(Vector2 position) {
+        if (!safeZoneActive || position == null) {
+            return -Float.MAX_VALUE;
+        }
+        return safeZoneRadius - position.dst(safeZonePosition);
+    }
+
+    private void spawnSafeZone() {
+        if (currentMap == null) {
+            safeZoneActive = false;
+            return;
+        }
+
+        currentMap.getBounds(mapBounds);
+        currentMap.getFocusPoint(focusPoint);
+        float radius = computeSafeZoneRadius(safeZoneWave);
+        if (safeZoneWave == 0) {
+            safeZoneRadius = radius;
+            currentMap.findRecoveryPoint(focusPoint, safeZonePosition);
+            if (!currentMap.supports(safeZonePosition)) {
+                currentMap.getFocusPoint(safeZonePosition);
+                currentMap.clampToPlayable(safeZonePosition, SAFE_ZONE_SPAWN_MARGIN);
+            }
+            if (currentMap.supports(safeZonePosition)) {
+                activateSafeZone();
+                return;
+            }
+        }
+
+        for (int shrink = 0; shrink < 6; shrink++) {
+            safeZoneRadius = radius;
+            if (trySpawnSafeZone(true, true)
+                    || trySpawnSafeZone(true, false)
+                    || trySpawnSafeZone(false, false)) {
+                activateSafeZone();
+                return;
+            }
+            radius = Math.max(SAFE_ZONE_MIN_RADIUS, radius * 0.82f);
+        }
+
+        currentMap.findRecoveryPoint(focusPoint, safeZonePosition);
+        if (!currentMap.supports(safeZonePosition)) {
+            currentMap.getFocusPoint(safeZonePosition);
+            currentMap.clampToPlayable(safeZonePosition, SAFE_ZONE_SPAWN_MARGIN);
+        }
+        safeZoneRadius = Math.max(SAFE_ZONE_MIN_RADIUS, radius);
+        activateSafeZone();
+    }
+
+    private void activateSafeZone() {
+        safeZoneTimer = SAFE_ZONE_DURATION;
+        safeZoneActive = true;
+        safeZoneWave++;
+        safeZoneSequence++;
+        lastSafeZonePosition.set(safeZonePosition);
+        hasLastSafeZonePosition = true;
+    }
+
+    private float computeSafeZoneRadius(int waveIndex) {
+        float mapSpan = Math.max(1f, Math.min(mapBounds.width, mapBounds.height));
+        float initialRadius = Math.max(SAFE_ZONE_MIN_RADIUS, mapSpan * SAFE_ZONE_INITIAL_RADIUS_RATIO);
+        return Math.max(
+                SAFE_ZONE_MIN_RADIUS,
+                initialRadius * (float) Math.pow(SAFE_ZONE_RADIUS_DECAY, Math.max(0, waveIndex)));
+    }
+
+    private boolean trySpawnSafeZone(boolean avoidCars, boolean requireNewSpot) {
+        float minX = mapBounds.x + SAFE_ZONE_SPAWN_MARGIN;
+        float maxX = mapBounds.x + mapBounds.width - SAFE_ZONE_SPAWN_MARGIN;
+        float minY = mapBounds.y + SAFE_ZONE_SPAWN_MARGIN;
+        float maxY = mapBounds.y + mapBounds.height - SAFE_ZONE_SPAWN_MARGIN;
+
+        if (minX >= maxX || minY >= maxY) {
+            return false;
+        }
+
+        float requiredHazardDistance =
+                Math.max(SAFE_ZONE_SPAWN_MARGIN, Math.min(safeZoneRadius * 0.62f, 2.25f));
+        float requiredMoveDistance =
+                Math.max(SAFE_ZONE_MIN_MOVE_DISTANCE, safeZoneRadius * 1.05f);
+        float requiredCarDistance = Math.max(1.7f, safeZoneRadius * 0.48f);
+
+        for (int attempt = 0; attempt < SAFE_ZONE_SPAWN_ATTEMPTS; attempt++) {
+            pickupCandidate.set(MathUtils.random(minX, maxX), MathUtils.random(minY, maxY));
+            if (!currentMap.supports(pickupCandidate)
+                    || currentMap.distanceToHazard(pickupCandidate) < requiredHazardDistance) {
+                continue;
+            }
+            if (requireNewSpot
+                    && hasLastSafeZonePosition
+                    && pickupCandidate.dst2(lastSafeZonePosition)
+                    < requiredMoveDistance * requiredMoveDistance) {
+                continue;
+            }
+            if (avoidCars && !isSafeZoneFarFromCars(pickupCandidate, requiredCarDistance)) {
+                continue;
+            }
+            if (!isSafeZoneReachableFromCars(pickupCandidate)) {
+                continue;
+            }
+
+            safeZonePosition.set(pickupCandidate);
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean isSafeZoneFarFromCars(Vector2 candidate, float minDistance) {
+        float minDistanceSq = minDistance * minDistance;
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null) {
+                continue;
+            }
+            if (car.body.getPosition().dst2(candidate) < minDistanceSq) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isSafeZoneReachableFromCars(Vector2 candidate) {
+        int aliveCount = 0;
+        int reachableCount = 0;
+        float reachableDistance = safeZoneRadius + SAFE_ZONE_REACHABLE_BUFFER;
+        float reachableDistanceSq = reachableDistance * reachableDistance;
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null) {
+                continue;
+            }
+            aliveCount++;
+            if (car.body.getPosition().dst2(candidate) <= reachableDistanceSq) {
+                reachableCount++;
+            }
+        }
+        if (aliveCount == 0) {
+            return true;
+        }
+        int requiredReachable =
+                Math.max(1, MathUtils.ceil(aliveCount * SAFE_ZONE_REACHABLE_CAR_RATIO));
+        return reachableCount >= requiredReachable;
     }
 
     private void finalizeRoundResults() {
@@ -3096,18 +3266,8 @@ public class RatassGame extends ApplicationAdapter {
         if (car.template.roundFinishPosition == 0) {
             car.template.roundFinishPosition = ++finishPositionCounter;
         }
-        car.pendingElimination = false;
         car.eliminate(world);
         invalidateLeaderboard();
-    }
-
-    private void queueCollisionElimination(Car car) {
-        if (car == null || !car.active || car.pendingElimination) {
-            return;
-        }
-
-        car.pendingElimination = true;
-        pendingCollisionEliminations.add(car);
     }
 
     private void updateDestructionEffects(float delta) {
@@ -3787,6 +3947,7 @@ public class RatassGame extends ApplicationAdapter {
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawArenaOverlay(theme);
+        drawSafeZone();
         drawGrowthPickup();
         drawCarEffects();
         shapeRenderer.end();
@@ -4672,6 +4833,77 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.setColor(color.r, color.g, color.b, alpha);
     }
 
+    private void drawSafeZone() {
+        if (!safeZoneActive || safeZoneRadius <= 0f || currentMap == null) {
+            return;
+        }
+
+        float timeRatio = MathUtils.clamp(safeZoneTimer / SAFE_ZONE_DURATION, 0f, 1f);
+        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 8.0f);
+        float urgency = 1f - timeRatio;
+        drawSafeZoneFootprint(
+                0.060f + urgency * 0.035f,
+                0.34f + pulse * 0.18f,
+                SAFE_ZONE_RENDER_SAMPLE_STEP,
+                0.16f,
+                true);
+    }
+
+    private void drawSafeZoneFootprint(
+            float fillAlpha,
+            float edgeAlpha,
+            float sampleStep,
+            float centerRadius,
+            boolean drawCenter) {
+        currentMap.getBounds(mapBounds);
+        float radiusSq = safeZoneRadius * safeZoneRadius;
+        float step = Math.max(0.05f, sampleStep);
+        float halfStep = step * 0.5f;
+        float minX = Math.max(mapBounds.x, safeZonePosition.x - safeZoneRadius);
+        float maxX = Math.min(mapBounds.x + mapBounds.width, safeZonePosition.x + safeZoneRadius);
+        float minY = Math.max(mapBounds.y, safeZonePosition.y - safeZoneRadius);
+        float maxY = Math.min(mapBounds.y + mapBounds.height, safeZonePosition.y + safeZoneRadius);
+
+        shapeRenderer.setColor(0.18f, 0.88f, 1f, fillAlpha);
+        for (float x = minX + halfStep; x <= maxX; x += step) {
+            for (float y = minY + halfStep; y <= maxY; y += step) {
+                if (isSafeZonePlayableSample(x, y, radiusSq)) {
+                    shapeRenderer.rect(x - halfStep, y - halfStep, step, step);
+                }
+            }
+        }
+
+        shapeRenderer.setColor(0.72f, 0.96f, 1f, edgeAlpha);
+        for (float x = minX + halfStep; x <= maxX; x += step) {
+            for (float y = minY + halfStep; y <= maxY; y += step) {
+                if (isSafeZonePlayableSample(x, y, radiusSq)
+                        && isSafeZoneFootprintEdge(x, y, step, radiusSq)) {
+                    shapeRenderer.rect(x - halfStep, y - halfStep, step, step);
+                }
+            }
+        }
+
+        if (!drawCenter) {
+            return;
+        }
+        shapeRenderer.setColor(1f, 1f, 1f, 0.64f);
+        shapeRenderer.circle(safeZonePosition.x, safeZonePosition.y, centerRadius, 20);
+    }
+
+    private boolean isSafeZoneFootprintEdge(float x, float y, float step, float radiusSq) {
+        float sampleOffset = step * 1.05f;
+        return !isSafeZonePlayableSample(x + sampleOffset, y, radiusSq)
+                || !isSafeZonePlayableSample(x - sampleOffset, y, radiusSq)
+                || !isSafeZonePlayableSample(x, y + sampleOffset, radiusSq)
+                || !isSafeZonePlayableSample(x, y - sampleOffset, radiusSq);
+    }
+
+    private boolean isSafeZonePlayableSample(float x, float y, float radiusSq) {
+        float dx = x - safeZonePosition.x;
+        float dy = y - safeZonePosition.y;
+        return dx * dx + dy * dy <= radiusSq && currentMap.supports(x, y);
+    }
+
     private void drawGrowthPickup() {
         if (!growthPickupActive) {
             return;
@@ -5088,14 +5320,6 @@ public class RatassGame extends ApplicationAdapter {
                             ? new Color(0.98f, 0.96f, 0.80f, 1f)
                             : new Color(0.97f, 0.90f, 0.78f, 1f),
                     0.60f);
-        } else if (suddenDeathActive) {
-            drawCenteredOverlay(
-                    "SUDDEN DEATH",
-                    buildSuddenDeathOverlayText(),
-                    playfieldWidth * 0.5f,
-                    hudHeight,
-                    new Color(1f, 0.42f, 0.30f, 1f),
-                    0.60f);
         }
 
         spriteBatch.end();
@@ -5396,6 +5620,15 @@ public class RatassGame extends ApplicationAdapter {
             shapeRenderer.circle(growthPickupPosition.x, growthPickupPosition.y, pickupRadius, 18);
         }
 
+        if (safeZoneActive) {
+            drawSafeZoneFootprint(
+                    0.10f,
+                    0.52f,
+                    SAFE_ZONE_MINIMAP_SAMPLE_STEP,
+                    2.2f / minimapScale,
+                    true);
+        }
+
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
             if (!car.active || car.body == null) {
@@ -5677,6 +5910,16 @@ public class RatassGame extends ApplicationAdapter {
         return aliveCars;
     }
 
+    private Car findLastAliveCar() {
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (car.active) {
+                return car;
+            }
+        }
+        return null;
+    }
+
     private String buildStatusText() {
         StringBuilder builder = new StringBuilder();
         builder.append("You ").append(roster.first().totalPoints).append(" pts")
@@ -5687,14 +5930,11 @@ public class RatassGame extends ApplicationAdapter {
 
         if (preRoundCountdownTimer > 0f) {
             builder.append("  |  Starts in ").append(MathUtils.ceil(preRoundCountdownTimer)).append("s");
-        } else if (roundTimedOut) {
-            builder.append("  |  TIME UP");
         } else if (roundOver) {
             builder.append("  |  ROUND OVER");
-        } else if (suddenDeathActive) {
-            builder.append("  |  SUDDEN DEATH  |  Wipe ").append(getRoundTimeoutSecondsLeft()).append("s");
         } else {
-            builder.append("  |  Sudden death ").append(getSuddenDeathSecondsLeft()).append("s");
+            builder.append("  |  Circle ").append(getSafeZoneSecondsLeft()).append("s")
+                    .append("  |  Wave ").append(Math.max(1, safeZoneWave));
         }
 
         return builder.toString();
@@ -5705,49 +5945,30 @@ public class RatassGame extends ApplicationAdapter {
             return "Starts in " + MathUtils.ceil(preRoundCountdownTimer) + "s";
         }
 
-        if (roundTimedOut) {
-            return "Arena wipe resolved";
-        }
-
         if (roundOver) {
             return "Round over";
         }
 
         if (boostedCar != null && boostedCar.active) {
             String owner = boostedCar.playerControlled ? "YOU" : boostedCar.name;
-            if (suddenDeathActive) {
-                return owner + " BIG  |  wipe " + getRoundTimeoutSecondsLeft() + "s";
-            }
             return owner + " BIG " + MathUtils.ceil(growthBoostTimer)
-                    + "s  |  SD " + getSuddenDeathSecondsLeft() + "s";
-        }
-
-        if (suddenDeathActive) {
-            return "Sudden death  |  wipe " + getRoundTimeoutSecondsLeft() + "s";
+                    + "s  |  circle " + getSafeZoneSecondsLeft() + "s";
         }
 
         if (growthPickupActive) {
-            return "Mass core live  |  SD " + getSuddenDeathSecondsLeft() + "s";
+            return "Mass core live  |  circle " + getSafeZoneSecondsLeft() + "s";
         }
 
-        return "Sudden death in " + getSuddenDeathSecondsLeft() + "s";
+        return "Circle closes in " + getSafeZoneSecondsLeft() + "s";
     }
 
     private String buildObjectiveText() {
         if (preRoundCountdownTimer > 0f) {
-            return "Prepare for the horn. First car out gets 1 point, the mass core makes one car huge, sudden death starts at 20s, and the arena wipes at 35s.";
+            return "Prepare for the horn. Drive into each blue circle before it closes. A new smaller circle appears every 5 seconds.";
         }
 
         if (roundOver) {
-            if (roundTimedOut) {
-                return buildTimeoutAwardText();
-            }
             return "Standings updated. Next arena in a moment.";
-        }
-
-        if (suddenDeathActive) {
-            return "Sudden death is live: " + buildSuddenDeathRuleText()
-                    + " Arena wipe in " + getRoundTimeoutSecondsLeft() + "s.";
         }
 
         if (boostedCar != null && boostedCar.active) {
@@ -5756,58 +5977,24 @@ public class RatassGame extends ApplicationAdapter {
                     : boostedCar.name + " has the mass core for ")
                     + MathUtils.ceil(growthBoostTimer)
                     + " more seconds. "
-                    + "Sudden death in "
-                    + getSuddenDeathSecondsLeft()
-                    + "s, wipe in "
-                    + getRoundTimeoutSecondsLeft()
+                    + "Circle closes in "
+                    + getSafeZoneSecondsLeft()
                     + "s.";
         }
 
         if (growthPickupActive) {
-            return currentMap.getName() + ": mass core live. Sudden death in "
-                    + getSuddenDeathSecondsLeft()
-                    + "s, wipe in "
-                    + getRoundTimeoutSecondsLeft()
+            return currentMap.getName() + ": mass core live. Circle closes in "
+                    + getSafeZoneSecondsLeft()
                     + "s.";
         }
 
-        return currentMap.getName() + ": stay alive. Sudden death in "
-                + getSuddenDeathSecondsLeft()
-                + "s, wipe in "
-                + getRoundTimeoutSecondsLeft()
-                + "s.";
+        return currentMap.getName() + ": reach the blue circle in "
+                + getSafeZoneSecondsLeft()
+                + "s. The next circle will be smaller.";
     }
 
-    private String buildSuddenDeathRuleText() {
-        if (boostedCar != null && boostedCar.active) {
-            return (boostedCar.playerControlled ? "The big YOU" : boostedCar.name + " in big form")
-                    + " destroys every car it hits.";
-        }
-        return "The slower car in every hit is destroyed.";
-    }
-
-    private String buildSuddenDeathOverlayText() {
-        return buildSuddenDeathRuleText() + " Arena wipe in " + getRoundTimeoutSecondsLeft() + "s.";
-    }
-
-    private String buildTimeoutAwardText() {
-        if (timeoutSurvivorCount <= 0) {
-            return "Time is up. The arena wipes everyone out.";
-        }
-        String pointLabel = timeoutSharedPoints == 1 ? " point" : " points";
-        if (timeoutSurvivorCount == 1) {
-            return "Time is up. The last survivor still banks " + timeoutSharedPoints + pointLabel + ".";
-        }
-        return "Time is up. " + timeoutSurvivorCount + " survivors each bank "
-                + timeoutSharedPoints + pointLabel + ".";
-    }
-
-    private int getSuddenDeathSecondsLeft() {
-        return MathUtils.ceil(Math.max(0f, ROUND_TIME_LIMIT - roundTimer));
-    }
-
-    private int getRoundTimeoutSecondsLeft() {
-        return MathUtils.ceil(Math.max(0f, ROUND_TIMEOUT_LIMIT - roundTimer));
+    private int getSafeZoneSecondsLeft() {
+        return MathUtils.ceil(Math.max(0f, safeZoneTimer));
     }
 
     private String buildHeadline() {
@@ -5815,12 +6002,8 @@ public class RatassGame extends ApplicationAdapter {
             return "OUT";
         }
 
-        if (roundTimedOut) {
-            return "TIME UP";
-        }
-
         if (winner == null) {
-            return "DRAW";
+            return "WIPEOUT";
         }
 
         if (winner.playerControlled) {
@@ -5835,12 +6018,8 @@ public class RatassGame extends ApplicationAdapter {
             return "You are out. Watch the finish and the leaderboard.";
         }
 
-        if (roundTimedOut) {
-            return buildTimeoutAwardText() + " Next arena in a moment.";
-        }
-
         if (winner == null) {
-            return "Standings updated. Next arena in a moment.";
+            return "No cars survived the circles. Standings updated.";
         }
 
         if (winner.playerControlled) {
@@ -6291,6 +6470,22 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         CarTemplate attacker = findTemplateByVehicleId(eliminated.getLastAttackerId());
+        if (eliminated.eliminatedBySafeZone) {
+            if (eliminated.playerControlled) {
+                announceEvent(
+                        "MISSED CIRCLE",
+                        "You were outside when it closed.",
+                        new Color(0.30f, 0.82f, 1f, 1f));
+                return;
+            }
+            if (getAliveCarCount() <= 6) {
+                announceEvent(
+                        "CIRCLE CLOSED",
+                        eliminated.name + " missed the zone.",
+                        new Color(0.42f, 0.90f, 1f, 1f));
+            }
+            return;
+        }
         if (eliminated.playerControlled) {
             announceEvent(
                     "YOU'RE OUT",
@@ -6375,21 +6570,6 @@ public class RatassGame extends ApplicationAdapter {
             float impactStrength = totalNormalImpulse + closingSpeed * Car.IMPACT_STRENGTH_SPEED_FACTOR;
             if (!roundOver && preRoundCountdownTimer <= 0f) {
                 playImpactSound(impactStrength);
-            }
-
-            if (suddenDeathActive) {
-                if (carA.hasGrowthBoost() != carB.hasGrowthBoost()) {
-                    queueCollisionElimination(carA.hasGrowthBoost() ? carB : carA);
-                } else {
-                    float speedA = Math.max(0f, velocityA.dot(normal));
-                    float speedB = Math.max(0f, -velocityB.dot(normal));
-                    if (Math.abs(speedA - speedB) <= SUDDEN_DEATH_TIE_SPEED_MARGIN) {
-                        speedA = velocityA.len();
-                        speedB = velocityB.len();
-                    }
-
-                    queueCollisionElimination(speedA >= speedB ? carB : carA);
-                }
             }
 
             boolean carADominant = speedIntoCollisionA > speedIntoCollisionB + 0.24f;
@@ -6497,7 +6677,8 @@ public class RatassGame extends ApplicationAdapter {
         private Body body;
         private boolean active = true;
         private boolean growthBoosted;
-        private boolean pendingElimination;
+        private boolean eliminatedBySafeZone;
+        private int safeZoneSurvivalSequence;
         private int lastAttackerId = -1;
         private float sizeScale = 1f;
         private float impactSlideTimer;
@@ -6590,6 +6771,10 @@ public class RatassGame extends ApplicationAdapter {
                 Vector2 growthPickupPosition,
                 boolean pointPickupActive,
                 Vector2 pointPickupPosition,
+                boolean safeZoneActive,
+                Vector2 safeZonePosition,
+                float safeZoneRadius,
+                float safeZoneTimeRemaining,
                 RlPolicy rlPolicy) {
             if (!active || body == null) {
                 return;
@@ -6619,7 +6804,11 @@ public class RatassGame extends ApplicationAdapter {
                                     growthPickupActive,
                                     growthPickupPosition,
                                     pointPickupActive,
-                                    pointPickupPosition);
+                                    pointPickupPosition,
+                                    safeZoneActive,
+                                    safeZonePosition,
+                                    safeZoneRadius,
+                                    safeZoneTimeRemaining);
                     throttle = decision.throttle;
                     turn = decision.turn;
                 } else if (aiController != null) {
@@ -6632,7 +6821,11 @@ public class RatassGame extends ApplicationAdapter {
                                     growthPickupActive,
                                     growthPickupPosition,
                                     pointPickupActive,
-                                    pointPickupPosition);
+                                    pointPickupPosition,
+                                    safeZoneActive,
+                                    safeZonePosition,
+                                    safeZoneRadius,
+                                    safeZoneTimeRemaining);
                     throttle = decision.throttle;
                     turn = decision.turn;
                 }
@@ -6656,7 +6849,11 @@ public class RatassGame extends ApplicationAdapter {
                 boolean growthPickupActive,
                 Vector2 growthPickupPosition,
                 boolean pointPickupActive,
-                Vector2 pointPickupPosition) {
+                Vector2 pointPickupPosition,
+                boolean safeZoneActive,
+                Vector2 safeZonePosition,
+                float safeZoneRadius,
+                float safeZoneTimeRemaining) {
             rlDecisionTimer -= delta;
             if (rlDecisionTimer <= 0f) {
                 ensureRlScratch(policy);
@@ -6675,6 +6872,10 @@ public class RatassGame extends ApplicationAdapter {
                         growthPickupPosition,
                         pointPickupActive,
                         pointPickupPosition,
+                        safeZoneActive,
+                        safeZonePosition,
+                        safeZoneRadius,
+                        safeZoneTimeRemaining,
                         positionNormalizer,
                         rlObservationFocus,
                         rlObservationForward,
@@ -6693,7 +6894,11 @@ public class RatassGame extends ApplicationAdapter {
                         growthPickupActive,
                         growthPickupPosition,
                         pointPickupActive,
-                        pointPickupPosition);
+                        pointPickupPosition,
+                        safeZoneActive,
+                        safeZonePosition,
+                        safeZoneRadius,
+                        safeZoneTimeRemaining);
                 rlDecisionTimer =
                         RL_LIVE_DECISION_INTERVAL
                                 + (template.vehicleId % 5) * RL_LIVE_DECISION_INTERVAL * 0.11f;
@@ -6710,7 +6915,11 @@ public class RatassGame extends ApplicationAdapter {
                 boolean growthPickupActive,
                 Vector2 growthPickupPosition,
                 boolean pointPickupActive,
-                Vector2 pointPickupPosition) {
+                Vector2 pointPickupPosition,
+                boolean safeZoneActive,
+                Vector2 safeZonePosition,
+                float safeZoneRadius,
+                float safeZoneTimeRemaining) {
             if (aiController == null) {
                 setExternalControl(0f, 0f);
                 return;
@@ -6727,6 +6936,10 @@ public class RatassGame extends ApplicationAdapter {
                             growthPickupPosition,
                             pointPickupActive,
                             pointPickupPosition,
+                            safeZoneActive,
+                            safeZonePosition,
+                            safeZoneRadius,
+                            safeZoneTimeRemaining,
                             forcedRecovery
                                     ? CarAiController.TacticalIntent.recoveryIntent(styleSignal)
                                     : CarAiController.tacticalIntentFromPolicy(
@@ -7255,7 +7468,6 @@ public class RatassGame extends ApplicationAdapter {
 
             active = false;
             growthBoosted = false;
-            pendingElimination = false;
             ramChargeTimer = 0f;
             sizeScale = 1f;
             clearImpactResponse();
@@ -7407,6 +7619,10 @@ public class RatassGame extends ApplicationAdapter {
             Vector2 growthPickupPosition,
             boolean pointPickupActive,
             Vector2 pointPickupPosition,
+            boolean safeZoneActive,
+            Vector2 safeZonePosition,
+            float safeZoneRadius,
+            float safeZoneTimeRemaining,
             float positionNormalizer,
             Vector2 observationFocus,
             Vector2 observationForward,
@@ -7487,11 +7703,13 @@ public class RatassGame extends ApplicationAdapter {
                 growthPickupPosition,
                 position,
                 positionNormalizer);
-        fillRlPickupObservation(
+        fillRlSafeZoneObservation(
                 observations,
                 offset + 27,
-                pointPickupActive,
-                pointPickupPosition,
+                safeZoneActive,
+                safeZonePosition,
+                safeZoneRadius,
+                safeZoneTimeRemaining,
                 position,
                 positionNormalizer);
     }
@@ -7513,6 +7731,30 @@ public class RatassGame extends ApplicationAdapter {
         observations[offset + 1] =
                 normalizedRlValue(pickupPosition.y - carPosition.y, positionNormalizer);
         observations[offset + 2] = 1f;
+    }
+
+    private static void fillRlSafeZoneObservation(
+            float[] observations,
+            int offset,
+            boolean active,
+            Vector2 safeZonePosition,
+            float safeZoneRadius,
+            float safeZoneTimeRemaining,
+            Vector2 carPosition,
+            float positionNormalizer) {
+        if (!active || safeZonePosition == null || safeZoneRadius <= 0f) {
+            observations[offset + 2] = -1f;
+            return;
+        }
+
+        observations[offset] =
+                normalizedRlValue(safeZonePosition.x - carPosition.x, positionNormalizer);
+        observations[offset + 1] =
+                normalizedRlValue(safeZonePosition.y - carPosition.y, positionNormalizer);
+        float signedMargin = safeZoneRadius - carPosition.dst(safeZonePosition);
+        float marginSignal = MathUtils.clamp(signedMargin / Math.max(0.001f, safeZoneRadius), -1f, 1f);
+        float urgency = 1f - MathUtils.clamp(safeZoneTimeRemaining / SAFE_ZONE_DURATION, 0f, 1f);
+        observations[offset + 2] = MathUtils.clamp(marginSignal - urgency * 0.35f, -1f, 1f);
     }
 
     private static Car findNearestRlOpponent(Car car, Array<Car> cars) {
@@ -7738,12 +7980,10 @@ public class RatassGame extends ApplicationAdapter {
             }
             actionStep++;
 
-            if (!game.roundOver && actionStep >= getMaxActionSteps()) {
-                game.triggerRoundTimeout();
-            }
+            boolean maxStepsReached = !game.roundOver && actionStep >= getMaxActionSteps();
 
             captureSnapshots(afterSnapshots);
-            episodeDone = game.roundOver || !hasActiveControlledAgent();
+            episodeDone = maxStepsReached || game.roundOver || !hasActiveControlledAgent();
             computeRewards();
             buildObservations();
             return createResult();
@@ -7840,7 +8080,11 @@ public class RatassGame extends ApplicationAdapter {
                         game.growthPickupActive,
                         game.growthPickupPosition,
                         game.pointPickupActive,
-                        game.pointPickupPosition);
+                        game.pointPickupPosition,
+                        game.safeZoneActive,
+                        game.safeZonePosition,
+                        game.safeZoneRadius,
+                        game.safeZoneTimer);
             }
         }
 
@@ -7862,6 +8106,8 @@ public class RatassGame extends ApplicationAdapter {
             snapshot.score = car.template.totalPoints;
             snapshot.pickupPoints = car.template.roundPickupPoints;
             snapshot.finishPosition = car.template.roundFinishPosition;
+            snapshot.eliminatedBySafeZone = car.eliminatedBySafeZone;
+            snapshot.safeZoneSurvivalSequence = car.safeZoneSurvivalSequence;
             if (!snapshot.active || game.currentMap == null) {
                 return;
             }
@@ -7877,6 +8123,15 @@ public class RatassGame extends ApplicationAdapter {
             if (game.growthPickupActive) {
                 snapshot.growthPickupActive = true;
                 snapshot.growthPickupDistance = position.dst(game.growthPickupPosition);
+            }
+            if (game.safeZoneActive) {
+                snapshot.safeZoneActive = true;
+                snapshot.safeZoneSequence = game.safeZoneSequence;
+                snapshot.safeZoneDistance = position.dst(game.safeZonePosition);
+                snapshot.safeZoneSignedMargin = game.safeZoneRadius - snapshot.safeZoneDistance;
+                snapshot.safeZoneInside = snapshot.safeZoneSignedMargin >= 0f;
+                snapshot.safeZoneTimeRatio =
+                        MathUtils.clamp(game.safeZoneTimer / SAFE_ZONE_DURATION, 0f, 1f);
             }
             car.body.getWorldVector(observationForward.set(0f, 1f));
             snapshot.forwardSpeed = observationForward.dot(velocity);
@@ -7931,8 +8186,12 @@ public class RatassGame extends ApplicationAdapter {
                 if (before.active) {
                     if (!after.active) {
                         reward -= getEliminationPenalty(before);
+                        if (after.eliminatedBySafeZone) {
+                            reward -= RL_SAFE_ZONE_MISS_PENALTY;
+                        }
                     } else {
                         reward += RL_ALIVE_STEP_REWARD;
+                        reward += getSafeZoneReward(before, after);
                         reward +=
                                 MathUtils.clamp(after.edgeDistance - before.edgeDistance, -1f, 1f)
                                         * RL_EDGE_RECOVERY_REWARD;
@@ -7992,14 +8251,40 @@ public class RatassGame extends ApplicationAdapter {
                     int winnerAgentIndex = getWinnerAgentIndex();
                     if (winnerAgentIndex == agentIndex) {
                         reward += RL_WIN_REWARD;
-                    } else if (game.roundOver && after.active) {
-                        reward -= RL_TIMEOUT_SURVIVOR_PENALTY;
                     }
                 }
 
                 rewards[agentIndex] = reward;
                 dones[agentIndex] = episodeDone || !after.active;
             }
+        }
+
+        private float getSafeZoneReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+            float reward = 0f;
+            if (after.safeZoneSurvivalSequence > before.safeZoneSurvivalSequence) {
+                reward += RL_SAFE_ZONE_DEADLINE_REWARD;
+            }
+            if (!before.safeZoneActive || !after.safeZoneActive) {
+                return reward;
+            }
+
+            float approach =
+                    MathUtils.clamp(before.safeZoneDistance - after.safeZoneDistance, -1.2f, 1.2f);
+            float urgency = 1f - MathUtils.clamp(after.safeZoneTimeRatio, 0f, 1f);
+            float urgencyScale = 0.55f + urgency * 0.75f;
+            reward += approach * urgencyScale * RL_SAFE_ZONE_APPROACH_REWARD;
+            if (after.safeZoneInside) {
+                reward += (0.35f + urgency * 0.65f) * RL_SAFE_ZONE_INSIDE_REWARD;
+            } else {
+                float outsideScale =
+                        MathUtils.clamp(
+                                -after.safeZoneSignedMargin
+                                        / Math.max(SAFE_ZONE_MIN_RADIUS, after.safeZoneDistance),
+                                0f,
+                                1f);
+                reward -= outsideScale * urgency * urgency * RL_SAFE_ZONE_URGENCY_PENALTY;
+            }
+            return reward;
         }
 
         private float getEliminationPenalty(RlAgentSnapshot before) {
@@ -8306,6 +8591,10 @@ public class RatassGame extends ApplicationAdapter {
                         game.growthPickupPosition,
                         game.pointPickupActive,
                         game.pointPickupPosition,
+                        game.safeZoneActive,
+                        game.safeZonePosition,
+                        game.safeZoneRadius,
+                        game.safeZoneTimer,
                         positionNormalizer,
                         observationFocus,
                         observationForward,
@@ -8324,10 +8613,10 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private int getWinnerAgentIndex() {
-            if (game.winner == null) {
+            int winnerVehicleId = getWinningVehicleId();
+            if (winnerVehicleId < 0) {
                 return -1;
             }
-            int winnerVehicleId = game.winner.template.vehicleId;
             for (int i = 0; i < controlledVehicleIds.size; i++) {
                 if (controlledVehicleIds.get(i).intValue() == winnerVehicleId) {
                     return i;
@@ -8337,10 +8626,27 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private String getWinnerLabel() {
-            if (game.winner == null) {
+            int winnerVehicleId = getWinningVehicleId();
+            if (winnerVehicleId < 0 || winnerVehicleId >= game.roster.size) {
                 return "";
             }
-            return game.winner.template.statsLabel;
+            return game.roster.get(winnerVehicleId).statsLabel;
+        }
+
+        private int getWinningVehicleId() {
+            if (game.winner != null) {
+                return game.winner.template.vehicleId;
+            }
+            int bestVehicleId = -1;
+            int bestFinishPosition = 0;
+            for (int i = 0; i < game.roster.size; i++) {
+                CarTemplate template = game.roster.get(i);
+                if (template.roundFinishPosition > bestFinishPosition) {
+                    bestFinishPosition = template.roundFinishPosition;
+                    bestVehicleId = template.vehicleId;
+                }
+            }
+            return bestVehicleId;
         }
 
         private Car getControlledCar(int agentIndex) {
@@ -8427,13 +8733,21 @@ public class RatassGame extends ApplicationAdapter {
         private int aliveOpponents;
         private int attackCreditCount;
         private int creditedEliminations;
+        private int safeZoneSequence;
+        private int safeZoneSurvivalSequence;
         private boolean growthBoosted;
         private boolean growthPickupActive;
+        private boolean safeZoneActive;
+        private boolean safeZoneInside;
+        private boolean eliminatedBySafeZone;
         private float edgeDistance;
         private float safetyDistance;
         private float nearestOpponentHazardDistance;
         private float nearestOpponentDistance;
         private float growthPickupDistance;
+        private float safeZoneDistance;
+        private float safeZoneSignedMargin;
+        private float safeZoneTimeRatio;
         private float speed;
         private float effectiveThrottle;
         private float forwardSpeed;
@@ -8450,13 +8764,21 @@ public class RatassGame extends ApplicationAdapter {
             aliveOpponents = 0;
             attackCreditCount = 0;
             creditedEliminations = 0;
+            safeZoneSequence = 0;
+            safeZoneSurvivalSequence = 0;
             growthBoosted = false;
             growthPickupActive = false;
+            safeZoneActive = false;
+            safeZoneInside = false;
+            eliminatedBySafeZone = false;
             edgeDistance = 0f;
             safetyDistance = 0f;
             nearestOpponentHazardDistance = 0f;
             nearestOpponentDistance = 0f;
             growthPickupDistance = 0f;
+            safeZoneDistance = 0f;
+            safeZoneSignedMargin = 0f;
+            safeZoneTimeRatio = 0f;
             speed = 0f;
             effectiveThrottle = 0f;
             forwardSpeed = 0f;

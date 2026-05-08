@@ -111,6 +111,8 @@ gradle-app.setting
 ## RL training
 /rl-checkpoints/
 /rl-checkpoints-tactical/
+/rl-checkpoints-circle/
+/rl-checkpoints-circle-smoke/
 /.venv-rl/
 /logs/
 __pycache__/
