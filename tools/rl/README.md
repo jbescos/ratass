@@ -21,6 +21,13 @@ python3 -m venv .venv-rl
 pip install -r tools/rl/requirements.txt
 ```
 
+On Windows:
+
+```bat
+py -3 -m venv .venv-rl
+.venv-rl\Scripts\python.exe -m pip install -r tools\rl\requirements.txt
+```
+
 The machine also needs a JDK and Maven because training starts the packaged
 desktop jar through JPype. Java 17+ and Maven 3.9+ are a good baseline. On an
 NVIDIA machine, install the NVIDIA driver first; GPU use is optional and only
@@ -88,6 +95,12 @@ For unattended training over days, use the forever helper:
 bash tools/rl/train_forever.sh
 ```
 
+On Windows, use the Command Prompt launcher:
+
+```bat
+tools\rl\train_forever.cmd
+```
+
 It resumes `rl-checkpoints-circle` when it exists, trains in repeated chunks,
 checkpoints during each chunk, and exports `assets/ai/rl_enemy_policy.json`.
 By default it rebuilds the desktop jar before training and after every chunk, so
@@ -103,6 +116,16 @@ RL_CHECKPOINT_EVERY=10 \
 RL_WORKERS=4 \
 RL_NUM_GPUS=1 \
 bash tools/rl/train_forever.sh
+```
+
+On Windows Command Prompt:
+
+```bat
+set RL_FOREVER_ITERATIONS=200
+set RL_CHECKPOINT_EVERY=10
+set RL_WORKERS=4
+set RL_NUM_GPUS=1
+tools\rl\train_forever.cmd
 ```
 
 `RL_NUM_GPUS=1` only works if Ray/PyTorch can see a CUDA-enabled Torch install.
