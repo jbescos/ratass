@@ -90,8 +90,9 @@ bash tools/rl/train_forever.sh
 
 It resumes `rl-checkpoints-circle` when it exists, trains in repeated chunks,
 checkpoints during each chunk, and exports `assets/ai/rl_enemy_policy.json`.
-It only builds the desktop jar before training if the jar is missing. Stop it
-with `Ctrl-C`; the interrupt handler exports the latest saved checkpoint, so at
+By default it rebuilds the desktop jar before training and after every chunk, so
+the packaged game contains the latest exported policy. Stop it with `Ctrl-C`;
+the interrupt handler exports and packages the latest saved checkpoint, so at
 most the work since the previous checkpoint is lost.
 
 Useful knobs for the forever helper:
@@ -106,9 +107,8 @@ bash tools/rl/train_forever.sh
 
 `RL_NUM_GPUS=1` only works if Ray/PyTorch can see a CUDA-enabled Torch install.
 If CUDA is not set up, leave `RL_NUM_GPUS=0`. `RL_MAP_IDS=map001,map006` can be
-used to focus training on specific maps. `RL_PACKAGE_EVERY_CYCLES=1` rebuilds
-the packaged jar after every training chunk if you want each exported policy
-included in `desktop/target/ratass-desktop-1.0.jar`.
+used to focus training on specific maps. `RL_PACKAGE_EVERY_CYCLES=0` disables
+jar rebuilding during long runs if you only need the JSON policy exported.
 
 ## Export And Use In Game
 
