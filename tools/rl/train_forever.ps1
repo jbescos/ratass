@@ -44,6 +44,26 @@ function Invoke-Checked {
     }
 }
 
+function Ensure-PythonEnvironment {
+    if (Test-Path $PythonBin) {
+        return
+    }
+
+    $configuredPython = [Environment]::GetEnvironmentVariable("PYTHON_BIN")
+    if (-not [string]::IsNullOrWhiteSpace($configuredPython)) {
+        throw "PYTHON_BIN points to a missing executable: $PythonBin"
+    }
+
+    $autoSetup = Get-EnvValue "RL_AUTO_SETUP_VENV" "1"
+    if ($autoSetup -eq "0") {
+        throw "Executable not found: $PythonBin. Create the virtual environment with: py -3 -m venv .venv-rl; .venv-rl\Scripts\python.exe -m pip install -r tools\rl\requirements.txt"
+    }
+
+    Write-Host "creating_virtualenv=.venv-rl"
+    Invoke-Checked "py" @("-3", "-m", "venv", ".venv-rl")
+    Invoke-Checked $PythonBin @("-m", "pip", "install", "-r", "tools\rl\requirements.txt")
+}
+
 $PythonBin = Get-EnvValue "PYTHON_BIN" ".venv-rl\Scripts\python.exe"
 $Workers = Get-EnvValue "RL_WORKERS" "0"
 $ControlledAgents = Get-EnvValue "RL_CONTROLLED_AGENTS" "6"
@@ -111,6 +131,8 @@ $TrainingInProgress = $false
 
 Push-Location $RepoRoot
 try {
+    Ensure-PythonEnvironment
+
     if ($BuildBeforeTraining -eq "1" -or -not (Test-Path $DesktopJar)) {
         Package-Game
     }

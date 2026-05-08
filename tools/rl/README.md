@@ -28,6 +28,9 @@ py -3 -m venv .venv-rl
 .venv-rl\Scripts\python.exe -m pip install -r tools\rl\requirements.txt
 ```
 
+The Windows forever launcher does this automatically when the default `.venv-rl`
+folder is missing. Set `RL_AUTO_SETUP_VENV=0` to disable that behavior.
+
 The machine also needs a JDK and Maven because training starts the packaged
 desktop jar through JPype. Java 17+ and Maven 3.9+ are a good baseline. On an
 NVIDIA machine, install the NVIDIA driver first; GPU use is optional and only
