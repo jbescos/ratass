@@ -32,9 +32,19 @@ The Windows forever launcher does this automatically when the default `.venv-rl`
 folder is missing. Set `RL_AUTO_SETUP_VENV=0` to disable that behavior.
 
 The machine also needs a JDK and Maven because training starts the packaged
-desktop jar through JPype. Java 17+ and Maven 3.9+ are a good baseline. On an
-NVIDIA machine, install the NVIDIA driver first; GPU use is optional and only
-helps the PPO/PyTorch part, while the Java physics rollout still runs on CPU.
+desktop jar through JPype. Use JDK 17 or 21 for training. On Windows, the helper
+blocks newer JDKs by default because Java 25 has crashed inside Ray's native
+`_raylet.pyd` while JPype had the JVM embedded in the Python process. Set
+`RL_JAVA_HOME` to the JDK you want the helper to use:
+
+```bat
+set RL_JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17.0.11.9-hotspot
+tools\rl\train_forever.cmd
+```
+
+Maven 3.9+ is a good baseline. On an NVIDIA machine, install the NVIDIA driver
+first; GPU use is optional and only helps the PPO/PyTorch part, while the Java
+physics rollout still runs on CPU.
 
 ## Train
 
@@ -135,6 +145,10 @@ tools\rl\train_forever.cmd
 If CUDA is not set up, leave `RL_NUM_GPUS=0`. `RL_MAP_IDS=map001,map006` can be
 used to focus training on specific maps. `RL_PACKAGE_EVERY_CYCLES=0` disables
 jar rebuilding during long runs if you only need the JSON policy exported.
+If Ray still fails natively on Windows after switching to JDK 17 or 21, try
+`set RL_RAY_NUM_CPUS=1` to reduce Ray's native worker pressure while diagnosing.
+Set `RL_ALLOW_UNTESTED_JAVA=1` only when you intentionally want to bypass the
+Java version guard.
 
 ## Export And Use In Game
 

@@ -44,6 +44,57 @@ function Invoke-Checked {
     }
 }
 
+function Use-ConfiguredJava {
+    $javaHome = Get-EnvValue "RL_JAVA_HOME" ""
+    if ([string]::IsNullOrWhiteSpace($javaHome)) {
+        return
+    }
+
+    $resolvedJavaHome = [string](Resolve-Path $javaHome)
+    $javaExe = Join-Path $resolvedJavaHome "bin\java.exe"
+    if (-not (Test-Path $javaExe)) {
+        throw "RL_JAVA_HOME does not contain bin\java.exe: $resolvedJavaHome"
+    }
+
+    $env:JAVA_HOME = [string] $resolvedJavaHome
+    $env:Path = (Join-Path $env:JAVA_HOME "bin") + [System.IO.Path]::PathSeparator + $env:Path
+    Write-Host "java_home=$env:JAVA_HOME"
+}
+
+function Get-JavaMajorVersion {
+    param([string[]] $VersionOutput)
+
+    $text = $VersionOutput -join " "
+    if ($text -match 'version "([0-9]+)(?:\.([0-9]+))?') {
+        $major = [int] $Matches[1]
+        if ($major -eq 1 -and $Matches[2]) {
+            return [int] $Matches[2]
+        }
+        return $major
+    }
+
+    throw "Could not parse Java version from: $text"
+}
+
+function Assert-SupportedJava {
+    if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
+        throw "java.exe was not found. Install JDK 17 or 21, or set RL_JAVA_HOME to an installed JDK."
+    }
+
+    $versionOutput = @(java -version 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "java -version failed. Install JDK 17 or 21 and make sure java.exe is on PATH."
+    }
+
+    $versionText = (($versionOutput -join " ") -replace '\s+', ' ').Trim()
+    $major = Get-JavaMajorVersion $versionOutput
+    Write-Host "java_version=$versionText"
+
+    if ($major -gt 21 -and (Get-EnvValue "RL_ALLOW_UNTESTED_JAVA" "0") -ne "1") {
+        throw "Java $major was detected. Windows RL training embeds Java in the Python/Ray process through JPype, and Java 25 has crashed in _raylet.pyd. Install JDK 17 or 21 and set RL_JAVA_HOME to it, or set RL_ALLOW_UNTESTED_JAVA=1 to override."
+    }
+}
+
 function Ensure-PythonEnvironment {
     if (Test-Path $PythonBin) {
         return
@@ -78,6 +129,8 @@ $IterationsPerCycle = [int](Get-EnvValue "RL_FOREVER_ITERATIONS" "100")
 $PackageEveryCycles = [int](Get-EnvValue "RL_PACKAGE_EVERY_CYCLES" "1")
 $NumGpus = Get-EnvValue "RL_NUM_GPUS" "0"
 $MapIds = Get-EnvValue "RL_MAP_IDS" ""
+$RayNumCpus = Get-EnvValue "RL_RAY_NUM_CPUS" "0"
+$RayTempDir = Get-EnvValue "RL_RAY_TEMP_DIR" ""
 $BuildBeforeTraining = Get-EnvValue "RL_BUILD_BEFORE_TRAINING" "1"
 $DesktopJar = Get-EnvValue "RL_JAR" "desktop\target\ratass-desktop-1.0.jar"
 $PythonBin = Resolve-RepoPath $PythonBin
@@ -99,6 +152,12 @@ $CommonArgs = @(
 
 if (-not [string]::IsNullOrWhiteSpace($MapIds)) {
     $CommonArgs += @("--map-ids", $MapIds)
+}
+if ($RayNumCpus -ne "0") {
+    $CommonArgs += @("--ray-num-cpus", $RayNumCpus)
+}
+if (-not [string]::IsNullOrWhiteSpace($RayTempDir)) {
+    $CommonArgs += @("--ray-temp-dir", $RayTempDir)
 }
 
 function Export-Policy {
@@ -131,6 +190,8 @@ $TrainingInProgress = $false
 
 Push-Location $RepoRoot
 try {
+    Use-ConfiguredJava
+    Assert-SupportedJava
     Ensure-PythonEnvironment
 
     if ($BuildBeforeTraining -eq "1" -or -not (Test-Path $DesktopJar)) {

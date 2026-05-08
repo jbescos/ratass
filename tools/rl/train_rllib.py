@@ -14,8 +14,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import platform
+import re
+import subprocess
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import gymnasium as gym
 import jpype
@@ -31,6 +34,62 @@ OBSERVATION_SIZE = 30
 ACTION_SIZE = 2
 
 
+def _parse_java_major(version_output: str) -> Optional[int]:
+    match = re.search(r'version "(\d+)(?:\.(\d+))?', version_output)
+    if match is None:
+        return None
+
+    major = int(match.group(1))
+    minor = match.group(2)
+    if major == 1 and minor is not None:
+        return int(minor)
+    return major
+
+
+def _java_executable_for_jvm(jvm_path: str) -> Optional[Path]:
+    executable_name = "java.exe" if os.name == "nt" else "java"
+    path = Path(jvm_path)
+    candidates = [
+        path.parent.parent / executable_name,
+        path.parent.parent.parent / "bin" / executable_name,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _java_major_for_jvm(jvm_path: str) -> Optional[int]:
+    executable = _java_executable_for_jvm(jvm_path)
+    command = [str(executable)] if executable is not None else ["java"]
+    try:
+        completed = subprocess.run(
+            command + ["-version"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+
+    return _parse_java_major(completed.stderr + completed.stdout)
+
+
+def _validate_windows_jvm(jvm_path: str) -> None:
+    if platform.system() != "Windows":
+        return
+    if os.environ.get("RL_ALLOW_UNTESTED_JAVA") == "1":
+        return
+
+    major = _java_major_for_jvm(jvm_path)
+    if major is not None and major > 21:
+        raise RuntimeError(
+            "Windows RL training embeds Java in the Python/Ray process through "
+            f"JPype, and Java {major} is not supported here. Use JDK 17 or 21 "
+            "for training, or set RL_ALLOW_UNTESTED_JAVA=1 to override."
+        )
+
+
 def _start_jvm(jar_path: Path) -> None:
     if jpype.isJVMStarted():
         return
@@ -38,7 +97,10 @@ def _start_jvm(jar_path: Path) -> None:
         raise FileNotFoundError(
             f"{jar_path} does not exist. Run `mvn -pl desktop -am package` first."
         )
-    jpype.startJVM(classpath=[str(jar_path)])
+    jvm_path = jpype.getDefaultJVMPath()
+    _validate_windows_jvm(jvm_path)
+    print(f"jvm_path={jvm_path}", flush=True)
+    jpype.startJVM(jvm_path, "-Xrs", classpath=[str(jar_path)])
     _configure_libgdx_files()
 
 
@@ -243,6 +305,31 @@ def configure_ray_output(checkpoint_dir: Path) -> None:
     ray_trainable.DEFAULT_STORAGE_PATH = storage_path
 
 
+def configure_ray_runtime(args: argparse.Namespace) -> None:
+    init_kwargs = {
+        "include_dashboard": False,
+        "ignore_reinit_error": True,
+    }
+    should_init = False
+
+    if args.ray_num_cpus > 0:
+        init_kwargs["num_cpus"] = args.ray_num_cpus
+        should_init = True
+    if args.ray_temp_dir:
+        ray_temp_dir = Path(args.ray_temp_dir).resolve()
+        ray_temp_dir.mkdir(parents=True, exist_ok=True)
+        init_kwargs["_temp_dir"] = os.fspath(ray_temp_dir)
+        should_init = True
+
+    if not should_init:
+        return
+
+    import ray
+
+    if not ray.is_initialized():
+        ray.init(**init_kwargs)
+
+
 def read_metric(result: Dict, *paths: Tuple[str, ...], default: float = float("nan")) -> float:
     for path in paths:
         value = result
@@ -287,6 +374,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-dir", default=os.fspath(DEFAULT_CHECKPOINT))
     parser.add_argument("--checkpoint-every", type=int, default=0)
     parser.add_argument(
+        "--ray-num-cpus",
+        type=int,
+        default=0,
+        help="explicit CPU count for Ray; 0 lets Ray decide",
+    )
+    parser.add_argument(
+        "--ray-temp-dir",
+        default="",
+        help="optional Ray temp directory, useful for keeping logs/checkpoints local",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="restore PPO state from --checkpoint-dir before continuing training",
@@ -299,6 +397,7 @@ def main() -> None:
     checkpoint_dir = Path(args.checkpoint_dir).resolve()
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     configure_ray_output(checkpoint_dir)
+    configure_ray_runtime(args)
     algorithm = build_algorithm(args)
     if args.resume:
         checkpoint_file = checkpoint_dir / "rllib_checkpoint.json"
