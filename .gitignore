@@ -113,6 +113,7 @@ gradle-app.setting
 /rl-checkpoints-tactical/
 /rl-checkpoints-circle/
 /rl-checkpoints-circle-smoke/
+/rl-checkpoints-direct-circle/
 /.venv-rl/
 /logs/
 __pycache__/

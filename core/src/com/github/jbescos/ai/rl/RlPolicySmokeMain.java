@@ -36,7 +36,7 @@ public final class RlPolicySmokeMain {
 
         System.out.printf(
                 Locale.US,
-                "policy=%s observationSize=%d actionSize=%d mode=%.3f style=%.3f%n",
+                "policy=%s observationSize=%d actionSize=%d throttle=%.3f turn=%.3f%n",
                 resource,
                 policy.getObservationSize(),
                 policy.getActionSize(),

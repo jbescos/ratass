@@ -29,7 +29,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-circle"
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-direct-circle"
 OBSERVATION_SIZE = 30
 ACTION_SIZE = 2
 

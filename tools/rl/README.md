@@ -52,11 +52,13 @@ physics rollout still runs on CPU.
 python tools/rl/train_rllib.py --iterations 25
 ```
 
-The current policy is tactical, not direct throttle/turn. Its exported format is
-`ratass-rl-policy-v2`, which is tied to the safe-circle objective. The default
-checkpoint directory is `rl-checkpoints-circle`; do not resume older checkpoints from
-`rl-checkpoints` or `rl-checkpoints-tactical`, because those were trained with
-previous objective/reward meanings.
+The current policy controls the car directly. Its two outputs are throttle and
+turn, each in `[-1, 1]`; the scripted tactical mode layer is not used for RL
+cars. Its exported format is `ratass-rl-policy-v3`, tied to the direct
+safe-circle objective. The default checkpoint directory is
+`rl-checkpoints-direct-circle`; do not resume older checkpoints from
+`rl-checkpoints`, `rl-checkpoints-tactical`, or `rl-checkpoints-circle`, because
+those were trained with previous action and reward meanings.
 
 Continue from the latest saved checkpoint:
 
@@ -92,8 +94,8 @@ The phase lengths can be tuned with environment variables:
 `RL_WARMUP_ITERATIONS`, `RL_MAP001_ITERATIONS`, `RL_HARD_ITERATIONS`, and
 `RL_MIXED_ITERATIONS`.
 
-The helper starts a fresh warmup phase, then resumes that same circle checkpoint
-for the later curriculum phases. It defaults to single-process Ray because that
+The helper starts a fresh warmup phase, then resumes that same direct-control
+checkpoint for the later curriculum phases. It defaults to single-process Ray because that
 has produced faster iteration feedback in this project. It also defaults to six
 controlled learners so the shared policy practices
 fighting around several RL-driven cars instead of learning mostly one-car
@@ -114,7 +116,7 @@ On Windows, use the Command Prompt launcher:
 tools\rl\train_forever.cmd
 ```
 
-It resumes `rl-checkpoints-circle` when it exists, trains in repeated chunks,
+It resumes `rl-checkpoints-direct-circle` when it exists, trains in repeated chunks,
 checkpoints during each chunk, and exports `assets/ai/rl_enemy_policy.json`.
 By default it rebuilds the desktop jar before training and after every chunk, so
 the packaged game contains the latest exported policy. Stop it with `Ctrl-C`;
@@ -160,9 +162,8 @@ python tools/rl/export_policy.py
 ```
 
 That writes `assets/ai/rl_enemy_policy.json`. When this file is present in the
-packaged assets, regular gameplay enemies use it for tactical intent decisions.
-The scripted car controller still handles throttle, steering, recovery, and
-collision escape.
+packaged assets, regular gameplay enemies use it for direct throttle and turn
+decisions.
 The Java training environment still keeps heuristic opponents by default, so
 future training runs do not accidentally train only against the last exported
 policy.
@@ -170,20 +171,19 @@ policy.
 ## Current Environment Contract
 
 - Observation size: `30` floats per learner.
-- Action size: `2` floats per learner, `[mode, style]`, each in `[-1, 1]`.
-  The game maps `mode` to recover/flank/attack/hunt intent and uses `style` for
-  flank side and aggression bias.
+- Action size: `2` floats per learner, `[throttle, turn]`, each in `[-1, 1]`.
 - Training opponents still use the existing Java AI.
-- Rewards combine safe-circle approach/survival, edge recovery, opponent pressure,
-  impact credit, eliminations, and final placement.
+- Rewards combine safe-circle approach/survival, staying near the circle center,
+  slowing down inside the circle, edge recovery, opponent pressure, impact
+  credit, eliminations, and final placement.
 
 The policy used in game is deterministic: it uses the first two exported actor
-outputs as tactical intent values, then clamps them into `[-1, 1]`.
+outputs as direct control values, then clamps them into `[-1, 1]`.
 
 ## Evaluate
 
 Run the exported policy in the Java headless environment and report win rate plus
-resulting scripted throttle oscillation metrics:
+direct throttle oscillation metrics:
 
 ```bash
 python tools/rl/evaluate_policy.py --episodes 20 --field-size 10
