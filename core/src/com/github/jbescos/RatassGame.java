@@ -8132,6 +8132,11 @@ public class RatassGame extends ApplicationAdapter {
                 snapshot.safeZoneActive = true;
                 snapshot.safeZoneSequence = game.safeZoneSequence;
                 snapshot.safeZoneDistance = position.dst(game.safeZonePosition);
+                snapshot.safeZoneRouteDistance =
+                        game.currentMap.estimateDriveDistance(
+                                position,
+                                game.safeZonePosition,
+                                RL_ROUTE_MARGIN);
                 snapshot.safeZoneRadius = game.safeZoneRadius;
                 snapshot.safeZoneSignedMargin = game.safeZoneRadius - snapshot.safeZoneDistance;
                 snapshot.safeZoneInside = snapshot.safeZoneSignedMargin >= 0f;
@@ -8368,8 +8373,7 @@ public class RatassGame extends ApplicationAdapter {
                 return reward;
             }
 
-            float approach =
-                    MathUtils.clamp(before.safeZoneDistance - after.safeZoneDistance, -1.2f, 1.2f);
+            float approach = getSafeZoneApproachProgress(before, after);
             float urgency = 1f - MathUtils.clamp(after.safeZoneTimeRatio, 0f, 1f);
             float urgencyScale = 0.55f + urgency * 0.75f;
             reward += approach * urgencyScale * RL_SAFE_ZONE_APPROACH_REWARD;
@@ -8424,6 +8428,18 @@ public class RatassGame extends ApplicationAdapter {
                 reward -= outsideScale * urgency * urgency * RL_SAFE_ZONE_URGENCY_PENALTY;
             }
             return reward;
+        }
+
+        private float getSafeZoneApproachProgress(
+                RlAgentSnapshot before,
+                RlAgentSnapshot after) {
+            if (before.safeZoneRouteDistance >= 0f && after.safeZoneRouteDistance >= 0f) {
+                return MathUtils.clamp(
+                        before.safeZoneRouteDistance - after.safeZoneRouteDistance,
+                        -1.2f,
+                        1.2f);
+            }
+            return MathUtils.clamp(before.safeZoneDistance - after.safeZoneDistance, -1.2f, 1.2f);
         }
 
         private float getEliminationPenalty(RlAgentSnapshot before) {
@@ -8972,6 +8988,7 @@ public class RatassGame extends ApplicationAdapter {
         private float nearestOpponentDistance;
         private float growthPickupDistance;
         private float safeZoneDistance;
+        private float safeZoneRouteDistance;
         private float safeZoneRadius;
         private float safeZoneSignedMargin;
         private float safeZoneTimeRatio;
@@ -9004,6 +9021,7 @@ public class RatassGame extends ApplicationAdapter {
             nearestOpponentDistance = 0f;
             growthPickupDistance = 0f;
             safeZoneDistance = 0f;
+            safeZoneRouteDistance = -1f;
             safeZoneRadius = 0f;
             safeZoneSignedMargin = 0f;
             safeZoneTimeRatio = 0f;
