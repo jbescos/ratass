@@ -7,14 +7,14 @@ if [[ "${objective}" == "navigation" ]]; then
   default_controlled_agents=1
   default_field_size=1
   default_max_action_steps=1200
-  default_checkpoint_dir="rl-checkpoints-navigation"
-  export_objective="navigation-safe-circle-v1"
+  default_checkpoint_dir="rl-checkpoints-navigation-route"
+  export_objective="navigation-route-safe-circle-v1"
 else
   default_controlled_agents=6
   default_field_size=12
   default_max_action_steps=900
-  default_checkpoint_dir="rl-checkpoints-direct-circle"
-  export_objective="direct-safe-circle-v1"
+  default_checkpoint_dir="rl-checkpoints-direct-circle-route"
+  export_objective="direct-route-safe-circle-v1"
 fi
 workers="${RL_WORKERS:-0}"
 controlled_agents="${RL_CONTROLLED_AGENTS:-${default_controlled_agents}}"

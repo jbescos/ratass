@@ -15,12 +15,12 @@ if "%RL_OBJECTIVE%"=="navigation" (
     set "DEFAULT_CONTROLLED_AGENTS=1"
     set "DEFAULT_FIELD_SIZE=1"
     set "DEFAULT_MAX_ACTION_STEPS=1200"
-    set "DEFAULT_CHECKPOINT_DIR=rl-checkpoints-navigation"
+    set "DEFAULT_CHECKPOINT_DIR=rl-checkpoints-navigation-route"
 ) else (
     set "DEFAULT_CONTROLLED_AGENTS=6"
     set "DEFAULT_FIELD_SIZE=12"
     set "DEFAULT_MAX_ACTION_STEPS=900"
-    set "DEFAULT_CHECKPOINT_DIR=rl-checkpoints-direct-circle"
+    set "DEFAULT_CHECKPOINT_DIR=rl-checkpoints-direct-circle-route"
 )
 
 if "%RL_CHECKPOINT_DIR%"=="" set "RL_CHECKPOINT_DIR=%DEFAULT_CHECKPOINT_DIR%"

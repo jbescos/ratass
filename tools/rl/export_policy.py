@@ -14,9 +14,9 @@ import numpy as np
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-direct-circle"
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-direct-circle-route"
 DEFAULT_OUTPUT = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
-OBSERVATION_SIZE = 30
+OBSERVATION_SIZE = 39
 ACTION_SIZE = 2
 
 ACTOR_LAYERS = (
@@ -94,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint-dir", default=os.fspath(DEFAULT_CHECKPOINT))
     parser.add_argument("--output", default=os.fspath(DEFAULT_OUTPUT))
-    parser.add_argument("--objective", default="direct-safe-circle-v1")
+    parser.add_argument("--objective", default="direct-route-safe-circle-v1")
     return parser.parse_args()
 
 

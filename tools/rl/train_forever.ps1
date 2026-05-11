@@ -121,14 +121,14 @@ if ($Objective -eq "navigation") {
     $DefaultControlledAgents = "1"
     $DefaultFieldSize = "1"
     $DefaultMaxActionSteps = "1200"
-    $DefaultCheckpointDir = "rl-checkpoints-navigation"
-    $ExportObjective = "navigation-safe-circle-v1"
+    $DefaultCheckpointDir = "rl-checkpoints-navigation-route"
+    $ExportObjective = "navigation-route-safe-circle-v1"
 } else {
     $DefaultControlledAgents = "6"
     $DefaultFieldSize = "12"
     $DefaultMaxActionSteps = "900"
-    $DefaultCheckpointDir = "rl-checkpoints-direct-circle"
-    $ExportObjective = "direct-safe-circle-v1"
+    $DefaultCheckpointDir = "rl-checkpoints-direct-circle-route"
+    $ExportObjective = "direct-route-safe-circle-v1"
 }
 
 $Workers = Get-EnvValue "RL_WORKERS" "0"
