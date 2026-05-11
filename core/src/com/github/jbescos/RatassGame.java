@@ -173,6 +173,25 @@ public class RatassGame extends ApplicationAdapter {
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
     public static final int RL_OBSERVATION_SIZE = 30;
     public static final int RL_ACTION_SIZE = 2;
+    public static final int RL_REWARD_BREAKDOWN_SIZE = 8;
+    private static final int RL_REWARD_SURVIVAL = 0;
+    private static final int RL_REWARD_CIRCLE = 1;
+    private static final int RL_REWARD_EDGE = 2;
+    private static final int RL_REWARD_ATTACK = 3;
+    private static final int RL_REWARD_DRIVING = 4;
+    private static final int RL_REWARD_PICKUP = 5;
+    private static final int RL_REWARD_CONTROL = 6;
+    private static final int RL_REWARD_WIN = 7;
+    private static final String[] RL_REWARD_BREAKDOWN_NAMES = {
+            "survival",
+            "circle",
+            "edge",
+            "attack",
+            "driving",
+            "pickup",
+            "control",
+            "win"
+    };
     private static final int RL_DEFAULT_CONTROLLED_AGENTS = 1;
     private static final int RL_DEFAULT_FIELD_SIZE = 12;
     private static final int RL_DEFAULT_ACTION_REPEAT = 4;
@@ -227,6 +246,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_SAFE_ATTACK_DISTANCE = 3.15f;
     private static final float RL_FAST_IMPACT_REWARD = 0.220f;
     private static final float RL_ATTACK_EDGE_PRESSURE_REWARD = 0.170f;
+    private static final float RL_UNSAFE_ATTACK_PENALTY = 0.180f;
+    private static final float RL_ATTACK_SUICIDE_PENALTY = 3.600f;
     private static final float RL_GROWTH_PICKUP_REWARD = 5.000f;
     private static final float RL_GROWTH_PICKUP_APPROACH_REWARD = 0.200f;
     private static final float RL_SAFE_ZONE_APPROACH_REWARD = 0.420f;
@@ -241,6 +262,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_SAFE_ZONE_DEADLINE_REWARD = 1.350f;
     private static final float RL_SAFE_ZONE_MISS_PENALTY = 6.800f;
     private static final float RL_SAFE_ZONE_URGENCY_PENALTY = 0.140f;
+    private static final float RL_NAVIGATION_CIRCLE_REWARD_SCALE = 1.65f;
+    private static final float RL_NAVIGATION_EDGE_PENALTY_SCALE = 1.35f;
+    private static final float RL_NAVIGATION_ALIVE_STEP_REWARD = 0.004f;
+    private static final float RL_NAVIGATION_COMPLETE_REWARD = 5.000f;
     private static final float HUD_SIDEBAR_RATIO = 0.29f;
     private static final float HUD_SIDEBAR_MIN_WIDTH = 200f;
     private static final float HUD_SIDEBAR_PREFERRED_MIN_WIDTH = 260f;
@@ -638,6 +663,9 @@ public class RatassGame extends ApplicationAdapter {
     private boolean leaderboardDirty = true;
     private boolean roundOver;
     private boolean roundStartSoundPlayed;
+    private boolean rlTrainingAllowSoloRound;
+    private boolean rlTrainingDisablePickups;
+    private boolean rlTrainingRandomSpawnLocations;
     private int countdownCueSecond;
     private int roundNumber;
     private int playerWins;
@@ -2889,7 +2917,7 @@ public class RatassGame extends ApplicationAdapter {
                 if (!roundOver) {
                     updateSafeZone(delta);
                 }
-                if (!roundOver) {
+                if (!roundOver && !rlTrainingDisablePickups) {
                     updateGrowthPickup(delta);
                 }
             }
@@ -2923,7 +2951,7 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
-        if (aliveCars > 1) {
+        if (aliveCars > 1 || (rlTrainingAllowSoloRound && aliveCars == 1)) {
             return;
         }
 
@@ -3014,7 +3042,9 @@ public class RatassGame extends ApplicationAdapter {
         warmArenaSurfaceTextures();
         invalidateLeaderboard();
         spawnSafeZone();
-        spawnGrowthPickup();
+        if (!rlTrainingDisablePickups) {
+            spawnGrowthPickup();
+        }
     }
 
     private void freezeCarsForCountdown() {
@@ -3072,7 +3102,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         int aliveCars = getAliveCarCount();
-        if (aliveCars <= 1) {
+        if (aliveCars == 0 || (!rlTrainingAllowSoloRound && aliveCars <= 1)) {
             finishRound(findLastAliveCar());
             return;
         }
@@ -3483,7 +3513,13 @@ public class RatassGame extends ApplicationAdapter {
         float minDistance = getRoundSpawnMinDistance(count);
         int maxAttempts = getRoundSpawnAttempts(count);
 
-        for (int i = 0; i < currentMap.getSpawnCount() && out.size < count; i++) {
+        if (rlTrainingRandomSpawnLocations
+                && buildRandomRoundSpawns(count, out, safeMargin, minDistance, maxAttempts)) {
+            return;
+        }
+
+        int mapSpawnCount = currentMap.getSpawnCount();
+        for (int i = 0; i < mapSpawnCount && out.size < count; i++) {
             SpawnPoint seed = currentMap.getSpawn(i);
             spawnCandidate.set(seed.x, seed.y);
             if (currentMap.distanceToHazard(spawnCandidate) < safeMargin) {
@@ -3520,6 +3556,44 @@ public class RatassGame extends ApplicationAdapter {
         if (out.size < count) {
             throw new IllegalStateException("Could not generate enough safe spawn points for the current map.");
         }
+    }
+
+    private boolean buildRandomRoundSpawns(
+            int count,
+            Array<SpawnPoint> out,
+            float safeMargin,
+            float minDistance,
+            int maxAttempts) {
+        float minX = mapBounds.x + safeMargin;
+        float maxX = mapBounds.x + mapBounds.width - safeMargin;
+        float minY = mapBounds.y + safeMargin;
+        float maxY = mapBounds.y + mapBounds.height - safeMargin;
+        int attempts = Math.max(maxAttempts, count * 256);
+
+        for (int attempt = 0; attempt < attempts && out.size < count; attempt++) {
+            spawnCandidate.set(MathUtils.random(minX, maxX), MathUtils.random(minY, maxY));
+            currentMap.clampToPlayable(spawnCandidate, safeMargin);
+
+            if (currentMap.distanceToHazard(spawnCandidate) < safeMargin) {
+                continue;
+            }
+            if (!isSpawnLocationClear(spawnCandidate, out, minDistance)) {
+                continue;
+            }
+
+            out.add(SpawnPoint.facingPoint(
+                    spawnCandidate.x,
+                    spawnCandidate.y,
+                    focusPoint.x,
+                    focusPoint.y));
+        }
+
+        if (out.size == count) {
+            return true;
+        }
+
+        out.clear();
+        return false;
     }
 
     private float getRoundSpawnSafeMargin(int count) {
@@ -7640,6 +7714,8 @@ public class RatassGame extends ApplicationAdapter {
         public int maxActionSteps = RL_DEFAULT_MAX_ACTION_STEPS;
         public long seed = 1L;
         public boolean skipCountdown = true;
+        public boolean navigationOnly;
+        public int opponentCount = -1;
 
         public RlTrainingConfig addMap(ArenaMap map) {
             if (map != null) {
@@ -7684,11 +7760,23 @@ public class RatassGame extends ApplicationAdapter {
             this.skipCountdown = skipCountdown;
             return this;
         }
+
+        public RlTrainingConfig withNavigationOnly(boolean navigationOnly) {
+            this.navigationOnly = navigationOnly;
+            return this;
+        }
+
+        public RlTrainingConfig withOpponentCount(int opponentCount) {
+            this.opponentCount = opponentCount;
+            return this;
+        }
     }
 
     public static final class RlStepResult {
         public final float[] observations;
         public final float[] rewards;
+        public final float[] rewardBreakdown;
+        public final String[] rewardBreakdownNames;
         public final float[] effectiveActions;
         public final boolean[] dones;
         public final boolean episodeDone;
@@ -7701,6 +7789,8 @@ public class RatassGame extends ApplicationAdapter {
         private RlStepResult(
                 float[] observations,
                 float[] rewards,
+                float[] rewardBreakdown,
+                String[] rewardBreakdownNames,
                 float[] effectiveActions,
                 boolean[] dones,
                 boolean episodeDone,
@@ -7711,6 +7801,8 @@ public class RatassGame extends ApplicationAdapter {
                 String currentMapName) {
             this.observations = observations;
             this.rewards = rewards;
+            this.rewardBreakdown = rewardBreakdown;
+            this.rewardBreakdownNames = rewardBreakdownNames;
             this.effectiveActions = effectiveActions;
             this.dones = dones;
             this.episodeDone = episodeDone;
@@ -7725,6 +7817,7 @@ public class RatassGame extends ApplicationAdapter {
     public static final class RlTrainingEnvironment implements AutoCloseable {
         private final RlTrainingConfig config;
         private final RatassGame game = new RatassGame();
+        private final Array<ArenaMap> trainingMaps;
         private final Array<Integer> controlledVehicleIds = new Array<Integer>();
         private final Rectangle observationBounds = new Rectangle();
         private final Vector2 observationFocus = new Vector2();
@@ -7734,6 +7827,7 @@ public class RatassGame extends ApplicationAdapter {
         private final RlAgentSnapshot[] afterSnapshots;
         private final float[] observations;
         private final float[] rewards;
+        private final float[] rewardBreakdown;
         private final float[] effectiveActions;
         private final float[] currentActionThrottle;
         private final float[] previousActionThrottle;
@@ -7749,6 +7843,10 @@ public class RatassGame extends ApplicationAdapter {
 
         public RlTrainingEnvironment(RlTrainingConfig config) {
             this.config = config == null ? new RlTrainingConfig() : config;
+            trainingMaps =
+                    this.config.maps.size == 0
+                            ? ArenaMaps.createHeadlessTrainingSet()
+                            : this.config.maps;
             controlledAgentCount =
                     MathUtils.clamp(this.config.controlledAgentCount, 1, MAX_CAR_COUNT - 1);
             beforeSnapshots = new RlAgentSnapshot[controlledAgentCount];
@@ -7759,6 +7857,7 @@ public class RatassGame extends ApplicationAdapter {
             }
             observations = new float[controlledAgentCount * RL_OBSERVATION_SIZE];
             rewards = new float[controlledAgentCount];
+            rewardBreakdown = new float[controlledAgentCount * RL_REWARD_BREAKDOWN_SIZE];
             effectiveActions = new float[controlledAgentCount * RL_ACTION_SIZE];
             currentActionThrottle = new float[controlledAgentCount];
             previousActionThrottle = new float[controlledAgentCount];
@@ -7786,11 +7885,14 @@ public class RatassGame extends ApplicationAdapter {
             MathUtils.random.setSeed(episodeSeed);
             Box2D.init();
 
-            Array<ArenaMap> maps =
-                    config.maps.size == 0 ? ArenaMaps.createHeadlessTrainingSet() : config.maps;
             createRoster();
+            game.rlTrainingAllowSoloRound = config.navigationOnly || config.opponentCount == 0;
+            game.rlTrainingDisablePickups = config.navigationOnly;
+            game.rlTrainingRandomSpawnLocations = true;
             game.mapProgression =
-                    new MapProgression(maps, new Random(episodeSeed ^ 0x9E3779B97F4A7C15L));
+                    new MapProgression(
+                            trainingMaps,
+                            new Random(episodeSeed ^ 0x9E3779B97F4A7C15L));
             game.frameThrottleInput = 0f;
             game.frameTurnInput = 0f;
             game.roundNumber = 0;
@@ -7799,6 +7901,10 @@ public class RatassGame extends ApplicationAdapter {
             if (config.skipCountdown) {
                 game.preRoundCountdownTimer = 0f;
                 game.countdownCueSecond = 0;
+            }
+            if (config.navigationOnly) {
+                game.growthPickupActive = false;
+                game.pointPickupActive = false;
             }
 
             actionStep = 0;
@@ -7862,31 +7968,42 @@ public class RatassGame extends ApplicationAdapter {
                         Integer.valueOf(game.roster.get(game.roster.size - 1).vehicleId));
             }
 
-            Array<AiDrivingPersonality> opponents =
-                    config.opponentPersonalities.size == 0
-                            ? AiDrivingPersonalities.createPresetList()
-                            : config.opponentPersonalities;
             int fieldSize = getFieldSize(controlledAgentCount);
-            int opponentIndex = 0;
-            while (game.roster.size < fieldSize) {
-                AiDrivingPersonality personality =
-                        opponents.get(opponentIndex % Math.max(1, opponents.size));
-                CarVisual visual = game.getCarVisual(game.roster.size);
-                game.addRosterTemplate(
-                        personality.displayName + " " + (opponentIndex + 1),
-                        false,
-                        new Color(visual.color),
-                        personality,
-                        visual,
-                        personality.id,
-                        false);
-                opponentIndex++;
+            if (fieldSize > controlledAgentCount) {
+                Array<AiDrivingPersonality> opponents =
+                        config.opponentPersonalities.size == 0
+                                ? AiDrivingPersonalities.createPresetList()
+                                : config.opponentPersonalities;
+                int opponentIndex = 0;
+                while (game.roster.size < fieldSize) {
+                    AiDrivingPersonality personality =
+                            opponents.get(opponentIndex % Math.max(1, opponents.size));
+                    CarVisual visual = game.getCarVisual(game.roster.size);
+                    game.addRosterTemplate(
+                            personality.displayName + " " + (opponentIndex + 1),
+                            false,
+                            new Color(visual.color),
+                            personality,
+                            visual,
+                            personality.id,
+                            false);
+                    opponentIndex++;
+                }
             }
             game.invalidateLeaderboard();
         }
 
         private int getFieldSize(int controlledAgentCount) {
-            int minimumFieldSize = Math.min(MAX_CAR_COUNT, controlledAgentCount + 1);
+            if (config.opponentCount >= 0) {
+                return MathUtils.clamp(
+                        controlledAgentCount + config.opponentCount,
+                        controlledAgentCount,
+                        MAX_CAR_COUNT);
+            }
+            int minimumFieldSize =
+                    config.navigationOnly
+                            ? controlledAgentCount
+                            : Math.min(MAX_CAR_COUNT, controlledAgentCount + 1);
             return MathUtils.clamp(config.fieldSize, minimumFieldSize, MAX_CAR_COUNT);
         }
 
@@ -8013,60 +8130,121 @@ public class RatassGame extends ApplicationAdapter {
 
         private void computeRewards() {
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                clearRewardBreakdown(agentIndex);
                 RlAgentSnapshot before = beforeSnapshots[agentIndex];
                 RlAgentSnapshot after = afterSnapshots[agentIndex];
                 float reward = 0f;
 
                 if (before.active) {
                     if (!after.active) {
-                        reward -= getEliminationPenalty(before);
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_SURVIVAL,
+                                -getEliminationPenalty(before));
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_ATTACK,
+                                -getRecklessAttackEliminationPenalty(before));
                         if (after.eliminatedBySafeZone) {
-                            reward -= RL_SAFE_ZONE_MISS_PENALTY;
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_CIRCLE,
+                                    -RL_SAFE_ZONE_MISS_PENALTY);
                         }
                     } else {
-                        reward += RL_ALIVE_STEP_REWARD;
-                        reward += getSafeZoneReward(before, after);
-                        reward +=
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_SURVIVAL,
+                                config.navigationOnly
+                                        ? RL_NAVIGATION_ALIVE_STEP_REWARD
+                                        : RL_ALIVE_STEP_REWARD);
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_CIRCLE,
+                                getSafeZoneReward(before, after)
+                                        * getNavigationCircleRewardScale());
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_EDGE,
                                 MathUtils.clamp(after.edgeDistance - before.edgeDistance, -1f, 1f)
-                                        * RL_EDGE_RECOVERY_REWARD;
-                        reward -= getEdgeDangerPenalty(before, after);
-                        reward +=
-                                MathUtils.clamp(
-                                                before.nearestOpponentHazardDistance
-                                                        - after.nearestOpponentHazardDistance,
-                                                -1f,
-                                                1f)
-                                        * getAttackSafetyScale(after)
-                                        * RL_OPPONENT_PRESSURE_REWARD;
-                        reward += getOpponentClosingReward(before, after);
-                        reward +=
-                                Math.max(
-                                                0,
-                                                after.creditedEliminations
-                                                        - before.creditedEliminations)
-                                        * RL_OPPONENT_ELIMINATION_REWARD;
-                        reward +=
-                                Math.max(0, after.attackCreditCount - before.attackCreditCount)
-                                        * getAttackSafetyScale(after)
-                                        * RL_IMPACT_CREDIT_REWARD;
-                        reward += getFastImpactReward(before, after);
-                        reward += getContactDisengageReward(before, after);
-                        reward += getContactEscapeSpeedReward(before, after);
-                        reward += getGrowthPickupReward(before, after);
-                        reward += getSpeedControlReward(before, after);
+                                        * RL_EDGE_RECOVERY_REWARD);
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_EDGE,
+                                -getEdgeDangerPenalty(before, after) * getNavigationEdgePenaltyScale());
+                        if (!config.navigationOnly) {
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_ATTACK,
+                                    MathUtils.clamp(
+                                                    before.nearestOpponentHazardDistance
+                                                            - after.nearestOpponentHazardDistance,
+                                                    -1f,
+                                                    1f)
+                                            * getAttackSafetyScale(after)
+                                            * RL_OPPONENT_PRESSURE_REWARD);
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_ATTACK,
+                                    getOpponentClosingReward(before, after));
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_ATTACK,
+                                    Math.max(
+                                                    0,
+                                                    after.creditedEliminations
+                                                            - before.creditedEliminations)
+                                            * RL_OPPONENT_ELIMINATION_REWARD);
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_ATTACK,
+                                    Math.max(0, after.attackCreditCount - before.attackCreditCount)
+                                            * getAttackSafetyScale(after)
+                                            * RL_IMPACT_CREDIT_REWARD);
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_ATTACK,
+                                    getFastImpactReward(before, after));
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_ATTACK,
+                                    -getUnsafeAttackPenalty(before, after));
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_DRIVING,
+                                    getContactDisengageReward(before, after));
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_DRIVING,
+                                    getContactEscapeSpeedReward(before, after));
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_PICKUP,
+                                    getGrowthPickupReward(before, after));
+                        }
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_DRIVING,
+                                getSpeedControlReward(before, after));
                         if (!after.safeZoneActive || !after.safeZoneInside) {
-                            reward +=
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_DRIVING,
                                     MathUtils.clamp(after.forwardSpeed / Car.MAX_SPEED, 0f, 1f)
                                             * getSafeSpeedScale(after)
-                                            * RL_FORWARD_SPEED_REWARD;
+                                            * RL_FORWARD_SPEED_REWARD);
                         }
-                        reward -=
-                                MathUtils.clamp(-after.forwardSpeed / Car.MAX_SPEED, 0f, 1f)
-                                        * RL_REVERSE_SPEED_PENALTY;
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_DRIVING,
+                                -MathUtils.clamp(-after.forwardSpeed / Car.MAX_SPEED, 0f, 1f)
+                                        * RL_REVERSE_SPEED_PENALTY);
                         if (!allowsReverseRecovery(after)
                                 && (!after.safeZoneActive || !after.safeZoneInside)
                                 && after.effectiveThrottle > RL_ACTION_FLIP_DEADZONE) {
-                            reward +=
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_DRIVING,
                                     MathUtils.clamp(
                                                     (after.effectiveThrottle
                                                                     - RL_ACTION_FLIP_DEADZONE)
@@ -8074,11 +8252,17 @@ public class RatassGame extends ApplicationAdapter {
                                                     0f,
                                                     1f)
                                             * getSafeSpeedScale(after)
-                                            * RL_FORWARD_THROTTLE_COMMIT_REWARD;
+                                            * RL_FORWARD_THROTTLE_COMMIT_REWARD);
                         }
-                        reward -= getActionDitherPenalty(agentIndex, before, after);
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_CONTROL,
+                                -getActionDitherPenalty(agentIndex, before, after));
                         if (after.speed < 0.35f && after.angularSpeed > 2.2f) {
-                            reward -= RL_SPIN_STALL_PENALTY;
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_CONTROL,
+                                    -RL_SPIN_STALL_PENALTY);
                         }
                     }
                 }
@@ -8086,13 +8270,39 @@ public class RatassGame extends ApplicationAdapter {
                 if (episodeDone) {
                     int winnerAgentIndex = getWinnerAgentIndex();
                     if (winnerAgentIndex == agentIndex) {
-                        reward += RL_WIN_REWARD;
+                        reward += recordReward(agentIndex, RL_REWARD_WIN, RL_WIN_REWARD);
+                    }
+                    if (config.navigationOnly && after.active && actionStep >= getMaxActionSteps()) {
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_WIN,
+                                RL_NAVIGATION_COMPLETE_REWARD);
                     }
                 }
 
                 rewards[agentIndex] = reward;
                 dones[agentIndex] = episodeDone || !after.active;
             }
+        }
+
+        private void clearRewardBreakdown(int agentIndex) {
+            int offset = agentIndex * RL_REWARD_BREAKDOWN_SIZE;
+            for (int i = 0; i < RL_REWARD_BREAKDOWN_SIZE; i++) {
+                rewardBreakdown[offset + i] = 0f;
+            }
+        }
+
+        private float recordReward(int agentIndex, int bucket, float reward) {
+            rewardBreakdown[agentIndex * RL_REWARD_BREAKDOWN_SIZE + bucket] += reward;
+            return reward;
+        }
+
+        private float getNavigationCircleRewardScale() {
+            return config.navigationOnly ? RL_NAVIGATION_CIRCLE_REWARD_SCALE : 1f;
+        }
+
+        private float getNavigationEdgePenaltyScale() {
+            return config.navigationOnly ? RL_NAVIGATION_EDGE_PENALTY_SCALE : 1f;
         }
 
         private float getSafeZoneReward(RlAgentSnapshot before, RlAgentSnapshot after) {
@@ -8267,6 +8477,60 @@ public class RatassGame extends ApplicationAdapter {
             return reward;
         }
 
+        private float getUnsafeAttackPenalty(RlAgentSnapshot before, RlAgentSnapshot after) {
+            int newAttackCredits = Math.max(0, after.attackCreditCount - before.attackCreditCount);
+            if (newAttackCredits == 0) {
+                return 0f;
+            }
+
+            float safetyDebt = 1f - getAttackSafetyScale(after);
+            if (after.safeZoneActive && !after.safeZoneInside) {
+                float urgency = 1f - MathUtils.clamp(after.safeZoneTimeRatio, 0f, 1f);
+                safetyDebt = Math.max(safetyDebt, 0.60f + urgency * 0.35f);
+            }
+            if (after.edgeDistance < RL_EDGE_WARNING_DISTANCE && after.recoverySpeed < 0f) {
+                float edgeRisk =
+                        1f - MathUtils.clamp(
+                                after.edgeDistance / RL_EDGE_WARNING_DISTANCE,
+                                0f,
+                                1f);
+                safetyDebt =
+                        Math.max(
+                                safetyDebt,
+                                edgeRisk
+                                        * MathUtils.clamp(
+                                                -after.recoverySpeed / Car.MAX_SPEED,
+                                                0f,
+                                                1f));
+            }
+            return newAttackCredits
+                    * MathUtils.clamp(safetyDebt, 0f, 1f)
+                    * RL_UNSAFE_ATTACK_PENALTY;
+        }
+
+        private float getRecklessAttackEliminationPenalty(RlAgentSnapshot before) {
+            if (before.safetyDistance > 0.05f) {
+                return 0f;
+            }
+            boolean fighting =
+                    before.recentImpact > Car.RECENT_IMPACT_DURATION * 0.25f
+                            || before.attackCreditCount > 0
+                            || (before.nearestOpponentDistance > 0f
+                                    && before.nearestOpponentDistance
+                                            < RL_CONTACT_STUCK_DISTANCE * 1.35f);
+            if (!fighting) {
+                return 0f;
+            }
+
+            float safetyDebt = 1f - getAttackSafetyScale(before);
+            if (before.safeZoneActive && !before.safeZoneInside) {
+                float urgency = 1f - MathUtils.clamp(before.safeZoneTimeRatio, 0f, 1f);
+                safetyDebt = Math.max(safetyDebt, 0.65f + urgency * 0.30f);
+            }
+            return (0.45f + 0.55f * MathUtils.clamp(safetyDebt, 0f, 1f))
+                    * RL_ATTACK_SUICIDE_PENALTY;
+        }
+
         private float getContactDisengageReward(RlAgentSnapshot before, RlAgentSnapshot after) {
             if (!isContactStuck(before) || after.nearestOpponentDistance <= 0f) {
                 return 0f;
@@ -8336,11 +8600,16 @@ public class RatassGame extends ApplicationAdapter {
             if (snapshot.safetyDistance > 0.05f) {
                 return 0f;
             }
-            return MathUtils.clamp(
+            float edgeScale = MathUtils.clamp(
                     (snapshot.edgeDistance - RL_EDGE_DANGER_DISTANCE)
                             / Math.max(0.0001f, RL_SAFE_ATTACK_DISTANCE - RL_EDGE_DANGER_DISTANCE),
                     0f,
                     1f);
+            if (snapshot.safeZoneActive && !snapshot.safeZoneInside) {
+                float urgency = 1f - MathUtils.clamp(snapshot.safeZoneTimeRatio, 0f, 1f);
+                edgeScale *= MathUtils.clamp(0.35f - urgency * 0.30f, 0f, 0.35f);
+            }
+            return edgeScale;
         }
 
         private float getGrowthPickupReward(RlAgentSnapshot before, RlAgentSnapshot after) {
@@ -8489,6 +8758,19 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private int getWinnerAgentIndex() {
+            if (config.navigationOnly && episodeDone) {
+                int aliveAgentIndex = -1;
+                for (int i = 0; i < getControlledAgentCount(); i++) {
+                    Car car = getControlledCar(i);
+                    if (car != null && car.active) {
+                        if (aliveAgentIndex >= 0) {
+                            return -1;
+                        }
+                        aliveAgentIndex = i;
+                    }
+                }
+                return aliveAgentIndex;
+            }
             int winnerVehicleId = getWinningVehicleId();
             if (winnerVehicleId < 0) {
                 return -1;
@@ -8545,21 +8827,33 @@ public class RatassGame extends ApplicationAdapter {
                 currentActionTurn[i] = 0f;
                 previousActionTurn[i] = 0f;
             }
+            for (int i = 0; i < rewardBreakdown.length; i++) {
+                rewardBreakdown[i] = 0f;
+            }
         }
 
         private RlStepResult createResult() {
             float[] observationCopy = new float[observations.length];
             float[] rewardCopy = new float[rewards.length];
+            float[] rewardBreakdownCopy = new float[rewardBreakdown.length];
             float[] effectiveActionCopy = new float[effectiveActions.length];
             boolean[] doneCopy = new boolean[dones.length];
             buildEffectiveActions();
             System.arraycopy(observations, 0, observationCopy, 0, observations.length);
             System.arraycopy(rewards, 0, rewardCopy, 0, rewards.length);
+            System.arraycopy(
+                    rewardBreakdown,
+                    0,
+                    rewardBreakdownCopy,
+                    0,
+                    rewardBreakdown.length);
             System.arraycopy(effectiveActions, 0, effectiveActionCopy, 0, effectiveActions.length);
             System.arraycopy(dones, 0, doneCopy, 0, dones.length);
             return new RlStepResult(
                     observationCopy,
                     rewardCopy,
+                    rewardBreakdownCopy,
+                    RL_REWARD_BREAKDOWN_NAMES,
                     effectiveActionCopy,
                     doneCopy,
                     episodeDone,

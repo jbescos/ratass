@@ -64,7 +64,7 @@ def load_policy_state(checkpoint_dir: Path) -> Dict[str, np.ndarray]:
         return pickle.load(handle)
 
 
-def export_policy(checkpoint_dir: Path, output_file: Path) -> None:
+def export_policy(checkpoint_dir: Path, output_file: Path, objective: str) -> None:
     state = load_policy_state(checkpoint_dir)
     layers = [
         layer_from_state(state, prefix, activation)
@@ -75,7 +75,7 @@ def export_policy(checkpoint_dir: Path, output_file: Path) -> None:
     payload = {
         "format": "ratass-rl-policy-v3",
         "source": "ray-rllib-ppo",
-        "objective": "direct-safe-circle-v1",
+        "objective": objective,
         "observationSize": OBSERVATION_SIZE,
         "actionSize": ACTION_SIZE,
         "output": "first actionSize outputs are deterministic direct throttle and turn controls",
@@ -94,12 +94,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint-dir", default=os.fspath(DEFAULT_CHECKPOINT))
     parser.add_argument("--output", default=os.fspath(DEFAULT_OUTPUT))
+    parser.add_argument("--objective", default="direct-safe-circle-v1")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    export_policy(Path(args.checkpoint_dir), Path(args.output))
+    export_policy(Path(args.checkpoint_dir), Path(args.output), args.objective)
 
 
 if __name__ == "__main__":

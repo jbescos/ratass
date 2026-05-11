@@ -18,7 +18,7 @@ import platform
 import re
 import subprocess
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import gymnasium as gym
 import jpype
@@ -32,6 +32,95 @@ DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-direct-circle"
 OBSERVATION_SIZE = 30
 ACTION_SIZE = 2
+
+
+def _metric_token(value: str) -> str:
+    text = str(value).strip()
+    if not text:
+        return "-"
+    return re.sub(r"[^A-Za-z0-9_.:-]+", "_", text)
+
+
+class RewardSummary:
+    def __init__(self) -> None:
+        self._episodes: List[Dict] = []
+
+    def mark(self) -> int:
+        return len(self._episodes)
+
+    def record_episode(
+        self,
+        map_id: str,
+        map_name: str,
+        agent: str,
+        reward_total: float,
+        bucket_names: List[str],
+        bucket_totals: np.ndarray,
+        won: bool,
+    ) -> None:
+        self._episodes.append(
+            {
+                "map_id": str(map_id),
+                "map_name": str(map_name),
+                "agent": str(agent),
+                "reward_total": float(reward_total),
+                "bucket_names": list(bucket_names),
+                "bucket_totals": np.asarray(bucket_totals, dtype=np.float64).copy(),
+                "won": bool(won),
+            }
+        )
+
+    def render_since(self, mark: int, iteration: int) -> List[str]:
+        episodes = self._episodes[mark:]
+        lines = [
+            f"reward_summary iteration={iteration} completed_agent_episodes={len(episodes)}"
+        ]
+        if not episodes:
+            return lines
+
+        grouped: Dict[Tuple[str, str], Dict] = {}
+        for episode in episodes:
+            key = (episode["map_id"], episode["agent"])
+            group = grouped.get(key)
+            if group is None:
+                group = {
+                    "map_id": episode["map_id"],
+                    "map_name": episode["map_name"],
+                    "agent": episode["agent"],
+                    "episodes": 0,
+                    "wins": 0,
+                    "reward_total": 0.0,
+                    "bucket_names": episode["bucket_names"],
+                    "bucket_totals": np.zeros_like(episode["bucket_totals"]),
+                }
+                grouped[key] = group
+
+            group["episodes"] += 1
+            group["wins"] += 1 if episode["won"] else 0
+            group["reward_total"] += episode["reward_total"]
+            group["bucket_totals"] += episode["bucket_totals"]
+
+        for key in sorted(grouped):
+            group = grouped[key]
+            episode_count = max(1, int(group["episodes"]))
+            reward_avg = group["reward_total"] / episode_count
+            fields = [
+                f"reward_map iteration={iteration}",
+                f"map={_metric_token(group['map_id'])}",
+                f"map_name={_metric_token(group['map_name'])}",
+                f"car={_metric_token(group['agent'])}",
+                f"episodes={group['episodes']}",
+                f"wins={group['wins']}",
+                f"reward_avg={reward_avg:.3f}",
+                f"reward_total={group['reward_total']:.3f}",
+            ]
+            for name, value in zip(group["bucket_names"], group["bucket_totals"]):
+                fields.append(f"{_metric_token(name)}={value / episode_count:.3f}")
+            lines.append(" ".join(fields))
+        return lines
+
+
+REWARD_SUMMARY = RewardSummary()
 
 
 def _parse_java_major(version_output: str) -> Optional[int]:
@@ -125,6 +214,14 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withActionRepeat(int(env_config.get("action_repeat", 4)))
         training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 1350)))
         training_config.withSeed(int(env_config.get("seed", 1)))
+        objective = str(env_config.get("objective", "combat"))
+        navigation_only = objective == "navigation"
+        training_config.withNavigationOnly(navigation_only)
+        opponent_count = env_config.get("opponent_count")
+        if opponent_count is not None:
+            training_config.withOpponentCount(int(opponent_count))
+        elif navigation_only:
+            training_config.withOpponentCount(0)
         self._add_selected_maps(training_config, env_config.get("map_ids", ""))
 
         self._java_float_array = jpype.JArray(jpype.JFloat)
@@ -148,6 +245,12 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         )
         self.observation_spaces = {agent: observation_space for agent in self._agents}
         self.action_spaces = {agent: action_space for agent in self._agents}
+        self._reward_summary_enabled = bool(env_config.get("reward_summary", True))
+        self._reward_breakdown_names: List[str] = []
+        self._episode_map_id = ""
+        self._episode_map_name = ""
+        self._episode_reward_totals: Dict[str, float] = {}
+        self._episode_bucket_totals: Dict[str, np.ndarray] = {}
 
     def _add_selected_maps(self, training_config, map_ids: str) -> None:
         selected_ids = [
@@ -180,6 +283,8 @@ class RatassMultiAgentEnv(MultiAgentEnv):
     def reset(self, *, seed=None, options=None):
         result = self._env.reset()
         self.agents = list(self._agents)
+        if self._reward_summary_enabled:
+            self._reset_episode_accounting(result)
         return self._observations(result, self.agents), {agent: {} for agent in self.agents}
 
     def step(self, action_dict):
@@ -195,6 +300,10 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             agent: float(result.rewards[self._agent_index(agent)])
             for agent in current_agents
         }
+        reward_breakdown = None
+        if self._reward_summary_enabled:
+            reward_breakdown = self._reward_breakdown_array(result)
+            self._record_step_accounting(reward_breakdown, rewards, current_agents)
         terminateds = {agent: bool(result.episodeDone) for agent in current_agents}
         terminateds["__all__"] = bool(result.episodeDone)
         truncateds = {agent: False for agent in current_agents}
@@ -204,11 +313,21 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                 "action_step": int(result.actionStep),
                 "winner_agent_index": int(result.winnerAgentIndex),
                 "winner_label": str(result.winnerLabel),
+                "current_map_id": str(result.currentMapId),
+                "current_map_name": str(result.currentMapName),
             }
             for agent in current_agents
         }
+        if self._reward_summary_enabled:
+            for agent in current_agents:
+                infos[agent]["reward_breakdown"] = self._reward_breakdown_for_agent(
+                    reward_breakdown,
+                    agent,
+                )
 
         if result.episodeDone:
+            if self._reward_summary_enabled:
+                self._finalize_episode_accounting(result)
             self.agents = []
         else:
             self.agents = current_agents
@@ -227,6 +346,61 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             agent: observations[self._agent_index(agent)].copy()
             for agent in agents
         }
+
+    def _reset_episode_accounting(self, result) -> None:
+        self._reward_breakdown_names = [str(name) for name in result.rewardBreakdownNames]
+        self._episode_map_id = str(result.currentMapId)
+        self._episode_map_name = str(result.currentMapName)
+        self._episode_reward_totals = {agent: 0.0 for agent in self._agents}
+        self._episode_bucket_totals = {
+            agent: np.zeros(len(self._reward_breakdown_names), dtype=np.float64)
+            for agent in self._agents
+        }
+
+    def _record_step_accounting(self, breakdown, rewards, agents) -> None:
+        for agent in agents:
+            index = self._agent_index(agent)
+            self._episode_reward_totals[agent] = (
+                self._episode_reward_totals.get(agent, 0.0) + float(rewards.get(agent, 0.0))
+            )
+            if agent in self._episode_bucket_totals and index < breakdown.shape[0]:
+                self._episode_bucket_totals[agent] += breakdown[index]
+
+    def _finalize_episode_accounting(self, result) -> None:
+        winner_index = int(result.winnerAgentIndex)
+        for agent in self._agents:
+            index = self._agent_index(agent)
+            REWARD_SUMMARY.record_episode(
+                self._episode_map_id,
+                self._episode_map_name,
+                agent,
+                self._episode_reward_totals.get(agent, 0.0),
+                self._reward_breakdown_names,
+                self._episode_bucket_totals.get(
+                    agent,
+                    np.zeros(len(self._reward_breakdown_names), dtype=np.float64),
+                ),
+                index == winner_index,
+            )
+
+    def _reward_breakdown_for_agent(self, breakdown, agent) -> Dict[str, float]:
+        index = self._agent_index(agent)
+        if breakdown is None or index >= breakdown.shape[0]:
+            return {}
+        return {
+            name: float(value)
+            for name, value in zip(self._reward_breakdown_names, breakdown[index])
+        }
+
+    def _reward_breakdown_array(self, result) -> np.ndarray:
+        names = self._reward_breakdown_names
+        if not names:
+            return np.zeros((self._agent_count, 0), dtype=np.float64)
+        flat = np.asarray(list(result.rewardBreakdown), dtype=np.float64)
+        expected_size = self._agent_count * len(names)
+        if flat.size != expected_size:
+            return np.zeros((self._agent_count, len(names)), dtype=np.float64)
+        return flat.reshape((self._agent_count, len(names)))
 
 
 def build_algorithm(args):
@@ -251,6 +425,9 @@ def build_algorithm(args):
         "max_action_steps": args.max_action_steps,
         "seed": args.seed,
         "map_ids": args.map_ids,
+        "objective": args.objective,
+        "opponent_count": args.opponent_count,
+        "reward_summary": not args.no_reward_summary,
     }
     config = (
         PPOConfig()
@@ -363,6 +540,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-gpus", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
+        "--objective",
+        choices=("combat", "navigation"),
+        default="combat",
+        help="combat trains the full game; navigation removes opponents and pickups",
+    )
+    parser.add_argument(
+        "--opponent-count",
+        type=int,
+        default=None,
+        help="override number of heuristic opponents; navigation defaults to 0",
+    )
+    parser.add_argument(
         "--map-ids",
         default="",
         help="comma-separated map ids to train on, for example map004,map006",
@@ -389,6 +578,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="restore PPO state from --checkpoint-dir before continuing training",
     )
+    parser.add_argument(
+        "--no-reward-summary",
+        action="store_true",
+        help="disable per-map/per-car reward bucket summaries after each iteration",
+    )
     return parser.parse_args()
 
 
@@ -407,9 +601,15 @@ def main() -> None:
             )
         algorithm.restore(str(checkpoint_dir))
         print(f"restored={checkpoint_dir}", flush=True)
+    if args.workers > 0 and not args.no_reward_summary:
+        print(
+            "reward_summary_warning=local_summary_only workers>0 may hide remote worker episodes",
+            flush=True,
+        )
 
     try:
         for iteration in range(1, args.iterations + 1):
+            summary_mark = REWARD_SUMMARY.mark()
             result = algorithm.train()
             reward_mean = read_metric(
                 result,
@@ -435,6 +635,9 @@ def main() -> None:
                 f"episodes={episodes:.0f}",
                 flush=True,
             )
+            if not args.no_reward_summary:
+                for line in REWARD_SUMMARY.render_since(summary_mark, iteration):
+                    print(line, flush=True)
             if args.checkpoint_every > 0 and iteration % args.checkpoint_every == 0:
                 checkpoint = algorithm.save(str(checkpoint_dir))
                 print(f"checkpoint={checkpoint_path(checkpoint)}", flush=True)

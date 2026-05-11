@@ -9,13 +9,23 @@ import com.badlogic.gdx.utils.Array;
 import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MaskArenaShape;
 import com.github.jbescos.gameplay.SpawnPoint;
+import java.io.BufferedInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 final class ImageArenaMapLoader {
     private static final String MAPS_DIRECTORY = "maps";
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
+    private static final String CACHE_SUFFIX = ".ser";
+    private static final int CACHE_VERSION = 2;
     private static final float BASE_WORLD_HEIGHT = 18f;
     private static final int MAX_SEQUENTIAL_MAP_SCAN = 1000;
     private static final int MAX_SHAPE_MASK_LONG_SIDE = 512;
@@ -95,6 +105,11 @@ final class ImageArenaMapLoader {
             surfacePath = maskFile.path();
         }
 
+        CachedMapData cachedMap = readCachedMap(maskFile, baseName, surfacePath, mapScale);
+        if (cachedMap != null) {
+            return buildCachedMap(cachedMap);
+        }
+
         Pixmap mask = new Pixmap(maskFile);
         try {
             WorldSize worldSize = calculateWorldSize(mask.getWidth(), mask.getHeight(), mapScale);
@@ -120,23 +135,258 @@ final class ImageArenaMapLoader {
             Array<SpawnPoint> spawnPoints =
                     buildSpawnPoints(parseResult, mask.getWidth(), mask.getHeight(), worldMinX, worldMinY,
                             worldWidth, worldHeight);
+            Array<Vector2> recoveryPoints = new Array<Vector2>();
             for (int i = 0; i < spawnPoints.size; i++) {
                 SpawnPoint spawnPoint = spawnPoints.get(i);
                 builder.spawn(spawnPoint);
                 builder.recoveryPoint(spawnPoint.x, spawnPoint.y);
+                recoveryPoints.add(new Vector2(spawnPoint.x, spawnPoint.y));
             }
 
-            addRecoveryGrid(builder, shape, worldMinX, worldMinY, worldWidth, worldHeight, mapScale);
-            return builder.build();
+            addRecoveryGrid(builder, recoveryPoints, shape, worldMinX, worldMinY, worldWidth, worldHeight, mapScale);
+            ArenaMap map = builder.build();
+            writeCachedMap(maskFile, buildCachedMapData(
+                    maskFile,
+                    baseName,
+                    surfacePath,
+                    mapScale,
+                    mask.getWidth(),
+                    mask.getHeight(),
+                    worldMinX,
+                    worldMinY,
+                    worldWidth,
+                    worldHeight,
+                    shape,
+                    spawnPoints,
+                    recoveryPoints));
+            return map;
         } finally {
             mask.dispose();
         }
+    }
+
+    private static ArenaMap buildCachedMap(CachedMapData cached) {
+        MaskArenaShape shape = MaskArenaShape.precomputed(
+                cached.shapePlayable,
+                cached.shapeWidth,
+                cached.shapeHeight,
+                cached.distanceToVoidPixels,
+                cached.distanceToPlayablePixels,
+                cached.nearestPlayableX,
+                cached.nearestPlayableY,
+                cached.nearestVoidX,
+                cached.nearestVoidY,
+                cached.worldMinX,
+                cached.worldMinY,
+                cached.worldWidth,
+                cached.worldHeight);
+
+        ArenaMap.Builder builder = ArenaMap.builder(cached.baseName, displayName(cached.baseName))
+                .focusPoint(0f, 0f)
+                .surfaceImagePath(cached.surfacePath)
+                .solid(shape);
+        for (int i = 0; i < cached.spawnX.length; i++) {
+            builder.spawn(new SpawnPoint(cached.spawnX[i], cached.spawnY[i], cached.spawnAngle[i]));
+        }
+        for (int i = 0; i < cached.recoveryX.length; i++) {
+            builder.recoveryPoint(cached.recoveryX[i], cached.recoveryY[i]);
+        }
+        return builder.build();
     }
 
     private static WorldSize calculateWorldSize(int imageWidth, int imageHeight, float mapScale) {
         float worldHeight = BASE_WORLD_HEIGHT * mapScale;
         float worldWidth = worldHeight * imageWidth / (float) imageHeight;
         return new WorldSize(worldWidth, worldHeight);
+    }
+
+    private static CachedMapData readCachedMap(
+            FileHandle maskFile,
+            String baseName,
+            String surfacePath,
+            float mapScale) {
+        Array<FileHandle> cacheFiles = readableCacheFiles(maskFile, baseName);
+        for (int i = 0; i < cacheFiles.size; i++) {
+            FileHandle cacheFile = cacheFiles.get(i);
+            if (!cacheFile.exists()) {
+                continue;
+            }
+            ObjectInputStream input = null;
+            try {
+                input = openCachedMapInput(cacheFile);
+                Object value = input.readObject();
+                if (value instanceof CachedMapData) {
+                    CachedMapData cached = (CachedMapData) value;
+                    if (isCacheValid(cached, maskFile, baseName, surfacePath, mapScale)) {
+                        return cached;
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                // Bad caches are regenerated from the authoritative mask PNG.
+            } catch (IOException ignored) {
+                // Bad caches are regenerated from the authoritative mask PNG.
+            } catch (ClassNotFoundException ignored) {
+                // Bad caches are regenerated from the authoritative mask PNG.
+            } finally {
+                closeQuietly(input);
+            }
+        }
+        return null;
+    }
+
+    private static boolean isCacheValid(
+            CachedMapData cached,
+            FileHandle maskFile,
+            String baseName,
+            String surfacePath,
+            float mapScale) {
+        if (cached.version != CACHE_VERSION
+                || !baseName.equals(cached.baseName)
+                || !surfacePath.equals(cached.surfacePath)
+                || Math.abs(cached.mapScale - mapScale) > 0.0001f
+                || cached.maskLength != maskFile.length()) {
+            return false;
+        }
+
+        long maskLastModified = maskFile.lastModified();
+        return maskLastModified <= 0L
+                || cached.maskLastModified <= 0L
+                || cached.maskLastModified == maskLastModified;
+    }
+
+    private static void writeCachedMap(FileHandle maskFile, CachedMapData cached) {
+        Array<FileHandle> cacheFiles = writableCacheFiles(maskFile, cached.baseName);
+        for (int i = 0; i < cacheFiles.size; i++) {
+            FileHandle cacheFile = cacheFiles.get(i);
+            ObjectOutputStream output = null;
+            try {
+                cacheFile.parent().mkdirs();
+                output = new ObjectOutputStream(new GZIPOutputStream(cacheFile.write(false)));
+                output.writeObject(cached);
+                return;
+            } catch (RuntimeException ignored) {
+                // Try the next writable cache location.
+            } catch (IOException ignored) {
+                // Try the next writable cache location.
+            } finally {
+                closeQuietly(output);
+            }
+        }
+    }
+
+    private static ObjectInputStream openCachedMapInput(FileHandle cacheFile) throws IOException {
+        BufferedInputStream bufferedInput = new BufferedInputStream(cacheFile.read());
+        bufferedInput.mark(2);
+        int firstByte = bufferedInput.read();
+        int secondByte = bufferedInput.read();
+        bufferedInput.reset();
+        InputStream input = bufferedInput;
+        if (firstByte == 0x1f && secondByte == 0x8b) {
+            input = new GZIPInputStream(bufferedInput);
+        }
+        return new ObjectInputStream(input);
+    }
+
+    private static Array<FileHandle> readableCacheFiles(FileHandle maskFile, String baseName) {
+        Array<FileHandle> cacheFiles = new Array<FileHandle>();
+        HashSet<String> seenPaths = new HashSet<String>();
+        addCacheFile(cacheFiles, seenPaths, maskFile.sibling(baseName + CACHE_SUFFIX));
+        addCacheFile(cacheFiles, seenPaths, Gdx.files.local("assets/" + MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
+        addCacheFile(cacheFiles, seenPaths, Gdx.files.local(MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
+        return cacheFiles;
+    }
+
+    private static Array<FileHandle> writableCacheFiles(FileHandle maskFile, String baseName) {
+        Array<FileHandle> cacheFiles = new Array<FileHandle>();
+        HashSet<String> seenPaths = new HashSet<String>();
+        addCacheFile(cacheFiles, seenPaths, Gdx.files.local("assets/" + MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
+        addCacheFile(cacheFiles, seenPaths, Gdx.files.local(MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
+        addCacheFile(cacheFiles, seenPaths, maskFile.sibling(baseName + CACHE_SUFFIX));
+        return cacheFiles;
+    }
+
+    private static void addCacheFile(
+            Array<FileHandle> cacheFiles,
+            HashSet<String> seenPaths,
+            FileHandle cacheFile) {
+        if (cacheFile != null && seenPaths.add(cacheFile.type() + ":" + cacheFile.path())) {
+            cacheFiles.add(cacheFile);
+        }
+    }
+
+    private static void closeQuietly(ObjectInputStream stream) {
+        if (stream == null) {
+            return;
+        }
+        try {
+            stream.close();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static void closeQuietly(ObjectOutputStream stream) {
+        if (stream == null) {
+            return;
+        }
+        try {
+            stream.close();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static CachedMapData buildCachedMapData(
+            FileHandle maskFile,
+            String baseName,
+            String surfacePath,
+            float mapScale,
+            int imageWidth,
+            int imageHeight,
+            float worldMinX,
+            float worldMinY,
+            float worldWidth,
+            float worldHeight,
+            MaskArenaShape shape,
+            Array<SpawnPoint> spawnPoints,
+            Array<Vector2> recoveryPoints) {
+        CachedMapData cached = new CachedMapData();
+        cached.version = CACHE_VERSION;
+        cached.baseName = baseName;
+        cached.surfacePath = surfacePath;
+        cached.mapScale = mapScale;
+        cached.maskLastModified = maskFile.lastModified();
+        cached.maskLength = maskFile.length();
+        cached.imageWidth = imageWidth;
+        cached.imageHeight = imageHeight;
+        cached.worldMinX = worldMinX;
+        cached.worldMinY = worldMinY;
+        cached.worldWidth = worldWidth;
+        cached.worldHeight = worldHeight;
+        cached.shapePlayable = shape.copyPlayableMask();
+        cached.shapeWidth = shape.getMaskWidth();
+        cached.shapeHeight = shape.getMaskHeight();
+        cached.distanceToVoidPixels = shape.copyDistanceToVoidPixels();
+        cached.distanceToPlayablePixels = shape.copyDistanceToPlayablePixels();
+        cached.nearestPlayableX = shape.copyNearestPlayableX();
+        cached.nearestPlayableY = shape.copyNearestPlayableY();
+        cached.nearestVoidX = shape.copyNearestVoidX();
+        cached.nearestVoidY = shape.copyNearestVoidY();
+        cached.spawnX = new float[spawnPoints.size];
+        cached.spawnY = new float[spawnPoints.size];
+        cached.spawnAngle = new float[spawnPoints.size];
+        for (int i = 0; i < spawnPoints.size; i++) {
+            SpawnPoint spawnPoint = spawnPoints.get(i);
+            cached.spawnX[i] = spawnPoint.x;
+            cached.spawnY[i] = spawnPoint.y;
+            cached.spawnAngle[i] = spawnPoint.angleRad;
+        }
+        cached.recoveryX = new float[recoveryPoints.size];
+        cached.recoveryY = new float[recoveryPoints.size];
+        for (int i = 0; i < recoveryPoints.size; i++) {
+            Vector2 recoveryPoint = recoveryPoints.get(i);
+            cached.recoveryX[i] = recoveryPoint.x;
+            cached.recoveryY[i] = recoveryPoint.y;
+        }
+        return cached;
     }
 
     private static MaskParseResult parseMask(Pixmap mask) {
@@ -257,6 +507,7 @@ final class ImageArenaMapLoader {
 
     private static void addRecoveryGrid(
             ArenaMap.Builder builder,
+            Array<Vector2> recoveryPoints,
             MaskArenaShape shape,
             float worldMinX,
             float worldMinY,
@@ -271,6 +522,7 @@ final class ImageArenaMapLoader {
                 float x = worldMinX + (column + 0.5f) * worldWidth / columns;
                 if (shape.depthInside(x, y) >= RECOVERY_SAFE_MARGIN) {
                     builder.recoveryPoint(x, y);
+                    recoveryPoints.add(new Vector2(x, y));
                 }
             }
         }
@@ -434,5 +686,38 @@ final class ImageArenaMapLoader {
             this.centerY = centerY;
             this.area = area;
         }
+    }
+
+    private static final class CachedMapData implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        private int version;
+        private String baseName;
+        private String surfacePath;
+        private float mapScale;
+        private long maskLastModified;
+        private long maskLength;
+        @SuppressWarnings("unused")
+        private int imageWidth;
+        @SuppressWarnings("unused")
+        private int imageHeight;
+        private float worldMinX;
+        private float worldMinY;
+        private float worldWidth;
+        private float worldHeight;
+        private boolean[] shapePlayable;
+        private int shapeWidth;
+        private int shapeHeight;
+        private float[] distanceToVoidPixels;
+        private float[] distanceToPlayablePixels;
+        private int[] nearestPlayableX;
+        private int[] nearestPlayableY;
+        private int[] nearestVoidX;
+        private int[] nearestVoidY;
+        private float[] spawnX;
+        private float[] spawnY;
+        private float[] spawnAngle;
+        private float[] recoveryX;
+        private float[] recoveryY;
     }
 }

@@ -116,19 +116,37 @@ function Ensure-PythonEnvironment {
 }
 
 $PythonBin = Get-EnvValue "PYTHON_BIN" ".venv-rl\Scripts\python.exe"
+$Objective = Get-EnvValue "RL_OBJECTIVE" "combat"
+if ($Objective -eq "navigation") {
+    $DefaultControlledAgents = "1"
+    $DefaultFieldSize = "1"
+    $DefaultMaxActionSteps = "1200"
+    $DefaultCheckpointDir = "rl-checkpoints-navigation"
+    $ExportObjective = "navigation-safe-circle-v1"
+} else {
+    $DefaultControlledAgents = "6"
+    $DefaultFieldSize = "12"
+    $DefaultMaxActionSteps = "900"
+    $DefaultCheckpointDir = "rl-checkpoints-direct-circle"
+    $ExportObjective = "direct-safe-circle-v1"
+}
+
 $Workers = Get-EnvValue "RL_WORKERS" "0"
-$ControlledAgents = Get-EnvValue "RL_CONTROLLED_AGENTS" "6"
-$FieldSize = Get-EnvValue "RL_FIELD_SIZE" "12"
+$ControlledAgents = Get-EnvValue "RL_CONTROLLED_AGENTS" $DefaultControlledAgents
+$FieldSize = Get-EnvValue "RL_FIELD_SIZE" $DefaultFieldSize
 $ActionRepeat = Get-EnvValue "RL_ACTION_REPEAT" "4"
-$MaxActionSteps = Get-EnvValue "RL_MAX_ACTION_STEPS" "900"
+$MaxActionSteps = Get-EnvValue "RL_MAX_ACTION_STEPS" $DefaultMaxActionSteps
 $TrainBatchSize = Get-EnvValue "RL_TRAIN_BATCH_SIZE" "4096"
 $MinibatchSize = Get-EnvValue "RL_MINIBATCH_SIZE" "512"
 $CheckpointEvery = Get-EnvValue "RL_CHECKPOINT_EVERY" "20"
-$CheckpointDir = Get-EnvValue "RL_CHECKPOINT_DIR" "rl-checkpoints-direct-circle"
+$CheckpointDir = Get-EnvValue "RL_CHECKPOINT_DIR" $DefaultCheckpointDir
 $IterationsPerCycle = [int](Get-EnvValue "RL_FOREVER_ITERATIONS" "100")
+$MaxCycles = [int](Get-EnvValue "RL_MAX_CYCLES" "0")
 $PackageEveryCycles = [int](Get-EnvValue "RL_PACKAGE_EVERY_CYCLES" "1")
 $NumGpus = Get-EnvValue "RL_NUM_GPUS" "0"
 $MapIds = Get-EnvValue "RL_MAP_IDS" ""
+$OpponentCount = Get-EnvValue "RL_OPPONENT_COUNT" ""
+$NoRewardSummary = Get-EnvValue "RL_NO_REWARD_SUMMARY" "0"
 $RayNumCpus = Get-EnvValue "RL_RAY_NUM_CPUS" "0"
 $RayTempDir = Get-EnvValue "RL_RAY_TEMP_DIR" ""
 $BuildBeforeTraining = Get-EnvValue "RL_BUILD_BEFORE_TRAINING" "1"
@@ -147,11 +165,18 @@ $CommonArgs = @(
     "--train-batch-size", $TrainBatchSize,
     "--minibatch-size", $MinibatchSize,
     "--checkpoint-every", $CheckpointEvery,
-    "--num-gpus", $NumGpus
+    "--num-gpus", $NumGpus,
+    "--objective", $Objective
 )
 
 if (-not [string]::IsNullOrWhiteSpace($MapIds)) {
     $CommonArgs += @("--map-ids", $MapIds)
+}
+if (-not [string]::IsNullOrWhiteSpace($OpponentCount)) {
+    $CommonArgs += @("--opponent-count", $OpponentCount)
+}
+if ($NoRewardSummary -eq "1" -or $NoRewardSummary -eq "true") {
+    $CommonArgs += "--no-reward-summary"
 }
 if ($RayNumCpus -ne "0") {
     $CommonArgs += @("--ray-num-cpus", $RayNumCpus)
@@ -166,7 +191,11 @@ function Export-Policy {
         return
     }
 
-    Invoke-Checked $PythonBin @("tools\rl\export_policy.py", "--checkpoint-dir", $CheckpointDir)
+    Invoke-Checked $PythonBin @(
+        "tools\rl\export_policy.py",
+        "--checkpoint-dir", $CheckpointDir,
+        "--objective", $ExportObjective
+    )
 }
 
 function Package-Game {
@@ -215,6 +244,10 @@ try {
         Export-Policy
         if (Should-PackageCycle $Cycle) {
             Package-Game
+        }
+        if ($MaxCycles -ne 0 -and $Cycle -ge $MaxCycles) {
+            Write-Host "max_cycles_reached=$MaxCycles"
+            exit 0
         }
     }
 }

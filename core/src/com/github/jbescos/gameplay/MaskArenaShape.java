@@ -59,6 +59,37 @@ public final class MaskArenaShape extends ArenaShape {
         renderSpans = buildRenderSpans();
     }
 
+    public static MaskArenaShape precomputed(
+            boolean[] playable,
+            int maskWidth,
+            int maskHeight,
+            float[] distanceToVoidPixels,
+            float[] distanceToPlayablePixels,
+            int[] nearestPlayableX,
+            int[] nearestPlayableY,
+            int[] nearestVoidX,
+            int[] nearestVoidY,
+            float minX,
+            float minY,
+            float width,
+            float height) {
+        return new MaskArenaShape(
+                playable,
+                maskWidth,
+                maskHeight,
+                distanceToVoidPixels,
+                distanceToPlayablePixels,
+                nearestPlayableX,
+                nearestPlayableY,
+                nearestVoidX,
+                nearestVoidY,
+                null,
+                minX,
+                minY,
+                width,
+                height);
+    }
+
     private MaskArenaShape(
             boolean[] playable,
             int maskWidth,
@@ -83,7 +114,6 @@ public final class MaskArenaShape extends ArenaShape {
         this.nearestPlayableY = nearestPlayableY;
         this.nearestVoidX = nearestVoidX;
         this.nearestVoidY = nearestVoidY;
-        this.renderSpans = renderSpans;
         this.minX = minX;
         this.minY = minY;
         this.width = width;
@@ -91,6 +121,7 @@ public final class MaskArenaShape extends ArenaShape {
         this.maxX = minX + width;
         this.maxY = minY + height;
         this.worldUnitsPerPixel = Math.min(width / maskWidth, height / maskHeight);
+        this.renderSpans = renderSpans == null ? buildRenderSpans() : renderSpans;
     }
 
     @Override
@@ -200,6 +231,42 @@ public final class MaskArenaShape extends ArenaShape {
                 minY * factor,
                 width * factor,
                 height * factor);
+    }
+
+    public boolean[] copyPlayableMask() {
+        return copy(playable);
+    }
+
+    public int getMaskWidth() {
+        return maskWidth;
+    }
+
+    public int getMaskHeight() {
+        return maskHeight;
+    }
+
+    public float[] copyDistanceToVoidPixels() {
+        return copy(distanceToVoidPixels);
+    }
+
+    public float[] copyDistanceToPlayablePixels() {
+        return copy(distanceToPlayablePixels);
+    }
+
+    public int[] copyNearestPlayableX() {
+        return copy(nearestPlayableX);
+    }
+
+    public int[] copyNearestPlayableY() {
+        return copy(nearestPlayableY);
+    }
+
+    public int[] copyNearestVoidX() {
+        return copy(nearestVoidX);
+    }
+
+    public int[] copyNearestVoidY() {
+        return copy(nearestVoidY);
     }
 
     @Override
@@ -399,6 +466,24 @@ public final class MaskArenaShape extends ArenaShape {
 
     private int pixelIndex(int x, int y) {
         return y * maskWidth + x;
+    }
+
+    private static boolean[] copy(boolean[] values) {
+        boolean[] copy = new boolean[values.length];
+        System.arraycopy(values, 0, copy, 0, values.length);
+        return copy;
+    }
+
+    private static float[] copy(float[] values) {
+        float[] copy = new float[values.length];
+        System.arraycopy(values, 0, copy, 0, values.length);
+        return copy;
+    }
+
+    private static int[] copy(int[] values) {
+        int[] copy = new int[values.length];
+        System.arraycopy(values, 0, copy, 0, values.length);
+        return copy;
     }
 
     private static final class RenderSpan {
