@@ -6,8 +6,8 @@ The game loads maps from this directory by pairing files named like this:
 - `map000_mask.png`: gameplay mask used for floor, voids, spawns, and facing directions
 - `map000.ser`: compressed generated gameplay cache for the parsed mask
 
-Add new maps as the next numbered pair (`map006.png` and `map006_mask.png`, then
-`map007...`). No Java change is needed when the pair is present under
+Add new maps as the next numbered pair (`map021.png` and `map021_mask.png`, then
+`map022...`). No Java change is needed when the pair is present under
 `assets/maps` and the game is rebuilt.
 
 Keep the mask. The pretty image is only the texture; the mask is what makes the
@@ -31,4 +31,4 @@ Mask colors:
 - white or near-white: playable floor
 - black or near-black: void, holes, or outside the arena
 - red circles: spawn points
-- blue arrows or triangles: spawn facing direction, paired with the nearest red spawn
+- blue markers: spawn facing direction, paired with the nearest red spawn
