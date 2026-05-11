@@ -171,7 +171,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
-    public static final int RL_OBSERVATION_SIZE = 30;
+    public static final int RL_OBSERVATION_SIZE = 39;
     public static final int RL_ACTION_SIZE = 2;
     public static final int RL_REWARD_BREAKDOWN_SIZE = 8;
     private static final int RL_REWARD_SURVIVAL = 0;
@@ -201,6 +201,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_VELOCITY_NORMALIZER = 18f;
     private static final float RL_ANGULAR_VELOCITY_NORMALIZER = 8f;
     private static final float RL_HAZARD_DISTANCE_NORMALIZER = 6f;
+    private static final float RL_ROUTE_MARGIN = 0.52f;
+    private static final float RL_ROUTE_DIRECT_EPSILON = 0.16f;
+    private static final float RL_RAYCAST_DISTANCE = 7.5f;
+    private static final float RL_RAYCAST_STEP = 0.34f;
     private static final float RL_ALIVE_STEP_REWARD = 0.002f;
     private static final float RL_EDGE_RECOVERY_REWARD = 0.145f;
     private static final float RL_OPPONENT_PRESSURE_REWARD = 0.110f;
@@ -767,7 +771,18 @@ public class RatassGame extends ApplicationAdapter {
             RlPolicy policy = RlPolicy.fromJson(policyFile.readString("UTF-8"));
             if (policy.getObservationSize() != RL_OBSERVATION_SIZE
                     || policy.getActionSize() != RL_ACTION_SIZE) {
-                throw new IllegalArgumentException("RL policy size does not match the game.");
+                Gdx.app.log(
+                        "RatassGame",
+                        "Ignoring RL enemy policy with observation/action size "
+                                + policy.getObservationSize()
+                                + "/"
+                                + policy.getActionSize()
+                                + "; expected "
+                                + RL_OBSERVATION_SIZE
+                                + "/"
+                                + RL_ACTION_SIZE
+                                + ". Retrain the policy for the current observation contract.");
+                return null;
             }
             return policy;
         } catch (RuntimeException exception) {
@@ -6746,6 +6761,8 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 rlObservationFocus = new Vector2();
         private final Vector2 rlObservationForward = new Vector2();
         private final Vector2 rlObservationRecovery = new Vector2();
+        private final Vector2 rlObservationRouteTarget = new Vector2();
+        private final Vector2 rlObservationSide = new Vector2();
 
         private Body body;
         private boolean active = true;
@@ -6952,7 +6969,9 @@ public class RatassGame extends ApplicationAdapter {
                         positionNormalizer,
                         rlObservationFocus,
                         rlObservationForward,
-                        rlObservationRecovery);
+                        rlObservationRecovery,
+                        rlObservationRouteTarget,
+                        rlObservationSide);
                 policy.computeAction(
                         rlObservation,
                         rlScratchA,
@@ -7546,7 +7565,9 @@ public class RatassGame extends ApplicationAdapter {
             float positionNormalizer,
             Vector2 observationFocus,
             Vector2 observationForward,
-            Vector2 observationRecovery) {
+            Vector2 observationRecovery,
+            Vector2 observationRouteTarget,
+            Vector2 observationSide) {
         for (int i = 0; i < RL_OBSERVATION_SIZE; i++) {
             observations[offset + i] = 0f;
         }
@@ -7632,6 +7653,22 @@ public class RatassGame extends ApplicationAdapter {
                 safeZoneTimeRemaining,
                 position,
                 positionNormalizer);
+        fillRlRouteObservation(
+                observations,
+                offset + 30,
+                arenaMap,
+                safeZoneActive,
+                safeZonePosition,
+                position,
+                positionNormalizer,
+                observationRouteTarget);
+        fillRlRayObservations(
+                observations,
+                offset + 33,
+                arenaMap,
+                position,
+                observationForward,
+                observationSide);
     }
 
     private static void fillRlPickupObservation(
@@ -7675,6 +7712,81 @@ public class RatassGame extends ApplicationAdapter {
         float marginSignal = MathUtils.clamp(signedMargin / Math.max(0.001f, safeZoneRadius), -1f, 1f);
         float urgency = 1f - MathUtils.clamp(safeZoneTimeRemaining / SAFE_ZONE_DURATION, 0f, 1f);
         observations[offset + 2] = MathUtils.clamp(marginSignal - urgency * 0.35f, -1f, 1f);
+    }
+
+    private static void fillRlRouteObservation(
+            float[] observations,
+            int offset,
+            ArenaMap arenaMap,
+            boolean safeZoneActive,
+            Vector2 safeZonePosition,
+            Vector2 carPosition,
+            float positionNormalizer,
+            Vector2 routeTarget) {
+        if (!safeZoneActive || safeZonePosition == null || arenaMap == null) {
+            observations[offset + 2] = -1f;
+            return;
+        }
+
+        arenaMap.findDriveTarget(carPosition, safeZonePosition, RL_ROUTE_MARGIN, routeTarget);
+        observations[offset] =
+                normalizedRlValue(routeTarget.x - carPosition.x, positionNormalizer);
+        observations[offset + 1] =
+                normalizedRlValue(routeTarget.y - carPosition.y, positionNormalizer);
+        observations[offset + 2] =
+                routeTarget.dst2(safeZonePosition) <= RL_ROUTE_DIRECT_EPSILON * RL_ROUTE_DIRECT_EPSILON
+                        ? 1f
+                        : 0f;
+    }
+
+    private static void fillRlRayObservations(
+            float[] observations,
+            int offset,
+            ArenaMap arenaMap,
+            Vector2 carPosition,
+            Vector2 forward,
+            Vector2 side) {
+        side.set(-forward.y, forward.x);
+        observations[offset] = sampleRlRayClearance(arenaMap, carPosition, forward.x, forward.y);
+        observations[offset + 1] =
+                sampleRlRayClearance(
+                        arenaMap,
+                        carPosition,
+                        forward.x + side.x,
+                        forward.y + side.y);
+        observations[offset + 2] =
+                sampleRlRayClearance(
+                        arenaMap,
+                        carPosition,
+                        forward.x - side.x,
+                        forward.y - side.y);
+        observations[offset + 3] = sampleRlRayClearance(arenaMap, carPosition, side.x, side.y);
+        observations[offset + 4] = sampleRlRayClearance(arenaMap, carPosition, -side.x, -side.y);
+        observations[offset + 5] = sampleRlRayClearance(arenaMap, carPosition, -forward.x, -forward.y);
+    }
+
+    private static float sampleRlRayClearance(
+            ArenaMap arenaMap,
+            Vector2 position,
+            float directionX,
+            float directionY) {
+        float length = (float) Math.sqrt(directionX * directionX + directionY * directionY);
+        if (arenaMap == null || position == null || length <= 0.0001f) {
+            return 0f;
+        }
+
+        float unitX = directionX / length;
+        float unitY = directionY / length;
+        for (float distance = RL_RAYCAST_STEP;
+                distance < RL_RAYCAST_DISTANCE;
+                distance += RL_RAYCAST_STEP) {
+            float sampleX = position.x + unitX * distance;
+            float sampleY = position.y + unitY * distance;
+            if (arenaMap.approximateDistanceToHazard(sampleX, sampleY) < RL_ROUTE_MARGIN) {
+                return MathUtils.clamp(distance / RL_RAYCAST_DISTANCE, 0f, 1f);
+            }
+        }
+        return 1f;
     }
 
     private static Car findNearestRlOpponent(Car car, Array<Car> cars) {
@@ -7823,6 +7935,8 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 observationFocus = new Vector2();
         private final Vector2 observationForward = new Vector2();
         private final Vector2 observationRecovery = new Vector2();
+        private final Vector2 observationRouteTarget = new Vector2();
+        private final Vector2 observationSide = new Vector2();
         private final RlAgentSnapshot[] beforeSnapshots;
         private final RlAgentSnapshot[] afterSnapshots;
         private final float[] observations;
@@ -8743,7 +8857,9 @@ public class RatassGame extends ApplicationAdapter {
                         positionNormalizer,
                         observationFocus,
                         observationForward,
-                        observationRecovery);
+                        observationRecovery,
+                        observationRouteTarget,
+                        observationSide);
             }
         }
 

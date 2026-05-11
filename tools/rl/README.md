@@ -53,7 +53,7 @@ Java, Ray, and JPype directly in the Windows Python process. Docker still writes
 all useful outputs into this checkout because the repo is mounted into the
 container:
 
-- `rl-checkpoints-navigation/` or `rl-checkpoints-direct-circle/`
+- `rl-checkpoints-navigation-route/` or `rl-checkpoints-direct-circle-route/`
 - `assets/ai/rl_enemy_policy.json`
 - `desktop/target/ratass-desktop-1.0.jar`
 - `rl-logs/*.log` plus Ray logs under `rl-logs/ray/`
@@ -141,11 +141,12 @@ python tools/rl/train_rllib.py --iterations 25
 
 The current policy controls the car directly. Its two outputs are throttle and
 turn, each in `[-1, 1]`; the scripted tactical mode layer is not used for RL
-cars. Its exported format is `ratass-rl-policy-v3`, tied to the direct
-safe-circle objective. The default checkpoint directory is
-`rl-checkpoints-direct-circle`; do not resume older checkpoints from
-`rl-checkpoints`, `rl-checkpoints-tactical`, or `rl-checkpoints-circle`, because
-those were trained with previous action and reward meanings.
+cars. Its exported format is `ratass-rl-policy-v3`, tied to the route-aware
+direct safe-circle objective. The default checkpoint directory is
+`rl-checkpoints-direct-circle-route`; do not resume older checkpoints from
+`rl-checkpoints`, `rl-checkpoints-tactical`, `rl-checkpoints-circle`,
+`rl-checkpoints-navigation`, or `rl-checkpoints-direct-circle`, because those
+were trained with previous observation, action, or reward meanings.
 
 Continue from the latest saved checkpoint:
 
@@ -174,7 +175,7 @@ Train the navigation-only phase without enemies or pickups:
 ```bash
 python tools/rl/train_rllib.py \
   --objective navigation \
-  --checkpoint-dir rl-checkpoints-navigation \
+  --checkpoint-dir rl-checkpoints-navigation-route \
   --controlled-agents 1 \
   --field-size 1 \
   --iterations 100
@@ -243,9 +244,9 @@ For navigation-only training on Windows:
 tools\rl\train_navigation_forever.cmd
 ```
 
-The combat helper resumes `rl-checkpoints-direct-circle`. The navigation wrapper
-resumes `rl-checkpoints-navigation`. Both train in repeated chunks, checkpoint
-during each chunk, and export `assets/ai/rl_enemy_policy.json`.
+The combat helper resumes `rl-checkpoints-direct-circle-route`. The navigation
+wrapper resumes `rl-checkpoints-navigation-route`. Both train in repeated chunks,
+checkpoint during each chunk, and export `assets/ai/rl_enemy_policy.json`.
 By default it rebuilds the desktop jar before training and after every chunk, so
 the packaged game contains the latest exported policy. Stop it with `Ctrl-C`;
 the interrupt handler exports and packages the latest saved checkpoint, so at
@@ -309,8 +310,13 @@ policy.
 
 ## Current Environment Contract
 
-- Observation size: `30` floats per learner.
+- Observation size: `39` floats per learner.
 - Action size: `2` floats per learner, `[throttle, turn]`, each in `[-1, 1]`.
+- Observation floats `30..32` are the map-routed drive target: relative x,
+  relative y, and a final-target flag. The routed target can point to an
+  intermediate waypoint when a direct line to the circle crosses a hole.
+- Observation floats `33..38` are local hazard clearances for forward,
+  forward-left, forward-right, left, right, and backward rays.
 - Training opponents still use the existing Java AI.
 - Rewards combine safe-circle approach/survival, staying near the circle center,
   slowing down inside the circle, edge recovery, opponent pressure, impact
