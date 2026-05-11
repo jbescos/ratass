@@ -137,8 +137,6 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SAFE_ZONE_SPAWN_MARGIN = 0.65f;
     private static final float SAFE_ZONE_MIN_HAZARD_DISTANCE = 1.15f;
     private static final float SAFE_ZONE_MIN_MOVE_DISTANCE = 4.2f;
-    private static final float SAFE_ZONE_REACHABLE_BUFFER = 5.6f;
-    private static final float SAFE_ZONE_REACHABLE_CAR_RATIO = 0.38f;
     private static final float SAFE_ZONE_RENDER_SAMPLE_STEP = 0.18f;
     private static final float SAFE_ZONE_MINIMAP_SAMPLE_STEP = 0.26f;
     private static final int SAFE_ZONE_SPAWN_ATTEMPTS = 128;
@@ -3148,24 +3146,10 @@ public class RatassGame extends ApplicationAdapter {
         currentMap.getBounds(mapBounds);
         currentMap.getFocusPoint(focusPoint);
         float radius = computeSafeZoneRadius(safeZoneWave);
-        if (safeZoneWave == 0) {
-            safeZoneRadius = radius;
-            currentMap.findRecoveryPoint(focusPoint, safeZonePosition);
-            if (!currentMap.supports(safeZonePosition)) {
-                currentMap.getFocusPoint(safeZonePosition);
-                currentMap.clampToPlayable(safeZonePosition, SAFE_ZONE_SPAWN_MARGIN);
-            }
-            if (currentMap.supports(safeZonePosition)) {
-                activateSafeZone();
-                return;
-            }
-        }
 
         for (int shrink = 0; shrink < 6; shrink++) {
             safeZoneRadius = radius;
-            if (trySpawnSafeZone(true, true)
-                    || trySpawnSafeZone(true, false)
-                    || trySpawnSafeZone(false, false)) {
+            if (trySpawnSafeZone(true) || trySpawnSafeZone(false)) {
                 activateSafeZone();
                 return;
             }
@@ -3198,7 +3182,7 @@ public class RatassGame extends ApplicationAdapter {
                 initialRadius * (float) Math.pow(SAFE_ZONE_RADIUS_DECAY, Math.max(0, waveIndex)));
     }
 
-    private boolean trySpawnSafeZone(boolean avoidCars, boolean requireNewSpot) {
+    private boolean trySpawnSafeZone(boolean requireNewSpot) {
         float minX = mapBounds.x + SAFE_ZONE_SPAWN_MARGIN;
         float maxX = mapBounds.x + mapBounds.width - SAFE_ZONE_SPAWN_MARGIN;
         float minY = mapBounds.y + SAFE_ZONE_SPAWN_MARGIN;
@@ -3214,7 +3198,6 @@ public class RatassGame extends ApplicationAdapter {
                         Math.min(safeZoneRadius * 0.90f, 2.25f));
         float requiredMoveDistance =
                 Math.max(SAFE_ZONE_MIN_MOVE_DISTANCE, safeZoneRadius * 1.05f);
-        float requiredCarDistance = Math.max(1.7f, safeZoneRadius * 0.48f);
 
         for (int attempt = 0; attempt < SAFE_ZONE_SPAWN_ATTEMPTS; attempt++) {
             pickupCandidate.set(MathUtils.random(minX, maxX), MathUtils.random(minY, maxY));
@@ -3228,55 +3211,12 @@ public class RatassGame extends ApplicationAdapter {
                     < requiredMoveDistance * requiredMoveDistance) {
                 continue;
             }
-            if (avoidCars && !isSafeZoneFarFromCars(pickupCandidate, requiredCarDistance)) {
-                continue;
-            }
-            if (!isSafeZoneReachableFromCars(pickupCandidate)) {
-                continue;
-            }
 
             safeZonePosition.set(pickupCandidate);
             return true;
         }
 
         return false;
-    }
-
-    private boolean isSafeZoneFarFromCars(Vector2 candidate, float minDistance) {
-        float minDistanceSq = minDistance * minDistance;
-        for (int i = 0; i < cars.size; i++) {
-            Car car = cars.get(i);
-            if (!car.active || car.body == null) {
-                continue;
-            }
-            if (car.body.getPosition().dst2(candidate) < minDistanceSq) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean isSafeZoneReachableFromCars(Vector2 candidate) {
-        int aliveCount = 0;
-        int reachableCount = 0;
-        float reachableDistance = safeZoneRadius + SAFE_ZONE_REACHABLE_BUFFER;
-        float reachableDistanceSq = reachableDistance * reachableDistance;
-        for (int i = 0; i < cars.size; i++) {
-            Car car = cars.get(i);
-            if (!car.active || car.body == null) {
-                continue;
-            }
-            aliveCount++;
-            if (car.body.getPosition().dst2(candidate) <= reachableDistanceSq) {
-                reachableCount++;
-            }
-        }
-        if (aliveCount == 0) {
-            return true;
-        }
-        int requiredReachable =
-                Math.max(1, MathUtils.ceil(aliveCount * SAFE_ZONE_REACHABLE_CAR_RATIO));
-        return reachableCount >= requiredReachable;
     }
 
     private void finalizeRoundResults() {
