@@ -36,6 +36,7 @@ public final class ArenaMap {
     private final float[] navigationRouteCosts;
     private final int[] navigationRoutePrevious;
     private final boolean[] navigationRouteVisited;
+    private final NavigationRouteResult navigationRouteResult = new NavigationRouteResult();
     private float cachedNavigationMargin = -1f;
 
     private ArenaMap(
@@ -325,6 +326,29 @@ public final class ArenaMap {
         findRecoveryPoint(from, out);
     }
 
+    public float estimateDriveDistance(Vector2 from, Vector2 goal, float margin) {
+        if (from == null || goal == null) {
+            return 0f;
+        }
+
+        scratchGoal.set(goal);
+        clampToPlayable(scratchGoal, margin);
+        if (isPathPlayableApprox(from, scratchGoal, margin)) {
+            return from.dst(scratchGoal);
+        }
+
+        NavigationRouteResult route = findNavigationRoute(from, scratchGoal, margin);
+        if (route.bestGoalIndex >= 0) {
+            return route.bestGoalCost;
+        }
+        if (route.bestFallbackIndex >= 0) {
+            return route.bestFallbackScore;
+        }
+
+        findRecoveryPoint(from, scratchBest);
+        return from.dst(scratchBest) + scratchBest.dst(scratchGoal);
+    }
+
     private boolean supportsExact(float x, float y) {
         if (!isWithinBounds(x, y)) {
             return false;
@@ -382,16 +406,23 @@ public final class ArenaMap {
     }
 
     private int findNavigationHop(Vector2 from, Vector2 goal, float margin) {
+        NavigationRouteResult route = findNavigationRoute(from, goal, margin);
+        if (route.bestGoalIndex >= 0) {
+            return unwindNavigationHop(route.bestGoalIndex);
+        }
+        if (route.bestFallbackIndex >= 0) {
+            return unwindNavigationHop(route.bestFallbackIndex);
+        }
+        return -1;
+    }
+
+    private NavigationRouteResult findNavigationRoute(Vector2 from, Vector2 goal, float margin) {
+        navigationRouteResult.clear();
         if (from == null || goal == null || recoveryPoints.size == 0) {
-            return -1;
+            return navigationRouteResult;
         }
 
         ensureNavigationGraph(margin);
-
-        float bestGoalCost = Float.MAX_VALUE;
-        int bestGoalIndex = -1;
-        float bestFallbackScore = Float.MAX_VALUE;
-        int bestFallbackIndex = -1;
 
         for (int i = 0; i < recoveryPoints.size; i++) {
             navigationRouteCosts[i] = Float.MAX_VALUE;
@@ -410,9 +441,9 @@ public final class ArenaMap {
             navigationRouteCosts[i] = travelCost;
 
             float fallbackScore = travelCost + candidate.dst(goal);
-            if (fallbackScore < bestFallbackScore) {
-                bestFallbackScore = fallbackScore;
-                bestFallbackIndex = i;
+            if (fallbackScore < navigationRouteResult.bestFallbackScore) {
+                navigationRouteResult.bestFallbackScore = fallbackScore;
+                navigationRouteResult.bestFallbackIndex = i;
             }
 
             if (!isPathPlayableApprox(candidate, goal, margin)) {
@@ -420,15 +451,15 @@ public final class ArenaMap {
             }
 
             float goalCost = travelCost + candidate.dst(goal);
-            if (goalCost < bestGoalCost) {
-                bestGoalCost = goalCost;
-                bestGoalIndex = i;
+            if (goalCost < navigationRouteResult.bestGoalCost) {
+                navigationRouteResult.bestGoalCost = goalCost;
+                navigationRouteResult.bestGoalIndex = i;
             }
         }
 
         while (true) {
             int current = -1;
-            float currentCost = bestGoalCost;
+            float currentCost = navigationRouteResult.bestGoalCost;
             if (currentCost == Float.MAX_VALUE) {
                 currentCost = Float.POSITIVE_INFINITY;
             }
@@ -448,16 +479,16 @@ public final class ArenaMap {
             Vector2 currentPoint = recoveryPoints.get(current);
 
             float fallbackScore = currentCost + currentPoint.dst(goal);
-            if (fallbackScore < bestFallbackScore) {
-                bestFallbackScore = fallbackScore;
-                bestFallbackIndex = current;
+            if (fallbackScore < navigationRouteResult.bestFallbackScore) {
+                navigationRouteResult.bestFallbackScore = fallbackScore;
+                navigationRouteResult.bestFallbackIndex = current;
             }
 
             if (isPathPlayableApprox(currentPoint, goal, margin)) {
                 float goalCost = currentCost + currentPoint.dst(goal);
-                if (goalCost < bestGoalCost) {
-                    bestGoalCost = goalCost;
-                    bestGoalIndex = current;
+                if (goalCost < navigationRouteResult.bestGoalCost) {
+                    navigationRouteResult.bestGoalCost = goalCost;
+                    navigationRouteResult.bestGoalIndex = current;
                 }
             }
 
@@ -476,13 +507,7 @@ public final class ArenaMap {
             }
         }
 
-        if (bestGoalIndex >= 0) {
-            return unwindNavigationHop(bestGoalIndex);
-        }
-        if (bestFallbackIndex >= 0) {
-            return unwindNavigationHop(bestFallbackIndex);
-        }
-        return -1;
+        return navigationRouteResult;
     }
 
     private int unwindNavigationHop(int targetIndex) {
@@ -629,6 +654,20 @@ public final class ArenaMap {
 
     private int sampleIndex(int sampleX, int sampleY) {
         return sampleY * approximateHazardWidth + sampleX;
+    }
+
+    private static final class NavigationRouteResult {
+        private int bestGoalIndex;
+        private int bestFallbackIndex;
+        private float bestGoalCost;
+        private float bestFallbackScore;
+
+        private void clear() {
+            bestGoalIndex = -1;
+            bestFallbackIndex = -1;
+            bestGoalCost = Float.MAX_VALUE;
+            bestFallbackScore = Float.MAX_VALUE;
+        }
     }
 
     public static final class Builder {

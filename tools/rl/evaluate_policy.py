@@ -42,12 +42,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--jar", default=os.fspath(DEFAULT_JAR))
     parser.add_argument("--policy", default=os.fspath(DEFAULT_POLICY))
     parser.add_argument("--episodes", type=int, default=20)
-    parser.add_argument("--field-size", type=int, default=10)
-    parser.add_argument("--steps", type=int, default=420)
+    parser.add_argument("--field-size", type=int, default=None)
+    parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--seed", type=int, default=20260506)
     parser.add_argument("--flip-deadzone", type=float, default=0.18)
     parser.add_argument("--map-id", default="")
     parser.add_argument("--per-map", action="store_true")
+    parser.add_argument("--quiet", action="store_true", help="only print final summaries")
+    parser.add_argument(
+        "--objective",
+        choices=("combat", "navigation"),
+        default="combat",
+        help="navigation evaluates the solo safe-circle training objective",
+    )
     return parser.parse_args()
 
 
@@ -75,13 +82,19 @@ def main() -> None:
     java_float_array = jpype.JArray(jpype.JFloat)
 
     policy = rl_policy.fromJson(policy_path.read_text(encoding="utf-8"))
+    navigation_only = args.objective == "navigation"
+    field_size = args.field_size if args.field_size is not None else (1 if navigation_only else 10)
+    steps_limit = args.steps if args.steps is not None else (1200 if navigation_only else 420)
     config = (
         ratass_game.RlTrainingConfig()
         .withControlledAgentCount(1)
-        .withFieldSize(args.field_size)
-        .withMaxActionSteps(args.steps)
+        .withFieldSize(field_size)
+        .withMaxActionSteps(steps_limit)
         .withSeed(args.seed)
+        .withNavigationOnly(navigation_only)
     )
+    if navigation_only:
+        config.withOpponentCount(0)
     selected_map = select_map(ratass_game, args.map_id)
     if selected_map is not None:
         config.addMap(selected_map)
@@ -112,6 +125,14 @@ def main() -> None:
             "effective_reverse": 0,
             "effective_small": 0,
             "growth_pickups": 0,
+            "survival": 0.0,
+            "circle": 0.0,
+            "edge": 0.0,
+            "attack": 0.0,
+            "driving": 0.0,
+            "pickup": 0.0,
+            "control": 0.0,
+            "win": 0.0,
         }
     )
     scratch_size = int(policy.getScratchSize())
@@ -131,11 +152,13 @@ def main() -> None:
             small_actions = 0
             effective_small_actions = 0
             growth_pickups = 0
+            reward_breakdown_names = [str(name) for name in result.rewardBreakdownNames]
+            reward_breakdown_totals = [0.0 for _ in reward_breakdown_names]
             last_raw_sign = 0
             last_effective_sign = 0
             was_growth_boosted = bool(float(result.observations[11]) > 0.5)
 
-            while not result.episodeDone and steps < args.steps:
+            while not result.episodeDone and steps < steps_limit:
                 observation = java_float_array([float(value) for value in result.observations])
                 scratch_a = java_float_array(scratch_size)
                 scratch_b = java_float_array(scratch_size)
@@ -177,6 +200,9 @@ def main() -> None:
                 if abs(effective_throttle) < args.flip_deadzone:
                     effective_small_actions += 1
                 reward += sum(float(value) for value in result.rewards)
+                step_breakdown = [float(value) for value in result.rewardBreakdown]
+                for index in range(min(len(reward_breakdown_totals), len(step_breakdown))):
+                    reward_breakdown_totals[index] += step_breakdown[index]
                 steps += 1
 
             if int(result.winnerAgentIndex) == 0:
@@ -193,6 +219,8 @@ def main() -> None:
             map_stats["effective_reverse"] += effective_reverse_actions
             map_stats["effective_small"] += effective_small_actions
             map_stats["growth_pickups"] += growth_pickups
+            for name, value in zip(reward_breakdown_names, reward_breakdown_totals):
+                map_stats[name] += value
             total_steps += steps
             total_reward += reward
             total_raw_flips += raw_flips
@@ -207,20 +235,21 @@ def main() -> None:
             total_actions += steps
             raw_flip_rate = raw_flips / max(1, raw_nonzero_pairs)
             effective_flip_rate = effective_flips / max(1, effective_nonzero_pairs)
-            print(
-                f"episode={episode} "
-                f"map={map_id} "
-                f"steps={steps} "
-                f"reward={reward:.3f} "
-                f"raw_flips={raw_flips} "
-                f"raw_flip_rate={raw_flip_rate:.3f} "
-                f"effective_flips={effective_flips} "
-                f"effective_flip_rate={effective_flip_rate:.3f} "
-                f"growth_pickups={growth_pickups} "
-                f"winner={result.winnerLabel} "
-                f"winnerAgent={result.winnerAgentIndex}",
-                flush=True,
-            )
+            if not args.quiet:
+                print(
+                    f"episode={episode} "
+                    f"map={map_id} "
+                    f"steps={steps} "
+                    f"reward={reward:.3f} "
+                    f"raw_flips={raw_flips} "
+                    f"raw_flip_rate={raw_flip_rate:.3f} "
+                    f"effective_flips={effective_flips} "
+                    f"effective_flip_rate={effective_flip_rate:.3f} "
+                    f"growth_pickups={growth_pickups} "
+                    f"winner={result.winnerLabel} "
+                    f"winnerAgent={result.winnerAgentIndex}",
+                    flush=True,
+                )
 
         print(
             f"summary wins={wins}/{args.episodes} "
@@ -251,7 +280,21 @@ def main() -> None:
                     f"effective_flips_per_step={values['effective_flips'] / actions:.3f} "
                     f"effective_reverse_fraction={values['effective_reverse'] / actions:.3f} "
                     f"effective_small_throttle_fraction={values['effective_small'] / actions:.3f} "
-                    f"growth_pickups_per_episode={values['growth_pickups'] / episodes:.3f}",
+                    f"growth_pickups_per_episode={values['growth_pickups'] / episodes:.3f} "
+                    + " ".join(
+                        f"{name}={values[name] / episodes:.3f}"
+                        for name in (
+                            "survival",
+                            "circle",
+                            "edge",
+                            "attack",
+                            "driving",
+                            "pickup",
+                            "control",
+                            "win",
+                        )
+                        if name in values
+                    ),
                     flush=True,
                 )
     finally:
