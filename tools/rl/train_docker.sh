@@ -8,8 +8,8 @@ objective="${RL_OBJECTIVE:-combat}"
 shm_size="${RL_DOCKER_SHM_SIZE:-4g}"
 
 if [[ "${objective}" == "navigation" ]]; then
-  default_controlled_agents=1
-  default_field_size=1
+  default_controlled_agents=2
+  default_field_size=2
   default_max_action_steps=1200
   default_checkpoint_dir="rl-checkpoints-navigation-route"
 else

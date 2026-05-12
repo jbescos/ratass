@@ -32,6 +32,10 @@ DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-direct-circle-route"
 OBSERVATION_SIZE = 39
 ACTION_SIZE = 2
+DEFAULT_COMBAT_CONTROLLED_AGENTS = 6
+DEFAULT_COMBAT_FIELD_SIZE = 12
+DEFAULT_NAVIGATION_CONTROLLED_AGENTS = 2
+DEFAULT_NAVIGATION_FIELD_SIZE = 2
 
 
 def _metric_token(value: str) -> str:
@@ -209,13 +213,23 @@ class RatassMultiAgentEnv(MultiAgentEnv):
 
         ratass_game = jpype.JClass("com.github.jbescos.RatassGame")
         training_config = ratass_game.RlTrainingConfig()
-        training_config.withControlledAgentCount(int(env_config.get("controlled_agents", 1)))
-        training_config.withFieldSize(int(env_config.get("field_size", 12)))
+        objective = str(env_config.get("objective", "combat"))
+        navigation_only = objective == "navigation"
+        default_controlled_agents = (
+            DEFAULT_NAVIGATION_CONTROLLED_AGENTS
+            if navigation_only
+            else DEFAULT_COMBAT_CONTROLLED_AGENTS
+        )
+        default_field_size = (
+            DEFAULT_NAVIGATION_FIELD_SIZE if navigation_only else DEFAULT_COMBAT_FIELD_SIZE
+        )
+        training_config.withControlledAgentCount(
+            int(env_config.get("controlled_agents", default_controlled_agents))
+        )
+        training_config.withFieldSize(int(env_config.get("field_size", default_field_size)))
         training_config.withActionRepeat(int(env_config.get("action_repeat", 4)))
         training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 1350)))
         training_config.withSeed(int(env_config.get("seed", 1)))
-        objective = str(env_config.get("objective", "combat"))
-        navigation_only = objective == "navigation"
         training_config.withNavigationOnly(navigation_only)
         opponent_count = env_config.get("opponent_count")
         if opponent_count is not None:
@@ -533,8 +547,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--jar", default=os.fspath(DEFAULT_JAR))
     parser.add_argument("--iterations", type=int, default=25)
     parser.add_argument("--workers", type=int, default=0)
-    parser.add_argument("--controlled-agents", type=int, default=1)
-    parser.add_argument("--field-size", type=int, default=12)
+    parser.add_argument(
+        "--controlled-agents",
+        type=int,
+        default=None,
+        help="controlled learners; navigation defaults to 2, combat defaults to 6",
+    )
+    parser.add_argument(
+        "--field-size",
+        type=int,
+        default=None,
+        help="total cars; navigation defaults to 2, combat defaults to 12",
+    )
     parser.add_argument("--action-repeat", type=int, default=4)
     parser.add_argument("--max-action-steps", type=int, default=1350)
     parser.add_argument("--num-gpus", type=float, default=0.0)
@@ -583,7 +607,23 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="disable per-map/per-car reward bucket summaries after each iteration",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    apply_objective_defaults(args)
+    return args
+
+
+def apply_objective_defaults(args: argparse.Namespace) -> None:
+    if args.objective == "navigation":
+        if args.controlled_agents is None:
+            args.controlled_agents = DEFAULT_NAVIGATION_CONTROLLED_AGENTS
+        if args.field_size is None:
+            args.field_size = max(DEFAULT_NAVIGATION_FIELD_SIZE, args.controlled_agents)
+        return
+
+    if args.controlled_agents is None:
+        args.controlled_agents = DEFAULT_COMBAT_CONTROLLED_AGENTS
+    if args.field_size is None:
+        args.field_size = DEFAULT_COMBAT_FIELD_SIZE
 
 
 def main() -> None:

@@ -18,8 +18,8 @@ export RL_RAY_TEMP_DIR="${RL_RAY_TEMP_DIR:-rl-logs/ray}"
 
 if [[ "${RL_OBJECTIVE}" == "navigation" ]]; then
   export RL_CHECKPOINT_DIR="${RL_CHECKPOINT_DIR:-rl-checkpoints-navigation-route}"
-  export RL_CONTROLLED_AGENTS="${RL_CONTROLLED_AGENTS:-1}"
-  export RL_FIELD_SIZE="${RL_FIELD_SIZE:-1}"
+  export RL_CONTROLLED_AGENTS="${RL_CONTROLLED_AGENTS:-2}"
+  export RL_FIELD_SIZE="${RL_FIELD_SIZE:-2}"
   export RL_MAX_ACTION_STEPS="${RL_MAX_ACTION_STEPS:-1200}"
 fi
 

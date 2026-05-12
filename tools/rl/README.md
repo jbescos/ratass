@@ -139,7 +139,7 @@ RL_NO_REWARD_SUMMARY=1 bash tools/rl/train_navigation_docker.sh
 python tools/rl/train_rllib.py --iterations 25
 ```
 
-The current policy controls the car directly. Its two outputs are throttle and
+The combat policy controls the car directly. Its two outputs are throttle and
 turn, each in `[-1, 1]`; the scripted tactical mode layer is not used for RL
 cars. Its exported format is `ratass-rl-policy-v3`, tied to the route-aware
 direct safe-circle objective. The default checkpoint directory is
@@ -159,7 +159,7 @@ Useful early tuning knobs:
 ```bash
 python tools/rl/train_rllib.py \
   --iterations 100 \
-  --controlled-agents 1 \
+  --controlled-agents 6 \
   --field-size 12 \
   --workers 0
 ```
@@ -176,14 +176,14 @@ Train the navigation-only phase without enemies or pickups:
 python tools/rl/train_rllib.py \
   --objective navigation \
   --checkpoint-dir rl-checkpoints-navigation-route \
-  --controlled-agents 1 \
-  --field-size 1 \
+  --controlled-agents 2 \
+  --field-size 2 \
   --iterations 100
 ```
 
-This phase keeps one learner alive through repeated safe circles. It is meant to
-teach circle approach, braking inside the circle, and edge recovery before
-combat is introduced again.
+This phase trains two learners with the shared policy and no heuristic
+opponents. It is meant to teach circle approach, braking inside the circle, edge
+recovery, and a simple win/loss signal before combat is introduced again.
 
 After each PPO iteration, `train_rllib.py` prints a compact reward breakdown for
 the completed learner episodes grouped by map and car:

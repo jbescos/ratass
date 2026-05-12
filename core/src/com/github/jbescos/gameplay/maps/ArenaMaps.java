@@ -8,7 +8,7 @@ import com.github.jbescos.gameplay.ArenaShape;
 import com.github.jbescos.gameplay.SpawnPoint;
 
 public final class ArenaMaps {
-    private static final float DEFAULT_MAP_SCALE = 2f;
+    private static final float DEFAULT_MAP_SCALE = 4f;
     private static final int TRAINING_SPAWN_COUNT = 24;
 
     private ArenaMaps() {

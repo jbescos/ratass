@@ -4,8 +4,8 @@ set -euo pipefail
 python_bin="${PYTHON_BIN:-.venv-rl/bin/python}"
 objective="${RL_OBJECTIVE:-combat}"
 if [[ "${objective}" == "navigation" ]]; then
-  default_controlled_agents=1
-  default_field_size=1
+  default_controlled_agents=2
+  default_field_size=2
   default_max_action_steps=1200
   default_checkpoint_dir="rl-checkpoints-navigation-route"
   export_objective="navigation-route-safe-circle-v1"

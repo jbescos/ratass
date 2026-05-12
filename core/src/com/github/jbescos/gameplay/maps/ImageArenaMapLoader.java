@@ -70,11 +70,13 @@ final class ImageArenaMapLoader {
             }
         }
 
-        for (int i = 0; i < MAX_SEQUENTIAL_MAP_SCAN; i++) {
-            FileHandle handle = Gdx.files.internal(
-                    MAPS_DIRECTORY + "/map" + zeroPad3(i) + MASK_SUFFIX);
-            if (handle.exists()) {
-                addMaskFile(maskFiles, seenPaths, handle);
+        if (maskFiles.size == 0) {
+            for (int i = 0; i < MAX_SEQUENTIAL_MAP_SCAN; i++) {
+                FileHandle handle = Gdx.files.internal(
+                        MAPS_DIRECTORY + "/map" + zeroPad3(i) + MASK_SUFFIX);
+                if (handle.exists()) {
+                    addMaskFile(maskFiles, seenPaths, handle);
+                }
             }
         }
 
