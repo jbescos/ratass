@@ -246,10 +246,13 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_UNSAFE_ATTACK_PENALTY = 0.260f;
     private static final float RL_ATTACK_SUICIDE_PENALTY = 4.200f;
     private static final float RL_GROWTH_PICKUP_REWARD = 5.000f;
+    private static final float RL_GROWTH_PICKUP_SAFE_ZONE_REWARD = 4.000f;
     private static final float RL_GROWTH_PICKUP_APPROACH_REWARD = 0.200f;
     private static final float RL_SAFE_ZONE_APPROACH_REWARD = 0.560f;
     private static final float RL_SAFE_ZONE_INSIDE_REWARD = 0.145f;
-    private static final float RL_SAFE_ZONE_CENTER_REWARD = 0.160f;
+    private static final float RL_SAFE_ZONE_CENTER_REWARD = 0.320f;
+    private static final float RL_SAFE_ZONE_DEEP_INSIDE_REWARD = 0.340f;
+    private static final float RL_SAFE_ZONE_RIM_PENALTY = 0.360f;
     private static final float RL_SAFE_ZONE_SETTLE_REWARD = 0.130f;
     private static final float RL_SAFE_ZONE_BRAKE_REWARD = 0.110f;
     private static final float RL_SAFE_ZONE_FAST_EXIT_PENALTY = 0.260f;
@@ -257,6 +260,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_SAFE_ZONE_EXIT_PENALTY = 0.650f;
     private static final float RL_SAFE_ZONE_BRAKE_SPEED = 0.85f;
     private static final float RL_SAFE_ZONE_DEADLINE_REWARD = 1.850f;
+    private static final float RL_SAFE_ZONE_DEADLINE_CENTER_REWARD = 1.600f;
+    private static final float RL_SAFE_ZONE_PUSH_OUT_REWARD = 0.850f;
+    private static final float RL_SAFE_ZONE_EJECTION_REWARD = 1.350f;
     private static final float RL_SAFE_ZONE_MISS_PENALTY = 7.600f;
     private static final float RL_SAFE_ZONE_URGENCY_PENALTY = 0.140f;
     private static final float RL_NAVIGATION_CIRCLE_REWARD_SCALE = 1.65f;
@@ -3167,6 +3173,7 @@ public class RatassGame extends ApplicationAdapter {
         if (car.template.roundFinishPosition == 0) {
             car.template.roundFinishPosition = ++finishPositionCounter;
         }
+        car.eliminatedByAttackerId = car.lastAttackerId;
         car.eliminate(world);
         invalidateLeaderboard();
     }
@@ -6644,6 +6651,7 @@ public class RatassGame extends ApplicationAdapter {
         private boolean eliminatedBySafeZone;
         private int safeZoneSurvivalSequence;
         private int lastAttackerId = -1;
+        private int eliminatedByAttackerId = -1;
         private float sizeScale = 1f;
         private float impactSlideTimer;
         private float impactSlideStrength;
@@ -8109,9 +8117,12 @@ public class RatassGame extends ApplicationAdapter {
                     continue;
                 }
                 if (!other.active) {
-                    if (other.lastAttackerId == snapshot.vehicleId
+                    if (other.eliminatedByAttackerId == snapshot.vehicleId
                             && other.template.roundFinishPosition > 0) {
                         snapshot.creditedEliminations++;
+                        if (other.eliminatedBySafeZone) {
+                            snapshot.safeZoneEjections++;
+                        }
                     }
                     continue;
                 }
@@ -8122,6 +8133,11 @@ public class RatassGame extends ApplicationAdapter {
                 snapshot.aliveOpponents++;
                 if (other.lastAttackerId == snapshot.vehicleId && other.recentImpactTimer > 0f) {
                     snapshot.attackCreditCount++;
+                    if (game.safeZoneActive
+                            && snapshot.safeZoneInside
+                            && !game.isInsideSafeZone(other)) {
+                        snapshot.safeZonePushOuts++;
+                    }
                 }
 
                 float distanceSq = position.dst2(other.body.getPosition());
@@ -8204,6 +8220,15 @@ public class RatassGame extends ApplicationAdapter {
                                                     after.creditedEliminations
                                                             - before.creditedEliminations)
                                             * RL_OPPONENT_ELIMINATION_REWARD);
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_ATTACK,
+                                    Math.max(0, after.safeZoneEjections - before.safeZoneEjections)
+                                            * RL_SAFE_ZONE_EJECTION_REWARD);
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_ATTACK,
+                                    getSafeZonePushOutReward(before, after));
                             reward += recordReward(
                                     agentIndex,
                                     RL_REWARD_ATTACK,
@@ -8332,6 +8357,7 @@ public class RatassGame extends ApplicationAdapter {
             float reward = 0f;
             if (after.safeZoneSurvivalSequence > before.safeZoneSurvivalSequence) {
                 reward += RL_SAFE_ZONE_DEADLINE_REWARD;
+                reward += getSafeZoneCenterScore(before) * RL_SAFE_ZONE_DEADLINE_CENTER_REWARD;
             }
             if (!before.safeZoneActive || !after.safeZoneActive) {
                 return reward;
@@ -8342,15 +8368,15 @@ public class RatassGame extends ApplicationAdapter {
             float urgencyScale = 0.55f + urgency * 0.75f;
             reward += approach * urgencyScale * RL_SAFE_ZONE_APPROACH_REWARD;
             if (after.safeZoneInside) {
-                float radius = Math.max(
-                        SAFE_ZONE_MIN_RADIUS,
-                        after.safeZoneRadius > 0f
-                                ? after.safeZoneRadius
-                                : after.safeZoneDistance + after.safeZoneSignedMargin);
-                float centerScore =
-                        MathUtils.clamp(after.safeZoneSignedMargin / Math.max(0.001f, radius), 0f, 1f);
+                float centerScore = getSafeZoneCenterScore(after);
+                float deepInsideScore =
+                        MathUtils.clamp((centerScore - 0.35f) / 0.65f, 0f, 1f);
+                float rimPressure =
+                        MathUtils.clamp((0.32f - centerScore) / 0.32f, 0f, 1f);
                 reward += (0.45f + urgency * 0.85f) * RL_SAFE_ZONE_INSIDE_REWARD;
                 reward += centerScore * (0.70f + urgency * 0.90f) * RL_SAFE_ZONE_CENTER_REWARD;
+                reward += deepInsideScore * (0.55f + urgency) * RL_SAFE_ZONE_DEEP_INSIDE_REWARD;
+                reward -= rimPressure * (0.35f + urgency * 0.85f) * RL_SAFE_ZONE_RIM_PENALTY;
 
                 float targetSpeed = MathUtils.lerp(1.55f, 0.55f, urgency);
                 float speedScore =
@@ -8392,6 +8418,18 @@ public class RatassGame extends ApplicationAdapter {
                 reward -= outsideScale * urgency * urgency * RL_SAFE_ZONE_URGENCY_PENALTY;
             }
             return reward;
+        }
+
+        private float getSafeZoneCenterScore(RlAgentSnapshot snapshot) {
+            if (snapshot == null || !snapshot.safeZoneActive || !snapshot.safeZoneInside) {
+                return 0f;
+            }
+            float radius = Math.max(
+                    SAFE_ZONE_MIN_RADIUS,
+                    snapshot.safeZoneRadius > 0f
+                            ? snapshot.safeZoneRadius
+                            : snapshot.safeZoneDistance + snapshot.safeZoneSignedMargin);
+            return MathUtils.clamp(snapshot.safeZoneSignedMargin / Math.max(0.001f, radius), 0f, 1f);
         }
 
         private float getSafeZoneApproachProgress(
@@ -8509,6 +8547,16 @@ public class RatassGame extends ApplicationAdapter {
                             * attackSafety
                             * RL_ATTACK_EDGE_PRESSURE_REWARD;
             return reward;
+        }
+
+        private float getSafeZonePushOutReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+            int newPushOuts = Math.max(0, after.safeZonePushOuts - before.safeZonePushOuts);
+            if (newPushOuts == 0 || !after.safeZoneActive || !after.safeZoneInside) {
+                return 0f;
+            }
+            return newPushOuts
+                    * (0.70f + getSafeZoneCenterScore(after) * 0.45f)
+                    * RL_SAFE_ZONE_PUSH_OUT_REWARD;
         }
 
         private float getUnsafeAttackPenalty(RlAgentSnapshot before, RlAgentSnapshot after) {
@@ -8729,9 +8777,15 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private float getGrowthPickupReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+            int collectedPickups = Math.max(0, after.pickupPoints - before.pickupPoints);
             float reward =
-                    Math.max(0, after.pickupPoints - before.pickupPoints)
-                            * RL_GROWTH_PICKUP_REWARD;
+                    collectedPickups * RL_GROWTH_PICKUP_REWARD;
+            if (collectedPickups > 0 && after.safeZoneActive && after.safeZoneInside) {
+                reward +=
+                        collectedPickups
+                                * (0.75f + getSafeZoneCenterScore(after) * 0.50f)
+                                * RL_GROWTH_PICKUP_SAFE_ZONE_REWARD;
+            }
             if (before.growthBoosted || after.growthBoosted) {
                 return reward;
             }
@@ -9021,6 +9075,8 @@ public class RatassGame extends ApplicationAdapter {
         private int aliveOpponents;
         private int attackCreditCount;
         private int creditedEliminations;
+        private int safeZonePushOuts;
+        private int safeZoneEjections;
         private int safeZoneSequence;
         private int safeZoneSurvivalSequence;
         private boolean growthBoosted;
@@ -9056,6 +9112,8 @@ public class RatassGame extends ApplicationAdapter {
             aliveOpponents = 0;
             attackCreditCount = 0;
             creditedEliminations = 0;
+            safeZonePushOuts = 0;
+            safeZoneEjections = 0;
             safeZoneSequence = 0;
             safeZoneSurvivalSequence = 0;
             growthBoosted = false;
