@@ -10,6 +10,12 @@ public final class ArenaMap {
     private static final int APPROXIMATE_MIN_GRID_SIZE = 96;
     private static final int APPROXIMATE_MAX_GRID_SIZE = 384;
     private static final float APPROXIMATE_PATH_MARGIN = 0.04f;
+    private static final float ROUTE_FIELD_MARGIN_EPSILON = 0.0001f;
+    private static final float ROUTE_FIELD_LOOKAHEAD_DISTANCE = 4.20f;
+    private static final float ROUTE_FIELD_MIN_TARGET_DISTANCE = 1.25f;
+    private static final float ROUTE_FIELD_BLIND_LOOKAHEAD_DISTANCE = 1.70f;
+    private static final int ROUTE_FIELD_LOOKAHEAD_STEPS = 56;
+    private static final int ROUTE_FIELD_NEAREST_SEARCH_RADIUS = 18;
 
     private final String id;
     private final String name;
@@ -30,14 +36,13 @@ public final class ArenaMap {
     private final float approximateHazardCellHeight;
     private final float[] approximateHazardSamples;
     private final short[] approximateRecoverySamples;
-    private final boolean[] navigationNodeSafe;
-    private final boolean[][] navigationNodeVisible;
-    private final float[][] navigationNodeTravelCost;
-    private final float[] navigationRouteCosts;
-    private final int[] navigationRoutePrevious;
-    private final boolean[] navigationRouteVisited;
-    private final NavigationRouteResult navigationRouteResult = new NavigationRouteResult();
-    private float cachedNavigationMargin = -1f;
+    private final boolean[] routeFieldSafe;
+    private final float[] routeFieldCosts;
+    private final int[] routeFieldHeap;
+    private final int[] routeFieldHeapPositions;
+    private int routeFieldHeapSize;
+    private float cachedRouteFieldMargin = -1f;
+    private int cachedRouteFieldGoalIndex = -1;
 
     private ArenaMap(
             String id,
@@ -93,13 +98,11 @@ public final class ArenaMap {
         approximateRecoverySamples = new short[approximateHazardSamples.length];
         buildApproximationCache();
 
-        int navigationNodeCount = this.recoveryPoints.size;
-        navigationNodeSafe = new boolean[navigationNodeCount];
-        navigationNodeVisible = new boolean[navigationNodeCount][navigationNodeCount];
-        navigationNodeTravelCost = new float[navigationNodeCount][navigationNodeCount];
-        navigationRouteCosts = new float[navigationNodeCount];
-        navigationRoutePrevious = new int[navigationNodeCount];
-        navigationRouteVisited = new boolean[navigationNodeCount];
+        int routeFieldCellCount = approximateHazardSamples.length;
+        routeFieldSafe = new boolean[routeFieldCellCount];
+        routeFieldCosts = new float[routeFieldCellCount];
+        routeFieldHeap = new int[routeFieldCellCount];
+        routeFieldHeapPositions = new int[routeFieldCellCount];
     }
 
     public static Builder builder(String id, String name) {
@@ -317,9 +320,7 @@ public final class ArenaMap {
             return;
         }
 
-        int navigationHop = findNavigationHop(from, scratchGoal, margin);
-        if (navigationHop >= 0) {
-            out.set(recoveryPoints.get(navigationHop));
+        if (findRouteFieldTarget(from, scratchGoal, margin, out)) {
             return;
         }
 
@@ -337,12 +338,9 @@ public final class ArenaMap {
             return from.dst(scratchGoal);
         }
 
-        NavigationRouteResult route = findNavigationRoute(from, scratchGoal, margin);
-        if (route.bestGoalIndex >= 0) {
-            return route.bestGoalCost;
-        }
-        if (route.bestFallbackIndex >= 0) {
-            return route.bestFallbackScore;
+        float routeDistance = estimateRouteFieldDistance(from, scratchGoal, margin);
+        if (routeDistance >= 0f) {
+            return routeDistance;
         }
 
         findRecoveryPoint(from, scratchBest);
@@ -405,154 +403,427 @@ public final class ArenaMap {
         return hazardDistance;
     }
 
-    private int findNavigationHop(Vector2 from, Vector2 goal, float margin) {
-        NavigationRouteResult route = findNavigationRoute(from, goal, margin);
-        if (route.bestGoalIndex >= 0) {
-            return unwindNavigationHop(route.bestGoalIndex);
-        }
-        if (route.bestFallbackIndex >= 0) {
-            return unwindNavigationHop(route.bestFallbackIndex);
-        }
-        return -1;
-    }
-
-    private NavigationRouteResult findNavigationRoute(Vector2 from, Vector2 goal, float margin) {
-        navigationRouteResult.clear();
-        if (from == null || goal == null || recoveryPoints.size == 0) {
-            return navigationRouteResult;
+    private boolean findRouteFieldTarget(Vector2 from, Vector2 goal, float margin, Vector2 out) {
+        if (from == null || goal == null || approximateHazardSamples.length == 0) {
+            return false;
         }
 
-        ensureNavigationGraph(margin);
-
-        for (int i = 0; i < recoveryPoints.size; i++) {
-            navigationRouteCosts[i] = Float.MAX_VALUE;
-            navigationRoutePrevious[i] = -1;
-            navigationRouteVisited[i] = !navigationNodeSafe[i];
-            if (!navigationNodeSafe[i]) {
-                continue;
-            }
-
-            Vector2 candidate = recoveryPoints.get(i);
-            if (!isPathPlayableApprox(from, candidate, margin)) {
-                continue;
-            }
-
-            float travelCost = from.dst(candidate);
-            navigationRouteCosts[i] = travelCost;
-
-            float fallbackScore = travelCost + candidate.dst(goal);
-            if (fallbackScore < navigationRouteResult.bestFallbackScore) {
-                navigationRouteResult.bestFallbackScore = fallbackScore;
-                navigationRouteResult.bestFallbackIndex = i;
-            }
-
-            if (!isPathPlayableApprox(candidate, goal, margin)) {
-                continue;
-            }
-
-            float goalCost = travelCost + candidate.dst(goal);
-            if (goalCost < navigationRouteResult.bestGoalCost) {
-                navigationRouteResult.bestGoalCost = goalCost;
-                navigationRouteResult.bestGoalIndex = i;
-            }
+        ensureRouteField(goal, margin);
+        if (cachedRouteFieldGoalIndex < 0) {
+            return false;
         }
 
-        while (true) {
-            int current = -1;
-            float currentCost = navigationRouteResult.bestGoalCost;
-            if (currentCost == Float.MAX_VALUE) {
-                currentCost = Float.POSITIVE_INFINITY;
-            }
+        int startIndex = findNearestReachableRouteFieldCell(from.x, from.y);
+        if (startIndex < 0) {
+            return false;
+        }
 
-            for (int i = 0; i < recoveryPoints.size; i++) {
-                if (!navigationRouteVisited[i] && navigationRouteCosts[i] < currentCost) {
-                    current = i;
-                    currentCost = navigationRouteCosts[i];
-                }
-            }
+        if (startIndex == cachedRouteFieldGoalIndex) {
+            out.set(goal);
+            return true;
+        }
 
-            if (current < 0) {
+        int currentIndex = startIndex;
+        int bestVisibleIndex = startIndex;
+        float bestVisibleDistance = 0f;
+        int blindProgressIndex = startIndex;
+        float blindProgressDistance = 0f;
+        float followedDistance = 0f;
+        for (int step = 0; step < ROUTE_FIELD_LOOKAHEAD_STEPS
+                && followedDistance < ROUTE_FIELD_LOOKAHEAD_DISTANCE; step++) {
+            int nextIndex = findNextRouteFieldCell(currentIndex);
+            if (nextIndex < 0) {
                 break;
             }
 
-            navigationRouteVisited[current] = true;
-            Vector2 currentPoint = recoveryPoints.get(current);
-
-            float fallbackScore = currentCost + currentPoint.dst(goal);
-            if (fallbackScore < navigationRouteResult.bestFallbackScore) {
-                navigationRouteResult.bestFallbackScore = fallbackScore;
-                navigationRouteResult.bestFallbackIndex = current;
+            float stepDistance = routeFieldCellDistance(currentIndex, nextIndex);
+            followedDistance += stepDistance;
+            currentIndex = nextIndex;
+            if (blindProgressDistance < ROUTE_FIELD_BLIND_LOOKAHEAD_DISTANCE) {
+                blindProgressDistance += stepDistance;
+                blindProgressIndex = currentIndex;
             }
 
-            if (isPathPlayableApprox(currentPoint, goal, margin)) {
-                float goalCost = currentCost + currentPoint.dst(goal);
-                if (goalCost < navigationRouteResult.bestGoalCost) {
-                    navigationRouteResult.bestGoalCost = goalCost;
-                    navigationRouteResult.bestGoalIndex = current;
-                }
+            if (currentIndex == cachedRouteFieldGoalIndex) {
+                out.set(goal);
+                return true;
             }
 
-            for (int i = 0; i < recoveryPoints.size; i++) {
-                if (navigationRouteVisited[i] || !navigationNodeVisible[current][i]) {
-                    continue;
-                }
-
-                float routeCost = currentCost + navigationNodeTravelCost[current][i];
-                if (routeCost >= navigationRouteCosts[i]) {
-                    continue;
-                }
-
-                navigationRouteCosts[i] = routeCost;
-                navigationRoutePrevious[i] = current;
+            scratchCandidate.set(routeFieldCenterX(currentIndex), routeFieldCenterY(currentIndex));
+            if (isPathPlayableApprox(from, scratchCandidate, margin)) {
+                bestVisibleIndex = currentIndex;
+                bestVisibleDistance = followedDistance;
+            } else if (bestVisibleIndex != startIndex) {
+                break;
             }
         }
 
-        return navigationRouteResult;
-    }
-
-    private int unwindNavigationHop(int targetIndex) {
-        int current = targetIndex;
-        while (current >= 0 && navigationRoutePrevious[current] >= 0) {
-            current = navigationRoutePrevious[current];
+        if ((bestVisibleIndex == startIndex
+                        || bestVisibleDistance < ROUTE_FIELD_MIN_TARGET_DISTANCE)
+                && blindProgressIndex != startIndex) {
+            out.set(routeFieldCenterX(blindProgressIndex), routeFieldCenterY(blindProgressIndex));
+            return true;
         }
-        return current;
+        out.set(routeFieldCenterX(bestVisibleIndex), routeFieldCenterY(bestVisibleIndex));
+        return true;
     }
 
-    private void ensureNavigationGraph(float margin) {
-        if (cachedNavigationMargin >= 0f
-                && Math.abs(cachedNavigationMargin - margin) <= 0.0001f) {
+    private float estimateRouteFieldDistance(Vector2 from, Vector2 goal, float margin) {
+        if (from == null || goal == null || approximateHazardSamples.length == 0) {
+            return -1f;
+        }
+
+        ensureRouteField(goal, margin);
+        if (cachedRouteFieldGoalIndex < 0) {
+            return -1f;
+        }
+
+        int startIndex = findNearestReachableRouteFieldCell(from.x, from.y);
+        if (startIndex < 0) {
+            return -1f;
+        }
+
+        float routeCost = routeFieldCosts[startIndex];
+        if (routeCost == Float.MAX_VALUE) {
+            return -1f;
+        }
+
+        return Vector2.dst(
+                        from.x,
+                        from.y,
+                        routeFieldCenterX(startIndex),
+                        routeFieldCenterY(startIndex))
+                + routeCost;
+    }
+
+    private void ensureRouteField(Vector2 goal, float margin) {
+        float effectiveMargin = margin + APPROXIMATE_PATH_MARGIN;
+        boolean marginChanged =
+                cachedRouteFieldMargin < 0f
+                        || Math.abs(cachedRouteFieldMargin - effectiveMargin)
+                                > ROUTE_FIELD_MARGIN_EPSILON;
+        if (marginChanged) {
+            for (int i = 0; i < routeFieldSafe.length; i++) {
+                routeFieldSafe[i] = approximateHazardSamples[i] >= effectiveMargin;
+            }
+        }
+
+        int goalIndex = findNearestSafeRouteFieldCell(goal.x, goal.y);
+        if (goalIndex < 0) {
+            cachedRouteFieldMargin = effectiveMargin;
+            cachedRouteFieldGoalIndex = -1;
             return;
         }
 
-        for (int i = 0; i < recoveryPoints.size; i++) {
-            Vector2 source = recoveryPoints.get(i);
-            navigationNodeSafe[i] = distanceToHazard(source) >= margin;
-            navigationNodeVisible[i][i] = false;
-            navigationNodeTravelCost[i][i] = 0f;
+        if (!marginChanged && goalIndex == cachedRouteFieldGoalIndex) {
+            return;
+        }
 
-            for (int j = i + 1; j < recoveryPoints.size; j++) {
-                Vector2 target = recoveryPoints.get(j);
-                boolean connected =
-                        navigationNodeSafe[i]
-                                && distanceToHazard(target) >= margin
-                                && isPathPlayableExact(source, target, margin);
-                navigationNodeVisible[i][j] = connected;
-                navigationNodeVisible[j][i] = connected;
-                float travelCost = connected ? source.dst(target) : 0f;
-                navigationNodeTravelCost[i][j] = travelCost;
-                navigationNodeTravelCost[j][i] = travelCost;
+        buildRouteField(goalIndex);
+        cachedRouteFieldMargin = effectiveMargin;
+        cachedRouteFieldGoalIndex = goalIndex;
+    }
+
+    private void buildRouteField(int goalIndex) {
+        routeFieldHeapSize = 0;
+        for (int i = 0; i < routeFieldCosts.length; i++) {
+            routeFieldCosts[i] = Float.MAX_VALUE;
+            routeFieldHeapPositions[i] = -1;
+        }
+
+        if (goalIndex < 0 || !routeFieldSafe[goalIndex]) {
+            return;
+        }
+
+        routeFieldCosts[goalIndex] = 0f;
+        updateRouteFieldHeap(goalIndex);
+        while (routeFieldHeapSize > 0) {
+            int currentIndex = pollRouteFieldHeap();
+            int currentX = routeFieldSampleX(currentIndex);
+            int currentY = routeFieldSampleY(currentIndex);
+            float currentCost = routeFieldCosts[currentIndex];
+
+            for (int offsetY = -1; offsetY <= 1; offsetY++) {
+                int neighborY = currentY + offsetY;
+                if (neighborY < 0 || neighborY >= approximateHazardHeight) {
+                    continue;
+                }
+                for (int offsetX = -1; offsetX <= 1; offsetX++) {
+                    if (offsetX == 0 && offsetY == 0) {
+                        continue;
+                    }
+
+                    int neighborX = currentX + offsetX;
+                    if (!isRouteFieldNeighborAllowed(currentX, currentY, neighborX, neighborY)) {
+                        continue;
+                    }
+
+                    int neighborIndex = sampleIndex(neighborX, neighborY);
+                    float candidateCost =
+                            currentCost
+                                    + routeFieldMoveCost(
+                                            Math.abs(offsetX),
+                                            Math.abs(offsetY));
+                    if (candidateCost >= routeFieldCosts[neighborIndex]) {
+                        continue;
+                    }
+
+                    routeFieldCosts[neighborIndex] = candidateCost;
+                    updateRouteFieldHeap(neighborIndex);
+                }
+            }
+        }
+    }
+
+    private int findNextRouteFieldCell(int currentIndex) {
+        int currentX = routeFieldSampleX(currentIndex);
+        int currentY = routeFieldSampleY(currentIndex);
+        float bestCost = routeFieldCosts[currentIndex];
+        int bestIndex = -1;
+
+        for (int offsetY = -1; offsetY <= 1; offsetY++) {
+            int neighborY = currentY + offsetY;
+            if (neighborY < 0 || neighborY >= approximateHazardHeight) {
+                continue;
+            }
+            for (int offsetX = -1; offsetX <= 1; offsetX++) {
+                if (offsetX == 0 && offsetY == 0) {
+                    continue;
+                }
+
+                int neighborX = currentX + offsetX;
+                if (!isRouteFieldNeighborAllowed(currentX, currentY, neighborX, neighborY)) {
+                    continue;
+                }
+
+                int neighborIndex = sampleIndex(neighborX, neighborY);
+                float neighborCost = routeFieldCosts[neighborIndex];
+                if (neighborCost < bestCost - ROUTE_FIELD_MARGIN_EPSILON) {
+                    bestCost = neighborCost;
+                    bestIndex = neighborIndex;
+                }
             }
         }
 
-        cachedNavigationMargin = margin;
+        return bestIndex;
+    }
+
+    private boolean isRouteFieldNeighborAllowed(
+            int currentX,
+            int currentY,
+            int neighborX,
+            int neighborY) {
+        if (neighborX < 0
+                || neighborX >= approximateHazardWidth
+                || neighborY < 0
+                || neighborY >= approximateHazardHeight) {
+            return false;
+        }
+
+        int neighborIndex = sampleIndex(neighborX, neighborY);
+        if (!routeFieldSafe[neighborIndex]) {
+            return false;
+        }
+
+        if (neighborX != currentX && neighborY != currentY) {
+            return routeFieldSafe[sampleIndex(neighborX, currentY)]
+                    && routeFieldSafe[sampleIndex(currentX, neighborY)];
+        }
+
+        return true;
+    }
+
+    private int findNearestSafeRouteFieldCell(float x, float y) {
+        return findNearestRouteFieldCell(x, y, false);
+    }
+
+    private int findNearestReachableRouteFieldCell(float x, float y) {
+        return findNearestRouteFieldCell(x, y, true);
+    }
+
+    private int findNearestRouteFieldCell(float x, float y, boolean requireReachable) {
+        if (!isWithinBounds(x, y) || routeFieldSafe.length == 0) {
+            return -1;
+        }
+
+        int originX = sampleX(x);
+        int originY = sampleY(y);
+        int bestIndex = -1;
+        float bestDistance = Float.MAX_VALUE;
+        for (int radius = 0; radius <= ROUTE_FIELD_NEAREST_SEARCH_RADIUS; radius++) {
+            int minX = Math.max(0, originX - radius);
+            int maxX = Math.min(approximateHazardWidth - 1, originX + radius);
+            int minY = Math.max(0, originY - radius);
+            int maxY = Math.min(approximateHazardHeight - 1, originY + radius);
+
+            for (int sampleY = minY; sampleY <= maxY; sampleY++) {
+                for (int sampleX = minX; sampleX <= maxX; sampleX++) {
+                    if (radius > 0
+                            && sampleX > minX
+                            && sampleX < maxX
+                            && sampleY > minY
+                            && sampleY < maxY) {
+                        continue;
+                    }
+                    int index = sampleIndex(sampleX, sampleY);
+                    if (!isUsableRouteFieldCell(index, requireReachable)) {
+                        continue;
+                    }
+
+                    float distance =
+                            Vector2.dst2(
+                                    x,
+                                    y,
+                                    routeFieldCenterForSampleX(sampleX),
+                                    routeFieldCenterForSampleY(sampleY));
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestIndex = index;
+                    }
+                }
+            }
+
+            if (bestIndex >= 0) {
+                return bestIndex;
+            }
+        }
+
+        for (int index = 0; index < routeFieldSafe.length; index++) {
+            if (!isUsableRouteFieldCell(index, requireReachable)) {
+                continue;
+            }
+            float distance =
+                    Vector2.dst2(
+                            x,
+                            y,
+                            routeFieldCenterX(index),
+                            routeFieldCenterY(index));
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = index;
+            }
+        }
+        return bestIndex;
+    }
+
+    private boolean isUsableRouteFieldCell(int index, boolean requireReachable) {
+        return routeFieldSafe[index]
+                && (!requireReachable || routeFieldCosts[index] < Float.MAX_VALUE);
+    }
+
+    private void updateRouteFieldHeap(int index) {
+        int heapPosition = routeFieldHeapPositions[index];
+        if (heapPosition < 0) {
+            heapPosition = routeFieldHeapSize++;
+            routeFieldHeap[heapPosition] = index;
+            routeFieldHeapPositions[index] = heapPosition;
+        }
+        siftRouteFieldHeapUp(heapPosition);
+    }
+
+    private int pollRouteFieldHeap() {
+        int result = routeFieldHeap[0];
+        routeFieldHeapPositions[result] = -1;
+        routeFieldHeapSize--;
+        if (routeFieldHeapSize > 0) {
+            int replacement = routeFieldHeap[routeFieldHeapSize];
+            routeFieldHeap[0] = replacement;
+            routeFieldHeapPositions[replacement] = 0;
+            siftRouteFieldHeapDown(0);
+        }
+        return result;
+    }
+
+    private void siftRouteFieldHeapUp(int index) {
+        int current = index;
+        while (current > 0) {
+            int parent = (current - 1) >>> 1;
+            if (routeFieldHeapCost(parent) <= routeFieldHeapCost(current)) {
+                break;
+            }
+            swapRouteFieldHeap(parent, current);
+            current = parent;
+        }
+    }
+
+    private void siftRouteFieldHeapDown(int index) {
+        int current = index;
+        while (true) {
+            int left = current * 2 + 1;
+            int right = left + 1;
+            int smallest = current;
+            if (left < routeFieldHeapSize && routeFieldHeapCost(left) < routeFieldHeapCost(smallest)) {
+                smallest = left;
+            }
+            if (right < routeFieldHeapSize && routeFieldHeapCost(right) < routeFieldHeapCost(smallest)) {
+                smallest = right;
+            }
+            if (smallest == current) {
+                return;
+            }
+            swapRouteFieldHeap(current, smallest);
+            current = smallest;
+        }
+    }
+
+    private float routeFieldHeapCost(int heapIndex) {
+        return routeFieldCosts[routeFieldHeap[heapIndex]];
+    }
+
+    private void swapRouteFieldHeap(int first, int second) {
+        int firstValue = routeFieldHeap[first];
+        int secondValue = routeFieldHeap[second];
+        routeFieldHeap[first] = secondValue;
+        routeFieldHeap[second] = firstValue;
+        routeFieldHeapPositions[firstValue] = second;
+        routeFieldHeapPositions[secondValue] = first;
+    }
+
+    private float routeFieldCellDistance(int firstIndex, int secondIndex) {
+        int deltaX = Math.abs(routeFieldSampleX(firstIndex) - routeFieldSampleX(secondIndex));
+        int deltaY = Math.abs(routeFieldSampleY(firstIndex) - routeFieldSampleY(secondIndex));
+        return routeFieldMoveCost(deltaX, deltaY);
+    }
+
+    private float routeFieldMoveCost(int deltaX, int deltaY) {
+        if (deltaX == 0) {
+            return approximateHazardCellHeight;
+        }
+        if (deltaY == 0) {
+            return approximateHazardCellWidth;
+        }
+        return (float)
+                Math.sqrt(
+                        approximateHazardCellWidth * approximateHazardCellWidth
+                                + approximateHazardCellHeight * approximateHazardCellHeight);
+    }
+
+    private int routeFieldSampleX(int index) {
+        return index % approximateHazardWidth;
+    }
+
+    private int routeFieldSampleY(int index) {
+        return index / approximateHazardWidth;
+    }
+
+    private float routeFieldCenterX(int index) {
+        return routeFieldCenterForSampleX(routeFieldSampleX(index));
+    }
+
+    private float routeFieldCenterForSampleX(int sampleX) {
+        return bounds.x + (sampleX + 0.5f) * approximateHazardCellWidth;
+    }
+
+    private float routeFieldCenterY(int index) {
+        return routeFieldCenterForSampleY(routeFieldSampleY(index));
+    }
+
+    private float routeFieldCenterForSampleY(int sampleY) {
+        return bounds.y + (sampleY + 0.5f) * approximateHazardCellHeight;
     }
 
     private boolean isPathPlayableApprox(Vector2 from, Vector2 to, float margin) {
         return isPathPlayable(from, to, margin, true);
-    }
-
-    private boolean isPathPlayableExact(Vector2 from, Vector2 to, float margin) {
-        return isPathPlayable(from, to, margin, false);
     }
 
     private boolean isPathPlayable(Vector2 from, Vector2 to, float margin, boolean approximate) {
@@ -639,35 +910,25 @@ public final class ArenaMap {
     }
 
     private int sampleIndex(float x, float y) {
-        int sampleX =
-                MathUtils.clamp(
-                        (int) ((x - bounds.x) / approximateHazardCellWidth),
-                        0,
-                        approximateHazardWidth - 1);
-        int sampleY =
-                MathUtils.clamp(
-                        (int) ((y - bounds.y) / approximateHazardCellHeight),
-                        0,
-                        approximateHazardHeight - 1);
-        return sampleIndex(sampleX, sampleY);
+        return sampleIndex(sampleX(x), sampleY(y));
     }
 
     private int sampleIndex(int sampleX, int sampleY) {
         return sampleY * approximateHazardWidth + sampleX;
     }
 
-    private static final class NavigationRouteResult {
-        private int bestGoalIndex;
-        private int bestFallbackIndex;
-        private float bestGoalCost;
-        private float bestFallbackScore;
+    private int sampleX(float x) {
+        return MathUtils.clamp(
+                (int) ((x - bounds.x) / approximateHazardCellWidth),
+                0,
+                approximateHazardWidth - 1);
+    }
 
-        private void clear() {
-            bestGoalIndex = -1;
-            bestFallbackIndex = -1;
-            bestGoalCost = Float.MAX_VALUE;
-            bestFallbackScore = Float.MAX_VALUE;
-        }
+    private int sampleY(float y) {
+        return MathUtils.clamp(
+                (int) ((y - bounds.y) / approximateHazardCellHeight),
+                0,
+                approximateHazardHeight - 1);
     }
 
     public static final class Builder {

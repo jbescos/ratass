@@ -7,14 +7,14 @@ if [[ "${objective}" == "navigation" ]]; then
   default_controlled_agents=2
   default_field_size=2
   default_max_action_steps=1200
-  default_checkpoint_dir="rl-checkpoints-navigation-route"
-  export_objective="navigation-route-safe-circle-v1"
+  default_checkpoint_dir="rl-checkpoints-navigation-route-awareness"
+  export_objective="navigation-route-awareness-safe-circle-v1"
 else
   default_controlled_agents=6
   default_field_size=12
   default_max_action_steps=900
-  default_checkpoint_dir="rl-checkpoints-direct-circle-route"
-  export_objective="direct-route-safe-circle-v1"
+  default_checkpoint_dir="rl-checkpoints-route-awareness"
+  export_objective="direct-route-awareness-safe-circle-v1"
 fi
 no_reward_summary="${RL_NO_REWARD_SUMMARY:-0}"
 if [[ -n "${RL_WORKERS:-}" ]]; then

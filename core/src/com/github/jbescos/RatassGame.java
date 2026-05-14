@@ -116,7 +116,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ARENA_EDGE_INSET = 0.7f;
     private static final float ARENA_CENTER_INSET = 1.15f;
     private static final float AUTO_ADVANCE_DELAY = 2f;
-    private static final float GROWTH_PICKUP_RADIUS = 0.42f;
+    private static final float GROWTH_PICKUP_RADIUS = 0.68f;
     private static final float GROWTH_PICKUP_SPAWN_MARGIN = 1.05f;
     private static final float GROWTH_PICKUP_MIN_MOVE_DISTANCE = 3.4f;
     private static final int GROWTH_PICKUP_SPAWN_ATTEMPTS = 96;
@@ -165,7 +165,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
-    public static final int RL_OBSERVATION_SIZE = 39;
+    public static final int RL_OBSERVATION_SIZE = 45;
     public static final int RL_ACTION_SIZE = 2;
     public static final int RL_REWARD_BREAKDOWN_SIZE = 8;
     private static final int RL_REWARD_SURVIVAL = 0;
@@ -196,13 +196,14 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_VELOCITY_NORMALIZER = 18f;
     private static final float RL_ANGULAR_VELOCITY_NORMALIZER = 8f;
     private static final float RL_HAZARD_DISTANCE_NORMALIZER = 6f;
-    private static final float RL_ROUTE_MARGIN = 0.52f;
+    private static final float RL_ROUTE_MARGIN = 0.68f;
     private static final float RL_ROUTE_DIRECT_EPSILON = 0.16f;
+    private static final float RL_ROUTE_TARGET_DISTANCE_NORMALIZER = 5f;
     private static final float RL_RAYCAST_DISTANCE = 7.5f;
     private static final float RL_RAYCAST_STEP = 0.34f;
     private static final float RL_ALIVE_STEP_REWARD = 0.004f;
     private static final float RL_EDGE_RECOVERY_REWARD = 0.145f;
-    private static final float RL_OPPONENT_PRESSURE_REWARD = 0.110f;
+    private static final float RL_OPPONENT_PRESSURE_REWARD = 0.085f;
     private static final float RL_OPPONENT_ELIMINATION_REWARD = 1.250f;
     private static final float RL_IMPACT_CREDIT_REWARD = 0.160f;
     private static final float RL_WIN_REWARD = 2.000f;
@@ -212,7 +213,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_SPIN_STALL_PENALTY = 0.006f;
     private static final float RL_CONTROL_DEADZONE = 0.06f;
     private static final float RL_ACTION_FLIP_DEADZONE = 0.18f;
-    private static final float RL_FORWARD_SPEED_REWARD = 0.017f;
+    private static final float RL_FORWARD_SPEED_REWARD = 0.000f;
     private static final float RL_REVERSE_SPEED_PENALTY = 0.012f;
     private static final float RL_RAW_THROTTLE_FLIP_PENALTY = 0.026f;
     private static final float RL_EFFECTIVE_THROTTLE_FLIP_PENALTY = 0.062f;
@@ -220,6 +221,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_IDLE_DITHER_PENALTY = 0.040f;
     private static final float RL_OPPONENT_CLOSING_REWARD = 0.060f;
     private static final float RL_FORWARD_THROTTLE_COMMIT_REWARD = 0.028f;
+    private static final float RL_ROUTE_SPEED_REWARD = 0.120f;
+    private static final float RL_ROUTE_BACKTRACK_PENALTY = 0.085f;
     private static final float RL_SAFE_REVERSE_ACTION_PENALTY = 0.030f;
     private static final float RL_SAFE_REVERSE_BRAKE_PENALTY = 0.018f;
     private static final float RL_REVERSE_RECOVERY_EDGE_DISTANCE = 1.15f;
@@ -231,8 +234,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_EDGE_WARNING_SPEED = 2.35f;
     private static final float RL_EDGE_UNSAFE_SPEED_PENALTY = 0.185f;
     private static final float RL_SAFE_SPEED_DISTANCE = 3.80f;
-    private static final float RL_SAFE_SPEED_REWARD = 0.018f;
-    private static final float RL_ACCELERATION_REWARD = 0.014f;
+    private static final float RL_SAFE_SPEED_REWARD = 0.000f;
+    private static final float RL_ACCELERATION_REWARD = 0.000f;
     private static final float RL_EDGE_RECOVERY_SPEED_DISTANCE = 4.20f;
     private static final float RL_EDGE_RECOVERY_SPEED_REWARD = 0.210f;
     private static final float RL_EDGE_UNSAFE_RECOVERY_SPEED_PENALTY = 0.315f;
@@ -247,14 +250,17 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_ATTACK_EDGE_PRESSURE_REWARD = 0.170f;
     private static final float RL_UNSAFE_ATTACK_PENALTY = 0.260f;
     private static final float RL_ATTACK_SUICIDE_PENALTY = 4.200f;
-    private static final float RL_GROWTH_PICKUP_REWARD = 5.000f;
-    private static final float RL_GROWTH_PICKUP_SAFE_ZONE_REWARD = 4.000f;
-    private static final float RL_GROWTH_PICKUP_APPROACH_REWARD = 0.200f;
+    private static final float RL_GROWTH_PICKUP_REWARD = 12.000f;
+    private static final float RL_GROWTH_PICKUP_SAFE_ZONE_REWARD = 12.000f;
+    private static final float RL_GROWTH_PICKUP_APPROACH_REWARD = 0.720f;
+    private static final float RL_GROWTH_PICKUP_INSIDE_APPROACH_REWARD = 1.150f;
+    private static final float RL_GROWTH_PICKUP_PROXIMITY_REWARD = 0.420f;
+    private static final float RL_GROWTH_PICKUP_INSIDE_NEGLECT_PENALTY = 0.070f;
     private static final float RL_SAFE_ZONE_APPROACH_REWARD = 0.560f;
     private static final float RL_SAFE_ZONE_INSIDE_REWARD = 0.145f;
-    private static final float RL_SAFE_ZONE_CENTER_REWARD = 0.320f;
-    private static final float RL_SAFE_ZONE_DEEP_INSIDE_REWARD = 0.340f;
-    private static final float RL_SAFE_ZONE_RIM_PENALTY = 0.360f;
+    private static final float RL_SAFE_ZONE_CENTER_REWARD = 0.420f;
+    private static final float RL_SAFE_ZONE_DEEP_INSIDE_REWARD = 0.440f;
+    private static final float RL_SAFE_ZONE_RIM_PENALTY = 0.460f;
     private static final float RL_SAFE_ZONE_SETTLE_REWARD = 0.130f;
     private static final float RL_SAFE_ZONE_BRAKE_REWARD = 0.110f;
     private static final float RL_SAFE_ZONE_FAST_EXIT_PENALTY = 0.260f;
@@ -263,8 +269,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_SAFE_ZONE_BRAKE_SPEED = 0.85f;
     private static final float RL_SAFE_ZONE_DEADLINE_REWARD = 1.850f;
     private static final float RL_SAFE_ZONE_DEADLINE_CENTER_REWARD = 1.600f;
-    private static final float RL_SAFE_ZONE_PUSH_OUT_REWARD = 0.850f;
-    private static final float RL_SAFE_ZONE_EJECTION_REWARD = 1.350f;
+    private static final float RL_SAFE_ZONE_PUSH_OUT_REWARD = 0.300f;
+    private static final float RL_SAFE_ZONE_EJECTION_REWARD = 0.750f;
     private static final float RL_SAFE_ZONE_MISS_PENALTY = 7.600f;
     private static final float RL_SAFE_ZONE_URGENCY_PENALTY = 0.140f;
     private static final float RL_NAVIGATION_CIRCLE_REWARD_SCALE = 1.65f;
@@ -3786,10 +3792,10 @@ public class RatassGame extends ApplicationAdapter {
         growthPickupActive = false;
         currentMap.getBounds(mapBounds);
 
-        if (trySpawnGrowthPickup(true, true)
+        if (placeGrowthPickupAtSafeZoneCenter()
+                || trySpawnGrowthPickup(true, true)
                 || trySpawnGrowthPickup(true, false)
-                || trySpawnGrowthPickup(false, false)
-                || placeGrowthPickupAtSafeZoneCenter()) {
+                || trySpawnGrowthPickup(false, false)) {
             return;
         }
     }
@@ -7626,18 +7632,32 @@ public class RatassGame extends ApplicationAdapter {
                 observations,
                 offset + 30,
                 arenaMap,
+                car.hasGrowthBoost(),
+                growthPickupActive,
+                growthPickupPosition,
                 safeZoneActive,
                 safeZonePosition,
+                safeZoneRadius,
                 position,
+                velocity,
                 positionNormalizer,
+                observationForward,
+                observationSide,
                 observationRouteTarget,
                 routeTargetKnown,
                 routeTargetX,
                 routeTargetY,
                 routeTargetFinal);
+        fillRlHazardMotionObservation(
+                observations,
+                offset + 37,
+                arenaMap,
+                position,
+                velocity,
+                observationRecovery);
         fillRlRayObservations(
                 observations,
-                offset + 33,
+                offset + 39,
                 arenaMap,
                 position,
                 observationForward,
@@ -7691,35 +7711,117 @@ public class RatassGame extends ApplicationAdapter {
             float[] observations,
             int offset,
             ArenaMap arenaMap,
+            boolean growthBoosted,
+            boolean growthPickupActive,
+            Vector2 growthPickupPosition,
             boolean safeZoneActive,
             Vector2 safeZonePosition,
+            float safeZoneRadius,
             Vector2 carPosition,
+            Vector2 velocity,
             float positionNormalizer,
+            Vector2 forward,
+            Vector2 side,
             Vector2 routeTarget,
             boolean routeTargetKnown,
             float routeTargetX,
             float routeTargetY,
             boolean routeTargetFinal) {
         if (!safeZoneActive || safeZonePosition == null || arenaMap == null) {
-            observations[offset + 2] = -1f;
+            observations[offset + 6] = -1f;
             return;
+        }
+
+        Vector2 finalTargetPosition = safeZonePosition;
+        boolean routeToGrowthPickup =
+                shouldRouteObservationToGrowthPickup(
+                        growthBoosted,
+                        growthPickupActive,
+                        growthPickupPosition,
+                        safeZoneActive,
+                        safeZonePosition,
+                        safeZoneRadius,
+                        carPosition);
+        if (routeToGrowthPickup) {
+            finalTargetPosition = growthPickupPosition;
         }
 
         if (routeTargetKnown) {
             routeTarget.set(routeTargetX, routeTargetY);
         } else {
-            arenaMap.findDriveTarget(carPosition, safeZonePosition, RL_ROUTE_MARGIN, routeTarget);
+            arenaMap.findDriveTarget(carPosition, finalTargetPosition, RL_ROUTE_MARGIN, routeTarget);
         }
+        float routeDeltaX = routeTarget.x - carPosition.x;
+        float routeDeltaY = routeTarget.y - carPosition.y;
         observations[offset] =
-                normalizedRlValue(routeTarget.x - carPosition.x, positionNormalizer);
+                normalizedRlValue(routeDeltaX, positionNormalizer);
         observations[offset + 1] =
-                normalizedRlValue(routeTarget.y - carPosition.y, positionNormalizer);
+                normalizedRlValue(routeDeltaY, positionNormalizer);
+        float routeDistance = (float) Math.sqrt(routeDeltaX * routeDeltaX + routeDeltaY * routeDeltaY);
+        if (routeDistance > 0.0001f) {
+            float routeUnitX = routeDeltaX / routeDistance;
+            float routeUnitY = routeDeltaY / routeDistance;
+            side.set(-forward.y, forward.x);
+            observations[offset + 2] =
+                    MathUtils.clamp(routeUnitX * forward.x + routeUnitY * forward.y, -1f, 1f);
+            observations[offset + 3] =
+                    MathUtils.clamp(routeUnitX * side.x + routeUnitY * side.y, -1f, 1f);
+            observations[offset + 5] =
+                    normalizedRlValue(
+                            routeUnitX * velocity.x + routeUnitY * velocity.y,
+                            Car.MAX_SPEED);
+        }
+        observations[offset + 4] =
+                MathUtils.clamp(routeDistance / RL_ROUTE_TARGET_DISTANCE_NORMALIZER, 0f, 1f);
         boolean finalTarget =
                 routeTargetKnown
                         ? routeTargetFinal
-                        : routeTarget.dst2(safeZonePosition)
+                        : routeTarget.dst2(finalTargetPosition)
                                 <= RL_ROUTE_DIRECT_EPSILON * RL_ROUTE_DIRECT_EPSILON;
-        observations[offset + 2] = finalTarget ? 1f : 0f;
+        observations[offset + 6] = finalTarget ? 1f : 0f;
+    }
+
+    private static void fillRlHazardMotionObservation(
+            float[] observations,
+            int offset,
+            ArenaMap arenaMap,
+            Vector2 carPosition,
+            Vector2 velocity,
+            Vector2 recoveryDirection) {
+        if (arenaMap == null || carPosition == null || velocity == null || recoveryDirection == null) {
+            return;
+        }
+
+        float recoverySpeed = recoveryDirection.dot(velocity);
+        float edgeDistance = arenaMap.approximateDistanceToHazard(carPosition);
+        float danger =
+                1f - MathUtils.clamp(edgeDistance / Math.max(0.0001f, RL_EDGE_WARNING_DISTANCE), 0f, 1f);
+        observations[offset] = normalizedRlValue(recoverySpeed, Car.MAX_SPEED) * danger;
+        observations[offset + 1] =
+                MathUtils.clamp(-recoverySpeed / Car.MAX_SPEED, 0f, 1f) * danger;
+    }
+
+    private static boolean shouldRouteObservationToGrowthPickup(
+            boolean growthBoosted,
+            boolean growthPickupActive,
+            Vector2 growthPickupPosition,
+            boolean safeZoneActive,
+            Vector2 safeZonePosition,
+            float safeZoneRadius,
+            Vector2 carPosition) {
+        if (growthBoosted
+                || !growthPickupActive
+                || growthPickupPosition == null
+                || !safeZoneActive
+                || safeZonePosition == null
+                || safeZoneRadius <= 0f
+                || carPosition == null) {
+            return false;
+        }
+
+        float safeZoneRadiusSq = safeZoneRadius * safeZoneRadius;
+        return carPosition.dst2(safeZonePosition) <= safeZoneRadiusSq
+                && growthPickupPosition.dst2(safeZonePosition) <= safeZoneRadiusSq;
     }
 
     private static void fillRlRayObservations(
@@ -8186,15 +8288,26 @@ public class RatassGame extends ApplicationAdapter {
                 snapshot.safeZoneInside = snapshot.safeZoneSignedMargin >= 0f;
                 snapshot.safeZoneTimeRatio =
                         MathUtils.clamp(game.safeZoneTimer / SAFE_ZONE_DURATION, 0f, 1f);
+                Vector2 routeFinalTarget = game.safeZonePosition;
+                if (shouldRouteObservationToGrowthPickup(
+                        car.hasGrowthBoost(),
+                        game.growthPickupActive,
+                        game.growthPickupPosition,
+                        snapshot.safeZoneActive,
+                        game.safeZonePosition,
+                        game.safeZoneRadius,
+                        position)) {
+                    routeFinalTarget = game.growthPickupPosition;
+                }
                 game.currentMap.findDriveTarget(
                         position,
-                        game.safeZonePosition,
+                        routeFinalTarget,
                         RL_ROUTE_MARGIN,
                         observationRouteTarget);
                 snapshot.routeTargetX = observationRouteTarget.x;
                 snapshot.routeTargetY = observationRouteTarget.y;
                 snapshot.routeTargetFinal =
-                        observationRouteTarget.dst2(game.safeZonePosition)
+                        observationRouteTarget.dst2(routeFinalTarget)
                                 <= RL_ROUTE_DIRECT_EPSILON * RL_ROUTE_DIRECT_EPSILON;
                 observationRouteTarget.sub(position);
                 snapshot.routeTargetDistance = observationRouteTarget.len();
@@ -8325,8 +8438,7 @@ public class RatassGame extends ApplicationAdapter {
                             reward += recordReward(
                                     agentIndex,
                                     RL_REWARD_ATTACK,
-                                    Math.max(0, after.safeZoneEjections - before.safeZoneEjections)
-                                            * RL_SAFE_ZONE_EJECTION_REWARD);
+                                    getSafeZoneEjectionReward(before, after));
                             reward += recordReward(
                                     agentIndex,
                                     RL_REWARD_ATTACK,
@@ -8376,6 +8488,13 @@ public class RatassGame extends ApplicationAdapter {
                                     RL_REWARD_EDGE,
                                     -getNavigationUnsafeSpeedPenalty(agentIndex, after));
                         } else if (!after.safeZoneActive || !after.safeZoneInside) {
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_DRIVING,
+                                    getRouteDriveReward(
+                                            after,
+                                            RL_ROUTE_SPEED_REWARD,
+                                            RL_ROUTE_BACKTRACK_PENALTY));
                             reward += recordReward(
                                     agentIndex,
                                     RL_REWARD_DRIVING,
@@ -8661,9 +8780,27 @@ public class RatassGame extends ApplicationAdapter {
             if (newPushOuts == 0 || !after.safeZoneActive || !after.safeZoneInside) {
                 return 0f;
             }
+            float centerScore = getSafeZoneCenterScore(after);
+            float controlledContactScale = MathUtils.clamp((centerScore - 0.25f) / 0.75f, 0f, 1f);
             return newPushOuts
-                    * (0.70f + getSafeZoneCenterScore(after) * 0.45f)
+                    * controlledContactScale
                     * RL_SAFE_ZONE_PUSH_OUT_REWARD;
+        }
+
+        private float getSafeZoneEjectionReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+            int newEjections = Math.max(0, after.safeZoneEjections - before.safeZoneEjections);
+            if (newEjections == 0 || !after.safeZoneActive) {
+                return 0f;
+            }
+            if (!after.safeZoneInside) {
+                return newEjections * 0.20f * RL_SAFE_ZONE_EJECTION_REWARD;
+            }
+
+            float centerScore = getSafeZoneCenterScore(after);
+            float controlledContactScale = MathUtils.clamp((centerScore - 0.20f) / 0.80f, 0f, 1f);
+            return newEjections
+                    * controlledContactScale
+                    * RL_SAFE_ZONE_EJECTION_REWARD;
         }
 
         private float getUnsafeAttackPenalty(RlAgentSnapshot before, RlAgentSnapshot after) {
@@ -8782,6 +8919,16 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private float getNavigationRouteDriveReward(RlAgentSnapshot after) {
+            return getRouteDriveReward(
+                    after,
+                    RL_NAVIGATION_ROUTE_SPEED_REWARD,
+                    RL_NAVIGATION_ROUTE_BACKTRACK_PENALTY);
+        }
+
+        private float getRouteDriveReward(
+                RlAgentSnapshot after,
+                float speedReward,
+                float backtrackPenalty) {
             if (!after.safeZoneActive || after.safeZoneInside || after.routeTargetDistance <= 0.05f) {
                 return 0f;
             }
@@ -8790,9 +8937,9 @@ public class RatassGame extends ApplicationAdapter {
             if (speedRatio >= 0f) {
                 float safetyScale =
                         MathUtils.clamp(0.25f + getSafeSpeedScale(after) * 0.75f, 0f, 1f);
-                return speedRatio * safetyScale * RL_NAVIGATION_ROUTE_SPEED_REWARD;
+                return speedRatio * safetyScale * speedReward;
             }
-            return speedRatio * RL_NAVIGATION_ROUTE_BACKTRACK_PENALTY;
+            return speedRatio * backtrackPenalty;
         }
 
         private float getNavigationRouteStallPenalty(RlAgentSnapshot after) {
@@ -8876,7 +9023,10 @@ public class RatassGame extends ApplicationAdapter {
                             / Math.max(0.0001f, RL_SAFE_ATTACK_DISTANCE - RL_EDGE_DANGER_DISTANCE),
                     0f,
                     1f);
-            if (snapshot.safeZoneActive && !snapshot.safeZoneInside) {
+            if (snapshot.safeZoneActive && snapshot.safeZoneInside) {
+                float centerScore = getSafeZoneCenterScore(snapshot);
+                edgeScale *= MathUtils.clamp((centerScore - 0.25f) / 0.75f, 0f, 1f);
+            } else if (snapshot.safeZoneActive) {
                 float urgency = 1f - MathUtils.clamp(snapshot.safeZoneTimeRatio, 0f, 1f);
                 edgeScale *= MathUtils.clamp(0.35f - urgency * 0.30f, 0f, 0.35f);
             }
@@ -8896,11 +9046,14 @@ public class RatassGame extends ApplicationAdapter {
             if (before.growthBoosted || after.growthBoosted) {
                 return reward;
             }
+            boolean pickupPathIsUnsafe =
+                    after.edgeDistance < RL_EDGE_DANGER_DISTANCE
+                            && (!after.safeZoneActive || !after.safeZoneInside);
             if (!before.growthPickupActive
                     || !after.growthPickupActive
                     || before.growthPickupDistance <= 0f
                     || after.growthPickupDistance <= 0f
-                    || after.edgeDistance < RL_EDGE_DANGER_DISTANCE) {
+                    || pickupPathIsUnsafe) {
                 return reward;
             }
             reward +=
@@ -8909,6 +9062,33 @@ public class RatassGame extends ApplicationAdapter {
                                     -1f,
                                     1f)
                             * RL_GROWTH_PICKUP_APPROACH_REWARD;
+            if (after.safeZoneActive && after.safeZoneInside) {
+                float pickupProgress =
+                        MathUtils.clamp(
+                                before.growthPickupDistance - after.growthPickupDistance,
+                                -1f,
+                                1f);
+                float pickupProximity =
+                        1f - MathUtils.clamp(
+                                after.growthPickupDistance
+                                        / Math.max(GROWTH_PICKUP_RADIUS, after.safeZoneRadius),
+                                0f,
+                                1f);
+                reward += pickupProgress * RL_GROWTH_PICKUP_INSIDE_APPROACH_REWARD;
+                if (pickupProgress > 0f) {
+                    reward +=
+                            pickupProgress
+                                    * pickupProximity
+                                    * (0.45f + getSafeZoneCenterScore(after) * 0.55f)
+                                    * RL_GROWTH_PICKUP_PROXIMITY_REWARD;
+                }
+                if (after.growthPickupDistance > GROWTH_PICKUP_RADIUS + 0.18f) {
+                    reward -=
+                            (1f - pickupProximity)
+                                    * (0.45f + getSafeZoneCenterScore(after) * 0.35f)
+                                    * RL_GROWTH_PICKUP_INSIDE_NEGLECT_PENALTY;
+                }
+            }
             return reward;
         }
 

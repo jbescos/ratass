@@ -115,8 +115,13 @@ def make_stats():
         "near_edge_fast_steps": 0,
         "low_route_steps": 0,
         "route_direct_steps": 0,
+        "unsafe_recovery_steps": 0,
         "avg_safe_margin_signal": 0.0,
         "avg_route_target": 0.0,
+        "avg_route_forward": 0.0,
+        "avg_route_speed": 0.0,
+        "avg_recovery_speed": 0.0,
+        "avg_unsafe_recovery": 0.0,
         "avg_speed": 0.0,
         "avg_edge_clearance": 0.0,
     }
@@ -174,7 +179,13 @@ def open_trace(trace_dir: str, map_id: str, episode: int):
             "safe_zone_margin",
             "route_dx",
             "route_dy",
+            "route_forward",
+            "route_side",
+            "route_distance",
+            "route_speed",
             "route_direct",
+            "recovery_speed",
+            "unsafe_recovery_speed",
             "ray_forward",
             "ray_front_left",
             "ray_front_right",
@@ -214,6 +225,12 @@ def trace_step(writer, step, result, reward, throttle, turn):
             f"{observations[33]:.6f}",
             f"{observations[34]:.6f}",
             f"{observations[35]:.6f}",
+            f"{observations[36]:.6f}",
+            f"{observations[37]:.6f}",
+            f"{observations[38]:.6f}",
+            f"{observations[39]:.6f}",
+            f"{observations[40]:.6f}",
+            f"{observations[41]:.6f}",
         ]
     )
 
@@ -223,10 +240,12 @@ def update_observation_stats(stats, result):
     stats["avg_speed"] += observations[8]
     stats["avg_edge_clearance"] += observations[9]
     stats["avg_safe_margin_signal"] += observations[29]
-    route_dx = observations[30]
-    route_dy = observations[31]
-    route_distance_signal = (route_dx * route_dx + route_dy * route_dy) ** 0.5
+    route_distance_signal = observations[34]
     stats["avg_route_target"] += route_distance_signal
+    stats["avg_route_forward"] += observations[32]
+    stats["avg_route_speed"] += observations[35]
+    stats["avg_recovery_speed"] += observations[37]
+    stats["avg_unsafe_recovery"] += observations[38]
     if observations[29] >= 0.0:
         stats["inside_steps"] += 1
     if observations[29] < -0.55:
@@ -235,10 +254,12 @@ def update_observation_stats(stats, result):
         stats["near_edge_steps"] += 1
     if observations[9] < 0.25 and observations[8] > 0.32:
         stats["near_edge_fast_steps"] += 1
-    if route_distance_signal < 0.10 and observations[29] < 0.0:
+    if route_distance_signal < 0.18 and observations[29] < 0.0:
         stats["low_route_steps"] += 1
-    if observations[32] > 0.5:
+    if observations[36] > 0.5:
         stats["route_direct_steps"] += 1
+    if observations[38] > 0.18:
+        stats["unsafe_recovery_steps"] += 1
 
 
 def run_episode(
@@ -383,8 +404,13 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"near_edge_fast_fraction={stats['near_edge_fast_steps'] / actions:.3f} "
         f"low_route_fraction={stats['low_route_steps'] / actions:.3f} "
         f"route_direct_fraction={stats['route_direct_steps'] / actions:.3f} "
+        f"unsafe_recovery_fraction={stats['unsafe_recovery_steps'] / actions:.3f} "
         f"avg_safe_margin_signal={stats['avg_safe_margin_signal'] / actions:.3f} "
         f"avg_route_target={stats['avg_route_target'] / actions:.3f} "
+        f"avg_route_forward={stats['avg_route_forward'] / actions:.3f} "
+        f"avg_route_speed={stats['avg_route_speed'] / actions:.3f} "
+        f"avg_recovery_speed={stats['avg_recovery_speed'] / actions:.3f} "
+        f"avg_unsafe_recovery={stats['avg_unsafe_recovery'] / actions:.3f} "
         f"avg_speed_signal={stats['avg_speed'] / actions:.3f} "
         f"avg_edge_clearance={stats['avg_edge_clearance'] / actions:.3f} "
         f"growth_pickups_per_episode={stats['growth_pickups'] / episodes:.3f} "

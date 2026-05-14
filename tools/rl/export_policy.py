@@ -14,9 +14,10 @@ import numpy as np
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-direct-circle-route"
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-route-awareness"
 DEFAULT_OUTPUT = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
-OBSERVATION_SIZE = 39
+OBSERVATION_SIZE = 45
+OLD_ROUTE_OBSERVATION_SIZE = 39
 ACTION_SIZE = 2
 
 ACTOR_LAYERS = (
@@ -24,6 +25,22 @@ ACTOR_LAYERS = (
     ("encoder.actor_encoder.net.mlp.2", "tanh"),
     ("pi.net.mlp.0", "linear"),
 )
+
+
+def expand_legacy_observation_weights(weights: np.ndarray) -> np.ndarray:
+    if weights.shape[1] == OBSERVATION_SIZE:
+        return weights
+    if weights.shape[1] != OLD_ROUTE_OBSERVATION_SIZE:
+        raise ValueError(
+            f"unsupported actor input size {weights.shape[1]}; expected "
+            f"{OBSERVATION_SIZE} or legacy {OLD_ROUTE_OBSERVATION_SIZE}"
+        )
+
+    expanded = np.zeros((weights.shape[0], OBSERVATION_SIZE), dtype=weights.dtype)
+    expanded[:, :32] = weights[:, :32]
+    expanded[:, 36] = weights[:, 32]
+    expanded[:, 39:45] = weights[:, 33:39]
+    return expanded
 
 
 def flatten(values: np.ndarray) -> Iterable[float]:
@@ -35,6 +52,8 @@ def layer_from_state(state: Dict[str, np.ndarray], prefix: str, activation: str)
     bias = state[f"{prefix}.bias"]
     if len(weights.shape) != 2:
         raise ValueError(f"{prefix}.weight is not a matrix: {weights.shape}")
+    if prefix == ACTOR_LAYERS[0][0]:
+        weights = expand_legacy_observation_weights(weights)
 
     output_size, input_size = weights.shape
     return {
@@ -94,7 +113,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint-dir", default=os.fspath(DEFAULT_CHECKPOINT))
     parser.add_argument("--output", default=os.fspath(DEFAULT_OUTPUT))
-    parser.add_argument("--objective", default="direct-route-safe-circle-v1")
+    parser.add_argument("--objective", default="direct-route-awareness-safe-circle-v1")
     return parser.parse_args()
 
 

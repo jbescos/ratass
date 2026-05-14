@@ -30,8 +30,9 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-direct-circle-route"
-OBSERVATION_SIZE = 39
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-route-awareness"
+OBSERVATION_SIZE = 45
+OLD_ROUTE_OBSERVATION_SIZE = 39
 ACTION_SIZE = 2
 DEFAULT_COMBAT_CONTROLLED_AGENTS = 6
 DEFAULT_COMBAT_FIELD_SIZE = 12
@@ -500,14 +501,31 @@ def _reshape_exported_layer(layer: Dict, policy_file: Path) -> Tuple[np.ndarray,
     return weights, bias
 
 
+def expand_legacy_observation_weights(weights: np.ndarray, policy_file: Path) -> np.ndarray:
+    if weights.shape[1] == OBSERVATION_SIZE:
+        return weights
+    if weights.shape[1] != OLD_ROUTE_OBSERVATION_SIZE:
+        raise ValueError(
+            f"{policy_file} actor input size {weights.shape[1]} does not match "
+            f"current observation size {OBSERVATION_SIZE}"
+        )
+
+    expanded = np.zeros((weights.shape[0], OBSERVATION_SIZE), dtype=weights.dtype)
+    expanded[:, :32] = weights[:, :32]
+    expanded[:, 36] = weights[:, 32]
+    expanded[:, 39:45] = weights[:, 33:39]
+    return expanded
+
+
 def load_exported_actor_state(policy_file: Path) -> Dict[str, np.ndarray]:
     with policy_file.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
 
-    if int(payload.get("observationSize", -1)) != OBSERVATION_SIZE:
+    exported_observation_size = int(payload.get("observationSize", -1))
+    if exported_observation_size not in (OBSERVATION_SIZE, OLD_ROUTE_OBSERVATION_SIZE):
         raise ValueError(
-            f"{policy_file} observationSize={payload.get('observationSize')} "
-            f"does not match current observation size {OBSERVATION_SIZE}"
+            f"{policy_file} observationSize={payload.get('observationSize')} is not compatible "
+            f"with current observation size {OBSERVATION_SIZE}"
         )
     if int(payload.get("actionSize", -1)) != ACTION_SIZE:
         raise ValueError(
@@ -524,6 +542,8 @@ def load_exported_actor_state(policy_file: Path) -> Dict[str, np.ndarray]:
     actor_state: Dict[str, np.ndarray] = {}
     for prefix, layer in zip(EXPORTED_ACTOR_LAYERS, layers):
         weights, bias = _reshape_exported_layer(layer, policy_file)
+        if prefix == EXPORTED_ACTOR_LAYERS[0]:
+            weights = expand_legacy_observation_weights(weights, policy_file)
         actor_state[f"{prefix}.weight"] = weights
         actor_state[f"{prefix}.bias"] = bias
     return actor_state

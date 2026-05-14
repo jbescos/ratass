@@ -11,12 +11,12 @@ if [[ "${objective}" == "navigation" ]]; then
   default_controlled_agents=2
   default_field_size=2
   default_max_action_steps=1200
-  default_checkpoint_dir="rl-checkpoints-navigation-route"
+  default_checkpoint_dir="rl-checkpoints-navigation-route-awareness"
 else
   default_controlled_agents=6
   default_field_size=12
   default_max_action_steps=900
-  default_checkpoint_dir="rl-checkpoints-direct-circle-route"
+  default_checkpoint_dir="rl-checkpoints-route-awareness"
 fi
 
 cd "${repo_root}"
