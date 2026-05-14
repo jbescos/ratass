@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 image="${RL_DOCKER_IMAGE:-ratass-rl:latest}"
 objective="${RL_OBJECTIVE:-combat}"
-shm_size="${RL_DOCKER_SHM_SIZE:-4g}"
+shm_size="${RL_DOCKER_SHM_SIZE:-12g}"
 
 if [[ "${objective}" == "navigation" ]]; then
   default_controlled_agents=2
@@ -51,7 +51,8 @@ docker_args+=(
   -e RL_FOREVER_ITERATIONS="${RL_FOREVER_ITERATIONS:-100}"
   -e RL_MAX_CYCLES="${RL_MAX_CYCLES:-0}"
   -e RL_CHECKPOINT_EVERY="${RL_CHECKPOINT_EVERY:-20}"
-  -e RL_WORKERS="${RL_WORKERS:-0}"
+  -e RL_WORKERS="${RL_WORKERS:-4}"
+  -e RL_LR="${RL_LR:-3e-4}"
   -e RL_NUM_GPUS="${RL_NUM_GPUS:-0}"
   -e RL_NO_REWARD_SUMMARY="${RL_NO_REWARD_SUMMARY:-0}"
   -e RL_PACKAGE_EVERY_CYCLES="${RL_PACKAGE_EVERY_CYCLES:-1}"
@@ -59,6 +60,9 @@ docker_args+=(
   -e RL_RAY_TEMP_DIR="${RL_RAY_TEMP_DIR:-rl-logs/ray}"
 )
 
+if [[ -n "${RL_INIT_POLICY:-}" ]]; then
+  docker_args+=(-e RL_INIT_POLICY="${RL_INIT_POLICY}")
+fi
 if [[ -n "${RL_MAP_IDS:-}" ]]; then
   docker_args+=(-e RL_MAP_IDS="${RL_MAP_IDS}")
 fi

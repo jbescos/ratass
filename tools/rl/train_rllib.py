@@ -13,6 +13,7 @@ Then install the optional Python dependencies from this directory and run:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import re
@@ -36,6 +37,11 @@ DEFAULT_COMBAT_CONTROLLED_AGENTS = 6
 DEFAULT_COMBAT_FIELD_SIZE = 12
 DEFAULT_NAVIGATION_CONTROLLED_AGENTS = 2
 DEFAULT_NAVIGATION_FIELD_SIZE = 2
+EXPORTED_ACTOR_LAYERS = (
+    "encoder.actor_encoder.net.mlp.0",
+    "encoder.actor_encoder.net.mlp.2",
+    "pi.net.mlp.0",
+)
 
 
 def _metric_token(value: str) -> str:
@@ -480,6 +486,76 @@ def build_algorithm(args):
     return config.build()
 
 
+def _reshape_exported_layer(layer: Dict, policy_file: Path) -> Tuple[np.ndarray, np.ndarray]:
+    try:
+        input_size = int(layer["inputSize"])
+        output_size = int(layer["outputSize"])
+        weights = np.asarray(layer["weights"], dtype=np.float32).reshape(
+            output_size,
+            input_size,
+        )
+        bias = np.asarray(layer["bias"], dtype=np.float32).reshape(output_size)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"{policy_file} has an invalid exported layer") from exc
+    return weights, bias
+
+
+def load_exported_actor_state(policy_file: Path) -> Dict[str, np.ndarray]:
+    with policy_file.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+
+    if int(payload.get("observationSize", -1)) != OBSERVATION_SIZE:
+        raise ValueError(
+            f"{policy_file} observationSize={payload.get('observationSize')} "
+            f"does not match current observation size {OBSERVATION_SIZE}"
+        )
+    if int(payload.get("actionSize", -1)) != ACTION_SIZE:
+        raise ValueError(
+            f"{policy_file} actionSize={payload.get('actionSize')} "
+            f"does not match current action size {ACTION_SIZE}"
+        )
+
+    layers = payload.get("layers")
+    if not isinstance(layers, list) or len(layers) != len(EXPORTED_ACTOR_LAYERS):
+        raise ValueError(
+            f"{policy_file} must contain {len(EXPORTED_ACTOR_LAYERS)} exported layers"
+        )
+
+    actor_state: Dict[str, np.ndarray] = {}
+    for prefix, layer in zip(EXPORTED_ACTOR_LAYERS, layers):
+        weights, bias = _reshape_exported_layer(layer, policy_file)
+        actor_state[f"{prefix}.weight"] = weights
+        actor_state[f"{prefix}.bias"] = bias
+    return actor_state
+
+
+def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
+    if not policy_file.exists():
+        raise FileNotFoundError(f"{policy_file} does not exist")
+
+    learner_weights = algorithm.learner_group.get_weights(module_ids=["shared_policy"])
+    policy_weights = dict(learner_weights["shared_policy"])
+    actor_state = load_exported_actor_state(policy_file)
+
+    for key, values in actor_state.items():
+        if key not in policy_weights:
+            raise ValueError(f"Current PPO module does not contain actor key {key}")
+        current = np.asarray(policy_weights[key])
+        if tuple(current.shape) != tuple(values.shape):
+            raise ValueError(
+                f"{key} shape mismatch: exported {values.shape}, current {current.shape}"
+            )
+        policy_weights[key] = values
+
+    algorithm.learner_group.set_weights({"shared_policy": policy_weights})
+    algorithm.env_runner_group.sync_weights(
+        from_worker_or_learner_group=algorithm.learner_group,
+        policies=["shared_policy"],
+        inference_only=True,
+    )
+    print(f"initialized_policy={policy_file}", flush=True)
+
+
 def configure_ray_output(checkpoint_dir: Path) -> None:
     ray_results_dir = checkpoint_dir / "ray-results"
     ray_results_dir.mkdir(parents=True, exist_ok=True)
@@ -603,6 +679,14 @@ def parse_args() -> argparse.Namespace:
         help="restore PPO state from --checkpoint-dir before continuing training",
     )
     parser.add_argument(
+        "--init-policy",
+        default="",
+        help=(
+            "warm-start a fresh PPO run from an exported game policy JSON; ignored "
+            "when --resume is used"
+        ),
+    )
+    parser.add_argument(
         "--no-reward-summary",
         action="store_true",
         help="disable per-map/per-car reward bucket summaries after each iteration",
@@ -641,6 +725,13 @@ def main() -> None:
             )
         algorithm.restore(str(checkpoint_dir))
         print(f"restored={checkpoint_dir}", flush=True)
+        if args.init_policy:
+            print("init_policy_ignored=resume_checkpoint_present", flush=True)
+    elif args.init_policy:
+        initialize_actor_from_exported_policy(
+            algorithm,
+            Path(args.init_policy).resolve(),
+        )
     if args.workers > 0 and not args.no_reward_summary:
         print(
             "reward_summary_warning=local_summary_only workers>0 may hide remote worker episodes",

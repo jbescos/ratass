@@ -116,8 +116,9 @@ If Docker has GPU support available, enable it explicitly:
 RL_DOCKER_GPU=1 RL_NUM_GPUS=1 bash tools/rl/train_navigation_docker.sh
 ```
 
-Ray benefits from Docker shared memory. The launcher defaults to `4g`; increase
-it if Ray warns about the object store:
+Ray benefits from Docker shared memory. The launcher defaults to `12g`; lower
+or increase it with `RL_DOCKER_SHM_SIZE` if the machine needs a different
+allocation:
 
 ```bash
 RL_DOCKER_SHM_SIZE=12g bash tools/rl/train_navigation_docker.sh
@@ -132,6 +133,10 @@ For maximum unattended throughput, disable the per-map reward summary:
 ```bash
 RL_NO_REWARD_SUMMARY=1 bash tools/rl/train_navigation_docker.sh
 ```
+
+The generic combat Docker launcher also defaults to `RL_WORKERS=4` so sampling
+runs across multiple Ray env runners. Set `RL_WORKERS=0` when you need exact
+local per-map reward summaries.
 
 ## Train
 
@@ -153,6 +158,21 @@ Continue from the latest saved checkpoint:
 ```bash
 python tools/rl/train_rllib.py --resume --iterations 100
 ```
+
+Warm-start a new PPO run from the exported policy already used by the game:
+
+```bash
+python tools/rl/train_rllib.py \
+  --checkpoint-dir rl-checkpoints-from-assets-ai \
+  --init-policy assets/ai/rl_enemy_policy.json \
+  --lr 1e-4 \
+  --iterations 100
+```
+
+`--init-policy` copies only the exported actor weights. PPO optimizer state,
+critic weights, and rollout history exist only in a real RLlib checkpoint, so
+use a new checkpoint directory for this mode. If `--resume` is used, the
+checkpoint wins and `--init-policy` is ignored.
 
 Useful early tuning knobs:
 
@@ -251,16 +271,41 @@ By default it rebuilds the desktop jar before training and after every chunk, so
 the packaged game contains the latest exported policy. Stop it with `Ctrl-C`;
 the interrupt handler exports and packages the latest saved checkpoint, so at
 most the work since the previous checkpoint is lost.
+When `RL_NO_REWARD_SUMMARY=1` is set, the local helper defaults to
+`RL_WORKERS=4` for faster unattended training. With reward summaries enabled it
+keeps `RL_WORKERS=0`, because remote workers do not feed exact per-map summary
+details back to the local logger.
 
 Useful knobs for the forever helper:
 
 ```bash
 RL_FOREVER_ITERATIONS=200 \
 RL_CHECKPOINT_EVERY=10 \
-RL_WORKERS=4 \
+RL_NO_REWARD_SUMMARY=1 \
 RL_NUM_GPUS=1 \
 bash tools/rl/train_forever.sh
 ```
+
+To continue learning from the policy currently packaged in the game, warm-start
+the forever helper from `assets/ai/rl_enemy_policy.json` into a fresh checkpoint
+directory:
+
+```bash
+RL_CHECKPOINT_DIR=rl-checkpoints-from-assets-ai \
+RL_INIT_POLICY=assets/ai/rl_enemy_policy.json \
+RL_LR=1e-4 \
+RL_FOREVER_ITERATIONS=200 \
+RL_CHECKPOINT_EVERY=20 \
+RL_NO_REWARD_SUMMARY=1 \
+RL_WORKERS=4 \
+RL_CONTROLLED_AGENTS=12 \
+RL_FIELD_SIZE=12 \
+bash tools/rl/train_forever.sh
+```
+
+Choose a new `RL_CHECKPOINT_DIR` when you want to warm-start from the JSON
+again. If that directory already contains `rllib_checkpoint.json`, the helper
+will resume the checkpoint instead.
 
 Useful navigation run:
 

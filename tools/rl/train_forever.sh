@@ -16,22 +16,30 @@ else
   default_checkpoint_dir="rl-checkpoints-direct-circle-route"
   export_objective="direct-route-safe-circle-v1"
 fi
-workers="${RL_WORKERS:-0}"
+no_reward_summary="${RL_NO_REWARD_SUMMARY:-0}"
+if [[ -n "${RL_WORKERS:-}" ]]; then
+  workers="${RL_WORKERS}"
+elif [[ "${no_reward_summary}" == "1" || "${no_reward_summary}" == "true" ]]; then
+  workers=4
+else
+  workers=0
+fi
 controlled_agents="${RL_CONTROLLED_AGENTS:-${default_controlled_agents}}"
 field_size="${RL_FIELD_SIZE:-${default_field_size}}"
 action_repeat="${RL_ACTION_REPEAT:-4}"
 max_action_steps="${RL_MAX_ACTION_STEPS:-${default_max_action_steps}}"
 train_batch_size="${RL_TRAIN_BATCH_SIZE:-4096}"
 minibatch_size="${RL_MINIBATCH_SIZE:-512}"
+lr="${RL_LR:-3e-4}"
 checkpoint_every="${RL_CHECKPOINT_EVERY:-20}"
 checkpoint_dir="${RL_CHECKPOINT_DIR:-${default_checkpoint_dir}}"
+init_policy="${RL_INIT_POLICY:-}"
 iterations_per_cycle="${RL_FOREVER_ITERATIONS:-100}"
 max_cycles="${RL_MAX_CYCLES:-0}"
 package_every_cycles="${RL_PACKAGE_EVERY_CYCLES:-1}"
 num_gpus="${RL_NUM_GPUS:-0}"
 map_ids="${RL_MAP_IDS:-}"
 opponent_count="${RL_OPPONENT_COUNT:-}"
-no_reward_summary="${RL_NO_REWARD_SUMMARY:-0}"
 ray_num_cpus="${RL_RAY_NUM_CPUS:-0}"
 ray_temp_dir="${RL_RAY_TEMP_DIR:-}"
 build_before_training="${RL_BUILD_BEFORE_TRAINING:-1}"
@@ -48,6 +56,7 @@ common_args=(
   --max-action-steps "${max_action_steps}"
   --train-batch-size "${train_batch_size}"
   --minibatch-size "${minibatch_size}"
+  --lr "${lr}"
   --checkpoint-every "${checkpoint_every}"
   --num-gpus "${num_gpus}"
   --objective "${objective}"
@@ -116,9 +125,11 @@ while true; do
   if [[ -f "${checkpoint_file}" ]]; then
     resume=true
     cycle_args+=(--resume)
+  elif [[ -n "${init_policy}" ]]; then
+    cycle_args+=(--init-policy "${init_policy}")
   fi
 
-  echo "cycle=${cycle} iterations=${iterations_per_cycle} resume=${resume}"
+  echo "cycle=${cycle} iterations=${iterations_per_cycle} resume=${resume} init_policy=${init_policy:-none}"
   "${python_bin}" tools/rl/train_rllib.py "${cycle_args[@]}" --iterations "${iterations_per_cycle}"
 
   export_policy
