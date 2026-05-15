@@ -35,11 +35,15 @@ The browser build output is written to `html/target/ratass-html-1.0/`.
 The Android module is still kept in the repository but is not part of the Maven
 reactor yet.
 
-## AI self-play tuning
+## RL target training
 
-You can run the headless evolution tool against the real match simulation from
-the shaded desktop jar:
+The old scripted/evolution AI has been removed. The remaining training path is
+the target-circle reinforcement-learning environment under `tools/rl/`.
 
-`java -cp desktop/target/ratass-desktop-1.0.jar com.github.jbescos.ai.tuning.AiEvolutionMain --preset balanced --generations 4 --population 8 --rounds 10 --verify-rounds 20 --copies 3 --field-size 12 --seed 7`
+Build the desktop jar, then run a target-training smoke or curriculum:
 
-Replace `balanced` with `brawler`, `interceptor`, `survivor`, or `all`.
+`mvn -pl desktop -am package`
+
+`python tools/rl/train_rllib.py --iterations 1 --max-action-steps 200`
+
+`bash tools/rl/train_forever.sh curriculum`

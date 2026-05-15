@@ -48,6 +48,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260506)
     parser.add_argument("--flip-deadzone", type=float, default=0.18)
     parser.add_argument("--map-id", default="")
+    parser.add_argument(
+        "--map-ids",
+        default="",
+        help="comma-separated map ids to evaluate when using --episodes-per-map",
+    )
     parser.add_argument("--per-map", action="store_true")
     parser.add_argument("--quiet", action="store_true", help="only print final summaries")
     parser.add_argument(
@@ -63,9 +68,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--objective",
-        choices=("combat", "navigation"),
-        default="combat",
-        help="navigation evaluates the solo safe-circle training objective",
+        choices=("target",),
+        default="target",
+        help="target evaluates the circle reach-and-hold objective",
     )
     return parser.parse_args()
 
@@ -85,10 +90,17 @@ def select_map(ratass_game, map_id: str):
     raise ValueError(f"Unknown map id {map_id!r}")
 
 
+def select_maps(ratass_game, map_ids: str):
+    ids = [map_id.strip() for map_id in map_ids.split(",") if map_id.strip()]
+    if not ids:
+        return []
+    return [select_map(ratass_game, map_id) for map_id in ids]
+
+
 def make_stats():
     return {
         "episodes": 0,
-        "wins": 0,
+        "successes": 0,
         "steps": 0,
         "reward": 0.0,
         "actions": 0,
@@ -100,30 +112,37 @@ def make_stats():
         "effective_reverse": 0,
         "small": 0,
         "effective_small": 0,
-        "growth_pickups": 0,
-        "survival": 0.0,
-        "circle": 0.0,
-        "edge": 0.0,
-        "attack": 0.0,
-        "driving": 0.0,
-        "pickup": 0.0,
+        "goals": 0,
+        "falls": 0,
+        "edge_risk_events": 0,
+        "inside_time": 0.0,
+        "progress_total": 0.0,
+        "progress": 0.0,
+        "enter": 0.0,
+        "hold": 0.0,
+        "complete": 0.0,
+        "safety": 0.0,
         "control": 0.0,
-        "win": 0.0,
+        "speed": 0.0,
+        "alive": 0.0,
+        "death": 0.0,
+        "timeout": 0.0,
+        "contest": 0.0,
         "inside_steps": 0,
-        "urgent_outside_steps": 0,
         "near_edge_steps": 0,
         "near_edge_fast_steps": 0,
-        "low_route_steps": 0,
-        "route_direct_steps": 0,
         "unsafe_recovery_steps": 0,
-        "avg_safe_margin_signal": 0.0,
-        "avg_route_target": 0.0,
-        "avg_route_forward": 0.0,
-        "avg_route_speed": 0.0,
+        "near_car_steps": 0,
+        "nearest_car_inside_steps": 0,
+        "avg_target_distance": 0.0,
+        "avg_target_alignment": 0.0,
+        "avg_hold_progress": 0.0,
         "avg_recovery_speed": 0.0,
         "avg_unsafe_recovery": 0.0,
         "avg_speed": 0.0,
         "avg_edge_clearance": 0.0,
+        "avg_nearest_car_distance": 0.0,
+        "avg_nearest_car_approach": 0.0,
     }
 
 
@@ -132,17 +151,14 @@ def add_stats(target, source):
         target[key] += value
 
 
-def build_config(ratass_game, args, navigation_only: bool, steps_limit: int, field_size: int, arena_map=None):
+def build_config(ratass_game, args, steps_limit: int, field_size: int, arena_map=None):
     config = (
         ratass_game.RlTrainingConfig()
         .withControlledAgentCount(1)
         .withFieldSize(field_size)
         .withMaxActionSteps(steps_limit)
         .withSeed(args.seed)
-        .withNavigationOnly(navigation_only)
     )
-    if navigation_only:
-        config.withOpponentCount(0)
     if arena_map is not None:
         config.addMap(arena_map)
     return config
@@ -163,32 +179,42 @@ def open_trace(trace_dir: str, map_id: str, episode: int):
         [
             "step",
             "reward",
-            "survival",
-            "circle",
-            "edge",
-            "driving",
+            "progress",
+            "enter",
+            "hold",
+            "complete",
+            "contest",
+            "safety",
             "control",
+            "death",
             "throttle",
             "turn",
             "effective_throttle",
             "effective_turn",
             "speed",
             "edge_clearance",
-            "safe_zone_dx",
-            "safe_zone_dy",
-            "safe_zone_margin",
-            "route_dx",
-            "route_dy",
-            "route_forward",
-            "route_side",
-            "route_distance",
-            "route_speed",
-            "route_direct",
+            "target_dx",
+            "target_dy",
+            "target_distance",
+            "target_forward",
+            "target_side",
+            "inside_circle",
+            "hold_progress",
+            "hold_remaining",
             "recovery_speed",
             "unsafe_recovery_speed",
             "ray_forward",
             "ray_front_left",
             "ray_front_right",
+            "nearest_car_forward",
+            "nearest_car_side",
+            "nearest_car_distance",
+            "nearest_car_approach",
+            "nearest_car_inside_circle",
+            "recent_impact",
+            "car_ray_forward",
+            "car_ray_front_left",
+            "car_ray_front_right",
         ]
     )
     return handle, writer
@@ -208,19 +234,30 @@ def trace_step(writer, step, result, reward, throttle, turn):
             f"{breakdown[0]:.6f}" if len(breakdown) > 0 else "0.000000",
             f"{breakdown[1]:.6f}" if len(breakdown) > 1 else "0.000000",
             f"{breakdown[2]:.6f}" if len(breakdown) > 2 else "0.000000",
+            f"{breakdown[3]:.6f}" if len(breakdown) > 3 else "0.000000",
+            f"{breakdown[10]:.6f}" if len(breakdown) > 10 else "0.000000",
             f"{breakdown[4]:.6f}" if len(breakdown) > 4 else "0.000000",
-            f"{breakdown[6]:.6f}" if len(breakdown) > 6 else "0.000000",
+            f"{breakdown[5]:.6f}" if len(breakdown) > 5 else "0.000000",
+            f"{breakdown[8]:.6f}" if len(breakdown) > 8 else "0.000000",
             f"{throttle:.6f}",
             f"{turn:.6f}",
             f"{effective_throttle:.6f}",
             f"{effective_turn:.6f}",
-            f"{observations[8]:.6f}",
-            f"{observations[9]:.6f}",
-            f"{observations[27]:.6f}",
+            f"{observations[13]:.6f}",
+            f"{observations[14]:.6f}",
+            f"{observations[1]:.6f}",
+            f"{observations[2]:.6f}",
+            f"{observations[3]:.6f}",
+            f"{observations[6]:.6f}",
+            f"{observations[7]:.6f}",
+            f"{observations[17]:.6f}",
+            f"{observations[18]:.6f}",
+            f"{observations[19]:.6f}",
             f"{observations[28]:.6f}",
             f"{observations[29]:.6f}",
-            f"{observations[30]:.6f}",
-            f"{observations[31]:.6f}",
+            f"{observations[20]:.6f}",
+            f"{observations[21]:.6f}",
+            f"{observations[22]:.6f}",
             f"{observations[32]:.6f}",
             f"{observations[33]:.6f}",
             f"{observations[34]:.6f}",
@@ -230,36 +267,35 @@ def trace_step(writer, step, result, reward, throttle, turn):
             f"{observations[38]:.6f}",
             f"{observations[39]:.6f}",
             f"{observations[40]:.6f}",
-            f"{observations[41]:.6f}",
         ]
     )
 
 
 def update_observation_stats(stats, result):
     observations = [float(value) for value in result.observations]
-    stats["avg_speed"] += observations[8]
-    stats["avg_edge_clearance"] += observations[9]
-    stats["avg_safe_margin_signal"] += observations[29]
-    route_distance_signal = observations[34]
-    stats["avg_route_target"] += route_distance_signal
-    stats["avg_route_forward"] += observations[32]
-    stats["avg_route_speed"] += observations[35]
-    stats["avg_recovery_speed"] += observations[37]
-    stats["avg_unsafe_recovery"] += observations[38]
-    if observations[29] >= 0.0:
+    stats["avg_speed"] += observations[13]
+    stats["avg_edge_clearance"] += observations[14]
+    stats["avg_target_distance"] += observations[3]
+    stats["avg_target_alignment"] += observations[6]
+    stats["avg_hold_progress"] += observations[18]
+    stats["avg_recovery_speed"] += observations[28]
+    stats["avg_unsafe_recovery"] += observations[29]
+    stats["avg_nearest_car_distance"] += observations[34]
+    stats["avg_nearest_car_approach"] += observations[35]
+    if observations[17] > 0.5:
         stats["inside_steps"] += 1
-    if observations[29] < -0.55:
-        stats["urgent_outside_steps"] += 1
-    if observations[9] < 0.25:
+    if observations[14] < 0.25:
         stats["near_edge_steps"] += 1
-    if observations[9] < 0.25 and observations[8] > 0.32:
+    if observations[14] < 0.25 and observations[13] > 0.32:
         stats["near_edge_fast_steps"] += 1
-    if route_distance_signal < 0.18 and observations[29] < 0.0:
-        stats["low_route_steps"] += 1
-    if observations[36] > 0.5:
-        stats["route_direct_steps"] += 1
-    if observations[38] > 0.18:
+    if observations[29] > 0.18:
         stats["unsafe_recovery_steps"] += 1
+    if observations[34] < 1.0:
+        stats["near_car_steps"] += 1
+    if observations[36] > 0.5:
+        stats["nearest_car_inside_steps"] += 1
+    if len(result.progressTowardTarget) > 0:
+        stats["progress_total"] += float(result.progressTowardTarget[0])
 
 
 def run_episode(
@@ -285,12 +321,10 @@ def run_episode(
     effective_reverse_actions = 0
     small_actions = 0
     effective_small_actions = 0
-    growth_pickups = 0
     reward_breakdown_names = [str(name) for name in result.rewardBreakdownNames]
     reward_breakdown_totals = [0.0 for _ in reward_breakdown_names]
     last_raw_sign = 0
     last_effective_sign = 0
-    was_growth_boosted = bool(float(result.observations[11]) > 0.5)
     trace_handle, trace_writer = open_trace(args.trace_dir, map_id, episode)
 
     try:
@@ -323,10 +357,6 @@ def run_episode(
             trace_step(trace_writer, steps + 1, result, step_reward, throttle, turn)
             update_observation_stats(stats, result)
 
-            is_growth_boosted = bool(float(result.observations[11]) > 0.5)
-            if is_growth_boosted and not was_growth_boosted:
-                growth_pickups += 1
-            was_growth_boosted = is_growth_boosted
             effective_throttle = float(result.effectiveActions[0])
             effective_sign = throttle_sign(effective_throttle, args.flip_deadzone)
             if effective_sign != 0:
@@ -349,7 +379,7 @@ def run_episode(
             trace_handle.close()
 
     stats["episodes"] = 1
-    stats["wins"] = 1 if int(result.winnerAgentIndex) == 0 else 0
+    stats["successes"] = 1 if int(result.winnerAgentIndex) == 0 else 0
     stats["steps"] = steps
     stats["reward"] = reward
     stats["actions"] = steps
@@ -361,7 +391,14 @@ def run_episode(
     stats["effective_reverse"] = effective_reverse_actions
     stats["small"] = small_actions
     stats["effective_small"] = effective_small_actions
-    stats["growth_pickups"] = growth_pickups
+    if len(result.goalsReached) > 0:
+        stats["goals"] = int(result.goalsReached[0])
+    if len(result.fallDeaths) > 0:
+        stats["falls"] = int(result.fallDeaths[0])
+    if len(result.edgeRiskEvents) > 0:
+        stats["edge_risk_events"] = int(result.edgeRiskEvents[0])
+    if len(result.insideTime) > 0:
+        stats["inside_time"] = float(result.insideTime[0])
     for name, value in zip(reward_breakdown_names, reward_breakdown_totals):
         stats[name] += value
 
@@ -377,57 +414,137 @@ def run_episode(
             f"raw_flip_rate={raw_flip_rate:.3f} "
             f"effective_flips={effective_flips} "
             f"effective_flip_rate={effective_flip_rate:.3f} "
-            f"growth_pickups={growth_pickups} "
-            f"winner={result.winnerLabel} "
-            f"winnerAgent={result.winnerAgentIndex}",
+            f"goals={stats['goals']} "
+            f"falls={stats['falls']} "
+            f"edge_risk_events={stats['edge_risk_events']} "
+            f"inside_time={stats['inside_time']:.3f} "
+            f"success={stats['successes']}",
             flush=True,
         )
 
     return map_id, stats
 
 
-def print_summary(label: str, stats, episodes_override: int = None):
+def summary_metrics(stats, episodes_override: int = None):
     episodes = episodes_override if episodes_override is not None else max(1, stats["episodes"])
     actions = max(1, stats["actions"])
+    return {
+        "success_rate": stats["successes"] / episodes,
+        "avg_steps": stats["steps"] / episodes,
+        "avg_reward": stats["reward"] / episodes,
+        "avg_goals": stats["goals"] / episodes,
+        "fall_rate": stats["falls"] / episodes,
+        "edge_risk_events_per_episode": stats["edge_risk_events"] / episodes,
+        "inside_time_avg": stats["inside_time"] / episodes,
+        "progress_avg": stats["progress_total"] / episodes,
+        "raw_flips_per_step": stats["raw_flips"] / actions,
+        "effective_flips_per_step": stats["effective_flips"] / actions,
+        "effective_reverse_fraction": stats["effective_reverse"] / actions,
+        "effective_small_throttle_fraction": stats["effective_small"] / actions,
+        "inside_fraction": stats["inside_steps"] / actions,
+        "near_edge_fraction": stats["near_edge_steps"] / actions,
+        "near_edge_fast_fraction": stats["near_edge_fast_steps"] / actions,
+        "unsafe_recovery_fraction": stats["unsafe_recovery_steps"] / actions,
+        "avg_target_distance": stats["avg_target_distance"] / actions,
+        "avg_target_alignment": stats["avg_target_alignment"] / actions,
+        "avg_hold_progress": stats["avg_hold_progress"] / actions,
+        "avg_recovery_speed": stats["avg_recovery_speed"] / actions,
+        "avg_unsafe_recovery": stats["avg_unsafe_recovery"] / actions,
+        "avg_speed_signal": stats["avg_speed"] / actions,
+        "avg_edge_clearance": stats["avg_edge_clearance"] / actions,
+        "near_car_fraction": stats["near_car_steps"] / actions,
+        "nearest_car_inside_fraction": stats["nearest_car_inside_steps"] / actions,
+        "avg_nearest_car_distance": stats["avg_nearest_car_distance"] / actions,
+        "avg_nearest_car_approach": stats["avg_nearest_car_approach"] / actions,
+    }
+
+
+def evaluation_score(stats, episodes_override: int = None) -> float:
+    metrics = summary_metrics(stats, episodes_override)
+    # Reward remains the main signal, but the score explicitly guards against
+    # policies that look good by reward while still driving near holes or
+    # oscillating controls.
+    return (
+        metrics["avg_reward"]
+        + metrics["avg_goals"] * 35.0
+        + metrics["success_rate"] * 80.0
+        + metrics["inside_fraction"] * 35.0
+        + metrics["inside_time_avg"] * 4.0
+        + metrics["progress_avg"] * 4.0
+        + metrics["avg_target_alignment"] * 10.0
+        - metrics["near_edge_fast_fraction"] * 80.0
+        - metrics["unsafe_recovery_fraction"] * 100.0
+        - metrics["effective_flips_per_step"] * 35.0
+        - metrics["fall_rate"] * 120.0
+    )
+
+
+def print_summary(label: str, stats, episodes_override: int = None):
+    episodes = episodes_override if episodes_override is not None else max(1, stats["episodes"])
+    metrics = summary_metrics(stats, episodes_override)
     print(
         f"{label} "
-        f"wins={stats['wins']}/{stats['episodes']} "
-        f"avg_steps={stats['steps'] / episodes:.1f} "
-        f"avg_reward={stats['reward'] / episodes:.3f} "
-        f"raw_flips_per_step={stats['raw_flips'] / actions:.3f} "
-        f"effective_flips_per_step={stats['effective_flips'] / actions:.3f} "
-        f"effective_reverse_fraction={stats['effective_reverse'] / actions:.3f} "
-        f"effective_small_throttle_fraction={stats['effective_small'] / actions:.3f} "
-        f"inside_fraction={stats['inside_steps'] / actions:.3f} "
-        f"urgent_outside_fraction={stats['urgent_outside_steps'] / actions:.3f} "
-        f"near_edge_fraction={stats['near_edge_steps'] / actions:.3f} "
-        f"near_edge_fast_fraction={stats['near_edge_fast_steps'] / actions:.3f} "
-        f"low_route_fraction={stats['low_route_steps'] / actions:.3f} "
-        f"route_direct_fraction={stats['route_direct_steps'] / actions:.3f} "
-        f"unsafe_recovery_fraction={stats['unsafe_recovery_steps'] / actions:.3f} "
-        f"avg_safe_margin_signal={stats['avg_safe_margin_signal'] / actions:.3f} "
-        f"avg_route_target={stats['avg_route_target'] / actions:.3f} "
-        f"avg_route_forward={stats['avg_route_forward'] / actions:.3f} "
-        f"avg_route_speed={stats['avg_route_speed'] / actions:.3f} "
-        f"avg_recovery_speed={stats['avg_recovery_speed'] / actions:.3f} "
-        f"avg_unsafe_recovery={stats['avg_unsafe_recovery'] / actions:.3f} "
-        f"avg_speed_signal={stats['avg_speed'] / actions:.3f} "
-        f"avg_edge_clearance={stats['avg_edge_clearance'] / actions:.3f} "
-        f"growth_pickups_per_episode={stats['growth_pickups'] / episodes:.3f} "
+        f"successes={stats['successes']}/{stats['episodes']} "
+        f"avg_steps={metrics['avg_steps']:.1f} "
+        f"avg_reward={metrics['avg_reward']:.3f} "
+        f"avg_goals={metrics['avg_goals']:.3f} "
+        f"fall_rate={metrics['fall_rate']:.3f} "
+        f"inside_time_avg={metrics['inside_time_avg']:.3f} "
+        f"progress_avg={metrics['progress_avg']:.3f} "
+        f"edge_risk_events_per_episode={metrics['edge_risk_events_per_episode']:.3f} "
+        f"raw_flips_per_step={metrics['raw_flips_per_step']:.3f} "
+        f"effective_flips_per_step={metrics['effective_flips_per_step']:.3f} "
+        f"effective_reverse_fraction={metrics['effective_reverse_fraction']:.3f} "
+        f"effective_small_throttle_fraction={metrics['effective_small_throttle_fraction']:.3f} "
+        f"inside_fraction={metrics['inside_fraction']:.3f} "
+        f"near_edge_fraction={metrics['near_edge_fraction']:.3f} "
+        f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "
+        f"unsafe_recovery_fraction={metrics['unsafe_recovery_fraction']:.3f} "
+        f"avg_target_distance={metrics['avg_target_distance']:.3f} "
+        f"avg_target_alignment={metrics['avg_target_alignment']:.3f} "
+        f"avg_hold_progress={metrics['avg_hold_progress']:.3f} "
+        f"avg_recovery_speed={metrics['avg_recovery_speed']:.3f} "
+        f"avg_unsafe_recovery={metrics['avg_unsafe_recovery']:.3f} "
+        f"avg_speed_signal={metrics['avg_speed_signal']:.3f} "
+        f"avg_edge_clearance={metrics['avg_edge_clearance']:.3f} "
+        f"near_car_fraction={metrics['near_car_fraction']:.3f} "
+        f"nearest_car_inside_fraction={metrics['nearest_car_inside_fraction']:.3f} "
+        f"avg_nearest_car_distance={metrics['avg_nearest_car_distance']:.3f} "
+        f"avg_nearest_car_approach={metrics['avg_nearest_car_approach']:.3f} "
         + " ".join(
             f"{name}={stats[name] / episodes:.3f}"
             for name in (
-                "survival",
-                "circle",
-                "edge",
-                "attack",
-                "driving",
-                "pickup",
+                "progress",
+                "enter",
+                "hold",
+                "complete",
+                "safety",
                 "control",
-                "win",
+                "speed",
+                "alive",
+                "death",
+                "timeout",
+                "contest",
             )
             if name in stats
         ),
+        flush=True,
+    )
+
+
+def print_evaluation_score(stats):
+    metrics = summary_metrics(stats)
+    score = evaluation_score(stats)
+    print(
+        f"evaluation_score={score:.3f} "
+        f"avg_reward={metrics['avg_reward']:.3f} "
+        f"avg_steps={metrics['avg_steps']:.1f} "
+        f"success_rate={metrics['success_rate']:.3f} "
+        f"avg_goals={metrics['avg_goals']:.3f} "
+        f"fall_rate={metrics['fall_rate']:.3f} "
+        f"inside_fraction={metrics['inside_fraction']:.3f} "
+        f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "
+        f"unsafe_recovery_fraction={metrics['unsafe_recovery_fraction']:.3f}",
         flush=True,
     )
 
@@ -444,17 +561,20 @@ def main() -> None:
     java_float_array = jpype.JArray(jpype.JFloat)
 
     policy = rl_policy.fromJson(policy_path.read_text(encoding="utf-8"))
-    navigation_only = args.objective == "navigation"
-    field_size = args.field_size if args.field_size is not None else (1 if navigation_only else 10)
-    steps_limit = args.steps if args.steps is not None else (1200 if navigation_only else 420)
+    field_size = args.field_size if args.field_size is not None else 1
+    steps_limit = args.steps if args.steps is not None else 1350
     scratch_size = int(policy.getScratchSize())
     total_stats = make_stats()
     per_map = defaultdict(make_stats)
     selected_maps = []
+    if args.map_id and args.map_ids:
+        raise ValueError("Use either --map-id or --map-ids, not both")
     if args.episodes_per_map > 0:
         selected_maps = available_maps()
         if args.map_id:
             selected_maps = [select_map(ratass_game, args.map_id)]
+        elif args.map_ids:
+            selected_maps = select_maps(ratass_game, args.map_ids)
     else:
         selected_maps = [select_map(ratass_game, args.map_id)]
 
@@ -463,7 +583,6 @@ def main() -> None:
         config = build_config(
             ratass_game,
             args,
-            navigation_only,
             steps_limit,
             field_size,
             arena_map,
@@ -489,6 +608,7 @@ def main() -> None:
             environment.close()
 
     print_summary("summary", total_stats)
+    print_evaluation_score(total_stats)
     if args.per_map or args.episodes_per_map > 0:
         for map_id in sorted(per_map):
             print_summary(f"map_summary map={map_id}", per_map[map_id])

@@ -39,10 +39,6 @@ import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.github.jbescos.ai.AiControlDecision;
-import com.github.jbescos.ai.AiDrivingPersonality;
-import com.github.jbescos.ai.AiDrivingPersonalities;
-import com.github.jbescos.ai.AiVehicleView;
-import com.github.jbescos.ai.CarAiController;
 import com.github.jbescos.ai.rl.RlPolicy;
 import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MapProgression;
@@ -165,124 +161,76 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
-    public static final int RL_OBSERVATION_SIZE = 45;
+    public static final int RL_OBSERVATION_SIZE = 44;
     public static final int RL_ACTION_SIZE = 2;
-    public static final int RL_REWARD_BREAKDOWN_SIZE = 8;
-    private static final int RL_REWARD_SURVIVAL = 0;
-    private static final int RL_REWARD_CIRCLE = 1;
-    private static final int RL_REWARD_EDGE = 2;
-    private static final int RL_REWARD_ATTACK = 3;
-    private static final int RL_REWARD_DRIVING = 4;
-    private static final int RL_REWARD_PICKUP = 5;
-    private static final int RL_REWARD_CONTROL = 6;
-    private static final int RL_REWARD_WIN = 7;
+    public static final int RL_REWARD_BREAKDOWN_SIZE = 11;
+    private static final int RL_REWARD_PROGRESS = 0;
+    private static final int RL_REWARD_ENTER = 1;
+    private static final int RL_REWARD_HOLD = 2;
+    private static final int RL_REWARD_COMPLETE = 3;
+    private static final int RL_REWARD_SAFETY = 4;
+    private static final int RL_REWARD_CONTROL = 5;
+    private static final int RL_REWARD_SPEED = 6;
+    private static final int RL_REWARD_ALIVE = 7;
+    private static final int RL_REWARD_DEATH = 8;
+    private static final int RL_REWARD_TIMEOUT = 9;
+    private static final int RL_REWARD_CONTEST = 10;
     private static final String[] RL_REWARD_BREAKDOWN_NAMES = {
-            "survival",
-            "circle",
-            "edge",
-            "attack",
-            "driving",
-            "pickup",
+            "progress",
+            "enter",
+            "hold",
+            "complete",
+            "safety",
             "control",
-            "win"
+            "speed",
+            "alive",
+            "death",
+            "timeout",
+            "contest"
     };
     private static final int RL_DEFAULT_CONTROLLED_AGENTS = 1;
-    private static final int RL_DEFAULT_FIELD_SIZE = 12;
+    private static final int RL_DEFAULT_FIELD_SIZE = 1;
     private static final int RL_DEFAULT_ACTION_REPEAT = 4;
     private static final int RL_DEFAULT_MAX_ACTION_STEPS = 1350;
+    private static final int RL_DEFAULT_MAX_GOALS = 6;
     private static final float RL_LIVE_DECISION_INTERVAL = 0.08f;
     private static final float RL_INITIAL_DECISION_STAGGER = 0.24f;
     private static final float RL_POSITION_NORMALIZER_MIN = 1f;
-    private static final float RL_VELOCITY_NORMALIZER = 18f;
     private static final float RL_ANGULAR_VELOCITY_NORMALIZER = 8f;
-    private static final float RL_HAZARD_DISTANCE_NORMALIZER = 6f;
+    private static final float RL_HAZARD_DISTANCE_NORMALIZER = 12f;
+    private static final float RL_DEFAULT_TARGET_RADIUS = 1.65f;
+    private static final float RL_DEFAULT_TARGET_HOLD_SECONDS = 0.85f;
+    private static final float RL_TARGET_SPAWN_MARGIN = 1.25f;
+    private static final float RL_TARGET_MIN_MOVE_DISTANCE = 4.4f;
     private static final float RL_ROUTE_MARGIN = 0.68f;
-    private static final float RL_ROUTE_DIRECT_EPSILON = 0.16f;
-    private static final float RL_ROUTE_TARGET_DISTANCE_NORMALIZER = 5f;
-    private static final float RL_RAYCAST_DISTANCE = 7.5f;
-    private static final float RL_RAYCAST_STEP = 0.34f;
-    private static final float RL_ALIVE_STEP_REWARD = 0.004f;
-    private static final float RL_EDGE_RECOVERY_REWARD = 0.145f;
-    private static final float RL_OPPONENT_PRESSURE_REWARD = 0.085f;
-    private static final float RL_OPPONENT_ELIMINATION_REWARD = 1.250f;
-    private static final float RL_IMPACT_CREDIT_REWARD = 0.160f;
-    private static final float RL_WIN_REWARD = 2.000f;
-    private static final float RL_ELIMINATION_PENALTY = 7.200f;
-    private static final float RL_AVOIDABLE_ELIMINATION_PENALTY = 3.200f;
-    private static final float RL_OUTWARD_ELIMINATION_PENALTY = 2.700f;
-    private static final float RL_SPIN_STALL_PENALTY = 0.006f;
+    private static final float RL_RAYCAST_DISTANCE = 16f;
+    private static final float RL_RAYCAST_STEP = 0.40f;
+    private static final float RL_CAR_SENSOR_DISTANCE = 12f;
+    private static final float RL_CAR_SENSOR_RADIUS = 1.15f;
     private static final float RL_CONTROL_DEADZONE = 0.06f;
     private static final float RL_ACTION_FLIP_DEADZONE = 0.18f;
-    private static final float RL_FORWARD_SPEED_REWARD = 0.000f;
-    private static final float RL_REVERSE_SPEED_PENALTY = 0.012f;
-    private static final float RL_RAW_THROTTLE_FLIP_PENALTY = 0.026f;
-    private static final float RL_EFFECTIVE_THROTTLE_FLIP_PENALTY = 0.062f;
-    private static final float RL_FORWARD_REVERSE_SPEED_FLIP_PENALTY = 0.034f;
-    private static final float RL_IDLE_DITHER_PENALTY = 0.040f;
-    private static final float RL_OPPONENT_CLOSING_REWARD = 0.060f;
-    private static final float RL_FORWARD_THROTTLE_COMMIT_REWARD = 0.028f;
-    private static final float RL_ROUTE_SPEED_REWARD = 0.120f;
-    private static final float RL_ROUTE_BACKTRACK_PENALTY = 0.085f;
-    private static final float RL_SAFE_REVERSE_ACTION_PENALTY = 0.030f;
-    private static final float RL_SAFE_REVERSE_BRAKE_PENALTY = 0.018f;
-    private static final float RL_REVERSE_RECOVERY_EDGE_DISTANCE = 1.15f;
-    private static final float RL_REVERSE_RECOVERY_SPEED = 0.12f;
-    private static final float RL_EDGE_DANGER_DISTANCE = 2.05f;
-    private static final float RL_EDGE_DANGER_PENALTY = 0.165f;
-    private static final float RL_EDGE_APPROACH_PENALTY = 0.235f;
-    private static final float RL_EDGE_WARNING_DISTANCE = 3.60f;
-    private static final float RL_EDGE_WARNING_SPEED = 2.35f;
-    private static final float RL_EDGE_UNSAFE_SPEED_PENALTY = 0.185f;
-    private static final float RL_SAFE_SPEED_DISTANCE = 3.80f;
-    private static final float RL_SAFE_SPEED_REWARD = 0.000f;
-    private static final float RL_ACCELERATION_REWARD = 0.000f;
-    private static final float RL_EDGE_RECOVERY_SPEED_DISTANCE = 4.20f;
-    private static final float RL_EDGE_RECOVERY_SPEED_REWARD = 0.210f;
-    private static final float RL_EDGE_UNSAFE_RECOVERY_SPEED_PENALTY = 0.315f;
-    private static final float RL_EDGE_FAST_APPROACH_PENALTY = 0.300f;
-    private static final float RL_CONTACT_STUCK_DISTANCE = 1.18f;
-    private static final float RL_CONTACT_STUCK_SPEED = 0.62f;
-    private static final float RL_CONTACT_STUCK_PENALTY = 0.040f;
-    private static final float RL_CONTACT_DISENGAGE_REWARD = 0.048f;
-    private static final float RL_CONTACT_ESCAPE_SPEED_REWARD = 0.055f;
-    private static final float RL_SAFE_ATTACK_DISTANCE = 3.15f;
-    private static final float RL_FAST_IMPACT_REWARD = 0.220f;
-    private static final float RL_ATTACK_EDGE_PRESSURE_REWARD = 0.170f;
-    private static final float RL_UNSAFE_ATTACK_PENALTY = 0.260f;
-    private static final float RL_ATTACK_SUICIDE_PENALTY = 4.200f;
-    private static final float RL_GROWTH_PICKUP_REWARD = 12.000f;
-    private static final float RL_GROWTH_PICKUP_SAFE_ZONE_REWARD = 12.000f;
-    private static final float RL_GROWTH_PICKUP_APPROACH_REWARD = 0.720f;
-    private static final float RL_GROWTH_PICKUP_INSIDE_APPROACH_REWARD = 1.150f;
-    private static final float RL_GROWTH_PICKUP_PROXIMITY_REWARD = 0.420f;
-    private static final float RL_GROWTH_PICKUP_INSIDE_NEGLECT_PENALTY = 0.070f;
-    private static final float RL_SAFE_ZONE_APPROACH_REWARD = 0.560f;
-    private static final float RL_SAFE_ZONE_INSIDE_REWARD = 0.145f;
-    private static final float RL_SAFE_ZONE_CENTER_REWARD = 0.420f;
-    private static final float RL_SAFE_ZONE_DEEP_INSIDE_REWARD = 0.440f;
-    private static final float RL_SAFE_ZONE_RIM_PENALTY = 0.460f;
-    private static final float RL_SAFE_ZONE_SETTLE_REWARD = 0.130f;
-    private static final float RL_SAFE_ZONE_BRAKE_REWARD = 0.110f;
-    private static final float RL_SAFE_ZONE_FAST_EXIT_PENALTY = 0.260f;
-    private static final float RL_SAFE_ZONE_OUTWARD_PENALTY = 0.220f;
-    private static final float RL_SAFE_ZONE_EXIT_PENALTY = 0.650f;
-    private static final float RL_SAFE_ZONE_BRAKE_SPEED = 0.85f;
-    private static final float RL_SAFE_ZONE_DEADLINE_REWARD = 1.850f;
-    private static final float RL_SAFE_ZONE_DEADLINE_CENTER_REWARD = 1.600f;
-    private static final float RL_SAFE_ZONE_PUSH_OUT_REWARD = 0.300f;
-    private static final float RL_SAFE_ZONE_EJECTION_REWARD = 0.750f;
-    private static final float RL_SAFE_ZONE_MISS_PENALTY = 7.600f;
-    private static final float RL_SAFE_ZONE_URGENCY_PENALTY = 0.140f;
-    private static final float RL_NAVIGATION_CIRCLE_REWARD_SCALE = 1.65f;
-    private static final float RL_NAVIGATION_EDGE_PENALTY_SCALE = 1.35f;
-    private static final float RL_NAVIGATION_ALIVE_STEP_REWARD = 0.004f;
-    private static final float RL_NAVIGATION_COMPLETE_REWARD = 5.000f;
-    private static final float RL_NAVIGATION_ROUTE_SPEED_REWARD = 0.280f;
-    private static final float RL_NAVIGATION_ROUTE_BACKTRACK_PENALTY = 0.180f;
-    private static final float RL_NAVIGATION_ROUTE_STALL_PENALTY = 0.160f;
-    private static final float RL_NAVIGATION_EDGE_SPEED_PENALTY = 0.420f;
-    private static final float RL_NAVIGATION_EDGE_THROTTLE_PENALTY = 0.180f;
-    private static final float RL_NAVIGATION_EDGE_TURN_PENALTY = 0.080f;
+    private static final float RL_STEP_PENALTY = 0.010f;
+    private static final float RL_PROGRESS_REWARD = 0.95f;
+    private static final float RL_DRIVE_AWAY_PENALTY = 0.55f;
+    private static final float RL_ENTER_REWARD = 6.0f;
+    private static final float RL_HOLD_STEP_REWARD = 0.32f;
+    private static final float RL_GOAL_COMPLETE_REWARD = 24.0f;
+    private static final float RL_ALIGNMENT_REWARD = 0.040f;
+    private static final float RL_DEATH_PENALTY = 14.0f;
+    private static final float RL_TIMEOUT_PENALTY = 2.0f;
+    private static final float RL_EDGE_DANGER_DISTANCE = 2.15f;
+    private static final float RL_EDGE_WARNING_DISTANCE = 8.0f;
+    private static final float RL_EDGE_WARNING_SPEED = 1.85f;
+    private static final float RL_EDGE_SPEED_PENALTY = 0.62f;
+    private static final float RL_EDGE_THROTTLE_PENALTY = 0.18f;
+    private static final float RL_UNSAFE_RECOVERY_PENALTY = 0.82f;
+    private static final float RL_STEER_JITTER_PENALTY = 0.035f;
+    private static final float RL_THROTTLE_FLIP_PENALTY = 0.040f;
+    private static final float RL_REVERSE_AWAY_PENALTY = 0.030f;
+    private static final float RL_LOW_SPEED_STALL_PENALTY = 0.030f;
+    private static final float RL_SMOOTH_SPEED_REWARD = 0.035f;
+    private static final float RL_CONTESTED_HOLD_REWARD = 0.045f;
+    private static final float RL_PUSH_OUT_REWARD = 1.60f;
     private static final float HUD_SIDEBAR_RATIO = 0.29f;
     private static final float HUD_SIDEBAR_MIN_WIDTH = 200f;
     private static final float HUD_SIDEBAR_PREFERRED_MIN_WIDTH = 260f;
@@ -342,14 +290,6 @@ public class RatassGame extends ApplicationAdapter {
             "Pyre",
             "Wrath"
     };
-
-    private static final AiDrivingPersonality[] ENEMY_PERSONALITIES =
-            new AiDrivingPersonality[] {
-                    AiDrivingPersonalities.BRAWLER,
-                    AiDrivingPersonalities.INTERCEPTOR,
-                    AiDrivingPersonalities.SURVIVOR,
-                    AiDrivingPersonalities.BALANCED
-            };
 
     private static final Color VOID = new Color(0.08f, 0.10f, 0.13f, 1f);
     private static final Color PLATFORM_SHADOW = new Color(0.04f, 0.05f, 0.07f, 1f);
@@ -683,6 +623,9 @@ public class RatassGame extends ApplicationAdapter {
     private boolean rlTrainingAllowSoloRound;
     private boolean rlTrainingDisablePickups;
     private boolean rlTrainingRandomSpawnLocations;
+    private boolean rlTrainingTargetMode;
+    private float rlTrainingTargetRadius = RL_DEFAULT_TARGET_RADIUS;
+    private float rlTrainingTargetHoldSeconds = RL_DEFAULT_TARGET_HOLD_SECONDS;
     private int countdownCueSecond;
     private int roundNumber;
     private int playerWins;
@@ -1016,7 +959,6 @@ public class RatassGame extends ApplicationAdapter {
                 "You",
                 true,
                 new Color(playerVisual.color),
-                null,
                 playerVisual,
                 "player");
 
@@ -1024,15 +966,13 @@ public class RatassGame extends ApplicationAdapter {
         boolean modelControlledEnemies = rlEnemyPolicy != null;
         for (int enemyIndex = 0; enemyIndex < enemyCount; enemyIndex++) {
             CarVisual visual = getEnemyCarVisual(enemyIndex);
-            AiDrivingPersonality personality = ENEMY_PERSONALITIES[enemyIndex % ENEMY_PERSONALITIES.length];
             addRosterTemplate(
                     getEnemyName(enemyIndex),
                     false,
                     new Color(visual.color),
-                    personality,
                     visual,
-                    personality.id,
-                    false,
+                    "rl-" + enemyIndex,
+                    !modelControlledEnemies,
                     modelControlledEnemies);
         }
         invalidateLeaderboard();
@@ -1065,38 +1005,16 @@ public class RatassGame extends ApplicationAdapter {
         return getCarVisual(enemyIndex + 1);
     }
 
-    private void createSimulationRoster(Array<AiTournamentParticipant> participants) {
-        roster.clear();
-        for (int i = 0; i < participants.size; i++) {
-            AiTournamentParticipant participant = participants.get(i);
-            CarVisual visual = getCarVisual(i);
-            String displayName =
-                    participant.displayName == null || participant.displayName.length() == 0
-                            ? "Bot " + (i + 1)
-                            : participant.displayName;
-            addRosterTemplate(
-                    displayName,
-                    false,
-                    new Color(visual.color),
-                    participant.personality,
-                    visual,
-                    participant.label);
-        }
-        invalidateLeaderboard();
-    }
-
     private void addRosterTemplate(
             String name,
             boolean playerControlled,
             Color color,
-            AiDrivingPersonality personality,
             CarVisual visual,
             String statsLabel) {
         addRosterTemplate(
                 name,
                 playerControlled,
                 color,
-                personality,
                 visual,
                 statsLabel,
                 false,
@@ -1107,7 +1025,6 @@ public class RatassGame extends ApplicationAdapter {
             String name,
             boolean playerControlled,
             Color color,
-            AiDrivingPersonality personality,
             CarVisual visual,
             String statsLabel,
             boolean externallyControlled) {
@@ -1115,7 +1032,6 @@ public class RatassGame extends ApplicationAdapter {
                 name,
                 playerControlled,
                 color,
-                personality,
                 visual,
                 statsLabel,
                 externallyControlled,
@@ -1126,7 +1042,6 @@ public class RatassGame extends ApplicationAdapter {
             String name,
             boolean playerControlled,
             Color color,
-            AiDrivingPersonality personality,
             CarVisual visual,
             String statsLabel,
             boolean externallyControlled,
@@ -1136,107 +1051,10 @@ public class RatassGame extends ApplicationAdapter {
                 name,
                 playerControlled,
                 color,
-                personality,
                 visual,
                 statsLabel,
                 externallyControlled,
                 modelControlled));
-    }
-
-    public static AiTournamentResult runAiTournament(AiTournamentConfig config) {
-        if (config == null) {
-            throw new IllegalArgumentException("Ai tournament config is required.");
-        }
-        if (config.participants.size == 0) {
-            throw new IllegalArgumentException("Ai tournament config requires at least one participant.");
-        }
-        if (config.rounds <= 0) {
-            throw new IllegalArgumentException("Ai tournament rounds must be positive.");
-        }
-
-        RatassGame game = new RatassGame();
-        try {
-            return game.runAiTournamentInternal(config);
-        } finally {
-            game.dispose();
-        }
-    }
-
-    private AiTournamentResult runAiTournamentInternal(AiTournamentConfig config) {
-        MathUtils.random.setSeed(config.seed);
-        Box2D.init();
-
-        Array<ArenaMap> maps = config.maps.size == 0 ? ArenaMaps.createDefaultSet() : config.maps;
-        createSimulationRoster(config.participants);
-        mapProgression = new MapProgression(maps, new Random(config.seed ^ 0x9E3779B97F4A7C15L));
-        frameThrottleInput = 0f;
-        frameTurnInput = 0f;
-        roundNumber = 0;
-        playerWins = 0;
-
-        LinkedHashMap<String, AiTournamentEntry> statsByLabel = new LinkedHashMap<String, AiTournamentEntry>();
-        for (int i = 0; i < config.participants.size; i++) {
-            AiTournamentParticipant participant = config.participants.get(i);
-            AiTournamentEntry entry = statsByLabel.get(participant.label);
-            if (entry == null) {
-                entry = new AiTournamentEntry(participant.label, participant.displayName);
-                statsByLabel.put(participant.label, entry);
-            }
-            entry.entrants++;
-        }
-
-        resetRound(false);
-        if (config.skipCountdown) {
-            preRoundCountdownTimer = 0f;
-            countdownCueSecond = 0;
-        }
-
-        int maxStepsPerRound =
-                Math.max(1, MathUtils.ceil(SAFE_ZONE_DURATION / PHYSICS_STEP) * 56);
-        for (int round = 0; round < config.rounds; round++) {
-            int steps = 0;
-            while (!roundOver && steps < maxStepsPerRound) {
-                stepSimulation(PHYSICS_STEP);
-                steps++;
-            }
-            if (!roundOver) {
-                finishRound(null);
-            }
-
-            collectTournamentRound(statsByLabel);
-
-            if (round + 1 < config.rounds) {
-                resetRound(true);
-                if (config.skipCountdown) {
-                    preRoundCountdownTimer = 0f;
-                    countdownCueSecond = 0;
-                }
-            }
-        }
-
-        AiTournamentResult result = new AiTournamentResult(config.seed, config.rounds, config.participants.size);
-        for (Map.Entry<String, AiTournamentEntry> entry : statsByLabel.entrySet()) {
-            result.entries.add(entry.getValue());
-        }
-        return result;
-    }
-
-    private void collectTournamentRound(Map<String, AiTournamentEntry> statsByLabel) {
-        for (int i = 0; i < roster.size; i++) {
-            CarTemplate template = roster.get(i);
-            AiTournamentEntry entry = statsByLabel.get(template.statsLabel);
-            if (entry == null) {
-                continue;
-            }
-
-            entry.samples++;
-            entry.totalPlacementPoints += template.roundFinishPosition;
-            entry.totalAwardedPoints += template.lastRoundAwardedPoints;
-            entry.totalPickupPoints += template.roundPickupPoints;
-            if (winner != null && winner.template.vehicleId == template.vehicleId) {
-                entry.wins++;
-            }
-        }
     }
 
     private CarVisual getCarVisual(int rosterIndex) {
@@ -2869,18 +2687,13 @@ public class RatassGame extends ApplicationAdapter {
             car.step(
                     delta,
                     currentMap,
-                    cars,
                     allowControl,
                     frameThrottleInput,
                     frameTurnInput,
-                    growthPickupActive,
-                    growthPickupPosition,
-                    pointPickupActive,
-                    pointPickupPosition,
                     safeZoneActive,
                     safeZonePosition,
                     safeZoneRadius,
-                    safeZoneTimer,
+                    cars,
                     rlEnemyPolicy);
         }
         if (!allowControl && !roundOver) {
@@ -3051,6 +2864,10 @@ public class RatassGame extends ApplicationAdapter {
         if (!safeZoneActive) {
             return;
         }
+        if (rlTrainingTargetMode) {
+            safeZoneTimer = Math.max(rlTrainingTargetHoldSeconds, 0.001f);
+            return;
+        }
 
         safeZoneTimer = Math.max(0f, safeZoneTimer - delta);
         if (safeZoneTimer > 0f) {
@@ -3140,17 +2957,23 @@ public class RatassGame extends ApplicationAdapter {
 
     private void activateSafeZone() {
         safeZoneTimer = SAFE_ZONE_DURATION;
+        if (rlTrainingTargetMode) {
+            safeZoneTimer = Math.max(rlTrainingTargetHoldSeconds, 0.001f);
+        }
         safeZoneActive = true;
         safeZoneWave++;
         safeZoneSequence++;
         lastSafeZonePosition.set(safeZonePosition);
         hasLastSafeZonePosition = true;
-        if (!rlTrainingDisablePickups && boostedCar == null) {
+        if (!rlTrainingTargetMode && !rlTrainingDisablePickups && boostedCar == null) {
             spawnGrowthPickup();
         }
     }
 
     private float computeSafeZoneRadius(int waveIndex) {
+        if (rlTrainingTargetMode) {
+            return Math.max(SAFE_ZONE_MIN_RADIUS, rlTrainingTargetRadius);
+        }
         float mapSpan = Math.max(1f, Math.min(mapBounds.width, mapBounds.height));
         float initialRadius = Math.max(SAFE_ZONE_MIN_RADIUS, mapSpan * SAFE_ZONE_INITIAL_RADIUS_RATIO);
         return Math.max(
@@ -3163,17 +2986,27 @@ public class RatassGame extends ApplicationAdapter {
         float maxX = mapBounds.x + mapBounds.width - SAFE_ZONE_SPAWN_MARGIN;
         float minY = mapBounds.y + SAFE_ZONE_SPAWN_MARGIN;
         float maxY = mapBounds.y + mapBounds.height - SAFE_ZONE_SPAWN_MARGIN;
+        if (rlTrainingTargetMode) {
+            minX = mapBounds.x + RL_TARGET_SPAWN_MARGIN;
+            maxX = mapBounds.x + mapBounds.width - RL_TARGET_SPAWN_MARGIN;
+            minY = mapBounds.y + RL_TARGET_SPAWN_MARGIN;
+            maxY = mapBounds.y + mapBounds.height - RL_TARGET_SPAWN_MARGIN;
+        }
 
         if (minX >= maxX || minY >= maxY) {
             return false;
         }
 
         float requiredHazardDistance =
-                Math.max(
-                        SAFE_ZONE_MIN_HAZARD_DISTANCE,
-                        Math.min(safeZoneRadius * 0.90f, 2.25f));
+                rlTrainingTargetMode
+                        ? Math.max(RL_EDGE_DANGER_DISTANCE, safeZoneRadius * 0.85f)
+                        : Math.max(
+                                SAFE_ZONE_MIN_HAZARD_DISTANCE,
+                                Math.min(safeZoneRadius * 0.90f, 2.25f));
         float requiredMoveDistance =
-                Math.max(SAFE_ZONE_MIN_MOVE_DISTANCE, safeZoneRadius * 1.05f);
+                rlTrainingTargetMode
+                        ? Math.max(RL_TARGET_MIN_MOVE_DISTANCE, safeZoneRadius * 1.20f)
+                        : Math.max(SAFE_ZONE_MIN_MOVE_DISTANCE, safeZoneRadius * 1.05f);
 
         for (int attempt = 0; attempt < SAFE_ZONE_SPAWN_ATTEMPTS; attempt++) {
             pickupCandidate.set(MathUtils.random(minX, maxX), MathUtils.random(minY, maxY));
@@ -3440,9 +3273,11 @@ public class RatassGame extends ApplicationAdapter {
         float minDistance = getRoundSpawnMinDistance(count);
         int maxAttempts = getRoundSpawnAttempts(count);
 
-        if (rlTrainingRandomSpawnLocations
-                && buildRandomRoundSpawns(count, out, safeMargin, minDistance, maxAttempts)) {
-            return;
+        if (rlTrainingRandomSpawnLocations) {
+            if (buildRandomRoundSpawns(count, out, safeMargin, minDistance, maxAttempts)) {
+                return;
+            }
+            throw new IllegalStateException("Could not generate enough random safe spawn points for the current map.");
         }
 
         int mapSpawnCount = currentMap.getSpawnCount();
@@ -3508,11 +3343,7 @@ public class RatassGame extends ApplicationAdapter {
                 continue;
             }
 
-            out.add(SpawnPoint.facingPoint(
-                    spawnCandidate.x,
-                    spawnCandidate.y,
-                    focusPoint.x,
-                    focusPoint.y));
+            out.add(randomSpawnPoint(spawnCandidate.x, spawnCandidate.y));
         }
 
         if (out.size == count) {
@@ -3521,6 +3352,10 @@ public class RatassGame extends ApplicationAdapter {
 
         out.clear();
         return false;
+    }
+
+    private SpawnPoint randomSpawnPoint(float x, float y) {
+        return new SpawnPoint(x, y, MathUtils.random(-MathUtils.PI, MathUtils.PI));
     }
 
     private float getRoundSpawnSafeMargin(int count) {
@@ -6655,7 +6490,7 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private static final class Car implements AiVehicleView {
+    private static final class Car {
         private static final float WIDTH = 1.36f;
         private static final float HEIGHT = 1.58f;
         private static final float HALF_WIDTH = WIDTH * 0.5f;
@@ -6706,7 +6541,6 @@ public class RatassGame extends ApplicationAdapter {
         private final boolean externallyControlled;
         private final boolean modelControlled;
         private final Color color;
-        private final CarAiController aiController;
         private final AiControlDecision externalControlDecision = new AiControlDecision();
         private final AiControlDecision rawExternalControlDecision = new AiControlDecision();
         private final float[] rlObservation = new float[RL_OBSERVATION_SIZE];
@@ -6722,8 +6556,9 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 rlObservationFocus = new Vector2();
         private final Vector2 rlObservationForward = new Vector2();
         private final Vector2 rlObservationRecovery = new Vector2();
-        private final Vector2 rlObservationRouteTarget = new Vector2();
         private final Vector2 rlObservationSide = new Vector2();
+        private final float[] rlObservationRays = new float[6];
+        private final float[] rlObservationCarRays = new float[6];
 
         private Body body;
         private boolean active = true;
@@ -6753,10 +6588,6 @@ public class RatassGame extends ApplicationAdapter {
             externallyControlled = template.externallyControlled;
             modelControlled = template.modelControlled;
             color = template.color;
-            aiController =
-                    playerControlled
-                            ? null
-                            : new CarAiController(template.personality);
             if (modelControlled) {
                 rlDecisionTimer =
                         ((template.vehicleId % MAX_CAR_COUNT) + 1)
@@ -6820,18 +6651,13 @@ public class RatassGame extends ApplicationAdapter {
         private void step(
                 float delta,
                 ArenaMap arenaMap,
-                Array<Car> cars,
                 boolean allowControl,
                 float playerThrottle,
                 float playerTurn,
-                boolean growthPickupActive,
-                Vector2 growthPickupPosition,
-                boolean pointPickupActive,
-                Vector2 pointPickupPosition,
                 boolean safeZoneActive,
                 Vector2 safeZonePosition,
                 float safeZoneRadius,
-                float safeZoneTimeRemaining,
+                Array<Car> cars,
                 RlPolicy rlPolicy) {
             if (!active || body == null) {
                 return;
@@ -6857,32 +6683,10 @@ public class RatassGame extends ApplicationAdapter {
                                     delta,
                                     rlPolicy,
                                     arenaMap,
-                                    cars,
-                                    growthPickupActive,
-                                    growthPickupPosition,
-                                    pointPickupActive,
-                                    pointPickupPosition,
                                     safeZoneActive,
                                     safeZonePosition,
                                     safeZoneRadius,
-                                    safeZoneTimeRemaining);
-                    throttle = decision.throttle;
-                    turn = decision.turn;
-                } else if (aiController != null) {
-                    AiControlDecision decision =
-                            aiController.plan(
-                                    delta,
-                                    this,
-                                    arenaMap,
-                                    cars,
-                                    growthPickupActive,
-                                    growthPickupPosition,
-                                    pointPickupActive,
-                                    pointPickupPosition,
-                                    safeZoneActive,
-                                    safeZonePosition,
-                                    safeZoneRadius,
-                                    safeZoneTimeRemaining);
+                                    cars);
                     throttle = decision.throttle;
                     turn = decision.turn;
                 }
@@ -6902,15 +6706,10 @@ public class RatassGame extends ApplicationAdapter {
                 float delta,
                 RlPolicy policy,
                 ArenaMap arenaMap,
-                Array<Car> cars,
-                boolean growthPickupActive,
-                Vector2 growthPickupPosition,
-                boolean pointPickupActive,
-                Vector2 pointPickupPosition,
                 boolean safeZoneActive,
                 Vector2 safeZonePosition,
                 float safeZoneRadius,
-                float safeZoneTimeRemaining) {
+                Array<Car> cars) {
             rlDecisionTimer -= delta;
             if (rlDecisionTimer <= 0f) {
                 ensureRlScratch(policy);
@@ -6924,25 +6723,20 @@ public class RatassGame extends ApplicationAdapter {
                         0,
                         this,
                         arenaMap,
-                        cars,
-                        growthPickupActive,
-                        growthPickupPosition,
-                        pointPickupActive,
-                        pointPickupPosition,
                         safeZoneActive,
                         safeZonePosition,
                         safeZoneRadius,
-                        safeZoneTimeRemaining,
+                        cars,
+                        0f,
+                        1f,
+                        externalControlDecision.throttle,
+                        externalControlDecision.turn,
                         positionNormalizer,
-                        rlObservationFocus,
                         rlObservationForward,
                         rlObservationRecovery,
-                        rlObservationRouteTarget,
                         rlObservationSide,
-                        false,
-                        0f,
-                        0f,
-                        false);
+                        rlObservationRays,
+                        rlObservationCarRays);
                 policy.computeAction(
                         rlObservation,
                         rlScratchA,
@@ -7317,56 +7111,44 @@ public class RatassGame extends ApplicationAdapter {
             if (playerControlled) {
                 return "Player";
             }
-            if (externallyControlled) {
-                return "RL";
-            }
             if (modelControlled) {
                 return "RL";
             }
-            return aiController.getPersonality().displayName;
+            return "Idle";
         }
 
-        @Override
         public Body getBody() {
             return body;
         }
 
-        @Override
         public boolean isActive() {
             return active;
         }
 
-        @Override
         public boolean isPlayerControlled() {
             return playerControlled;
         }
 
-        @Override
         public boolean hasGrowthBoost() {
             return growthBoosted;
         }
 
-        @Override
         public boolean hasRamCharge() {
             return ramChargeTimer > 0f;
         }
 
-        @Override
         public int getVehicleId() {
             return template.vehicleId;
         }
 
-        @Override
         public int getScore() {
             return template.totalPoints;
         }
 
-        @Override
         public int getLastAttackerId() {
             return lastAttackerId;
         }
 
-        @Override
         public float getRecentImpactTime() {
             return recentImpactTimer;
         }
@@ -7383,122 +7165,6 @@ public class RatassGame extends ApplicationAdapter {
             clearImpactResponse();
             world.destroyBody(body);
             body = null;
-        }
-    }
-
-    public static final class AiTournamentParticipant {
-        public final String label;
-        public final String displayName;
-        public final AiDrivingPersonality personality;
-
-        public AiTournamentParticipant(String label, String displayName, AiDrivingPersonality personality) {
-            if (label == null || label.length() == 0) {
-                throw new IllegalArgumentException("Ai tournament participant label is required.");
-            }
-            if (personality == null) {
-                throw new IllegalArgumentException("Ai tournament participant personality is required.");
-            }
-            this.label = label;
-            this.displayName = displayName == null || displayName.length() == 0 ? label : displayName;
-            this.personality = personality;
-        }
-    }
-
-    public static final class AiTournamentConfig {
-        public final Array<AiTournamentParticipant> participants = new Array<AiTournamentParticipant>();
-        public final Array<ArenaMap> maps = new Array<ArenaMap>();
-        public int rounds = 12;
-        public long seed = 1L;
-        public boolean skipCountdown = true;
-
-        public AiTournamentConfig addParticipant(AiTournamentParticipant participant) {
-            participants.add(participant);
-            return this;
-        }
-
-        public AiTournamentConfig addParticipant(
-                String label,
-                String displayName,
-                AiDrivingPersonality personality) {
-            participants.add(new AiTournamentParticipant(label, displayName, personality));
-            return this;
-        }
-
-        public AiTournamentConfig addMap(ArenaMap map) {
-            if (map != null) {
-                maps.add(map);
-            }
-            return this;
-        }
-
-        public AiTournamentConfig withRounds(int rounds) {
-            this.rounds = rounds;
-            return this;
-        }
-
-        public AiTournamentConfig withSeed(long seed) {
-            this.seed = seed;
-            return this;
-        }
-
-        public AiTournamentConfig withSkipCountdown(boolean skipCountdown) {
-            this.skipCountdown = skipCountdown;
-            return this;
-        }
-    }
-
-    public static final class AiTournamentEntry {
-        public final String label;
-        public final String displayName;
-        public int entrants;
-        public int samples;
-        public int wins;
-        public int totalPlacementPoints;
-        public int totalAwardedPoints;
-        public int totalPickupPoints;
-
-        private AiTournamentEntry(String label, String displayName) {
-            this.label = label;
-            this.displayName = displayName == null || displayName.length() == 0 ? label : displayName;
-        }
-
-        public float getAveragePlacementPoints() {
-            return samples == 0 ? 0f : (float) totalPlacementPoints / samples;
-        }
-
-        public float getAverageAwardedPoints() {
-            return samples == 0 ? 0f : (float) totalAwardedPoints / samples;
-        }
-
-        public float getAveragePickupPoints() {
-            return samples == 0 ? 0f : (float) totalPickupPoints / samples;
-        }
-
-        public float getWinRate() {
-            return samples == 0 ? 0f : (float) wins / samples;
-        }
-    }
-
-    public static final class AiTournamentResult {
-        public final long seed;
-        public final int rounds;
-        public final int participantCount;
-        public final Array<AiTournamentEntry> entries = new Array<AiTournamentEntry>();
-
-        private AiTournamentResult(long seed, int rounds, int participantCount) {
-            this.seed = seed;
-            this.rounds = rounds;
-            this.participantCount = participantCount;
-        }
-
-        public AiTournamentEntry getEntry(String label) {
-            for (int i = 0; i < entries.size; i++) {
-                AiTournamentEntry entry = entries.get(i);
-                if (entry.label.equals(label)) {
-                    return entry;
-                }
-            }
-            return null;
         }
     }
 
@@ -7524,25 +7190,20 @@ public class RatassGame extends ApplicationAdapter {
             int offset,
             Car car,
             ArenaMap arenaMap,
-            Array<Car> cars,
-            boolean growthPickupActive,
-            Vector2 growthPickupPosition,
-            boolean pointPickupActive,
-            Vector2 pointPickupPosition,
             boolean safeZoneActive,
             Vector2 safeZonePosition,
             float safeZoneRadius,
-            float safeZoneTimeRemaining,
+            Array<Car> cars,
+            float holdProgress,
+            float holdRemaining,
+            float previousThrottle,
+            float previousTurn,
             float positionNormalizer,
-            Vector2 observationFocus,
             Vector2 observationForward,
             Vector2 observationRecovery,
-            Vector2 observationRouteTarget,
             Vector2 observationSide,
-            boolean routeTargetKnown,
-            float routeTargetX,
-            float routeTargetY,
-            boolean routeTargetFinal) {
+            float[] rayScratch,
+            float[] carRayScratch) {
         for (int i = 0; i < RL_OBSERVATION_SIZE; i++) {
             observations[offset + i] = 0f;
         }
@@ -7552,276 +7213,101 @@ public class RatassGame extends ApplicationAdapter {
 
         Vector2 position = car.body.getPosition();
         Vector2 velocity = car.body.getLinearVelocity();
-        car.body.getWorldVector(observationForward.set(0f, 1f));
+        observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
+        observationSide.set(-observationForward.y, observationForward.x);
         arenaMap.findRecoveryPoint(position, observationRecovery);
         observationRecovery.sub(position);
         if (!observationRecovery.isZero(0.0001f)) {
             observationRecovery.nor();
         }
 
-        observations[offset] = 1f;
-        observations[offset + 1] =
-                normalizedRlValue(position.x - observationFocus.x, positionNormalizer);
-        observations[offset + 2] =
-                normalizedRlValue(position.y - observationFocus.y, positionNormalizer);
-        observations[offset + 3] = normalizedRlValue(velocity.x, RL_VELOCITY_NORMALIZER);
-        observations[offset + 4] = normalizedRlValue(velocity.y, RL_VELOCITY_NORMALIZER);
-        observations[offset + 5] = observationForward.x;
-        observations[offset + 6] = observationForward.y;
-        observations[offset + 7] =
-                normalizedRlValue(car.body.getAngularVelocity(), RL_ANGULAR_VELOCITY_NORMALIZER);
-        observations[offset + 8] = MathUtils.clamp(velocity.len() / Car.MAX_SPEED, 0f, 1f);
-        observations[offset + 9] =
-                MathUtils.clamp(
-                        arenaMap.approximateDistanceToHazard(position)
-                                / RL_HAZARD_DISTANCE_NORMALIZER,
-                        0f,
-                        1f);
-        observations[offset + 10] =
-                MathUtils.clamp(
-                        arenaMap.distanceToSafety(position) / RL_HAZARD_DISTANCE_NORMALIZER,
-                        0f,
-                        1f);
-        observations[offset + 11] = car.hasGrowthBoost() ? 1f : 0f;
-        observations[offset + 12] = car.hasRamCharge() ? 1f : 0f;
-        observations[offset + 13] =
-                MathUtils.clamp(car.recentImpactTimer / Car.RECENT_IMPACT_DURATION, 0f, 1f);
-
-        Car nearestOpponent = findNearestRlOpponent(car, cars);
-        if (nearestOpponent != null) {
-            Vector2 opponentPosition = nearestOpponent.body.getPosition();
-            Vector2 opponentVelocity = nearestOpponent.body.getLinearVelocity();
-            observations[offset + 14] =
-                    normalizedRlValue(opponentPosition.x - position.x, positionNormalizer);
-            observations[offset + 15] =
-                    normalizedRlValue(opponentPosition.y - position.y, positionNormalizer);
-            observations[offset + 16] =
-                    normalizedRlValue(opponentVelocity.x - velocity.x, RL_VELOCITY_NORMALIZER);
-            observations[offset + 17] =
-                    normalizedRlValue(opponentVelocity.y - velocity.y, RL_VELOCITY_NORMALIZER);
-            observations[offset + 18] = 1f;
-            observations[offset + 19] =
-                    MathUtils.clamp(
-                            arenaMap.approximateDistanceToHazard(opponentPosition)
-                                    / RL_HAZARD_DISTANCE_NORMALIZER,
-                            0f,
-                            1f);
-            observations[offset + 20] = nearestOpponent.hasGrowthBoost() ? 1f : 0f;
-            observations[offset + 21] = nearestOpponent.hasRamCharge() ? 1f : 0f;
+        float targetDx = 0f;
+        float targetDy = 0f;
+        float targetDistance = 0f;
+        float targetForwardAlignment = 0f;
+        float targetSideAlignment = 0f;
+        boolean insideCircle = false;
+        if (safeZoneActive && safeZonePosition != null && safeZoneRadius > 0f) {
+            targetDx = safeZonePosition.x - position.x;
+            targetDy = safeZonePosition.y - position.y;
+            targetDistance = (float) Math.sqrt(targetDx * targetDx + targetDy * targetDy);
+            insideCircle = targetDistance <= safeZoneRadius;
+            if (targetDistance > 0.0001f) {
+                float unitX = targetDx / targetDistance;
+                float unitY = targetDy / targetDistance;
+                targetForwardAlignment =
+                        MathUtils.clamp(
+                                unitX * observationForward.x + unitY * observationForward.y,
+                                -1f,
+                                1f);
+                targetSideAlignment =
+                        MathUtils.clamp(
+                                unitX * observationSide.x + unitY * observationSide.y,
+                                -1f,
+                                1f);
+            }
         }
 
-        observations[offset + 22] = observationRecovery.x;
-        observations[offset + 23] = observationRecovery.y;
-        fillRlPickupObservation(
-                observations,
-                offset + 24,
-                growthPickupActive,
-                growthPickupPosition,
-                position,
-                positionNormalizer);
-        fillRlSafeZoneObservation(
-                observations,
-                offset + 27,
-                safeZoneActive,
-                safeZonePosition,
-                safeZoneRadius,
-                safeZoneTimeRemaining,
-                position,
-                positionNormalizer);
-        fillRlRouteObservation(
-                observations,
-                offset + 30,
-                arenaMap,
-                car.hasGrowthBoost(),
-                growthPickupActive,
-                growthPickupPosition,
-                safeZoneActive,
-                safeZonePosition,
-                safeZoneRadius,
-                position,
-                velocity,
-                positionNormalizer,
-                observationForward,
-                observationSide,
-                observationRouteTarget,
-                routeTargetKnown,
-                routeTargetX,
-                routeTargetY,
-                routeTargetFinal);
-        fillRlHazardMotionObservation(
-                observations,
-                offset + 37,
-                arenaMap,
-                position,
-                velocity,
-                observationRecovery);
-        fillRlRayObservations(
-                observations,
-                offset + 39,
-                arenaMap,
-                position,
-                observationForward,
-                observationSide);
-    }
-
-    private static void fillRlPickupObservation(
-            float[] observations,
-            int offset,
-            boolean active,
-            Vector2 pickupPosition,
-            Vector2 carPosition,
-            float positionNormalizer) {
-        if (!active || pickupPosition == null) {
-            observations[offset + 2] = 0f;
-            return;
-        }
-
-        observations[offset] =
-                normalizedRlValue(pickupPosition.x - carPosition.x, positionNormalizer);
-        observations[offset + 1] =
-                normalizedRlValue(pickupPosition.y - carPosition.y, positionNormalizer);
-        observations[offset + 2] = 1f;
-    }
-
-    private static void fillRlSafeZoneObservation(
-            float[] observations,
-            int offset,
-            boolean active,
-            Vector2 safeZonePosition,
-            float safeZoneRadius,
-            float safeZoneTimeRemaining,
-            Vector2 carPosition,
-            float positionNormalizer) {
-        if (!active || safeZonePosition == null || safeZoneRadius <= 0f) {
-            observations[offset + 2] = -1f;
-            return;
-        }
-
-        observations[offset] =
-                normalizedRlValue(safeZonePosition.x - carPosition.x, positionNormalizer);
-        observations[offset + 1] =
-                normalizedRlValue(safeZonePosition.y - carPosition.y, positionNormalizer);
-        float signedMargin = safeZoneRadius - carPosition.dst(safeZonePosition);
-        float marginSignal = MathUtils.clamp(signedMargin / Math.max(0.001f, safeZoneRadius), -1f, 1f);
-        float urgency = 1f - MathUtils.clamp(safeZoneTimeRemaining / SAFE_ZONE_DURATION, 0f, 1f);
-        observations[offset + 2] = MathUtils.clamp(marginSignal - urgency * 0.35f, -1f, 1f);
-    }
-
-    private static void fillRlRouteObservation(
-            float[] observations,
-            int offset,
-            ArenaMap arenaMap,
-            boolean growthBoosted,
-            boolean growthPickupActive,
-            Vector2 growthPickupPosition,
-            boolean safeZoneActive,
-            Vector2 safeZonePosition,
-            float safeZoneRadius,
-            Vector2 carPosition,
-            Vector2 velocity,
-            float positionNormalizer,
-            Vector2 forward,
-            Vector2 side,
-            Vector2 routeTarget,
-            boolean routeTargetKnown,
-            float routeTargetX,
-            float routeTargetY,
-            boolean routeTargetFinal) {
-        if (!safeZoneActive || safeZonePosition == null || arenaMap == null) {
-            observations[offset + 6] = -1f;
-            return;
-        }
-
-        Vector2 finalTargetPosition = safeZonePosition;
-        boolean routeToGrowthPickup =
-                shouldRouteObservationToGrowthPickup(
-                        growthBoosted,
-                        growthPickupActive,
-                        growthPickupPosition,
-                        safeZoneActive,
-                        safeZonePosition,
-                        safeZoneRadius,
-                        carPosition);
-        if (routeToGrowthPickup) {
-            finalTargetPosition = growthPickupPosition;
-        }
-
-        if (routeTargetKnown) {
-            routeTarget.set(routeTargetX, routeTargetY);
-        } else {
-            arenaMap.findDriveTarget(carPosition, finalTargetPosition, RL_ROUTE_MARGIN, routeTarget);
-        }
-        float routeDeltaX = routeTarget.x - carPosition.x;
-        float routeDeltaY = routeTarget.y - carPosition.y;
-        observations[offset] =
-                normalizedRlValue(routeDeltaX, positionNormalizer);
-        observations[offset + 1] =
-                normalizedRlValue(routeDeltaY, positionNormalizer);
-        float routeDistance = (float) Math.sqrt(routeDeltaX * routeDeltaX + routeDeltaY * routeDeltaY);
-        if (routeDistance > 0.0001f) {
-            float routeUnitX = routeDeltaX / routeDistance;
-            float routeUnitY = routeDeltaY / routeDistance;
-            side.set(-forward.y, forward.x);
-            observations[offset + 2] =
-                    MathUtils.clamp(routeUnitX * forward.x + routeUnitY * forward.y, -1f, 1f);
-            observations[offset + 3] =
-                    MathUtils.clamp(routeUnitX * side.x + routeUnitY * side.y, -1f, 1f);
-            observations[offset + 5] =
-                    normalizedRlValue(
-                            routeUnitX * velocity.x + routeUnitY * velocity.y,
-                            Car.MAX_SPEED);
-        }
-        observations[offset + 4] =
-                MathUtils.clamp(routeDistance / RL_ROUTE_TARGET_DISTANCE_NORMALIZER, 0f, 1f);
-        boolean finalTarget =
-                routeTargetKnown
-                        ? routeTargetFinal
-                        : routeTarget.dst2(finalTargetPosition)
-                                <= RL_ROUTE_DIRECT_EPSILON * RL_ROUTE_DIRECT_EPSILON;
-        observations[offset + 6] = finalTarget ? 1f : 0f;
-    }
-
-    private static void fillRlHazardMotionObservation(
-            float[] observations,
-            int offset,
-            ArenaMap arenaMap,
-            Vector2 carPosition,
-            Vector2 velocity,
-            Vector2 recoveryDirection) {
-        if (arenaMap == null || carPosition == null || velocity == null || recoveryDirection == null) {
-            return;
-        }
-
-        float recoverySpeed = recoveryDirection.dot(velocity);
-        float edgeDistance = arenaMap.approximateDistanceToHazard(carPosition);
+        float forwardSpeed = observationForward.dot(velocity);
+        float lateralSpeed = observationSide.dot(velocity);
+        float edgeDistance = arenaMap.approximateDistanceToHazard(position);
+        float safetyDistance = arenaMap.distanceToSafety(position);
+        boolean grounded = arenaMap.supports(position) && safetyDistance <= EDGE_FALLOFF_MARGIN;
+        float recoverySpeed = observationRecovery.dot(velocity);
         float danger =
                 1f - MathUtils.clamp(edgeDistance / Math.max(0.0001f, RL_EDGE_WARNING_DISTANCE), 0f, 1f);
-        observations[offset] = normalizedRlValue(recoverySpeed, Car.MAX_SPEED) * danger;
+
+        fillRlRayObservations(rayScratch, 0, arenaMap, position, observationForward, observationSide);
+        fillRlCarRayObservations(carRayScratch, 0, cars, car, position, observationForward, observationSide);
+
+        observations[offset] = 1f;
         observations[offset + 1] =
-                MathUtils.clamp(-recoverySpeed / Car.MAX_SPEED, 0f, 1f) * danger;
-    }
-
-    private static boolean shouldRouteObservationToGrowthPickup(
-            boolean growthBoosted,
-            boolean growthPickupActive,
-            Vector2 growthPickupPosition,
-            boolean safeZoneActive,
-            Vector2 safeZonePosition,
-            float safeZoneRadius,
-            Vector2 carPosition) {
-        if (growthBoosted
-                || !growthPickupActive
-                || growthPickupPosition == null
-                || !safeZoneActive
-                || safeZonePosition == null
-                || safeZoneRadius <= 0f
-                || carPosition == null) {
-            return false;
+                normalizedRlValue(targetDx, positionNormalizer);
+        observations[offset + 2] =
+                normalizedRlValue(targetDy, positionNormalizer);
+        observations[offset + 3] = MathUtils.clamp(targetDistance / positionNormalizer, 0f, 1f);
+        observations[offset + 4] = observationForward.x;
+        observations[offset + 5] = observationForward.y;
+        observations[offset + 6] = targetForwardAlignment;
+        observations[offset + 7] = targetSideAlignment;
+        observations[offset + 8] = normalizedRlValue(velocity.x, Car.MAX_SPEED);
+        observations[offset + 9] = normalizedRlValue(velocity.y, Car.MAX_SPEED);
+        observations[offset + 10] = normalizedRlValue(forwardSpeed, Car.MAX_SPEED);
+        observations[offset + 11] = normalizedRlValue(lateralSpeed, Car.MAX_SPEED);
+        observations[offset + 12] =
+                normalizedRlValue(car.body.getAngularVelocity(), RL_ANGULAR_VELOCITY_NORMALIZER);
+        observations[offset + 13] = MathUtils.clamp(velocity.len() / Car.MAX_SPEED, 0f, 1f);
+        observations[offset + 14] =
+                MathUtils.clamp(edgeDistance / RL_HAZARD_DISTANCE_NORMALIZER, 0f, 1f);
+        observations[offset + 15] =
+                MathUtils.clamp(safetyDistance / RL_HAZARD_DISTANCE_NORMALIZER, 0f, 1f);
+        observations[offset + 16] = grounded ? 1f : -1f;
+        observations[offset + 17] = insideCircle ? 1f : 0f;
+        observations[offset + 18] = MathUtils.clamp(holdProgress, 0f, 1f);
+        observations[offset + 19] = MathUtils.clamp(holdRemaining, 0f, 1f);
+        for (int i = 0; i < 6; i++) {
+            observations[offset + 20 + i] = rayScratch[i];
         }
-
-        float safeZoneRadiusSq = safeZoneRadius * safeZoneRadius;
-        return carPosition.dst2(safeZonePosition) <= safeZoneRadiusSq
-                && growthPickupPosition.dst2(safeZonePosition) <= safeZoneRadiusSq;
+        observations[offset + 26] = observationRecovery.x;
+        observations[offset + 27] = observationRecovery.y;
+        observations[offset + 28] = normalizedRlValue(recoverySpeed, Car.MAX_SPEED) * danger;
+        observations[offset + 29] =
+                MathUtils.clamp(-recoverySpeed / Car.MAX_SPEED, 0f, 1f) * danger;
+        observations[offset + 30] = MathUtils.clamp(previousThrottle, -1f, 1f);
+        observations[offset + 31] = MathUtils.clamp(previousTurn, -1f, 1f);
+        fillRlCarObservations(
+                observations,
+                offset + 32,
+                cars,
+                car,
+                position,
+                velocity,
+                observationForward,
+                observationSide,
+                safeZoneActive,
+                safeZonePosition,
+                safeZoneRadius,
+                carRayScratch);
     }
 
     private static void fillRlRayObservations(
@@ -7874,27 +7360,154 @@ public class RatassGame extends ApplicationAdapter {
         return 1f;
     }
 
-    private static Car findNearestRlOpponent(Car car, Array<Car> cars) {
-        Car nearest = null;
-        float nearestDistanceSq = Float.MAX_VALUE;
-        if (car == null || car.body == null) {
-            return null;
+    private static void fillRlCarObservations(
+            float[] observations,
+            int offset,
+            Array<Car> cars,
+            Car car,
+            Vector2 position,
+            Vector2 velocity,
+            Vector2 forward,
+            Vector2 side,
+            boolean safeZoneActive,
+            Vector2 safeZonePosition,
+            float safeZoneRadius,
+            float[] carRayScratch) {
+        observations[offset] = 0f;
+        observations[offset + 1] = 0f;
+        observations[offset + 2] = 1f;
+        observations[offset + 3] = 0f;
+        observations[offset + 4] = 0f;
+        observations[offset + 5] =
+                car == null
+                        ? 0f
+                        : MathUtils.clamp(
+                                car.recentImpactTimer / Math.max(0.001f, Car.RECENT_IMPACT_DURATION),
+                                0f,
+                                1f);
+        for (int i = 0; i < 6; i++) {
+            observations[offset + 6 + i] =
+                    carRayScratch == null ? 1f : MathUtils.clamp(carRayScratch[i], 0f, 1f);
         }
 
-        Vector2 position = car.body.getPosition();
+        if (cars == null || car == null || position == null || velocity == null) {
+            return;
+        }
+
+        float nearestDistance = RL_CAR_SENSOR_DISTANCE;
+        Car nearestCar = null;
+        float nearestDx = 0f;
+        float nearestDy = 0f;
         for (int i = 0; i < cars.size; i++) {
             Car other = cars.get(i);
-            if (other == car || !other.active || other.body == null) {
+            if (other == car || other == null || !other.active || other.body == null) {
+                continue;
+            }
+            Vector2 otherPosition = other.body.getPosition();
+            float dx = otherPosition.x - position.x;
+            float dy = otherPosition.y - position.y;
+            float distance = (float) Math.sqrt(dx * dx + dy * dy);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestCar = other;
+                nearestDx = dx;
+                nearestDy = dy;
+            }
+        }
+
+        if (nearestCar == null || nearestDistance <= 0.0001f) {
+            return;
+        }
+
+        Vector2 otherVelocity = nearestCar.body.getLinearVelocity();
+        float unitX = nearestDx / nearestDistance;
+        float unitY = nearestDy / nearestDistance;
+        float approachSpeed =
+                (velocity.x - otherVelocity.x) * unitX + (velocity.y - otherVelocity.y) * unitY;
+        float safeZoneRadiusSquared = safeZoneRadius * safeZoneRadius;
+        boolean nearestInsideCircle =
+                safeZoneActive
+                        && safeZonePosition != null
+                        && safeZoneRadius > 0f
+                        && nearestCar.body.getPosition().dst2(safeZonePosition) <= safeZoneRadiusSquared;
+
+        observations[offset] =
+                MathUtils.clamp(forward.dot(nearestDx, nearestDy) / RL_CAR_SENSOR_DISTANCE, -1f, 1f);
+        observations[offset + 1] =
+                MathUtils.clamp(side.dot(nearestDx, nearestDy) / RL_CAR_SENSOR_DISTANCE, -1f, 1f);
+        observations[offset + 2] = MathUtils.clamp(nearestDistance / RL_CAR_SENSOR_DISTANCE, 0f, 1f);
+        observations[offset + 3] = normalizedRlValue(approachSpeed, Car.MAX_SPEED);
+        observations[offset + 4] = nearestInsideCircle ? 1f : 0f;
+    }
+
+    private static void fillRlCarRayObservations(
+            float[] observations,
+            int offset,
+            Array<Car> cars,
+            Car car,
+            Vector2 carPosition,
+            Vector2 forward,
+            Vector2 side) {
+        if (observations == null) {
+            return;
+        }
+        side.set(-forward.y, forward.x);
+        observations[offset] = sampleRlCarRayClearance(cars, car, carPosition, forward.x, forward.y);
+        observations[offset + 1] =
+                sampleRlCarRayClearance(
+                        cars,
+                        car,
+                        carPosition,
+                        forward.x + side.x,
+                        forward.y + side.y);
+        observations[offset + 2] =
+                sampleRlCarRayClearance(
+                        cars,
+                        car,
+                        carPosition,
+                        forward.x - side.x,
+                        forward.y - side.y);
+        observations[offset + 3] = sampleRlCarRayClearance(cars, car, carPosition, side.x, side.y);
+        observations[offset + 4] = sampleRlCarRayClearance(cars, car, carPosition, -side.x, -side.y);
+        observations[offset + 5] = sampleRlCarRayClearance(cars, car, carPosition, -forward.x, -forward.y);
+    }
+
+    private static float sampleRlCarRayClearance(
+            Array<Car> cars,
+            Car car,
+            Vector2 position,
+            float directionX,
+            float directionY) {
+        float length = (float) Math.sqrt(directionX * directionX + directionY * directionY);
+        if (cars == null || car == null || position == null || length <= 0.0001f) {
+            return 1f;
+        }
+
+        float unitX = directionX / length;
+        float unitY = directionY / length;
+        float sideX = -unitY;
+        float sideY = unitX;
+        float nearest = RL_CAR_SENSOR_DISTANCE;
+        for (int i = 0; i < cars.size; i++) {
+            Car other = cars.get(i);
+            if (other == car || other == null || !other.active || other.body == null) {
                 continue;
             }
 
-            float distanceSq = position.dst2(other.body.getPosition());
-            if (distanceSq < nearestDistanceSq) {
-                nearestDistanceSq = distanceSq;
-                nearest = other;
+            Vector2 otherPosition = other.body.getPosition();
+            float dx = otherPosition.x - position.x;
+            float dy = otherPosition.y - position.y;
+            float projection = dx * unitX + dy * unitY;
+            if (projection <= 0f || projection >= nearest) {
+                continue;
+            }
+
+            float lateral = Math.abs(dx * sideX + dy * sideY);
+            if (lateral <= RL_CAR_SENSOR_RADIUS) {
+                nearest = Math.max(0f, projection - RL_CAR_SENSOR_RADIUS);
             }
         }
-        return nearest;
+        return MathUtils.clamp(nearest / RL_CAR_SENSOR_DISTANCE, 0f, 1f);
     }
 
     private static float normalizedRlValue(float value, float normalizer) {
@@ -7903,27 +7516,19 @@ public class RatassGame extends ApplicationAdapter {
 
     public static final class RlTrainingConfig {
         public final Array<ArenaMap> maps = new Array<ArenaMap>();
-        public final Array<AiDrivingPersonality> opponentPersonalities =
-                new Array<AiDrivingPersonality>();
         public int controlledAgentCount = RL_DEFAULT_CONTROLLED_AGENTS;
         public int fieldSize = RL_DEFAULT_FIELD_SIZE;
         public int actionRepeat = RL_DEFAULT_ACTION_REPEAT;
         public int maxActionSteps = RL_DEFAULT_MAX_ACTION_STEPS;
+        public int maxGoals = RL_DEFAULT_MAX_GOALS;
+        public float targetRadius = RL_DEFAULT_TARGET_RADIUS;
+        public float targetHoldSeconds = RL_DEFAULT_TARGET_HOLD_SECONDS;
         public long seed = 1L;
         public boolean skipCountdown = true;
-        public boolean navigationOnly;
-        public int opponentCount = -1;
 
         public RlTrainingConfig addMap(ArenaMap map) {
             if (map != null) {
                 maps.add(map);
-            }
-            return this;
-        }
-
-        public RlTrainingConfig addOpponentPersonality(AiDrivingPersonality personality) {
-            if (personality != null) {
-                opponentPersonalities.add(personality);
             }
             return this;
         }
@@ -7948,6 +7553,21 @@ public class RatassGame extends ApplicationAdapter {
             return this;
         }
 
+        public RlTrainingConfig withMaxGoals(int maxGoals) {
+            this.maxGoals = maxGoals;
+            return this;
+        }
+
+        public RlTrainingConfig withTargetRadius(float targetRadius) {
+            this.targetRadius = targetRadius;
+            return this;
+        }
+
+        public RlTrainingConfig withTargetHoldSeconds(float targetHoldSeconds) {
+            this.targetHoldSeconds = targetHoldSeconds;
+            return this;
+        }
+
         public RlTrainingConfig withSeed(long seed) {
             this.seed = seed;
             return this;
@@ -7958,15 +7578,6 @@ public class RatassGame extends ApplicationAdapter {
             return this;
         }
 
-        public RlTrainingConfig withNavigationOnly(boolean navigationOnly) {
-            this.navigationOnly = navigationOnly;
-            return this;
-        }
-
-        public RlTrainingConfig withOpponentCount(int opponentCount) {
-            this.opponentCount = opponentCount;
-            return this;
-        }
     }
 
     public static final class RlStepResult {
@@ -7982,6 +7593,11 @@ public class RatassGame extends ApplicationAdapter {
         public final String winnerLabel;
         public final String currentMapId;
         public final String currentMapName;
+        public final int[] goalsReached;
+        public final int[] fallDeaths;
+        public final int[] edgeRiskEvents;
+        public final float[] insideTime;
+        public final float[] progressTowardTarget;
 
         private RlStepResult(
                 float[] observations,
@@ -7995,7 +7611,12 @@ public class RatassGame extends ApplicationAdapter {
                 int winnerAgentIndex,
                 String winnerLabel,
                 String currentMapId,
-                String currentMapName) {
+                String currentMapName,
+                int[] goalsReached,
+                int[] fallDeaths,
+                int[] edgeRiskEvents,
+                float[] insideTime,
+                float[] progressTowardTarget) {
             this.observations = observations;
             this.rewards = rewards;
             this.rewardBreakdown = rewardBreakdown;
@@ -8008,6 +7629,11 @@ public class RatassGame extends ApplicationAdapter {
             this.winnerLabel = winnerLabel;
             this.currentMapId = currentMapId;
             this.currentMapName = currentMapName;
+            this.goalsReached = goalsReached;
+            this.fallDeaths = fallDeaths;
+            this.edgeRiskEvents = edgeRiskEvents;
+            this.insideTime = insideTime;
+            this.progressTowardTarget = progressTowardTarget;
         }
     }
 
@@ -8020,7 +7646,6 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 observationFocus = new Vector2();
         private final Vector2 observationForward = new Vector2();
         private final Vector2 observationRecovery = new Vector2();
-        private final Vector2 observationRouteTarget = new Vector2();
         private final Vector2 observationSide = new Vector2();
         private final RlAgentSnapshot[] beforeSnapshots;
         private final RlAgentSnapshot[] afterSnapshots;
@@ -8032,6 +7657,17 @@ public class RatassGame extends ApplicationAdapter {
         private final float[] previousActionThrottle;
         private final float[] currentActionTurn;
         private final float[] previousActionTurn;
+        private final float[] goalHoldTimers;
+        private final float[] totalInsideTime;
+        private final float[] progressTowardTarget;
+        private final float[] observationRays = new float[6];
+        private final float[] observationCarRays = new float[6];
+        private final int[] goalsReached;
+        private final int[] fallDeaths;
+        private final int[] edgeRiskEvents;
+        private final boolean[] circleEnterEvents;
+        private final boolean[] goalCompleteEvents;
+        private final boolean[] edgeRiskStepEvents;
         private final boolean[] dones;
         private final int controlledAgentCount;
         private int episodeIndex;
@@ -8062,6 +7698,15 @@ public class RatassGame extends ApplicationAdapter {
             previousActionThrottle = new float[controlledAgentCount];
             currentActionTurn = new float[controlledAgentCount];
             previousActionTurn = new float[controlledAgentCount];
+            goalHoldTimers = new float[controlledAgentCount];
+            totalInsideTime = new float[controlledAgentCount];
+            progressTowardTarget = new float[controlledAgentCount];
+            goalsReached = new int[controlledAgentCount];
+            fallDeaths = new int[controlledAgentCount];
+            edgeRiskEvents = new int[controlledAgentCount];
+            circleEnterEvents = new boolean[controlledAgentCount];
+            goalCompleteEvents = new boolean[controlledAgentCount];
+            edgeRiskStepEvents = new boolean[controlledAgentCount];
             dones = new boolean[controlledAgentCount];
         }
 
@@ -8086,8 +7731,13 @@ public class RatassGame extends ApplicationAdapter {
 
             createRoster();
             game.rlTrainingAllowSoloRound = game.roster.size <= 1;
-            game.rlTrainingDisablePickups = config.navigationOnly;
+            game.rlTrainingDisablePickups = true;
             game.rlTrainingRandomSpawnLocations = true;
+            game.rlTrainingTargetMode = true;
+            game.rlTrainingTargetRadius =
+                    Math.max(SAFE_ZONE_MIN_RADIUS, config.targetRadius);
+            game.rlTrainingTargetHoldSeconds =
+                    Math.max(0.05f, config.targetHoldSeconds);
             game.mapProgression =
                     new MapProgression(
                             trainingMaps,
@@ -8101,14 +7751,15 @@ public class RatassGame extends ApplicationAdapter {
                 game.preRoundCountdownTimer = 0f;
                 game.countdownCueSecond = 0;
             }
-            if (config.navigationOnly) {
-                game.growthPickupActive = false;
-                game.pointPickupActive = false;
-            }
+            game.growthPickupActive = false;
+            game.pointPickupActive = false;
+            game.safeZoneActive = false;
+            game.spawnSafeZone();
 
             actionStep = 0;
             episodeStarted = true;
             episodeDone = false;
+            clearEpisodeMetrics();
             clearRewards();
             captureSnapshots(afterSnapshots);
             buildObservations();
@@ -8135,7 +7786,12 @@ public class RatassGame extends ApplicationAdapter {
             boolean maxStepsReached = !game.roundOver && actionStep >= getMaxActionSteps();
 
             captureSnapshots(afterSnapshots);
-            episodeDone = maxStepsReached || game.roundOver || !hasActiveControlledAgent();
+            updateGoalProgress(repeats * PHYSICS_STEP);
+            episodeDone =
+                    maxStepsReached
+                            || game.roundOver
+                            || !hasActiveControlledAgent()
+                            || hasCompletedTrainingGoal();
             computeRewards();
             buildObservations();
             return createResult();
@@ -8160,7 +7816,6 @@ public class RatassGame extends ApplicationAdapter {
                         "Learner " + (i + 1),
                         false,
                         new Color(visual.color),
-                        AiDrivingPersonalities.BALANCED,
                         visual,
                         "learner-" + i,
                         true);
@@ -8168,49 +7823,17 @@ public class RatassGame extends ApplicationAdapter {
                         Integer.valueOf(game.roster.get(game.roster.size - 1).vehicleId));
             }
 
-            int fieldSize = getFieldSize(controlledAgentCount);
-            if (fieldSize > controlledAgentCount) {
-                Array<AiDrivingPersonality> opponents =
-                        config.opponentPersonalities.size == 0
-                                ? AiDrivingPersonalities.createPresetList()
-                                : config.opponentPersonalities;
-                int opponentIndex = 0;
-                while (game.roster.size < fieldSize) {
-                    AiDrivingPersonality personality =
-                            opponents.get(opponentIndex % Math.max(1, opponents.size));
-                    CarVisual visual = game.getCarVisual(game.roster.size);
-                    game.addRosterTemplate(
-                            personality.displayName + " " + (opponentIndex + 1),
-                            false,
-                            new Color(visual.color),
-                            personality,
-                            visual,
-                            personality.id,
-                            false);
-                    opponentIndex++;
-                }
-            }
             game.invalidateLeaderboard();
-        }
-
-        private int getFieldSize(int controlledAgentCount) {
-            if (config.opponentCount >= 0) {
-                return MathUtils.clamp(
-                        controlledAgentCount + config.opponentCount,
-                        controlledAgentCount,
-                        MAX_CAR_COUNT);
-            }
-            int minimumFieldSize =
-                    config.navigationOnly
-                            ? controlledAgentCount
-                            : Math.min(MAX_CAR_COUNT, controlledAgentCount + 1);
-            return MathUtils.clamp(config.fieldSize, minimumFieldSize, MAX_CAR_COUNT);
         }
 
         private int getMaxActionSteps() {
             return config.maxActionSteps <= 0
                     ? RL_DEFAULT_MAX_ACTION_STEPS
                     : config.maxActionSteps;
+        }
+
+        private int getMaxGoals() {
+            return config.maxGoals <= 0 ? RL_DEFAULT_MAX_GOALS : config.maxGoals;
         }
 
         private void applyActions(float[] actions) {
@@ -8252,12 +7875,6 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             snapshot.active = car.active && car.body != null;
-            snapshot.vehicleId = car.template.vehicleId;
-            snapshot.score = car.template.totalPoints;
-            snapshot.pickupPoints = car.template.roundPickupPoints;
-            snapshot.finishPosition = car.template.roundFinishPosition;
-            snapshot.eliminatedBySafeZone = car.eliminatedBySafeZone;
-            snapshot.safeZoneSurvivalSequence = car.safeZoneSurvivalSequence;
             if (!snapshot.active || game.currentMap == null) {
                 return;
             }
@@ -8267,105 +7884,97 @@ public class RatassGame extends ApplicationAdapter {
             snapshot.safetyDistance = game.currentMap.distanceToSafety(position);
             Vector2 velocity = car.body.getLinearVelocity();
             snapshot.speed = velocity.len();
+            snapshot.grounded =
+                    game.currentMap.supports(position)
+                            && snapshot.safetyDistance <= EDGE_FALLOFF_MARGIN;
             snapshot.angularSpeed = Math.abs(car.body.getAngularVelocity());
             snapshot.effectiveThrottle = car.externalControlDecision.throttle;
-            snapshot.growthBoosted = car.hasGrowthBoost();
-            if (game.growthPickupActive) {
-                snapshot.growthPickupActive = true;
-                snapshot.growthPickupDistance = position.dst(game.growthPickupPosition);
-            }
+            snapshot.lastAttackerVehicleId = car.lastAttackerId;
+            snapshot.recentImpact = car.recentImpactTimer;
             if (game.safeZoneActive) {
                 snapshot.safeZoneActive = true;
                 snapshot.safeZoneSequence = game.safeZoneSequence;
                 snapshot.safeZoneDistance = position.dst(game.safeZonePosition);
-                snapshot.safeZoneRouteDistance =
-                        game.currentMap.estimateDriveDistance(
-                                position,
-                                game.safeZonePosition,
-                                RL_ROUTE_MARGIN);
                 snapshot.safeZoneRadius = game.safeZoneRadius;
                 snapshot.safeZoneSignedMargin = game.safeZoneRadius - snapshot.safeZoneDistance;
                 snapshot.safeZoneInside = snapshot.safeZoneSignedMargin >= 0f;
-                snapshot.safeZoneTimeRatio =
-                        MathUtils.clamp(game.safeZoneTimer / SAFE_ZONE_DURATION, 0f, 1f);
-                Vector2 routeFinalTarget = game.safeZonePosition;
-                if (shouldRouteObservationToGrowthPickup(
-                        car.hasGrowthBoost(),
-                        game.growthPickupActive,
-                        game.growthPickupPosition,
-                        snapshot.safeZoneActive,
-                        game.safeZonePosition,
-                        game.safeZoneRadius,
-                        position)) {
-                    routeFinalTarget = game.growthPickupPosition;
-                }
-                game.currentMap.findDriveTarget(
-                        position,
-                        routeFinalTarget,
-                        RL_ROUTE_MARGIN,
-                        observationRouteTarget);
-                snapshot.routeTargetX = observationRouteTarget.x;
-                snapshot.routeTargetY = observationRouteTarget.y;
-                snapshot.routeTargetFinal =
-                        observationRouteTarget.dst2(routeFinalTarget)
-                                <= RL_ROUTE_DIRECT_EPSILON * RL_ROUTE_DIRECT_EPSILON;
-                observationRouteTarget.sub(position);
-                snapshot.routeTargetDistance = observationRouteTarget.len();
-                if (snapshot.routeTargetDistance > 0.0001f) {
-                    observationRouteTarget.scl(1f / snapshot.routeTargetDistance);
-                    snapshot.routeTargetSpeed = observationRouteTarget.dot(velocity);
+                if (snapshot.safeZoneDistance > 0.0001f) {
+                    float targetUnitX = (game.safeZonePosition.x - position.x) / snapshot.safeZoneDistance;
+                    float targetUnitY = (game.safeZonePosition.y - position.y) / snapshot.safeZoneDistance;
+                    snapshot.targetSpeed = targetUnitX * velocity.x + targetUnitY * velocity.y;
+                    observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
+                    snapshot.targetAlignment =
+                            MathUtils.clamp(
+                                    targetUnitX * observationForward.x
+                                            + targetUnitY * observationForward.y,
+                                    -1f,
+                                    1f);
                 }
             }
-            car.body.getWorldVector(observationForward.set(0f, 1f));
+            observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
             snapshot.forwardSpeed = observationForward.dot(velocity);
+            observationSide.set(-observationForward.y, observationForward.x);
+            snapshot.lateralSpeed = observationSide.dot(velocity);
             game.currentMap.findRecoveryPoint(position, observationRecovery);
             observationRecovery.sub(position);
             if (!observationRecovery.isZero(0.0001f)) {
                 observationRecovery.nor();
                 snapshot.recoverySpeed = observationRecovery.dot(velocity);
             }
+        }
 
-            float nearestDistanceSq = Float.MAX_VALUE;
-            for (int i = 0; i < game.cars.size; i++) {
-                Car other = game.cars.get(i);
-                if (other == car) {
+        private void clearStepEvents() {
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                progressTowardTarget[agentIndex] = 0f;
+                circleEnterEvents[agentIndex] = false;
+                goalCompleteEvents[agentIndex] = false;
+                edgeRiskStepEvents[agentIndex] = false;
+            }
+        }
+
+        private void updateGoalProgress(float elapsedSeconds) {
+            clearStepEvents();
+            boolean spawnNextTarget = false;
+            float targetHoldSeconds = Math.max(0.05f, config.targetHoldSeconds);
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                RlAgentSnapshot before = beforeSnapshots[agentIndex];
+                RlAgentSnapshot after = afterSnapshots[agentIndex];
+                if (!before.active || !after.active || !after.safeZoneActive) {
+                    goalHoldTimers[agentIndex] = 0f;
                     continue;
                 }
-                if (!other.active) {
-                    if (other.eliminatedByAttackerId == snapshot.vehicleId
-                            && other.template.roundFinishPosition > 0) {
-                        snapshot.creditedEliminations++;
-                        if (other.eliminatedBySafeZone) {
-                            snapshot.safeZoneEjections++;
-                        }
+
+                if (before.safeZoneActive
+                        && before.safeZoneSequence == after.safeZoneSequence) {
+                    progressTowardTarget[agentIndex] =
+                            before.safeZoneDistance - after.safeZoneDistance;
+                }
+
+                if (after.safeZoneInside) {
+                    totalInsideTime[agentIndex] += elapsedSeconds;
+                    goalHoldTimers[agentIndex] += elapsedSeconds;
+                    if (!before.safeZoneInside
+                            || before.safeZoneSequence != after.safeZoneSequence) {
+                        circleEnterEvents[agentIndex] = true;
                     }
-                    continue;
-                }
-                if (other.body == null) {
-                    continue;
+                } else {
+                    goalHoldTimers[agentIndex] = 0f;
                 }
 
-                snapshot.aliveOpponents++;
-                if (other.lastAttackerId == snapshot.vehicleId && other.recentImpactTimer > 0f) {
-                    snapshot.attackCreditCount++;
-                    if (game.safeZoneActive
-                            && snapshot.safeZoneInside
-                            && !game.isInsideSafeZone(other)) {
-                        snapshot.safeZonePushOuts++;
-                    }
-                }
-
-                float distanceSq = position.dst2(other.body.getPosition());
-                if (distanceSq < nearestDistanceSq) {
-                    nearestDistanceSq = distanceSq;
-                    snapshot.nearestOpponentHazardDistance =
-                            game.currentMap.approximateDistanceToHazard(other.body.getPosition());
+                if (goalHoldTimers[agentIndex] >= targetHoldSeconds) {
+                    goalsReached[agentIndex]++;
+                    goalCompleteEvents[agentIndex] = true;
+                    goalHoldTimers[agentIndex] = 0f;
+                    spawnNextTarget = true;
                 }
             }
-            if (nearestDistanceSq < Float.MAX_VALUE) {
-                snapshot.nearestOpponentDistance = (float) Math.sqrt(nearestDistanceSq);
+
+            if (spawnNextTarget && !hasCompletedTrainingGoal()) {
+                game.safeZoneActive = false;
+                game.growthPickupActive = false;
+                game.pointPickupActive = false;
+                game.spawnSafeZone();
             }
-            snapshot.recentImpact = car.recentImpactTimer;
         }
 
         private void computeRewards() {
@@ -8377,176 +7986,58 @@ public class RatassGame extends ApplicationAdapter {
 
                 if (before.active) {
                     if (!after.active) {
-                        reward += recordReward(
-                                agentIndex,
-                                RL_REWARD_SURVIVAL,
-                                -getEliminationPenalty(before));
-                        reward += recordReward(
-                                agentIndex,
-                                RL_REWARD_ATTACK,
-                                -getRecklessAttackEliminationPenalty(before));
-                        if (after.eliminatedBySafeZone) {
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_CIRCLE,
-                                    -RL_SAFE_ZONE_MISS_PENALTY);
-                        }
+                        fallDeaths[agentIndex]++;
+                        reward += recordReward(agentIndex, RL_REWARD_DEATH, -RL_DEATH_PENALTY);
                     } else {
+                        reward += recordReward(agentIndex, RL_REWARD_ALIVE, -RL_STEP_PENALTY);
                         reward += recordReward(
                                 agentIndex,
-                                RL_REWARD_SURVIVAL,
-                                config.navigationOnly
-                                        ? RL_NAVIGATION_ALIVE_STEP_REWARD
-                                        : RL_ALIVE_STEP_REWARD);
-                        reward += recordReward(
-                                agentIndex,
-                                RL_REWARD_CIRCLE,
-                                getSafeZoneReward(before, after)
-                                        * getNavigationCircleRewardScale());
-                        reward += recordReward(
-                                agentIndex,
-                                RL_REWARD_EDGE,
-                                MathUtils.clamp(after.edgeDistance - before.edgeDistance, -1f, 1f)
-                                        * RL_EDGE_RECOVERY_REWARD);
-                        reward += recordReward(
-                                agentIndex,
-                                RL_REWARD_EDGE,
-                                -getEdgeDangerPenalty(before, after) * getNavigationEdgePenaltyScale());
-                        if (!config.navigationOnly) {
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_ATTACK,
-                                    MathUtils.clamp(
-                                                    before.nearestOpponentHazardDistance
-                                                            - after.nearestOpponentHazardDistance,
-                                                    -1f,
-                                                    1f)
-                                            * getAttackSafetyScale(after)
-                                            * RL_OPPONENT_PRESSURE_REWARD);
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_ATTACK,
-                                    getOpponentClosingReward(before, after));
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_ATTACK,
-                                    Math.max(
-                                                    0,
-                                                    after.creditedEliminations
-                                                            - before.creditedEliminations)
-                                            * RL_OPPONENT_ELIMINATION_REWARD);
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_ATTACK,
-                                    getSafeZoneEjectionReward(before, after));
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_ATTACK,
-                                    getSafeZonePushOutReward(before, after));
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_ATTACK,
-                                    Math.max(0, after.attackCreditCount - before.attackCreditCount)
-                                            * getAttackSafetyScale(after)
-                                            * RL_IMPACT_CREDIT_REWARD);
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_ATTACK,
-                                    getFastImpactReward(before, after));
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_ATTACK,
-                                    -getUnsafeAttackPenalty(before, after));
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_DRIVING,
-                                    getContactDisengageReward(before, after));
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_DRIVING,
-                                    getContactEscapeSpeedReward(before, after));
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_PICKUP,
-                                    getGrowthPickupReward(before, after));
+                                RL_REWARD_PROGRESS,
+                                getProgressReward(agentIndex));
+                        if (circleEnterEvents[agentIndex]) {
+                            reward += recordReward(agentIndex, RL_REWARD_ENTER, RL_ENTER_REWARD);
                         }
-                        reward += recordReward(
-                                agentIndex,
-                                RL_REWARD_DRIVING,
-                                getSpeedControlReward(before, after));
-                        if (config.navigationOnly) {
+                        if (after.safeZoneInside) {
                             reward += recordReward(
                                     agentIndex,
-                                    RL_REWARD_DRIVING,
-                                    getNavigationRouteDriveReward(after));
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_DRIVING,
-                                    -getNavigationRouteStallPenalty(after));
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_EDGE,
-                                    -getNavigationUnsafeSpeedPenalty(agentIndex, after));
-                        } else if (!after.safeZoneActive || !after.safeZoneInside) {
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_DRIVING,
-                                    getRouteDriveReward(
-                                            after,
-                                            RL_ROUTE_SPEED_REWARD,
-                                            RL_ROUTE_BACKTRACK_PENALTY));
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_DRIVING,
-                                    MathUtils.clamp(after.forwardSpeed / Car.MAX_SPEED, 0f, 1f)
-                                            * getSafeSpeedScale(after)
-                                            * RL_FORWARD_SPEED_REWARD);
-                        }
-                        reward += recordReward(
-                                agentIndex,
-                                RL_REWARD_DRIVING,
-                                -MathUtils.clamp(-after.forwardSpeed / Car.MAX_SPEED, 0f, 1f)
-                                        * RL_REVERSE_SPEED_PENALTY);
-                        if (!config.navigationOnly
-                                && !allowsReverseRecovery(after)
-                                && (!after.safeZoneActive || !after.safeZoneInside)
-                                && after.effectiveThrottle > RL_ACTION_FLIP_DEADZONE) {
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_DRIVING,
-                                    MathUtils.clamp(
-                                                    (after.effectiveThrottle
-                                                                    - RL_ACTION_FLIP_DEADZONE)
-                                                            / (1f - RL_ACTION_FLIP_DEADZONE),
+                                    RL_REWARD_HOLD,
+                                    RL_HOLD_STEP_REWARD
+                                            * (1f + MathUtils.clamp(
+                                                    goalHoldTimers[agentIndex]
+                                                            / Math.max(0.001f, config.targetHoldSeconds),
                                                     0f,
-                                                    1f)
-                                            * getSafeSpeedScale(after)
-                                            * RL_FORWARD_THROTTLE_COMMIT_REWARD);
+                                                    1f)));
                         }
+                        if (goalCompleteEvents[agentIndex]) {
+                            reward += recordReward(
+                                    agentIndex,
+                                    RL_REWARD_COMPLETE,
+                                    RL_GOAL_COMPLETE_REWARD);
+                        }
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_CONTEST,
+                                getCarContestReward(agentIndex, after));
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_SPEED,
+                                getTargetAlignmentReward(after));
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_SAFETY,
+                                -getEdgeRiskPenalty(agentIndex, after));
                         reward += recordReward(
                                 agentIndex,
                                 RL_REWARD_CONTROL,
-                                -getActionDitherPenalty(agentIndex, before, after));
-                        if (after.speed < 0.35f && after.angularSpeed > 2.2f) {
-                            reward += recordReward(
-                                    agentIndex,
-                                    RL_REWARD_CONTROL,
-                                    -RL_SPIN_STALL_PENALTY);
-                        }
+                                -getControlPenalty(agentIndex, before, after));
                     }
                 }
 
-                if (episodeDone) {
-                    int winnerAgentIndex = getWinnerAgentIndex();
-                    if (winnerAgentIndex == agentIndex) {
-                        reward += recordReward(agentIndex, RL_REWARD_WIN, RL_WIN_REWARD);
-                    }
-                    if (config.navigationOnly && after.active && actionStep >= getMaxActionSteps()) {
-                        reward += recordReward(
-                                agentIndex,
-                                RL_REWARD_WIN,
-                                RL_NAVIGATION_COMPLETE_REWARD);
-                    }
+                if (episodeDone
+                        && after.active
+                        && goalsReached[agentIndex] < getMaxGoals()
+                        && actionStep >= getMaxActionSteps()) {
+                    reward += recordReward(agentIndex, RL_REWARD_TIMEOUT, -RL_TIMEOUT_PENALTY);
                 }
 
                 rewards[agentIndex] = reward;
@@ -8566,606 +8057,146 @@ public class RatassGame extends ApplicationAdapter {
             return reward;
         }
 
-        private float getNavigationCircleRewardScale() {
-            return config.navigationOnly ? RL_NAVIGATION_CIRCLE_REWARD_SCALE : 1f;
+        private float getProgressReward(int agentIndex) {
+            float progress = MathUtils.clamp(progressTowardTarget[agentIndex], -1.25f, 1.25f);
+            if (progress >= 0f) {
+                return progress * RL_PROGRESS_REWARD;
+            }
+            return progress * RL_DRIVE_AWAY_PENALTY;
         }
 
-        private float getNavigationEdgePenaltyScale() {
-            return config.navigationOnly ? RL_NAVIGATION_EDGE_PENALTY_SCALE : 1f;
+        private float getTargetAlignmentReward(RlAgentSnapshot after) {
+            if (!after.safeZoneActive || after.safeZoneInside) {
+                return 0f;
+            }
+            float toward = MathUtils.clamp(after.targetSpeed / Car.MAX_SPEED, -1f, 1f);
+            return Math.max(0f, after.targetAlignment) * RL_ALIGNMENT_REWARD
+                    + Math.max(0f, toward) * RL_SMOOTH_SPEED_REWARD;
         }
 
-        private float getSafeZoneReward(RlAgentSnapshot before, RlAgentSnapshot after) {
+        private float getCarContestReward(int agentIndex, RlAgentSnapshot after) {
+            if (!after.safeZoneActive || !after.active) {
+                return 0f;
+            }
+
             float reward = 0f;
-            if (after.safeZoneSurvivalSequence > before.safeZoneSurvivalSequence) {
-                reward += RL_SAFE_ZONE_DEADLINE_REWARD;
-                reward += getSafeZoneCenterScore(before) * RL_SAFE_ZONE_DEADLINE_CENTER_REWARD;
+            if (after.safeZoneInside && hasOtherControlledAgentInside(agentIndex, after.safeZoneSequence)) {
+                reward += RL_CONTESTED_HOLD_REWARD;
             }
-            if (!before.safeZoneActive || !after.safeZoneActive) {
+
+            int vehicleId =
+                    agentIndex >= 0 && agentIndex < controlledVehicleIds.size
+                            ? controlledVehicleIds.get(agentIndex).intValue()
+                            : -1;
+            if (vehicleId < 0) {
                 return reward;
             }
-            if (before.safeZoneSequence != after.safeZoneSequence) {
-                // The circle changed during this step, so distances point to different targets.
-                // Do not shape approach/exit against a new circle using the old circle snapshot.
-                return reward;
-            }
 
-            float approach = getSafeZoneApproachProgress(before, after);
-            float urgency = 1f - MathUtils.clamp(after.safeZoneTimeRatio, 0f, 1f);
-            float urgencyScale = 0.55f + urgency * 0.75f;
-            reward += approach * urgencyScale * RL_SAFE_ZONE_APPROACH_REWARD;
-            if (after.safeZoneInside) {
-                float centerScore = getSafeZoneCenterScore(after);
-                float deepInsideScore =
-                        MathUtils.clamp((centerScore - 0.35f) / 0.65f, 0f, 1f);
-                float rimPressure =
-                        MathUtils.clamp((0.32f - centerScore) / 0.32f, 0f, 1f);
-                reward += (0.45f + urgency * 0.85f) * RL_SAFE_ZONE_INSIDE_REWARD;
-                reward += centerScore * (0.70f + urgency * 0.90f) * RL_SAFE_ZONE_CENTER_REWARD;
-                reward += deepInsideScore * (0.55f + urgency) * RL_SAFE_ZONE_DEEP_INSIDE_REWARD;
-                reward -= rimPressure * (0.35f + urgency * 0.85f) * RL_SAFE_ZONE_RIM_PENALTY;
-
-                float targetSpeed = MathUtils.lerp(1.55f, 0.55f, urgency);
-                float speedScore =
-                        MathUtils.clamp(
-                                (targetSpeed - after.speed) / Math.max(0.001f, targetSpeed),
-                                0f,
-                                1f);
-                reward += speedScore * (0.55f + urgency * 0.85f) * RL_SAFE_ZONE_SETTLE_REWARD;
-                if (before.safeZoneInside && before.speed > after.speed) {
-                    reward +=
-                            MathUtils.clamp((before.speed - after.speed) / Car.MAX_SPEED, 0f, 1f)
-                                    * (0.80f + urgency * 0.70f)
-                                    * RL_SAFE_ZONE_BRAKE_REWARD;
+            for (int opponentIndex = 0; opponentIndex < getControlledAgentCount(); opponentIndex++) {
+                if (opponentIndex == agentIndex) {
+                    continue;
                 }
-
-                if (before.safeZoneInside && after.safeZoneDistance > before.safeZoneDistance) {
-                    float edgeRisk = 1f - centerScore;
-                    reward -=
-                            MathUtils.clamp(after.safeZoneDistance - before.safeZoneDistance, 0f, 1.2f)
-                                    * (0.55f + urgency + edgeRisk * 0.55f)
-                                    * RL_SAFE_ZONE_OUTWARD_PENALTY;
+                RlAgentSnapshot opponentBefore = beforeSnapshots[opponentIndex];
+                RlAgentSnapshot opponentAfter = afterSnapshots[opponentIndex];
+                if (opponentBefore.active
+                        && opponentAfter.active
+                        && opponentBefore.safeZoneActive
+                        && opponentAfter.safeZoneActive
+                        && opponentBefore.safeZoneSequence == opponentAfter.safeZoneSequence
+                        && opponentBefore.safeZoneInside
+                        && !opponentAfter.safeZoneInside
+                        && opponentAfter.lastAttackerVehicleId == vehicleId
+                        && opponentAfter.recentImpact > 0f) {
+                    reward += RL_PUSH_OUT_REWARD;
                 }
-                if (after.speed > targetSpeed) {
-                    reward -=
-                            MathUtils.clamp((after.speed - targetSpeed) / Car.MAX_SPEED, 0f, 1f)
-                                    * (0.80f + urgency)
-                                    * RL_SAFE_ZONE_FAST_EXIT_PENALTY;
-                }
-            } else {
-                if (before.safeZoneInside) {
-                    reward -= RL_SAFE_ZONE_EXIT_PENALTY;
-                }
-                float outsideScale =
-                        MathUtils.clamp(
-                                -after.safeZoneSignedMargin
-                                        / Math.max(SAFE_ZONE_MIN_RADIUS, after.safeZoneDistance),
-                                0f,
-                                1f);
-                reward -= outsideScale * urgency * urgency * RL_SAFE_ZONE_URGENCY_PENALTY;
             }
             return reward;
         }
 
-        private float getSafeZoneCenterScore(RlAgentSnapshot snapshot) {
-            if (snapshot == null || !snapshot.safeZoneActive || !snapshot.safeZoneInside) {
-                return 0f;
+        private boolean hasOtherControlledAgentInside(int agentIndex, int safeZoneSequence) {
+            for (int opponentIndex = 0; opponentIndex < getControlledAgentCount(); opponentIndex++) {
+                if (opponentIndex == agentIndex) {
+                    continue;
+                }
+                RlAgentSnapshot opponent = afterSnapshots[opponentIndex];
+                if (opponent.active
+                        && opponent.safeZoneActive
+                        && opponent.safeZoneSequence == safeZoneSequence
+                        && opponent.safeZoneInside) {
+                    return true;
+                }
             }
-            float radius = Math.max(
-                    SAFE_ZONE_MIN_RADIUS,
-                    snapshot.safeZoneRadius > 0f
-                            ? snapshot.safeZoneRadius
-                            : snapshot.safeZoneDistance + snapshot.safeZoneSignedMargin);
-            return MathUtils.clamp(snapshot.safeZoneSignedMargin / Math.max(0.001f, radius), 0f, 1f);
+            return false;
         }
 
-        private float getSafeZoneApproachProgress(
-                RlAgentSnapshot before,
-                RlAgentSnapshot after) {
-            if (before.safeZoneRouteDistance >= 0f && after.safeZoneRouteDistance >= 0f) {
-                return MathUtils.clamp(
-                        before.safeZoneRouteDistance - after.safeZoneRouteDistance,
-                        -1.2f,
-                        1.2f);
-            }
-            return MathUtils.clamp(before.safeZoneDistance - after.safeZoneDistance, -1.2f, 1.2f);
-        }
-
-        private float getEliminationPenalty(RlAgentSnapshot before) {
-            float penalty = RL_ELIMINATION_PENALTY;
-            if (before.safetyDistance <= 0.05f
-                    && before.edgeDistance > RL_EDGE_DANGER_DISTANCE) {
-                float avoidableScale =
-                        MathUtils.clamp(
-                                (before.edgeDistance - RL_EDGE_DANGER_DISTANCE)
-                                        / Math.max(
-                                                0.0001f,
-                                                RL_SAFE_SPEED_DISTANCE - RL_EDGE_DANGER_DISTANCE),
-                                0f,
-                                1f);
-                penalty += avoidableScale * RL_AVOIDABLE_ELIMINATION_PENALTY;
-            }
-            if (before.recoverySpeed < -0.20f) {
-                penalty +=
-                        MathUtils.clamp(-before.recoverySpeed / Car.MAX_SPEED, 0f, 1f)
-                                * RL_OUTWARD_ELIMINATION_PENALTY;
-            }
-            return penalty;
-        }
-
-        private float getEdgeDangerPenalty(RlAgentSnapshot before, RlAgentSnapshot after) {
+        private float getEdgeRiskPenalty(int agentIndex, RlAgentSnapshot after) {
             float penalty = 0f;
-            if (after.edgeDistance < RL_EDGE_DANGER_DISTANCE) {
-                penalty +=
-                        (1f - MathUtils.clamp(
-                                after.edgeDistance / RL_EDGE_DANGER_DISTANCE, 0f, 1f))
-                                * RL_EDGE_DANGER_PENALTY;
+            if (!after.grounded) {
+                penalty += RL_DEATH_PENALTY * 0.35f;
             }
-            if (after.edgeDistance < before.edgeDistance
-                    && after.edgeDistance < RL_EDGE_WARNING_DISTANCE) {
+            if (after.edgeDistance < RL_EDGE_WARNING_DISTANCE) {
                 float danger =
                         1f - MathUtils.clamp(
-                                after.edgeDistance / RL_EDGE_WARNING_DISTANCE,
-                                0f,
-                                1f);
-                penalty +=
-                        MathUtils.clamp(before.edgeDistance - after.edgeDistance, 0f, 1f)
-                                * (0.45f + danger)
-                                * RL_EDGE_APPROACH_PENALTY;
-            }
-            if (after.edgeDistance < RL_EDGE_WARNING_DISTANCE
-                    && after.speed > RL_EDGE_WARNING_SPEED
-                    && after.recoverySpeed < 0.35f) {
-                float danger =
-                        1f - MathUtils.clamp(
-                                after.edgeDistance / RL_EDGE_WARNING_DISTANCE,
+                                after.edgeDistance / Math.max(0.0001f, RL_EDGE_WARNING_DISTANCE),
                                 0f,
                                 1f);
                 float unsafeSpeed =
                         MathUtils.clamp(
-                                (after.speed - RL_EDGE_WARNING_SPEED) / Car.MAX_SPEED,
+                                (after.speed - RL_EDGE_WARNING_SPEED * 0.45f)
+                                        / Math.max(0.001f, Car.MAX_SPEED),
                                 0f,
                                 1f);
-                float outwardScale =
-                        after.recoverySpeed < 0f
-                                ? 1f + MathUtils.clamp(-after.recoverySpeed / Car.MAX_SPEED, 0f, 1f)
-                                : 0.55f;
-                penalty += unsafeSpeed * danger * outwardScale * RL_EDGE_UNSAFE_SPEED_PENALTY;
+                if (unsafeSpeed > 0f) {
+                    penalty += unsafeSpeed * (0.35f + danger) * RL_EDGE_SPEED_PENALTY;
+                    edgeRiskStepEvents[agentIndex] = true;
+                }
+                if (after.recoverySpeed < 0f) {
+                    penalty +=
+                            MathUtils.clamp(-after.recoverySpeed / Car.MAX_SPEED, 0f, 1f)
+                                    * (0.35f + danger)
+                                    * RL_UNSAFE_RECOVERY_PENALTY;
+                    edgeRiskStepEvents[agentIndex] = true;
+                }
+                if (currentActionThrottle[agentIndex] > RL_ACTION_FLIP_DEADZONE) {
+                    penalty +=
+                            currentActionThrottle[agentIndex]
+                                    * danger
+                                    * RL_EDGE_THROTTLE_PENALTY;
+                }
+            }
+            if (edgeRiskStepEvents[agentIndex]) {
+                edgeRiskEvents[agentIndex]++;
             }
             return penalty;
         }
 
-        private float getOpponentClosingReward(RlAgentSnapshot before, RlAgentSnapshot after) {
-            if (allowsReverseRecovery(after)
-                    || before.nearestOpponentDistance <= 0f
-                    || after.nearestOpponentDistance <= 0f) {
-                return 0f;
-            }
-            float closingDistance =
-                    MathUtils.clamp(
-                            before.nearestOpponentDistance - after.nearestOpponentDistance,
-                            0f,
-                            1f);
-            if (after.nearestOpponentDistance < 0.85f) {
-                closingDistance *= 0.65f;
-            }
-            return closingDistance * getAttackSafetyScale(after) * RL_OPPONENT_CLOSING_REWARD;
-        }
-
-        private float getFastImpactReward(RlAgentSnapshot before, RlAgentSnapshot after) {
-            int newAttackCredits = Math.max(0, after.attackCreditCount - before.attackCreditCount);
-            if (newAttackCredits == 0) {
-                return 0f;
-            }
-            float attackSafety = getAttackSafetyScale(after);
-            float reward =
-                    newAttackCredits
-                            * MathUtils.clamp(before.speed / Car.MAX_SPEED, 0f, 1f)
-                            * attackSafety
-                            * RL_FAST_IMPACT_REWARD;
-            float opponentEdgePressure =
-                    1f - MathUtils.clamp(
-                            after.nearestOpponentHazardDistance / RL_SAFE_ATTACK_DISTANCE,
-                            0f,
-                            1f);
-            reward +=
-                    newAttackCredits
-                            * opponentEdgePressure
-                            * attackSafety
-                            * RL_ATTACK_EDGE_PRESSURE_REWARD;
-            return reward;
-        }
-
-        private float getSafeZonePushOutReward(RlAgentSnapshot before, RlAgentSnapshot after) {
-            int newPushOuts = Math.max(0, after.safeZonePushOuts - before.safeZonePushOuts);
-            if (newPushOuts == 0 || !after.safeZoneActive || !after.safeZoneInside) {
-                return 0f;
-            }
-            float centerScore = getSafeZoneCenterScore(after);
-            float controlledContactScale = MathUtils.clamp((centerScore - 0.25f) / 0.75f, 0f, 1f);
-            return newPushOuts
-                    * controlledContactScale
-                    * RL_SAFE_ZONE_PUSH_OUT_REWARD;
-        }
-
-        private float getSafeZoneEjectionReward(RlAgentSnapshot before, RlAgentSnapshot after) {
-            int newEjections = Math.max(0, after.safeZoneEjections - before.safeZoneEjections);
-            if (newEjections == 0 || !after.safeZoneActive) {
-                return 0f;
-            }
-            if (!after.safeZoneInside) {
-                return newEjections * 0.20f * RL_SAFE_ZONE_EJECTION_REWARD;
-            }
-
-            float centerScore = getSafeZoneCenterScore(after);
-            float controlledContactScale = MathUtils.clamp((centerScore - 0.20f) / 0.80f, 0f, 1f);
-            return newEjections
-                    * controlledContactScale
-                    * RL_SAFE_ZONE_EJECTION_REWARD;
-        }
-
-        private float getUnsafeAttackPenalty(RlAgentSnapshot before, RlAgentSnapshot after) {
-            int newAttackCredits = Math.max(0, after.attackCreditCount - before.attackCreditCount);
-            if (newAttackCredits == 0) {
-                return 0f;
-            }
-
-            float safetyDebt = 1f - getAttackSafetyScale(after);
-            if (after.safeZoneActive && !after.safeZoneInside) {
-                float urgency = 1f - MathUtils.clamp(after.safeZoneTimeRatio, 0f, 1f);
-                safetyDebt = Math.max(safetyDebt, 0.60f + urgency * 0.35f);
-            }
-            if (after.edgeDistance < RL_EDGE_WARNING_DISTANCE && after.recoverySpeed < 0f) {
-                float edgeRisk =
-                        1f - MathUtils.clamp(
-                                after.edgeDistance / RL_EDGE_WARNING_DISTANCE,
-                                0f,
-                                1f);
-                safetyDebt =
-                        Math.max(
-                                safetyDebt,
-                                edgeRisk
-                                        * MathUtils.clamp(
-                                                -after.recoverySpeed / Car.MAX_SPEED,
-                                                0f,
-                                                1f));
-            }
-            return newAttackCredits
-                    * MathUtils.clamp(safetyDebt, 0f, 1f)
-                    * RL_UNSAFE_ATTACK_PENALTY;
-        }
-
-        private float getRecklessAttackEliminationPenalty(RlAgentSnapshot before) {
-            if (before.safetyDistance > 0.05f) {
-                return 0f;
-            }
-            boolean fighting =
-                    before.recentImpact > Car.RECENT_IMPACT_DURATION * 0.25f
-                            || before.attackCreditCount > 0
-                            || (before.nearestOpponentDistance > 0f
-                                    && before.nearestOpponentDistance
-                                            < RL_CONTACT_STUCK_DISTANCE * 1.35f);
-            if (!fighting) {
-                return 0f;
-            }
-
-            float safetyDebt = 1f - getAttackSafetyScale(before);
-            if (before.safeZoneActive && !before.safeZoneInside) {
-                float urgency = 1f - MathUtils.clamp(before.safeZoneTimeRatio, 0f, 1f);
-                safetyDebt = Math.max(safetyDebt, 0.65f + urgency * 0.30f);
-            }
-            return (0.45f + 0.55f * MathUtils.clamp(safetyDebt, 0f, 1f))
-                    * RL_ATTACK_SUICIDE_PENALTY;
-        }
-
-        private float getContactDisengageReward(RlAgentSnapshot before, RlAgentSnapshot after) {
-            if (!isContactStuck(before) || after.nearestOpponentDistance <= 0f) {
-                return 0f;
-            }
-            return MathUtils.clamp(
-                            after.nearestOpponentDistance - before.nearestOpponentDistance,
-                            0f,
-                            1f)
-                    * RL_CONTACT_DISENGAGE_REWARD;
-        }
-
-        private float getContactEscapeSpeedReward(RlAgentSnapshot before, RlAgentSnapshot after) {
-            if (!isContactStuck(before)) {
-                return 0f;
-            }
-            return MathUtils.clamp(after.speed - before.speed, 0f, 1.2f)
-                    * RL_CONTACT_ESCAPE_SPEED_REWARD;
-        }
-
-        private float getSpeedControlReward(RlAgentSnapshot before, RlAgentSnapshot after) {
-            if (after.safeZoneActive && after.safeZoneInside) {
-                return 0f;
-            }
-
-            float speedRatio = MathUtils.clamp(after.speed / Car.MAX_SPEED, 0f, 1f);
-            float reward = 0f;
-
-            if (!config.navigationOnly) {
-                reward += speedRatio * getSafeSpeedScale(after) * RL_SAFE_SPEED_REWARD;
-            }
-
-            if (!config.navigationOnly && after.edgeDistance >= RL_EDGE_DANGER_DISTANCE) {
-                reward +=
-                        MathUtils.clamp((after.speed - before.speed) / Car.MAX_SPEED, 0f, 1f)
-                                * RL_ACCELERATION_REWARD;
-            }
-
-            if (after.edgeDistance < RL_EDGE_RECOVERY_SPEED_DISTANCE) {
-                float danger =
-                        1f - MathUtils.clamp(
-                                after.edgeDistance / RL_EDGE_RECOVERY_SPEED_DISTANCE,
-                                0f,
-                                1f);
-                float recoverySpeedRatio =
-                        MathUtils.clamp(after.recoverySpeed / Car.MAX_SPEED, -1f, 1f);
-                if (recoverySpeedRatio > 0f) {
-                    reward += recoverySpeedRatio * danger * RL_EDGE_RECOVERY_SPEED_REWARD;
-                } else {
-                    reward -= -recoverySpeedRatio * danger * RL_EDGE_UNSAFE_RECOVERY_SPEED_PENALTY;
-                }
-                if (after.edgeDistance < before.edgeDistance) {
-                    reward -=
-                            MathUtils.clamp(before.edgeDistance - after.edgeDistance, 0f, 1f)
-                                    * speedRatio
-                                    * RL_EDGE_FAST_APPROACH_PENALTY;
-                }
-            }
-
-            return reward;
-        }
-
-        private float getNavigationRouteDriveReward(RlAgentSnapshot after) {
-            return getRouteDriveReward(
-                    after,
-                    RL_NAVIGATION_ROUTE_SPEED_REWARD,
-                    RL_NAVIGATION_ROUTE_BACKTRACK_PENALTY);
-        }
-
-        private float getRouteDriveReward(
-                RlAgentSnapshot after,
-                float speedReward,
-                float backtrackPenalty) {
-            if (!after.safeZoneActive || after.safeZoneInside || after.routeTargetDistance <= 0.05f) {
-                return 0f;
-            }
-
-            float speedRatio = MathUtils.clamp(after.routeTargetSpeed / Car.MAX_SPEED, -1f, 1f);
-            if (speedRatio >= 0f) {
-                float safetyScale =
-                        MathUtils.clamp(0.25f + getSafeSpeedScale(after) * 0.75f, 0f, 1f);
-                return speedRatio * safetyScale * speedReward;
-            }
-            return speedRatio * backtrackPenalty;
-        }
-
-        private float getNavigationRouteStallPenalty(RlAgentSnapshot after) {
-            if (!after.safeZoneActive || after.safeZoneInside || after.routeTargetDistance <= 0.18f) {
-                return 0f;
-            }
-
-            float urgency = 1f - MathUtils.clamp(after.safeZoneTimeRatio, 0f, 1f);
-            float safeEdgeScale =
-                    MathUtils.clamp(
-                            (after.edgeDistance - RL_EDGE_DANGER_DISTANCE)
-                                    / Math.max(
-                                            0.0001f,
-                                            RL_SAFE_SPEED_DISTANCE - RL_EDGE_DANGER_DISTANCE),
-                            0f,
-                            1f);
-            if (safeEdgeScale <= 0f) {
-                return 0f;
-            }
-
-            float routeSpeedRatio = MathUtils.clamp(after.routeTargetSpeed / Car.MAX_SPEED, -1f, 1f);
-            float expectedSpeedRatio = 0.11f + urgency * 0.10f;
-            return MathUtils.clamp(
-                            (expectedSpeedRatio - routeSpeedRatio)
-                                    / Math.max(0.001f, expectedSpeedRatio),
-                            0f,
-                            1f)
-                    * (0.45f + urgency * 0.75f)
-                    * safeEdgeScale
-                    * RL_NAVIGATION_ROUTE_STALL_PENALTY;
-        }
-
-        private float getNavigationUnsafeSpeedPenalty(int agentIndex, RlAgentSnapshot after) {
-            if (!after.safeZoneActive || after.safeZoneInside) {
-                return 0f;
-            }
-            if (after.edgeDistance >= RL_EDGE_WARNING_DISTANCE) {
-                return 0f;
-            }
-
-            float danger =
-                    1f - MathUtils.clamp(
-                            after.edgeDistance / RL_EDGE_WARNING_DISTANCE,
-                            0f,
-                            1f);
-            float speedRatio = MathUtils.clamp(after.speed / Car.MAX_SPEED, 0f, 1f);
-            float unsafeSpeed =
-                    MathUtils.clamp(
-                            (after.speed - RL_EDGE_WARNING_SPEED * 0.45f)
-                                    / Math.max(0.001f, Car.MAX_SPEED),
-                            0f,
-                            1f);
-            float penalty = unsafeSpeed * (0.35f + danger) * RL_NAVIGATION_EDGE_SPEED_PENALTY;
-
-            if (after.effectiveThrottle > RL_ACTION_FLIP_DEADZONE) {
-                penalty +=
-                        MathUtils.clamp(after.effectiveThrottle, 0f, 1f)
-                                * danger
-                                * RL_NAVIGATION_EDGE_THROTTLE_PENALTY;
-            }
-
-            float turn = Math.abs(currentActionTurn[agentIndex]);
-            penalty += turn * speedRatio * danger * RL_NAVIGATION_EDGE_TURN_PENALTY;
-            return penalty;
-        }
-
-        private float getSafeSpeedScale(RlAgentSnapshot snapshot) {
-            return MathUtils.clamp(
-                    (snapshot.edgeDistance - RL_EDGE_DANGER_DISTANCE)
-                            / Math.max(0.0001f, RL_SAFE_SPEED_DISTANCE - RL_EDGE_DANGER_DISTANCE),
-                    0f,
-                    1f);
-        }
-
-        private float getAttackSafetyScale(RlAgentSnapshot snapshot) {
-            if (snapshot.safetyDistance > 0.05f) {
-                return 0f;
-            }
-            float edgeScale = MathUtils.clamp(
-                    (snapshot.edgeDistance - RL_EDGE_DANGER_DISTANCE)
-                            / Math.max(0.0001f, RL_SAFE_ATTACK_DISTANCE - RL_EDGE_DANGER_DISTANCE),
-                    0f,
-                    1f);
-            if (snapshot.safeZoneActive && snapshot.safeZoneInside) {
-                float centerScore = getSafeZoneCenterScore(snapshot);
-                edgeScale *= MathUtils.clamp((centerScore - 0.25f) / 0.75f, 0f, 1f);
-            } else if (snapshot.safeZoneActive) {
-                float urgency = 1f - MathUtils.clamp(snapshot.safeZoneTimeRatio, 0f, 1f);
-                edgeScale *= MathUtils.clamp(0.35f - urgency * 0.30f, 0f, 0.35f);
-            }
-            return edgeScale;
-        }
-
-        private float getGrowthPickupReward(RlAgentSnapshot before, RlAgentSnapshot after) {
-            int collectedPickups = Math.max(0, after.pickupPoints - before.pickupPoints);
-            float reward =
-                    collectedPickups * RL_GROWTH_PICKUP_REWARD;
-            if (collectedPickups > 0 && after.safeZoneActive && after.safeZoneInside) {
-                reward +=
-                        collectedPickups
-                                * (0.75f + getSafeZoneCenterScore(after) * 0.50f)
-                                * RL_GROWTH_PICKUP_SAFE_ZONE_REWARD;
-            }
-            if (before.growthBoosted || after.growthBoosted) {
-                return reward;
-            }
-            boolean pickupPathIsUnsafe =
-                    after.edgeDistance < RL_EDGE_DANGER_DISTANCE
-                            && (!after.safeZoneActive || !after.safeZoneInside);
-            if (!before.growthPickupActive
-                    || !after.growthPickupActive
-                    || before.growthPickupDistance <= 0f
-                    || after.growthPickupDistance <= 0f
-                    || pickupPathIsUnsafe) {
-                return reward;
-            }
-            reward +=
-                    MathUtils.clamp(
-                                    before.growthPickupDistance - after.growthPickupDistance,
-                                    -1f,
-                                    1f)
-                            * RL_GROWTH_PICKUP_APPROACH_REWARD;
-            if (after.safeZoneActive && after.safeZoneInside) {
-                float pickupProgress =
-                        MathUtils.clamp(
-                                before.growthPickupDistance - after.growthPickupDistance,
-                                -1f,
-                                1f);
-                float pickupProximity =
-                        1f - MathUtils.clamp(
-                                after.growthPickupDistance
-                                        / Math.max(GROWTH_PICKUP_RADIUS, after.safeZoneRadius),
-                                0f,
-                                1f);
-                reward += pickupProgress * RL_GROWTH_PICKUP_INSIDE_APPROACH_REWARD;
-                if (pickupProgress > 0f) {
-                    reward +=
-                            pickupProgress
-                                    * pickupProximity
-                                    * (0.45f + getSafeZoneCenterScore(after) * 0.55f)
-                                    * RL_GROWTH_PICKUP_PROXIMITY_REWARD;
-                }
-                if (after.growthPickupDistance > GROWTH_PICKUP_RADIUS + 0.18f) {
-                    reward -=
-                            (1f - pickupProximity)
-                                    * (0.45f + getSafeZoneCenterScore(after) * 0.35f)
-                                    * RL_GROWTH_PICKUP_INSIDE_NEGLECT_PENALTY;
-                }
-            }
-            return reward;
-        }
-
-        private float getActionDitherPenalty(
+        private float getControlPenalty(
                 int agentIndex,
                 RlAgentSnapshot before,
                 RlAgentSnapshot after) {
             float penalty = 0f;
-            boolean reverseAllowed = allowsReverseRecovery(after);
             float previousThrottle = previousActionThrottle[agentIndex];
             float currentThrottle = currentActionThrottle[agentIndex];
-            if (!reverseAllowed
-                    && Math.abs(previousThrottle) >= RL_ACTION_FLIP_DEADZONE
+            if (Math.abs(previousThrottle) >= RL_ACTION_FLIP_DEADZONE
                     && Math.abs(currentThrottle) >= RL_ACTION_FLIP_DEADZONE
                     && previousThrottle * currentThrottle < 0f) {
-                penalty += RL_RAW_THROTTLE_FLIP_PENALTY;
+                penalty += RL_THROTTLE_FLIP_PENALTY;
             }
-
-            if (!reverseAllowed
-                    && Math.abs(before.effectiveThrottle) >= RL_ACTION_FLIP_DEADZONE
-                    && Math.abs(after.effectiveThrottle) >= RL_ACTION_FLIP_DEADZONE
-                    && before.effectiveThrottle * after.effectiveThrottle < 0f) {
-                penalty += RL_EFFECTIVE_THROTTLE_FLIP_PENALTY;
+            penalty +=
+                    Math.abs(currentActionTurn[agentIndex] - previousActionTurn[agentIndex])
+                            * RL_STEER_JITTER_PENALTY;
+            if (!after.safeZoneInside
+                    && after.targetSpeed < -0.10f
+                    && currentThrottle < -RL_ACTION_FLIP_DEADZONE) {
+                penalty += -currentThrottle * RL_REVERSE_AWAY_PENALTY;
             }
-
-            if (!reverseAllowed
-                    && Math.abs(before.forwardSpeed) > 0.35f
-                    && Math.abs(after.forwardSpeed) > 0.35f
-                    && before.forwardSpeed * after.forwardSpeed < 0f) {
-                penalty += RL_FORWARD_REVERSE_SPEED_FLIP_PENALTY;
-            }
-
-            if ((!after.safeZoneActive || !after.safeZoneInside)
+            if (!after.safeZoneInside
                     && Math.abs(after.effectiveThrottle) < RL_ACTION_FLIP_DEADZONE
                     && after.speed < 1.15f
                     && after.angularSpeed < 1.80f) {
-                penalty +=
-                        RL_IDLE_DITHER_PENALTY
-                                * (1f - Math.abs(after.effectiveThrottle) / RL_ACTION_FLIP_DEADZONE);
-            }
-            if (!reverseAllowed) {
-                if (after.effectiveThrottle < -RL_ACTION_FLIP_DEADZONE) {
-                    penalty +=
-                            RL_SAFE_REVERSE_ACTION_PENALTY
-                                    * MathUtils.clamp(-after.effectiveThrottle, 0f, 1f);
-                }
-                if (after.effectiveThrottle < -RL_ACTION_FLIP_DEADZONE
-                        && after.forwardSpeed > 0.35f) {
-                    penalty +=
-                            MathUtils.clamp(after.forwardSpeed / Car.MAX_SPEED, 0f, 1f)
-                                    * RL_SAFE_REVERSE_BRAKE_PENALTY;
-                }
-            }
-            if (isContactStuck(after)) {
-                penalty +=
-                        (1f - MathUtils.clamp(
-                                after.speed / RL_CONTACT_STUCK_SPEED, 0f, 1f))
-                                * RL_CONTACT_STUCK_PENALTY;
+                penalty += RL_LOW_SPEED_STALL_PENALTY;
             }
             return penalty;
-        }
-
-        private boolean allowsReverseRecovery(RlAgentSnapshot snapshot) {
-            return snapshot.safetyDistance > 0.05f
-                    || snapshot.edgeDistance < RL_REVERSE_RECOVERY_EDGE_DISTANCE
-                    || (snapshot.safeZoneActive
-                            && snapshot.safeZoneInside
-                            && snapshot.speed > RL_SAFE_ZONE_BRAKE_SPEED)
-                    || snapshot.speed < RL_REVERSE_RECOVERY_SPEED
-                    || snapshot.recentImpact > Car.RECENT_IMPACT_DURATION * 0.45f
-                    || isContactStuck(snapshot);
-        }
-
-        private boolean isContactStuck(RlAgentSnapshot snapshot) {
-            return snapshot.nearestOpponentDistance > 0f
-                    && snapshot.nearestOpponentDistance < RL_CONTACT_STUCK_DISTANCE
-                    && snapshot.speed < RL_CONTACT_STUCK_SPEED;
         }
 
         private void buildObservations() {
@@ -9183,31 +8214,31 @@ public class RatassGame extends ApplicationAdapter {
                             observationFocus);
 
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
-                RlAgentSnapshot snapshot = afterSnapshots[agentIndex];
+                float holdProgress =
+                        MathUtils.clamp(
+                                goalHoldTimers[agentIndex]
+                                        / Math.max(0.05f, config.targetHoldSeconds),
+                                0f,
+                                1f);
                 fillRlObservation(
                         observations,
                         agentIndex * RL_OBSERVATION_SIZE,
                         getControlledCar(agentIndex),
                         game.currentMap,
-                        game.cars,
-                        game.growthPickupActive,
-                        game.growthPickupPosition,
-                        game.pointPickupActive,
-                        game.pointPickupPosition,
                         game.safeZoneActive,
                         game.safeZonePosition,
                         game.safeZoneRadius,
-                        game.safeZoneTimer,
+                        game.cars,
+                        holdProgress,
+                        1f - holdProgress,
+                        currentActionThrottle[agentIndex],
+                        currentActionTurn[agentIndex],
                         positionNormalizer,
-                        observationFocus,
                         observationForward,
                         observationRecovery,
-                        observationRouteTarget,
                         observationSide,
-                        snapshot.active && snapshot.safeZoneActive,
-                        snapshot.routeTargetX,
-                        snapshot.routeTargetY,
-                        snapshot.routeTargetFinal);
+                        observationRays,
+                        observationCarRays);
             }
         }
 
@@ -9222,53 +8253,35 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private int getWinnerAgentIndex() {
-            if (config.navigationOnly && episodeDone) {
-                int aliveAgentIndex = -1;
-                for (int i = 0; i < getControlledAgentCount(); i++) {
-                    Car car = getControlledCar(i);
-                    if (car != null && car.active) {
-                        if (aliveAgentIndex >= 0) {
-                            return -1;
-                        }
-                        aliveAgentIndex = i;
-                    }
-                }
-                return aliveAgentIndex;
-            }
-            int winnerVehicleId = getWinningVehicleId();
-            if (winnerVehicleId < 0) {
-                return -1;
-            }
-            for (int i = 0; i < controlledVehicleIds.size; i++) {
-                if (controlledVehicleIds.get(i).intValue() == winnerVehicleId) {
-                    return i;
+            int bestAgentIndex = -1;
+            int bestGoalsReached = 0;
+            for (int i = 0; i < getControlledAgentCount(); i++) {
+                if (goalsReached[i] > bestGoalsReached) {
+                    bestGoalsReached = goalsReached[i];
+                    bestAgentIndex = i;
                 }
             }
-            return -1;
+            return bestGoalsReached >= getMaxGoals() ? bestAgentIndex : -1;
+        }
+
+        private boolean hasCompletedTrainingGoal() {
+            for (int i = 0; i < getControlledAgentCount(); i++) {
+                if (goalsReached[i] >= getMaxGoals()) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private String getWinnerLabel() {
-            int winnerVehicleId = getWinningVehicleId();
-            if (winnerVehicleId < 0 || winnerVehicleId >= game.roster.size) {
+            int winnerAgentIndex = getWinnerAgentIndex();
+            if (winnerAgentIndex < 0 || winnerAgentIndex >= controlledVehicleIds.size) {
                 return "";
             }
-            return game.roster.get(winnerVehicleId).statsLabel;
-        }
-
-        private int getWinningVehicleId() {
-            if (game.winner != null) {
-                return game.winner.template.vehicleId;
-            }
-            int bestVehicleId = -1;
-            int bestFinishPosition = 0;
-            for (int i = 0; i < game.roster.size; i++) {
-                CarTemplate template = game.roster.get(i);
-                if (template.roundFinishPosition > bestFinishPosition) {
-                    bestFinishPosition = template.roundFinishPosition;
-                    bestVehicleId = template.vehicleId;
-                }
-            }
-            return bestVehicleId;
+            int winnerVehicleId = controlledVehicleIds.get(winnerAgentIndex).intValue();
+            return winnerVehicleId >= 0 && winnerVehicleId < game.roster.size
+                    ? game.roster.get(winnerVehicleId).statsLabel
+                    : "";
         }
 
         private Car getControlledCar(int agentIndex) {
@@ -9291,8 +8304,23 @@ public class RatassGame extends ApplicationAdapter {
                 currentActionTurn[i] = 0f;
                 previousActionTurn[i] = 0f;
             }
+            clearStepEvents();
             for (int i = 0; i < rewardBreakdown.length; i++) {
                 rewardBreakdown[i] = 0f;
+            }
+        }
+
+        private void clearEpisodeMetrics() {
+            for (int i = 0; i < getControlledAgentCount(); i++) {
+                goalHoldTimers[i] = 0f;
+                totalInsideTime[i] = 0f;
+                progressTowardTarget[i] = 0f;
+                goalsReached[i] = 0;
+                fallDeaths[i] = 0;
+                edgeRiskEvents[i] = 0;
+                circleEnterEvents[i] = false;
+                goalCompleteEvents[i] = false;
+                edgeRiskStepEvents[i] = false;
             }
         }
 
@@ -9302,6 +8330,11 @@ public class RatassGame extends ApplicationAdapter {
             float[] rewardBreakdownCopy = new float[rewardBreakdown.length];
             float[] effectiveActionCopy = new float[effectiveActions.length];
             boolean[] doneCopy = new boolean[dones.length];
+            int[] goalsReachedCopy = new int[goalsReached.length];
+            int[] fallDeathsCopy = new int[fallDeaths.length];
+            int[] edgeRiskEventsCopy = new int[edgeRiskEvents.length];
+            float[] insideTimeCopy = new float[totalInsideTime.length];
+            float[] progressTowardTargetCopy = new float[progressTowardTarget.length];
             buildEffectiveActions();
             System.arraycopy(observations, 0, observationCopy, 0, observations.length);
             System.arraycopy(rewards, 0, rewardCopy, 0, rewards.length);
@@ -9313,6 +8346,16 @@ public class RatassGame extends ApplicationAdapter {
                     rewardBreakdown.length);
             System.arraycopy(effectiveActions, 0, effectiveActionCopy, 0, effectiveActions.length);
             System.arraycopy(dones, 0, doneCopy, 0, dones.length);
+            System.arraycopy(goalsReached, 0, goalsReachedCopy, 0, goalsReached.length);
+            System.arraycopy(fallDeaths, 0, fallDeathsCopy, 0, fallDeaths.length);
+            System.arraycopy(edgeRiskEvents, 0, edgeRiskEventsCopy, 0, edgeRiskEvents.length);
+            System.arraycopy(totalInsideTime, 0, insideTimeCopy, 0, totalInsideTime.length);
+            System.arraycopy(
+                    progressTowardTarget,
+                    0,
+                    progressTowardTargetCopy,
+                    0,
+                    progressTowardTarget.length);
             return new RlStepResult(
                     observationCopy,
                     rewardCopy,
@@ -9325,7 +8368,12 @@ public class RatassGame extends ApplicationAdapter {
                     getWinnerAgentIndex(),
                     getWinnerLabel(),
                     getCurrentMapId(),
-                    getCurrentMapName());
+                    getCurrentMapName(),
+                    goalsReachedCopy,
+                    fallDeathsCopy,
+                    edgeRiskEventsCopy,
+                    insideTimeCopy,
+                    progressTowardTargetCopy);
         }
 
         private String getCurrentMapId() {
@@ -9360,80 +8408,44 @@ public class RatassGame extends ApplicationAdapter {
 
     private static final class RlAgentSnapshot {
         private boolean active;
-        private int vehicleId;
-        private int score;
-        private int pickupPoints;
-        private int finishPosition;
-        private int aliveOpponents;
-        private int attackCreditCount;
-        private int creditedEliminations;
-        private int safeZonePushOuts;
-        private int safeZoneEjections;
         private int safeZoneSequence;
-        private int safeZoneSurvivalSequence;
-        private boolean growthBoosted;
-        private boolean growthPickupActive;
         private boolean safeZoneActive;
         private boolean safeZoneInside;
-        private boolean eliminatedBySafeZone;
+        private boolean grounded;
+        private int lastAttackerVehicleId;
         private float edgeDistance;
         private float safetyDistance;
-        private float nearestOpponentHazardDistance;
-        private float nearestOpponentDistance;
-        private float growthPickupDistance;
         private float safeZoneDistance;
-        private float safeZoneRouteDistance;
         private float safeZoneRadius;
         private float safeZoneSignedMargin;
-        private float safeZoneTimeRatio;
-        private float routeTargetDistance;
-        private float routeTargetSpeed;
-        private float routeTargetX;
-        private float routeTargetY;
-        private boolean routeTargetFinal;
         private float speed;
+        private float targetSpeed;
+        private float targetAlignment;
         private float effectiveThrottle;
         private float forwardSpeed;
+        private float lateralSpeed;
         private float recoverySpeed;
         private float angularSpeed;
         private float recentImpact;
 
         private void clear() {
             active = false;
-            vehicleId = -1;
-            score = 0;
-            pickupPoints = 0;
-            finishPosition = 0;
-            aliveOpponents = 0;
-            attackCreditCount = 0;
-            creditedEliminations = 0;
-            safeZonePushOuts = 0;
-            safeZoneEjections = 0;
             safeZoneSequence = 0;
-            safeZoneSurvivalSequence = 0;
-            growthBoosted = false;
-            growthPickupActive = false;
             safeZoneActive = false;
             safeZoneInside = false;
-            eliminatedBySafeZone = false;
+            grounded = false;
+            lastAttackerVehicleId = -1;
             edgeDistance = 0f;
             safetyDistance = 0f;
-            nearestOpponentHazardDistance = 0f;
-            nearestOpponentDistance = 0f;
-            growthPickupDistance = 0f;
             safeZoneDistance = 0f;
-            safeZoneRouteDistance = -1f;
             safeZoneRadius = 0f;
             safeZoneSignedMargin = 0f;
-            safeZoneTimeRatio = 0f;
-            routeTargetDistance = 0f;
-            routeTargetSpeed = 0f;
-            routeTargetX = 0f;
-            routeTargetY = 0f;
-            routeTargetFinal = false;
             speed = 0f;
+            targetSpeed = 0f;
+            targetAlignment = 0f;
             effectiveThrottle = 0f;
             forwardSpeed = 0f;
+            lateralSpeed = 0f;
             recoverySpeed = 0f;
             angularSpeed = 0f;
             recentImpact = 0f;
@@ -9445,7 +8457,6 @@ public class RatassGame extends ApplicationAdapter {
         private final String name;
         private final boolean playerControlled;
         private final Color color;
-        private final AiDrivingPersonality personality;
         private final CarVisual visual;
         private final String statsLabel;
         private final boolean externallyControlled;
@@ -9467,7 +8478,6 @@ public class RatassGame extends ApplicationAdapter {
                 String name,
                 boolean playerControlled,
                 Color color,
-                AiDrivingPersonality personality,
                 CarVisual visual,
                 String statsLabel,
                 boolean externallyControlled,
@@ -9476,7 +8486,6 @@ public class RatassGame extends ApplicationAdapter {
             this.name = name;
             this.playerControlled = playerControlled;
             this.color = color;
-            this.personality = personality;
             this.visual = visual;
             this.statsLabel = statsLabel == null || statsLabel.length() == 0 ? name : statsLabel;
             this.externallyControlled = externallyControlled;

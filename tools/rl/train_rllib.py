@@ -17,7 +17,9 @@ import json
 import os
 import platform
 import re
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -25,24 +27,27 @@ import gymnasium as gym
 import jpype
 import numpy as np
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
+from export_policy import export_policy as export_checkpoint_policy
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-route-awareness"
-OBSERVATION_SIZE = 45
-OLD_ROUTE_OBSERVATION_SIZE = 39
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-target-circle-cars-768-v1"
+OBSERVATION_SIZE = 44
 ACTION_SIZE = 2
-DEFAULT_COMBAT_CONTROLLED_AGENTS = 6
-DEFAULT_COMBAT_FIELD_SIZE = 12
-DEFAULT_NAVIGATION_CONTROLLED_AGENTS = 2
-DEFAULT_NAVIGATION_FIELD_SIZE = 2
+DEFAULT_CONTROLLED_AGENTS = 1
+DEFAULT_FIELD_SIZE = 1
 EXPORTED_ACTOR_LAYERS = (
-    "encoder.actor_encoder.net.mlp.0",
-    "encoder.actor_encoder.net.mlp.2",
+    "encoder.encoder.net.mlp.0",
+    "encoder.encoder.net.mlp.2",
     "pi.net.mlp.0",
 )
+EXPORT_OBJECTIVES = {
+    "target": "target-circle-v1",
+}
 
 
 def _metric_token(value: str) -> str:
@@ -67,7 +72,11 @@ class RewardSummary:
         reward_total: float,
         bucket_names: List[str],
         bucket_totals: np.ndarray,
-        won: bool,
+        goals_reached: int,
+        fall_deaths: int,
+        edge_risk_events: int,
+        inside_time: float,
+        progress_total: float,
     ) -> None:
         self._episodes.append(
             {
@@ -77,7 +86,11 @@ class RewardSummary:
                 "reward_total": float(reward_total),
                 "bucket_names": list(bucket_names),
                 "bucket_totals": np.asarray(bucket_totals, dtype=np.float64).copy(),
-                "won": bool(won),
+                "goals_reached": int(goals_reached),
+                "fall_deaths": int(fall_deaths),
+                "edge_risk_events": int(edge_risk_events),
+                "inside_time": float(inside_time),
+                "progress_total": float(progress_total),
             }
         )
 
@@ -99,16 +112,24 @@ class RewardSummary:
                     "map_name": episode["map_name"],
                     "agent": episode["agent"],
                     "episodes": 0,
-                    "wins": 0,
                     "reward_total": 0.0,
+                    "goals_reached": 0,
+                    "fall_deaths": 0,
+                    "edge_risk_events": 0,
+                    "inside_time": 0.0,
+                    "progress_total": 0.0,
                     "bucket_names": episode["bucket_names"],
                     "bucket_totals": np.zeros_like(episode["bucket_totals"]),
                 }
                 grouped[key] = group
 
             group["episodes"] += 1
-            group["wins"] += 1 if episode["won"] else 0
             group["reward_total"] += episode["reward_total"]
+            group["goals_reached"] += episode["goals_reached"]
+            group["fall_deaths"] += episode["fall_deaths"]
+            group["edge_risk_events"] += episode["edge_risk_events"]
+            group["inside_time"] += episode["inside_time"]
+            group["progress_total"] += episode["progress_total"]
             group["bucket_totals"] += episode["bucket_totals"]
 
         for key in sorted(grouped):
@@ -121,7 +142,11 @@ class RewardSummary:
                 f"map_name={_metric_token(group['map_name'])}",
                 f"car={_metric_token(group['agent'])}",
                 f"episodes={group['episodes']}",
-                f"wins={group['wins']}",
+                f"goals_avg={group['goals_reached'] / episode_count:.3f}",
+                f"falls_avg={group['fall_deaths'] / episode_count:.3f}",
+                f"inside_time_avg={group['inside_time'] / episode_count:.3f}",
+                f"progress_avg={group['progress_total'] / episode_count:.3f}",
+                f"edge_risk_avg={group['edge_risk_events'] / episode_count:.3f}",
                 f"reward_avg={reward_avg:.3f}",
                 f"reward_total={group['reward_total']:.3f}",
             ]
@@ -220,29 +245,16 @@ class RatassMultiAgentEnv(MultiAgentEnv):
 
         ratass_game = jpype.JClass("com.github.jbescos.RatassGame")
         training_config = ratass_game.RlTrainingConfig()
-        objective = str(env_config.get("objective", "combat"))
-        navigation_only = objective == "navigation"
-        default_controlled_agents = (
-            DEFAULT_NAVIGATION_CONTROLLED_AGENTS
-            if navigation_only
-            else DEFAULT_COMBAT_CONTROLLED_AGENTS
-        )
-        default_field_size = (
-            DEFAULT_NAVIGATION_FIELD_SIZE if navigation_only else DEFAULT_COMBAT_FIELD_SIZE
-        )
         training_config.withControlledAgentCount(
-            int(env_config.get("controlled_agents", default_controlled_agents))
+            int(env_config.get("controlled_agents", DEFAULT_CONTROLLED_AGENTS))
         )
-        training_config.withFieldSize(int(env_config.get("field_size", default_field_size)))
+        training_config.withFieldSize(int(env_config.get("field_size", DEFAULT_FIELD_SIZE)))
         training_config.withActionRepeat(int(env_config.get("action_repeat", 4)))
         training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 1350)))
+        training_config.withMaxGoals(int(env_config.get("max_goals", 6)))
+        training_config.withTargetRadius(float(env_config.get("target_radius", 1.65)))
+        training_config.withTargetHoldSeconds(float(env_config.get("target_hold_seconds", 0.85)))
         training_config.withSeed(int(env_config.get("seed", 1)))
-        training_config.withNavigationOnly(navigation_only)
-        opponent_count = env_config.get("opponent_count")
-        if opponent_count is not None:
-            training_config.withOpponentCount(int(opponent_count))
-        elif navigation_only:
-            training_config.withOpponentCount(0)
         self._add_selected_maps(training_config, env_config.get("map_ids", ""))
 
         self._java_float_array = jpype.JArray(jpype.JFloat)
@@ -272,6 +284,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         self._episode_map_name = ""
         self._episode_reward_totals: Dict[str, float] = {}
         self._episode_bucket_totals: Dict[str, np.ndarray] = {}
+        self._episode_progress_totals: Dict[str, float] = {}
 
     def _add_selected_maps(self, training_config, map_ids: str) -> None:
         selected_ids = [
@@ -310,7 +323,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
 
     def step(self, action_dict):
         actions = np.zeros((self._agent_count, ACTION_SIZE), dtype=np.float32)
-        current_agents = list(self.agents)
+        current_agents = list(self._agents)
         for agent in current_agents:
             index = self._agent_index(agent)
             action = np.asarray(action_dict.get(agent, np.zeros(ACTION_SIZE)), dtype=np.float32)
@@ -324,7 +337,12 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         reward_breakdown = None
         if self._reward_summary_enabled:
             reward_breakdown = self._reward_breakdown_array(result)
-            self._record_step_accounting(reward_breakdown, rewards, current_agents)
+            self._record_step_accounting(reward_breakdown, rewards, current_agents, result)
+        # Keep all learner ids present until the Java episode ends. RLlib's
+        # new connector stack can still have pending module outputs for an
+        # agent after we report that individual agent as done, which can trip
+        # a KeyError inside unbatch_to_individual_items. Java ignores actions
+        # for inactive cars, so stable ids are the simpler contract here.
         terminateds = {agent: bool(result.episodeDone) for agent in current_agents}
         terminateds["__all__"] = bool(result.episodeDone)
         truncateds = {agent: False for agent in current_agents}
@@ -336,6 +354,14 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                 "winner_label": str(result.winnerLabel),
                 "current_map_id": str(result.currentMapId),
                 "current_map_name": str(result.currentMapName),
+                "agent_done": bool(result.dones[self._agent_index(agent)]),
+                "goals_reached": int(result.goalsReached[self._agent_index(agent)]),
+                "fall_deaths": int(result.fallDeaths[self._agent_index(agent)]),
+                "edge_risk_events": int(result.edgeRiskEvents[self._agent_index(agent)]),
+                "inside_time": float(result.insideTime[self._agent_index(agent)]),
+                "progress_toward_target": float(
+                    result.progressTowardTarget[self._agent_index(agent)]
+                ),
             }
             for agent in current_agents
         }
@@ -351,7 +377,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                 self._finalize_episode_accounting(result)
             self.agents = []
         else:
-            self.agents = current_agents
+            self.agents = list(self._agents)
         return self._observations(result, self.agents), rewards, terminateds, truncateds, infos
 
     def close(self):
@@ -377,8 +403,9 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             agent: np.zeros(len(self._reward_breakdown_names), dtype=np.float64)
             for agent in self._agents
         }
+        self._episode_progress_totals = {agent: 0.0 for agent in self._agents}
 
-    def _record_step_accounting(self, breakdown, rewards, agents) -> None:
+    def _record_step_accounting(self, breakdown, rewards, agents, result) -> None:
         for agent in agents:
             index = self._agent_index(agent)
             self._episode_reward_totals[agent] = (
@@ -386,9 +413,10 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             )
             if agent in self._episode_bucket_totals and index < breakdown.shape[0]:
                 self._episode_bucket_totals[agent] += breakdown[index]
+            if agent in self._episode_progress_totals:
+                self._episode_progress_totals[agent] += float(result.progressTowardTarget[index])
 
     def _finalize_episode_accounting(self, result) -> None:
-        winner_index = int(result.winnerAgentIndex)
         for agent in self._agents:
             index = self._agent_index(agent)
             REWARD_SUMMARY.record_episode(
@@ -401,7 +429,11 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                     agent,
                     np.zeros(len(self._reward_breakdown_names), dtype=np.float64),
                 ),
-                index == winner_index,
+                int(result.goalsReached[index]),
+                int(result.fallDeaths[index]),
+                int(result.edgeRiskEvents[index]),
+                float(result.insideTime[index]),
+                self._episode_progress_totals.get(agent, 0.0),
             )
 
     def _reward_breakdown_for_agent(self, breakdown, agent) -> Dict[str, float]:
@@ -444,16 +476,24 @@ def build_algorithm(args):
         "field_size": args.field_size,
         "action_repeat": args.action_repeat,
         "max_action_steps": args.max_action_steps,
+        "max_goals": args.max_goals,
+        "target_radius": args.target_radius,
+        "target_hold_seconds": args.target_hold_seconds,
         "seed": args.seed,
         "map_ids": args.map_ids,
         "objective": args.objective,
-        "opponent_count": args.opponent_count,
         "reward_summary": not args.no_reward_summary,
     }
     config = (
         PPOConfig()
         .environment(RatassMultiAgentEnv, env_config=env_config)
         .framework("torch")
+        .rl_module(
+            model_config=DefaultModelConfig(
+                fcnet_hiddens=[args.hidden_size] * args.hidden_layers,
+                fcnet_activation=args.hidden_activation,
+            )
+        )
     )
     if args.num_gpus > 0:
         config = config.resources(num_gpus=args.num_gpus)
@@ -501,28 +541,12 @@ def _reshape_exported_layer(layer: Dict, policy_file: Path) -> Tuple[np.ndarray,
     return weights, bias
 
 
-def expand_legacy_observation_weights(weights: np.ndarray, policy_file: Path) -> np.ndarray:
-    if weights.shape[1] == OBSERVATION_SIZE:
-        return weights
-    if weights.shape[1] != OLD_ROUTE_OBSERVATION_SIZE:
-        raise ValueError(
-            f"{policy_file} actor input size {weights.shape[1]} does not match "
-            f"current observation size {OBSERVATION_SIZE}"
-        )
-
-    expanded = np.zeros((weights.shape[0], OBSERVATION_SIZE), dtype=weights.dtype)
-    expanded[:, :32] = weights[:, :32]
-    expanded[:, 36] = weights[:, 32]
-    expanded[:, 39:45] = weights[:, 33:39]
-    return expanded
-
-
 def load_exported_actor_state(policy_file: Path) -> Dict[str, np.ndarray]:
     with policy_file.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
 
     exported_observation_size = int(payload.get("observationSize", -1))
-    if exported_observation_size not in (OBSERVATION_SIZE, OLD_ROUTE_OBSERVATION_SIZE):
+    if exported_observation_size <= 0 or exported_observation_size > OBSERVATION_SIZE:
         raise ValueError(
             f"{policy_file} observationSize={payload.get('observationSize')} is not compatible "
             f"with current observation size {OBSERVATION_SIZE}"
@@ -542,11 +566,50 @@ def load_exported_actor_state(policy_file: Path) -> Dict[str, np.ndarray]:
     actor_state: Dict[str, np.ndarray] = {}
     for prefix, layer in zip(EXPORTED_ACTOR_LAYERS, layers):
         weights, bias = _reshape_exported_layer(layer, policy_file)
-        if prefix == EXPORTED_ACTOR_LAYERS[0]:
-            weights = expand_legacy_observation_weights(weights, policy_file)
+        if prefix == EXPORTED_ACTOR_LAYERS[0] and weights.shape[1] != exported_observation_size:
+            raise ValueError(
+                f"{policy_file} actor input size {weights.shape[1]} does not match exported "
+                f"observation size {exported_observation_size}"
+            )
         actor_state[f"{prefix}.weight"] = weights
         actor_state[f"{prefix}.bias"] = bias
     return actor_state
+
+
+def copy_exported_actor_values(
+        key: str,
+        current_values: np.ndarray,
+        exported_values: np.ndarray) -> Tuple[np.ndarray, bool]:
+    current = np.asarray(current_values)
+    exported = np.asarray(exported_values, dtype=current.dtype)
+    if tuple(current.shape) == tuple(exported.shape):
+        return exported, False
+
+    if len(current.shape) != len(exported.shape):
+        raise ValueError(
+            f"{key} rank mismatch: exported {exported.shape}, current {current.shape}"
+        )
+
+    updated = current.copy()
+    if current.ndim == 1:
+        if exported.shape[0] > current.shape[0]:
+            raise ValueError(
+                f"{key} shape mismatch: exported {exported.shape}, current {current.shape}"
+            )
+        updated[:exported.shape[0]] = exported
+        return updated, True
+
+    if current.ndim == 2:
+        if exported.shape[0] > current.shape[0] or exported.shape[1] > current.shape[1]:
+            raise ValueError(
+                f"{key} shape mismatch: exported {exported.shape}, current {current.shape}"
+            )
+        updated[:exported.shape[0], :exported.shape[1]] = exported
+        if exported.shape[1] < current.shape[1]:
+            updated[:exported.shape[0], exported.shape[1]:] = 0.0
+        return updated, True
+
+    raise ValueError(f"{key} unsupported tensor shape: {current.shape}")
 
 
 def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
@@ -557,15 +620,14 @@ def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
     policy_weights = dict(learner_weights["shared_policy"])
     actor_state = load_exported_actor_state(policy_file)
 
+    partial_initialization = False
     for key, values in actor_state.items():
         if key not in policy_weights:
             raise ValueError(f"Current PPO module does not contain actor key {key}")
         current = np.asarray(policy_weights[key])
-        if tuple(current.shape) != tuple(values.shape):
-            raise ValueError(
-                f"{key} shape mismatch: exported {values.shape}, current {current.shape}"
-            )
-        policy_weights[key] = values
+        copied_values, partial = copy_exported_actor_values(key, current, values)
+        partial_initialization = partial_initialization or partial
+        policy_weights[key] = copied_values
 
     algorithm.learner_group.set_weights({"shared_policy": policy_weights})
     algorithm.env_runner_group.sync_weights(
@@ -573,7 +635,10 @@ def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
         policies=["shared_policy"],
         inference_only=True,
     )
-    print(f"initialized_policy={policy_file}", flush=True)
+    print(
+        f"initialized_policy={policy_file} partial={str(partial_initialization).lower()}",
+        flush=True,
+    )
 
 
 def configure_ray_output(checkpoint_dir: Path) -> None:
@@ -638,6 +703,161 @@ def checkpoint_path(save_result) -> str:
     return os.fspath(path) if path is not None else str(save_result)
 
 
+def parse_metric_tokens(line: str) -> Dict[str, str]:
+    metrics: Dict[str, str] = {}
+    for token in line.strip().split():
+        if "=" not in token:
+            continue
+        key, value = token.split("=", 1)
+        metrics[key] = value
+    return metrics
+
+
+def read_best_state(path: Path) -> Dict:
+    if not path.exists():
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def write_best_state(path: Path, state: Dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(state, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def best_eval_state_path(args, checkpoint_dir: Path) -> Path:
+    if args.best_eval_state:
+        return Path(args.best_eval_state).resolve()
+    return checkpoint_dir / "best-eval" / "best_policy.json"
+
+
+def best_eval_candidate_path(checkpoint_dir: Path) -> Path:
+    path = checkpoint_dir / "best-eval" / "candidate_policy.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def best_eval_archive_path(checkpoint_dir: Path) -> Path:
+    path = checkpoint_dir / "best-eval" / "best_policy_export.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float], Dict[str, str]]:
+    episodes_per_map = args.best_eval_episodes_per_map
+    episodes = args.best_eval_episodes
+    if episodes_per_map <= 0 and episodes <= 0:
+        episodes_per_map = 1
+
+    field_size = args.best_eval_field_size if args.best_eval_field_size > 0 else args.field_size
+    command = [
+        sys.executable,
+        os.fspath(REPO_ROOT / "tools" / "rl" / "evaluate_policy.py"),
+        "--jar",
+        os.fspath(Path(args.jar).resolve()),
+        "--policy",
+        os.fspath(candidate_policy),
+        "--quiet",
+        "--objective",
+        args.objective,
+        "--field-size",
+        str(field_size),
+    ]
+    if episodes_per_map > 0:
+        command.extend(["--episodes-per-map", str(episodes_per_map)])
+    else:
+        command.extend(["--episodes", str(episodes)])
+    if args.best_eval_steps > 0:
+        command.extend(["--steps", str(args.best_eval_steps)])
+    if args.best_eval_map_ids:
+        command.extend(["--map-ids", args.best_eval_map_ids])
+
+    completed = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    metrics: Dict[str, str] = {}
+    score: Optional[float] = None
+    for line in completed.stdout.splitlines():
+        print(f"best_eval {line}", flush=True)
+        if line.startswith("evaluation_score="):
+            metrics.update(parse_metric_tokens(line))
+    if completed.returncode != 0:
+        print(f"best_eval_failed exit_code={completed.returncode}", flush=True)
+        return None, metrics
+    try:
+        score = float(metrics["evaluation_score"])
+    except (KeyError, ValueError):
+        print("best_eval_failed reason=missing_evaluation_score", flush=True)
+        return None, metrics
+    return score, metrics
+
+
+def maybe_promote_best_policy(
+        args,
+        checkpoint_dir: Path,
+        iteration: int,
+        saved_checkpoint: str) -> None:
+    if not args.best_export_output:
+        return
+
+    candidate_policy = best_eval_candidate_path(checkpoint_dir)
+    export_objective = args.best_export_objective or EXPORT_OBJECTIVES[args.objective]
+    export_checkpoint_policy(checkpoint_dir, candidate_policy, export_objective)
+    score, metrics = run_policy_evaluation(args, candidate_policy)
+    if score is None:
+        return
+
+    state_path = best_eval_state_path(args, checkpoint_dir)
+    state = read_best_state(state_path)
+    try:
+        previous_score = float(state.get("best_score", "-inf"))
+    except (TypeError, ValueError):
+        previous_score = float("-inf")
+    if score <= previous_score:
+        print(
+            f"best_policy_unchanged score={score:.3f} best_score={previous_score:.3f}",
+            flush=True,
+        )
+        return
+
+    output_file = Path(args.best_export_output).resolve()
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(candidate_policy, output_file)
+    archive_file = best_eval_archive_path(checkpoint_dir)
+    shutil.copyfile(candidate_policy, archive_file)
+    next_state = {
+        "best_score": score,
+        "iteration": iteration,
+        "checkpoint": saved_checkpoint,
+        "policy": os.fspath(output_file),
+        "archived_policy": os.fspath(archive_file),
+        "metrics": metrics,
+    }
+    write_best_state(state_path, next_state)
+    print(
+        f"best_policy_promoted score={score:.3f} previous_score={previous_score:.3f} "
+        f"output={output_file} state={state_path}",
+        flush=True,
+    )
+
+
+def save_checkpoint(algorithm, checkpoint_dir: Path, args, iteration: int) -> None:
+    checkpoint = algorithm.save(str(checkpoint_dir))
+    saved_path = checkpoint_path(checkpoint)
+    print(f"checkpoint={saved_path}", flush=True)
+    maybe_promote_best_policy(args, checkpoint_dir, iteration, saved_path)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=os.fspath(DEFAULT_JAR))
@@ -647,29 +867,26 @@ def parse_args() -> argparse.Namespace:
         "--controlled-agents",
         type=int,
         default=None,
-        help="controlled learners; navigation defaults to 2, combat defaults to 6",
+        help="controlled learner cars sharing the policy; defaults to 1 for stable target training",
     )
     parser.add_argument(
         "--field-size",
         type=int,
         default=None,
-        help="total cars; navigation defaults to 2, combat defaults to 12",
+        help="kept for compatibility; target training uses controlled learners only",
     )
     parser.add_argument("--action-repeat", type=int, default=4)
     parser.add_argument("--max-action-steps", type=int, default=1350)
+    parser.add_argument("--max-goals", type=int, default=6)
+    parser.add_argument("--target-radius", type=float, default=1.65)
+    parser.add_argument("--target-hold-seconds", type=float, default=0.85)
     parser.add_argument("--num-gpus", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
         "--objective",
-        choices=("combat", "navigation"),
-        default="combat",
-        help="combat trains the full game; navigation removes opponents and pickups",
-    )
-    parser.add_argument(
-        "--opponent-count",
-        type=int,
-        default=None,
-        help="override number of heuristic opponents; navigation defaults to 0",
+        choices=("target",),
+        default="target",
+        help="target trains cars to reach and hold randomized circle targets",
     )
     parser.add_argument(
         "--map-ids",
@@ -680,6 +897,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--train-batch-size", type=int, default=8192)
     parser.add_argument("--minibatch-size", type=int, default=512)
+    parser.add_argument(
+        "--hidden-size",
+        type=int,
+        default=768,
+        help="width of each PPO fully-connected hidden layer",
+    )
+    parser.add_argument(
+        "--hidden-layers",
+        type=int,
+        default=2,
+        help="number of PPO fully-connected hidden layers",
+    )
+    parser.add_argument(
+        "--hidden-activation",
+        default="tanh",
+        help="activation for PPO fully-connected hidden layers",
+    )
     parser.add_argument("--checkpoint-dir", default=os.fspath(DEFAULT_CHECKPOINT))
     parser.add_argument("--checkpoint-every", type=int, default=0)
     parser.add_argument(
@@ -711,23 +945,60 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="disable per-map/per-car reward bucket summaries after each iteration",
     )
+    parser.add_argument(
+        "--best-export-output",
+        default="",
+        help="export and promote only checkpoints with the best evaluation score to this JSON file",
+    )
+    parser.add_argument(
+        "--best-export-objective",
+        default="",
+        help="objective label written into the promoted JSON policy",
+    )
+    parser.add_argument(
+        "--best-eval-episodes-per-map",
+        type=int,
+        default=0,
+        help="episodes per map for checkpoint evaluation; 1 is used when best export is enabled and no episode count is set",
+    )
+    parser.add_argument(
+        "--best-eval-episodes",
+        type=int,
+        default=0,
+        help="shuffled episodes for checkpoint evaluation when episodes-per-map is 0",
+    )
+    parser.add_argument(
+        "--best-eval-field-size",
+        type=int,
+        default=0,
+        help="field size used by checkpoint evaluation; defaults to the training field size",
+    )
+    parser.add_argument(
+        "--best-eval-steps",
+        type=int,
+        default=0,
+        help="max action steps used by checkpoint evaluation; 0 uses evaluate_policy.py defaults",
+    )
+    parser.add_argument(
+        "--best-eval-map-ids",
+        default="",
+        help="optional comma-separated map ids for checkpoint evaluation",
+    )
+    parser.add_argument(
+        "--best-eval-state",
+        default="",
+        help="JSON state file that stores the best evaluation score",
+    )
     args = parser.parse_args()
     apply_objective_defaults(args)
     return args
 
 
 def apply_objective_defaults(args: argparse.Namespace) -> None:
-    if args.objective == "navigation":
-        if args.controlled_agents is None:
-            args.controlled_agents = DEFAULT_NAVIGATION_CONTROLLED_AGENTS
-        if args.field_size is None:
-            args.field_size = max(DEFAULT_NAVIGATION_FIELD_SIZE, args.controlled_agents)
-        return
-
     if args.controlled_agents is None:
-        args.controlled_agents = DEFAULT_COMBAT_CONTROLLED_AGENTS
+        args.controlled_agents = DEFAULT_CONTROLLED_AGENTS
     if args.field_size is None:
-        args.field_size = DEFAULT_COMBAT_FIELD_SIZE
+        args.field_size = max(DEFAULT_FIELD_SIZE, args.controlled_agents)
 
 
 def main() -> None:
@@ -759,6 +1030,7 @@ def main() -> None:
         )
 
     try:
+        last_saved_iteration = 0
         for iteration in range(1, args.iterations + 1):
             summary_mark = REWARD_SUMMARY.mark()
             result = algorithm.train()
@@ -790,11 +1062,11 @@ def main() -> None:
                 for line in REWARD_SUMMARY.render_since(summary_mark, iteration):
                     print(line, flush=True)
             if args.checkpoint_every > 0 and iteration % args.checkpoint_every == 0:
-                checkpoint = algorithm.save(str(checkpoint_dir))
-                print(f"checkpoint={checkpoint_path(checkpoint)}", flush=True)
+                save_checkpoint(algorithm, checkpoint_dir, args, iteration)
+                last_saved_iteration = iteration
 
-        checkpoint = algorithm.save(str(checkpoint_dir))
-        print(f"checkpoint={checkpoint_path(checkpoint)}", flush=True)
+        if last_saved_iteration != args.iterations:
+            save_checkpoint(algorithm, checkpoint_dir, args, args.iterations)
     finally:
         algorithm.stop()
 

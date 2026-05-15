@@ -15,8 +15,11 @@ public final class RlSmokeMain {
         int episodes = 3;
         int maxSteps = 420;
         int controlledAgents = 1;
-        int fieldSize = 8;
+        int fieldSize = 1;
         int actionRepeat = 4;
+        int maxGoals = 6;
+        float targetRadius = 1.65f;
+        float targetHoldSeconds = 0.85f;
         long seed = 1L;
 
         for (int i = 0; i < args.length; i++) {
@@ -31,6 +34,12 @@ public final class RlSmokeMain {
                 fieldSize = Integer.parseInt(args[++i]);
             } else if ("--action-repeat".equals(arg) && i + 1 < args.length) {
                 actionRepeat = Integer.parseInt(args[++i]);
+            } else if ("--max-goals".equals(arg) && i + 1 < args.length) {
+                maxGoals = Integer.parseInt(args[++i]);
+            } else if ("--target-radius".equals(arg) && i + 1 < args.length) {
+                targetRadius = Float.parseFloat(args[++i]);
+            } else if ("--target-hold-seconds".equals(arg) && i + 1 < args.length) {
+                targetHoldSeconds = Float.parseFloat(args[++i]);
             } else if ("--seed".equals(arg) && i + 1 < args.length) {
                 seed = Long.parseLong(args[++i]);
             } else {
@@ -46,6 +55,9 @@ public final class RlSmokeMain {
                         .withFieldSize(fieldSize)
                         .withActionRepeat(actionRepeat)
                         .withMaxActionSteps(maxSteps)
+                        .withMaxGoals(maxGoals)
+                        .withTargetRadius(targetRadius)
+                        .withTargetHoldSeconds(targetHoldSeconds)
                         .withSeed(seed);
         Random random = new Random(seed ^ 0xC0FFEE);
 
@@ -83,12 +95,19 @@ public final class RlSmokeMain {
 
                 System.out.printf(
                         Locale.US,
-                        "episode=%d steps=%d reward=%.3f winner=%s winnerAgent=%d%n",
+                        "episode=%d steps=%d reward=%.3f goals=%d falls=%d edgeRisk=%d "
+                                + "insideTime=%.3f progress=%.3f success=%s%n",
                         episode + 1,
                         steps,
                         totalReward,
-                        result.winnerLabel,
-                        result.winnerAgentIndex);
+                        result.goalsReached.length > 0 ? result.goalsReached[0] : 0,
+                        result.fallDeaths.length > 0 ? result.fallDeaths[0] : 0,
+                        result.edgeRiskEvents.length > 0 ? result.edgeRiskEvents[0] : 0,
+                        result.insideTime.length > 0 ? result.insideTime[0] : 0f,
+                        result.progressTowardTarget.length > 0
+                                ? result.progressTowardTarget[0]
+                                : 0f,
+                        result.winnerAgentIndex == 0 ? "true" : "false");
             }
             long totalNanos = System.nanoTime() - totalStartNanos;
             System.out.printf(
