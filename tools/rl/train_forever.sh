@@ -20,7 +20,9 @@ presets:
   target-easy       larger circle, easier maps, one learner
   target-hard       normal circle, hole-heavy maps, one learner
   target-many       normal circle, all maps, several learner cars
-  curriculum        staged run: target-easy, target-hard, then target-many forever
+  target-crowd      normal circle, all maps, fifty learner cars
+  target-50         alias for target-crowd
+  curriculum        staged run: target-easy, target-hard, target-many, then target-crowd forever
 EOF
 }
 
@@ -44,7 +46,8 @@ run_curriculum() {
 
   run_curriculum_phase "target-easy" "${RL_CURRICULUM_TARGET_EASY_ITERATIONS:-160}" 1 "${checkpoint_dir}" "${RL_INIT_POLICY:-}"
   run_curriculum_phase "target-hard" "${RL_CURRICULUM_TARGET_HARD_ITERATIONS:-240}" 1 "${checkpoint_dir}" ""
-  run_curriculum_phase "target-many" "${RL_CURRICULUM_TARGET_MANY_ITERATIONS:-400}" "${RL_CURRICULUM_TARGET_MANY_MAX_CYCLES:-0}" "${checkpoint_dir}" ""
+  run_curriculum_phase "target-many" "${RL_CURRICULUM_TARGET_MANY_ITERATIONS:-400}" "${RL_CURRICULUM_TARGET_MANY_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
+  run_curriculum_phase "target-crowd" "${RL_CURRICULUM_TARGET_CROWD_ITERATIONS:-400}" "${RL_CURRICULUM_TARGET_CROWD_MAX_CYCLES:-0}" "${checkpoint_dir}" ""
 }
 
 preset="${RL_CURRICULUM_PRESET:-${RL_PRESET:-}}"
@@ -88,6 +91,15 @@ case "${preset}" in
   "target-many")
     set_default RL_CONTROLLED_AGENTS "4"
     set_default RL_FIELD_SIZE "4"
+    set_default RL_TARGET_RADIUS "1.65"
+    set_default RL_TARGET_HOLD_SECONDS "0.85"
+    set_default RL_MAX_GOALS "6"
+    set_default RL_MAX_ACTION_STEPS "1350"
+    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-768-v1"
+    ;;
+  "target-crowd"|"target-50")
+    set_default RL_CONTROLLED_AGENTS "50"
+    set_default RL_FIELD_SIZE "50"
     set_default RL_TARGET_RADIUS "1.65"
     set_default RL_TARGET_HOLD_SECONDS "0.85"
     set_default RL_MAX_GOALS "6"

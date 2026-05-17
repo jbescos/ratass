@@ -135,8 +135,6 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SAFE_ZONE_RENDER_SAMPLE_STEP = 0.18f;
     private static final float SAFE_ZONE_MINIMAP_SAMPLE_STEP = 0.26f;
     private static final int SAFE_ZONE_SPAWN_ATTEMPTS = 128;
-    private static final float CAMERA_HORIZONTAL_PADDING = 4f;
-    private static final float CAMERA_VERTICAL_PADDING = 3f;
     private static final float MIN_WORLD_CAMERA_ZOOM = 0.90f;
     private static final float PLAYER_CAMERA_ZOOM = 1.04f;
     private static final float PLAYER_CAMERA_SPEED_ZOOM_OUT = 0.46f;
@@ -3102,14 +3100,16 @@ public class RatassGame extends ApplicationAdapter {
         currentMap.getBounds(mapBounds);
         currentMap.getFocusPoint(focusPoint);
 
-        float visibleWidth = Math.max(1f, WORLD_WIDTH - CAMERA_HORIZONTAL_PADDING);
-        float visibleHeight = Math.max(1f, WORLD_HEIGHT - CAMERA_VERTICAL_PADDING);
+        float visibleWidth = Math.max(1f, worldCamera.viewportWidth);
+        float visibleHeight = Math.max(1f, worldCamera.viewportHeight);
         float zoomX = mapBounds.width / visibleWidth;
         float zoomY = mapBounds.height / visibleHeight;
 
-        float mapFitZoom = Math.max(MIN_WORLD_CAMERA_ZOOM, Math.max(zoomX, zoomY));
+        float mapFitZoom = Math.max(0.01f, Math.max(zoomX, zoomY));
         float targetZoom = mapFitZoom;
-        cameraTargetPosition.set(focusPoint);
+        cameraTargetPosition.set(
+                mapBounds.x + mapBounds.width * 0.5f,
+                mapBounds.y + mapBounds.height * 0.5f);
         float delta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
 
         boolean playerCameraActive = playerCar != null && playerCar.active && playerCar.body != null;
@@ -3240,8 +3240,10 @@ public class RatassGame extends ApplicationAdapter {
         float minY = mapBounds.y + halfWorldY;
         float maxY = mapBounds.y + mapBounds.height - halfWorldY;
 
-        position.x = minX > maxX ? focusPoint.x : MathUtils.clamp(position.x, minX, maxX);
-        position.y = minY > maxY ? focusPoint.y : MathUtils.clamp(position.y, minY, maxY);
+        float mapCenterX = mapBounds.x + mapBounds.width * 0.5f;
+        float mapCenterY = mapBounds.y + mapBounds.height * 0.5f;
+        position.x = minX > maxX ? mapCenterX : MathUtils.clamp(position.x, minX, maxX);
+        position.y = minY > maxY ? mapCenterY : MathUtils.clamp(position.y, minY, maxY);
     }
 
     private void applyWorldCamera(float zoom) {

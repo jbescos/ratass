@@ -74,11 +74,12 @@ Single-stage presets:
 bash tools/rl/train_forever.sh target-easy
 bash tools/rl/train_forever.sh target-hard
 bash tools/rl/train_forever.sh target-many
+bash tools/rl/train_forever.sh target-crowd
 ```
 
 The curriculum starts with larger targets on easier maps, then moves to
-hole-heavy maps, then runs multiple learner cars on the full target contract
-forever by default. Checkpoint output defaults to
+hole-heavy maps, then runs 4 learner cars on the full target contract, then
+runs 50 learner cars forever by default. Checkpoint output defaults to
 `rl-checkpoints-curriculum-target-cars-768-v1` for curriculum runs.
 
 ## Docker
