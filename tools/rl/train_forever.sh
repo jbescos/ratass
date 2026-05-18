@@ -19,11 +19,27 @@ usage: bash tools/rl/train_forever.sh [preset]
 presets:
   target-easy       larger circle, easier maps, one learner
   target-hard       normal circle, hole-heavy maps, one learner
-  target-many       normal circle, all maps, several learner cars
+  target-2          normal circle, all maps, two learner cars
+  target-4          normal circle, all maps, four learner cars
+  target-8          normal circle, all maps, eight learner cars
+  target-16         normal circle, all maps, sixteen learner cars
+  target-32         normal circle, all maps, thirty-two learner cars
+  target-many       alias for target-4
   target-crowd      normal circle, all maps, fifty learner cars
   target-50         alias for target-crowd
-  curriculum        staged run: target-easy, target-hard, target-many, then target-crowd forever
+  curriculum        staged run: 1, hard 1, 2, 4, 8, 16, 32, then 50 cars forever
 EOF
+}
+
+set_target_cars_defaults() {
+  local car_count="$1"
+  set_default RL_CONTROLLED_AGENTS "${car_count}"
+  set_default RL_FIELD_SIZE "${car_count}"
+  set_default RL_TARGET_RADIUS "1.65"
+  set_default RL_TARGET_HOLD_SECONDS "0.85"
+  set_default RL_MAX_GOALS "6"
+  set_default RL_MAX_ACTION_STEPS "1350"
+  set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-1024x2-v1"
 }
 
 run_curriculum_phase() {
@@ -32,22 +48,30 @@ run_curriculum_phase() {
   local max_cycles="$3"
   local checkpoint_dir="$4"
   local init_policy="$5"
-  echo "curriculum_phase=${phase} iterations=${iterations} max_cycles=${max_cycles} checkpoint_dir=${checkpoint_dir} init_policy=${init_policy:-none}"
+  local best_eval_state="${checkpoint_dir}/best-eval/${phase}/best_policy.json"
+  echo "curriculum_phase=${phase} iterations=${iterations} max_cycles=${max_cycles} checkpoint_dir=${checkpoint_dir} best_eval_state=${best_eval_state} init_policy=${init_policy:-none}"
   env \
     RL_CHECKPOINT_DIR="${checkpoint_dir}" \
     RL_FOREVER_ITERATIONS="${iterations}" \
     RL_MAX_CYCLES="${max_cycles}" \
     RL_INIT_POLICY="${init_policy}" \
+    RL_BEST_EVAL_STATE="${best_eval_state}" \
     bash "${script_dir}/train_forever.sh" "${phase}"
 }
 
 run_curriculum() {
-  local checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-target-cars-768-v1}"
+  local checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-target-cars-1024x2-gradual-v1}"
+  local target_4_iterations="${RL_CURRICULUM_TARGET_4_ITERATIONS:-${RL_CURRICULUM_TARGET_MANY_ITERATIONS:-400}}"
+  local target_4_max_cycles="${RL_CURRICULUM_TARGET_4_MAX_CYCLES:-${RL_CURRICULUM_TARGET_MANY_MAX_CYCLES:-1}}"
 
-  run_curriculum_phase "target-easy" "${RL_CURRICULUM_TARGET_EASY_ITERATIONS:-160}" 1 "${checkpoint_dir}" "${RL_INIT_POLICY:-}"
-  run_curriculum_phase "target-hard" "${RL_CURRICULUM_TARGET_HARD_ITERATIONS:-240}" 1 "${checkpoint_dir}" ""
-  run_curriculum_phase "target-many" "${RL_CURRICULUM_TARGET_MANY_ITERATIONS:-400}" "${RL_CURRICULUM_TARGET_MANY_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
-  run_curriculum_phase "target-crowd" "${RL_CURRICULUM_TARGET_CROWD_ITERATIONS:-400}" "${RL_CURRICULUM_TARGET_CROWD_MAX_CYCLES:-0}" "${checkpoint_dir}" ""
+  run_curriculum_phase "target-easy" "${RL_CURRICULUM_TARGET_EASY_ITERATIONS:-400}" 1 "${checkpoint_dir}" "${RL_INIT_POLICY:-}"
+  run_curriculum_phase "target-hard" "${RL_CURRICULUM_TARGET_HARD_ITERATIONS:-400}" 1 "${checkpoint_dir}" ""
+  run_curriculum_phase "target-2" "${RL_CURRICULUM_TARGET_2_ITERATIONS:-400}" "${RL_CURRICULUM_TARGET_2_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
+  run_curriculum_phase "target-4" "${target_4_iterations}" "${target_4_max_cycles}" "${checkpoint_dir}" ""
+  run_curriculum_phase "target-8" "${RL_CURRICULUM_TARGET_8_ITERATIONS:-500}" "${RL_CURRICULUM_TARGET_8_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
+  run_curriculum_phase "target-16" "${RL_CURRICULUM_TARGET_16_ITERATIONS:-600}" "${RL_CURRICULUM_TARGET_16_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
+  run_curriculum_phase "target-32" "${RL_CURRICULUM_TARGET_32_ITERATIONS:-700}" "${RL_CURRICULUM_TARGET_32_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
+  run_curriculum_phase "target-crowd" "${RL_CURRICULUM_TARGET_CROWD_ITERATIONS:-800}" "${RL_CURRICULUM_TARGET_CROWD_MAX_CYCLES:-0}" "${checkpoint_dir}" ""
 }
 
 preset="${RL_CURRICULUM_PRESET:-${RL_PRESET:-}}"
@@ -76,7 +100,7 @@ case "${preset}" in
     set_default RL_TARGET_HOLD_SECONDS "0.55"
     set_default RL_MAX_GOALS "4"
     set_default RL_MAX_ACTION_STEPS "1000"
-    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-768-v1"
+    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-1024-v1"
     ;;
   "target-hard")
     set_default RL_CONTROLLED_AGENTS "1"
@@ -86,25 +110,25 @@ case "${preset}" in
     set_default RL_TARGET_HOLD_SECONDS "0.75"
     set_default RL_MAX_GOALS "5"
     set_default RL_MAX_ACTION_STEPS "1250"
-    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-768-v1"
+    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-1024-v1"
     ;;
-  "target-many")
-    set_default RL_CONTROLLED_AGENTS "4"
-    set_default RL_FIELD_SIZE "4"
-    set_default RL_TARGET_RADIUS "1.65"
-    set_default RL_TARGET_HOLD_SECONDS "0.85"
-    set_default RL_MAX_GOALS "6"
-    set_default RL_MAX_ACTION_STEPS "1350"
-    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-768-v1"
+  "target-2")
+    set_target_cars_defaults "2"
+    ;;
+  "target-4"|"target-many")
+    set_target_cars_defaults "4"
+    ;;
+  "target-8")
+    set_target_cars_defaults "8"
+    ;;
+  "target-16")
+    set_target_cars_defaults "16"
+    ;;
+  "target-32")
+    set_target_cars_defaults "32"
     ;;
   "target-crowd"|"target-50")
-    set_default RL_CONTROLLED_AGENTS "50"
-    set_default RL_FIELD_SIZE "50"
-    set_default RL_TARGET_RADIUS "1.65"
-    set_default RL_TARGET_HOLD_SECONDS "0.85"
-    set_default RL_MAX_GOALS "6"
-    set_default RL_MAX_ACTION_STEPS "1350"
-    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-768-v1"
+    set_target_cars_defaults "50"
     ;;
   *)
     usage >&2
@@ -117,7 +141,7 @@ objective="target"
 default_controlled_agents=1
 default_field_size=1
 default_max_action_steps=1350
-default_checkpoint_dir="rl-checkpoints-target-circle-cars-768-v1"
+default_checkpoint_dir="rl-checkpoints-target-circle-cars-1024-v1"
 export_objective="target-circle-v1"
 no_reward_summary="${RL_NO_REWARD_SUMMARY:-1}"
 if [[ -n "${RL_WORKERS:-}" ]]; then
@@ -137,7 +161,7 @@ target_hold_seconds="${RL_TARGET_HOLD_SECONDS:-0.85}"
 train_batch_size="${RL_TRAIN_BATCH_SIZE:-4096}"
 minibatch_size="${RL_MINIBATCH_SIZE:-512}"
 lr="${RL_LR:-3e-4}"
-hidden_size="${RL_HIDDEN_SIZE:-768}"
+hidden_size="${RL_HIDDEN_SIZE:-1024}"
 hidden_layers="${RL_HIDDEN_LAYERS:-2}"
 hidden_activation="${RL_HIDDEN_ACTIVATION:-tanh}"
 checkpoint_every="${RL_CHECKPOINT_EVERY:-20}"

@@ -14,7 +14,7 @@ import numpy as np
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-target-circle-cars-768-v1"
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-target-circle-cars-1024-v1"
 DEFAULT_OUTPUT = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
 OBSERVATION_SIZE = 44
 ACTION_SIZE = 2

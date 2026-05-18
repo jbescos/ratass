@@ -30,12 +30,16 @@ still runs on CPU.
 
 - Observation size: `44` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
+- Default PPO network: two fully-connected hidden layers of width `1024`
+  with `tanh` activation.
 - Target observations include relative target vector, normalized distance,
   heading alignment, velocity, angular velocity, inside-circle state, hold
   progress, local hazard ray clearances, recovery direction, previous action,
   nearest-car state, and car proximity rays.
 - Rewards are bucketed as `progress`, `enter`, `hold`, `complete`, `safety`,
   `control`, `speed`, `alive`, `death`, `timeout`, and `contest`.
+  The `contest` bucket only rewards sharing the target circle; there is no
+  direct reward for pushing another car out of the circle or into death.
 - Java exposes episode metrics for goals reached, fall deaths, inside-target
   time, progress toward target, and edge-risk events.
 
@@ -73,14 +77,22 @@ Single-stage presets:
 ```bash
 bash tools/rl/train_forever.sh target-easy
 bash tools/rl/train_forever.sh target-hard
+bash tools/rl/train_forever.sh target-2
+bash tools/rl/train_forever.sh target-4
+bash tools/rl/train_forever.sh target-8
+bash tools/rl/train_forever.sh target-16
+bash tools/rl/train_forever.sh target-32
 bash tools/rl/train_forever.sh target-many
 bash tools/rl/train_forever.sh target-crowd
 ```
 
 The curriculum starts with larger targets on easier maps, then moves to
-hole-heavy maps, then runs 4 learner cars on the full target contract, then
-runs 50 learner cars forever by default. Checkpoint output defaults to
-`rl-checkpoints-curriculum-target-cars-768-v1` for curriculum runs.
+hole-heavy maps, then ramps the number of learner cars through `2`, `4`, `8`,
+`16`, `32`, and finally `50` cars forever by default. Each phase keeps a
+separate best-evaluation state so harder crowded phases are not compared
+against easier single-car scores. Checkpoint output defaults to
+`rl-checkpoints-curriculum-target-cars-1024x2-gradual-v1` for long curriculum
+runs.
 
 ## Docker
 

@@ -35,7 +35,7 @@ from export_policy import export_policy as export_checkpoint_policy
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-target-circle-cars-768-v1"
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-target-circle-cars-1024-v1"
 OBSERVATION_SIZE = 44
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
@@ -736,14 +736,20 @@ def best_eval_state_path(args, checkpoint_dir: Path) -> Path:
     return checkpoint_dir / "best-eval" / "best_policy.json"
 
 
-def best_eval_candidate_path(checkpoint_dir: Path) -> Path:
-    path = checkpoint_dir / "best-eval" / "candidate_policy.json"
+def best_eval_dir(args, checkpoint_dir: Path) -> Path:
+    if args.best_eval_state:
+        return best_eval_state_path(args, checkpoint_dir).parent
+    return checkpoint_dir / "best-eval"
+
+
+def best_eval_candidate_path(args, checkpoint_dir: Path) -> Path:
+    path = best_eval_dir(args, checkpoint_dir) / "candidate_policy.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def best_eval_archive_path(checkpoint_dir: Path) -> Path:
-    path = checkpoint_dir / "best-eval" / "best_policy_export.json"
+def best_eval_archive_path(args, checkpoint_dir: Path) -> Path:
+    path = best_eval_dir(args, checkpoint_dir) / "best_policy_export.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -810,7 +816,7 @@ def maybe_promote_best_policy(
     if not args.best_export_output:
         return
 
-    candidate_policy = best_eval_candidate_path(checkpoint_dir)
+    candidate_policy = best_eval_candidate_path(args, checkpoint_dir)
     export_objective = args.best_export_objective or EXPORT_OBJECTIVES[args.objective]
     export_checkpoint_policy(checkpoint_dir, candidate_policy, export_objective)
     score, metrics = run_policy_evaluation(args, candidate_policy)
@@ -833,7 +839,7 @@ def maybe_promote_best_policy(
     output_file = Path(args.best_export_output).resolve()
     output_file.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(candidate_policy, output_file)
-    archive_file = best_eval_archive_path(checkpoint_dir)
+    archive_file = best_eval_archive_path(args, checkpoint_dir)
     shutil.copyfile(candidate_policy, archive_file)
     next_state = {
         "best_score": score,
@@ -900,7 +906,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--hidden-size",
         type=int,
-        default=768,
+        default=1024,
         help="width of each PPO fully-connected hidden layer",
     )
     parser.add_argument(
