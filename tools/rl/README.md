@@ -28,20 +28,28 @@ still runs on CPU.
 
 ## Environment Contract
 
-- Observation size: `44` floats per learner.
+- Observation size: `51` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
 - Default PPO network: two fully-connected hidden layers of width `1024`
   with `tanh` activation.
-- Target observations include relative target vector, normalized distance,
-  heading alignment, velocity, angular velocity, inside-circle state, hold
-  progress, local hazard ray clearances, recovery direction, previous action,
-  nearest-car state, and car proximity rays.
+- Target observations include relative target vector, a route waypoint vector
+  computed from the map hazard field, a farther route lookahead vector,
+  normalized route distance, route alignment, car-frame velocity, angular
+  velocity, inside-circle state, hold progress, local hazard ray clearances,
+  short braking rays, recovery direction in both world and car frame, and
+  previous action. Car/opponent sensors are intentionally not part of this
+  one-car survival contract.
 - Rewards are bucketed as `progress`, `enter`, `hold`, `complete`, `safety`,
-  `control`, `speed`, `alive`, `death`, `timeout`, and `contest`.
-  The `contest` bucket only rewards sharing the target circle; there is no
-  direct reward for pushing another car out of the circle or into death.
+  `control`, `alive`, `death`, and `timeout`. The `progress` bucket is symmetric route
+  distance progress/regression toward the target circle, not straight-line
+  distance through hazards. The `enter` bucket pays once per target sequence,
+  so re-entering or skimming the circle cannot farm reward. There is no speed,
+  car-contest, or push reward.
 - Java exposes episode metrics for goals reached, fall deaths, inside-target
-  time, progress toward target, and edge-risk events.
+  time, route progress toward target, and edge-risk events.
+- One-car target training uses a larger random-spawn hazard margin than normal
+  gameplay so early hard-map learning is about navigation instead of immediate
+  unrecoverable edge starts.
 
 ## Train
 
@@ -72,9 +80,26 @@ python tools/rl/train_rllib.py --map-ids map001,map003,map006 --iterations 100
 bash tools/rl/train_forever.sh curriculum
 ```
 
-Single-stage presets:
+Fast diagnostic curriculum for checking reward or observation changes before
+spending hours on a full run:
 
 ```bash
+bash tools/rl/train_forever.sh diagnostic
+```
+
+Convenience wrappers:
+
+```bash
+bash tools/rl/train_curriculum_400.sh
+bash tools/rl/train_curriculum_40_to_4.sh
+```
+
+Common presets:
+
+```bash
+bash tools/rl/train_forever.sh diagnostic
+bash tools/rl/train_forever.sh quick
+bash tools/rl/train_forever.sh fast
 bash tools/rl/train_forever.sh target-easy
 bash tools/rl/train_forever.sh target-hard
 bash tools/rl/train_forever.sh target-2
@@ -91,7 +116,7 @@ hole-heavy maps, then ramps the number of learner cars through `2`, `4`, `8`,
 `16`, `32`, and finally `50` cars forever by default. Each phase keeps a
 separate best-evaluation state so harder crowded phases are not compared
 against easier single-car scores. Checkpoint output defaults to
-`rl-checkpoints-curriculum-target-cars-1024x2-gradual-v1` for long curriculum
+`rl-checkpoints-curriculum-route-escape51-survival-v2` for long curriculum
 runs.
 
 ## Docker

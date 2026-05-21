@@ -27,6 +27,9 @@ presets:
   target-many       alias for target-4
   target-crowd      normal circle, all maps, fifty learner cars
   target-50         alias for target-crowd
+  diagnostic        short staged run: easy, hard, then four cars
+  quick             alias for diagnostic
+  fast              alias for diagnostic
   curriculum        staged run: 1, hard 1, 2, 4, 8, 16, 32, then 50 cars forever
 EOF
 }
@@ -39,7 +42,7 @@ set_target_cars_defaults() {
   set_default RL_TARGET_HOLD_SECONDS "0.85"
   set_default RL_MAX_GOALS "6"
   set_default RL_MAX_ACTION_STEPS "1350"
-  set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-1024x2-v1"
+  set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-route-escape51-survival-v2"
 }
 
 run_curriculum_phase() {
@@ -60,7 +63,7 @@ run_curriculum_phase() {
 }
 
 run_curriculum() {
-  local checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-target-cars-1024x2-gradual-v1}"
+  local checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-route-escape51-survival-v2}"
   local target_4_iterations="${RL_CURRICULUM_TARGET_4_ITERATIONS:-${RL_CURRICULUM_TARGET_MANY_ITERATIONS:-400}}"
   local target_4_max_cycles="${RL_CURRICULUM_TARGET_4_MAX_CYCLES:-${RL_CURRICULUM_TARGET_MANY_MAX_CYCLES:-1}}"
 
@@ -72,6 +75,14 @@ run_curriculum() {
   run_curriculum_phase "target-16" "${RL_CURRICULUM_TARGET_16_ITERATIONS:-600}" "${RL_CURRICULUM_TARGET_16_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
   run_curriculum_phase "target-32" "${RL_CURRICULUM_TARGET_32_ITERATIONS:-700}" "${RL_CURRICULUM_TARGET_32_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
   run_curriculum_phase "target-crowd" "${RL_CURRICULUM_TARGET_CROWD_ITERATIONS:-800}" "${RL_CURRICULUM_TARGET_CROWD_MAX_CYCLES:-0}" "${checkpoint_dir}" ""
+}
+
+run_diagnostic() {
+  local checkpoint_dir="${RL_DIAGNOSTIC_CHECKPOINT_DIR:-rl-checkpoints-diagnostic-route-escape51-survival-v2}"
+
+  run_curriculum_phase "target-easy" "${RL_DIAGNOSTIC_TARGET_EASY_ITERATIONS:-40}" 1 "${checkpoint_dir}" "${RL_INIT_POLICY:-}"
+  run_curriculum_phase "target-hard" "${RL_DIAGNOSTIC_TARGET_HARD_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
+  run_curriculum_phase "target-4" "${RL_DIAGNOSTIC_TARGET_4_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
 }
 
 preset="${RL_CURRICULUM_PRESET:-${RL_PRESET:-}}"
@@ -92,6 +103,10 @@ case "${preset}" in
     run_curriculum
     exit 0
     ;;
+  "diagnostic"|"quick"|"fast")
+    run_diagnostic
+    exit 0
+    ;;
   "target"|"target-easy")
     set_default RL_CONTROLLED_AGENTS "1"
     set_default RL_FIELD_SIZE "1"
@@ -100,7 +115,7 @@ case "${preset}" in
     set_default RL_TARGET_HOLD_SECONDS "0.55"
     set_default RL_MAX_GOALS "4"
     set_default RL_MAX_ACTION_STEPS "1000"
-    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-1024-v1"
+    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-route-escape51-survival-v2"
     ;;
   "target-hard")
     set_default RL_CONTROLLED_AGENTS "1"
@@ -110,7 +125,7 @@ case "${preset}" in
     set_default RL_TARGET_HOLD_SECONDS "0.75"
     set_default RL_MAX_GOALS "5"
     set_default RL_MAX_ACTION_STEPS "1250"
-    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-cars-1024-v1"
+    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-route-escape51-survival-v2"
     ;;
   "target-2")
     set_target_cars_defaults "2"
@@ -141,7 +156,7 @@ objective="target"
 default_controlled_agents=1
 default_field_size=1
 default_max_action_steps=1350
-default_checkpoint_dir="rl-checkpoints-target-circle-cars-1024-v1"
+default_checkpoint_dir="rl-checkpoints-target-circle-route-escape51-survival-v2"
 export_objective="target-circle-v1"
 no_reward_summary="${RL_NO_REWARD_SUMMARY:-1}"
 if [[ -n "${RL_WORKERS:-}" ]]; then
@@ -186,6 +201,8 @@ best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS-${map_ids}}"
 best_eval_state="${RL_BEST_EVAL_STATE:-}"
 
 checkpoint_file="${checkpoint_dir}/rllib_checkpoint.json"
+
+echo "training_step_start preset=${preset:-target} objective=${objective} checkpoint_dir=${checkpoint_dir} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} target_radius=${target_radius} target_hold_seconds=${target_hold_seconds} max_goals=${max_goals} max_action_steps=${max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} workers=${workers} ray_cpus=${ray_num_cpus} init_policy=${init_policy:-none} best_eval_maps=${best_eval_map_ids:-all}"
 
 common_args=(
   --checkpoint-dir "${checkpoint_dir}"
@@ -292,7 +309,7 @@ while true; do
     cycle_args+=(--init-policy "${init_policy}")
   fi
 
-  echo "cycle=${cycle} iterations=${iterations_per_cycle} resume=${resume} init_policy=${init_policy:-none}"
+  echo "training_step_cycle preset=${preset:-target} cycle=${cycle} iterations=${iterations_per_cycle} resume=${resume} init_policy=${init_policy:-none} checkpoint_dir=${checkpoint_dir}"
   "${python_bin}" tools/rl/train_rllib.py "${cycle_args[@]}" --iterations "${iterations_per_cycle}"
 
   if [[ "${best_export}" == "1" || "${best_export}" == "true" ]]; then

@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
-log_file="${RL_TRAIN_LOG:-logs/rl-curriculum-cars-1024x2-gradual.log}"
+log_file="${RL_TRAIN_LOG:-logs/rl-curriculum-route-escape51-survival-v2.log}"
 
 resolve_log_path() {
   if [[ "${log_file}" == /* ]]; then
@@ -29,7 +29,7 @@ fi
 cd "${repo_root}"
 preset="${1:-${RL_PRESET:-curriculum}}"
 
-export RL_CURRICULUM_CHECKPOINT_DIR="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-target-cars-1024x2-gradual-v1}"
+export RL_CURRICULUM_CHECKPOINT_DIR="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-route-escape51-survival-v2}"
 export RL_CURRICULUM_TARGET_EASY_ITERATIONS="${RL_CURRICULUM_TARGET_EASY_ITERATIONS:-400}"
 export RL_CURRICULUM_TARGET_HARD_ITERATIONS="${RL_CURRICULUM_TARGET_HARD_ITERATIONS:-400}"
 export RL_CURRICULUM_TARGET_2_ITERATIONS="${RL_CURRICULUM_TARGET_2_ITERATIONS:-400}"

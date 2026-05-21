@@ -5,8 +5,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 cd "${repo_root}"
 
-log_file="${RL_TRAIN_LOG:-logs/rl-curriculum-40-to-4.log}"
-checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-40-to-4}"
+log_file="${RL_TRAIN_LOG:-logs/rl-curriculum-40-to-4-route-escape51-survival-v2.log}"
+checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-40-to-4-route-escape51-survival-v2}"
 iterations="${RL_CURRICULUM_ITERATIONS:-40}"
 
 run_phase() {

@@ -123,31 +123,29 @@ def make_stats():
         "complete": 0.0,
         "safety": 0.0,
         "control": 0.0,
-        "speed": 0.0,
         "alive": 0.0,
         "death": 0.0,
         "timeout": 0.0,
-        "contest": 0.0,
         "inside_steps": 0,
         "near_edge_steps": 0,
         "near_edge_fast_steps": 0,
         "unsafe_recovery_steps": 0,
-        "near_car_steps": 0,
-        "nearest_car_inside_steps": 0,
         "avg_target_distance": 0.0,
-        "avg_target_alignment": 0.0,
+        "avg_route_alignment": 0.0,
+        "avg_route_lookahead_alignment": 0.0,
+        "avg_recovery_alignment": 0.0,
         "avg_hold_progress": 0.0,
         "avg_recovery_speed": 0.0,
         "avg_unsafe_recovery": 0.0,
         "avg_speed": 0.0,
         "avg_edge_clearance": 0.0,
-        "avg_nearest_car_distance": 0.0,
-        "avg_nearest_car_approach": 0.0,
     }
 
 
 def add_stats(target, source):
     for key, value in source.items():
+        if key not in target:
+            target[key] = 0.0
         target[key] += value
 
 
@@ -180,13 +178,13 @@ def open_trace(trace_dir: str, map_id: str, episode: int):
             "step",
             "reward",
             "progress",
-            "enter",
             "hold",
             "complete",
-            "contest",
             "safety",
             "control",
+            "alive",
             "death",
+            "timeout",
             "throttle",
             "turn",
             "effective_throttle",
@@ -196,8 +194,11 @@ def open_trace(trace_dir: str, map_id: str, episode: int):
             "target_dx",
             "target_dy",
             "target_distance",
-            "target_forward",
-            "target_side",
+            "route_dx",
+            "route_dy",
+            "route_forward",
+            "route_side",
+            "route_distance",
             "inside_circle",
             "hold_progress",
             "hold_remaining",
@@ -206,15 +207,21 @@ def open_trace(trace_dir: str, map_id: str, episode: int):
             "ray_forward",
             "ray_front_left",
             "ray_front_right",
-            "nearest_car_forward",
-            "nearest_car_side",
-            "nearest_car_distance",
-            "nearest_car_approach",
-            "nearest_car_inside_circle",
-            "recent_impact",
-            "car_ray_forward",
-            "car_ray_front_left",
-            "car_ray_front_right",
+            "short_ray_forward",
+            "short_ray_front_left",
+            "short_ray_front_right",
+            "route_clearance",
+            "target_clearance",
+            "stopping_risk",
+            "route_lookahead_dx",
+            "route_lookahead_dy",
+            "route_lookahead_distance",
+            "route_lookahead_forward",
+            "route_lookahead_side",
+            "route_lookahead_clearance",
+            "recovery_forward",
+            "recovery_side",
+            "recovery_clearance",
         ]
     )
     return handle, writer
@@ -235,65 +242,70 @@ def trace_step(writer, step, result, reward, throttle, turn):
             f"{breakdown[1]:.6f}" if len(breakdown) > 1 else "0.000000",
             f"{breakdown[2]:.6f}" if len(breakdown) > 2 else "0.000000",
             f"{breakdown[3]:.6f}" if len(breakdown) > 3 else "0.000000",
-            f"{breakdown[10]:.6f}" if len(breakdown) > 10 else "0.000000",
             f"{breakdown[4]:.6f}" if len(breakdown) > 4 else "0.000000",
             f"{breakdown[5]:.6f}" if len(breakdown) > 5 else "0.000000",
-            f"{breakdown[8]:.6f}" if len(breakdown) > 8 else "0.000000",
+            f"{breakdown[6]:.6f}" if len(breakdown) > 6 else "0.000000",
+            f"{breakdown[7]:.6f}" if len(breakdown) > 7 else "0.000000",
             f"{throttle:.6f}",
             f"{turn:.6f}",
             f"{effective_throttle:.6f}",
             f"{effective_turn:.6f}",
-            f"{observations[13]:.6f}",
-            f"{observations[14]:.6f}",
+            f"{observations[17]:.6f}",
+            f"{observations[18]:.6f}",
             f"{observations[1]:.6f}",
             f"{observations[2]:.6f}",
             f"{observations[3]:.6f}",
-            f"{observations[6]:.6f}",
+            f"{observations[4]:.6f}",
+            f"{observations[5]:.6f}",
             f"{observations[7]:.6f}",
-            f"{observations[17]:.6f}",
-            f"{observations[18]:.6f}",
-            f"{observations[19]:.6f}",
-            f"{observations[28]:.6f}",
-            f"{observations[29]:.6f}",
-            f"{observations[20]:.6f}",
-            f"{observations[21]:.6f}",
-            f"{observations[22]:.6f}",
+            f"{observations[8]:.6f}",
+            f"{observations[6]:.6f}",
+            f"{observations[11]:.6f}",
+            f"{observations[12]:.6f}",
+            f"{observations[13]:.6f}",
+            f"{observations[23]:.6f}",
+            f"{observations[24]:.6f}",
+            f"{observations[25]:.6f}",
+            f"{observations[26]:.6f}",
+            f"{observations[27]:.6f}",
+            f"{observations[31]:.6f}",
             f"{observations[32]:.6f}",
             f"{observations[33]:.6f}",
             f"{observations[34]:.6f}",
             f"{observations[35]:.6f}",
             f"{observations[36]:.6f}",
-            f"{observations[37]:.6f}",
-            f"{observations[38]:.6f}",
-            f"{observations[39]:.6f}",
-            f"{observations[40]:.6f}",
+            f"{observations[42]:.6f}",
+            f"{observations[43]:.6f}",
+            f"{observations[44]:.6f}",
+            f"{observations[45]:.6f}",
+            f"{observations[46]:.6f}",
+            f"{observations[47]:.6f}",
+            f"{observations[48]:.6f}",
+            f"{observations[49]:.6f}",
+            f"{observations[50]:.6f}",
         ]
     )
 
 
 def update_observation_stats(stats, result):
     observations = [float(value) for value in result.observations]
-    stats["avg_speed"] += observations[13]
-    stats["avg_edge_clearance"] += observations[14]
+    stats["avg_speed"] += observations[17]
+    stats["avg_edge_clearance"] += observations[18]
     stats["avg_target_distance"] += observations[3]
-    stats["avg_target_alignment"] += observations[6]
-    stats["avg_hold_progress"] += observations[18]
-    stats["avg_recovery_speed"] += observations[28]
-    stats["avg_unsafe_recovery"] += observations[29]
-    stats["avg_nearest_car_distance"] += observations[34]
-    stats["avg_nearest_car_approach"] += observations[35]
-    if observations[17] > 0.5:
+    stats["avg_route_alignment"] += observations[7]
+    stats["avg_route_lookahead_alignment"] += observations[45]
+    stats["avg_recovery_alignment"] += observations[48]
+    stats["avg_hold_progress"] += observations[12]
+    stats["avg_recovery_speed"] += observations[23]
+    stats["avg_unsafe_recovery"] += observations[24]
+    if observations[11] > 0.5:
         stats["inside_steps"] += 1
-    if observations[14] < 0.25:
+    if observations[18] < 0.25:
         stats["near_edge_steps"] += 1
-    if observations[14] < 0.25 and observations[13] > 0.32:
+    if observations[18] < 0.25 and observations[17] > 0.32:
         stats["near_edge_fast_steps"] += 1
-    if observations[29] > 0.18:
+    if observations[24] > 0.18:
         stats["unsafe_recovery_steps"] += 1
-    if observations[34] < 1.0:
-        stats["near_car_steps"] += 1
-    if observations[36] > 0.5:
-        stats["nearest_car_inside_steps"] += 1
     if len(result.progressTowardTarget) > 0:
         stats["progress_total"] += float(result.progressTowardTarget[0])
 
@@ -400,7 +412,7 @@ def run_episode(
     if len(result.insideTime) > 0:
         stats["inside_time"] = float(result.insideTime[0])
     for name, value in zip(reward_breakdown_names, reward_breakdown_totals):
-        stats[name] += value
+        stats[name] = stats.get(name, 0.0) + value
 
     if not args.quiet:
         raw_flip_rate = raw_flips / max(1, raw_nonzero_pairs)
@@ -446,16 +458,14 @@ def summary_metrics(stats, episodes_override: int = None):
         "near_edge_fast_fraction": stats["near_edge_fast_steps"] / actions,
         "unsafe_recovery_fraction": stats["unsafe_recovery_steps"] / actions,
         "avg_target_distance": stats["avg_target_distance"] / actions,
-        "avg_target_alignment": stats["avg_target_alignment"] / actions,
+        "avg_route_alignment": stats["avg_route_alignment"] / actions,
+        "avg_route_lookahead_alignment": stats["avg_route_lookahead_alignment"] / actions,
+        "avg_recovery_alignment": stats["avg_recovery_alignment"] / actions,
         "avg_hold_progress": stats["avg_hold_progress"] / actions,
         "avg_recovery_speed": stats["avg_recovery_speed"] / actions,
         "avg_unsafe_recovery": stats["avg_unsafe_recovery"] / actions,
         "avg_speed_signal": stats["avg_speed"] / actions,
         "avg_edge_clearance": stats["avg_edge_clearance"] / actions,
-        "near_car_fraction": stats["near_car_steps"] / actions,
-        "nearest_car_inside_fraction": stats["nearest_car_inside_steps"] / actions,
-        "avg_nearest_car_distance": stats["avg_nearest_car_distance"] / actions,
-        "avg_nearest_car_approach": stats["avg_nearest_car_approach"] / actions,
     }
 
 
@@ -471,11 +481,12 @@ def evaluation_score(stats, episodes_override: int = None) -> float:
         + metrics["inside_fraction"] * 35.0
         + metrics["inside_time_avg"] * 4.0
         + metrics["progress_avg"] * 4.0
-        + metrics["avg_target_alignment"] * 10.0
+        + metrics["avg_route_alignment"] * 10.0
+        + metrics["avg_route_lookahead_alignment"] * 5.0
         - metrics["near_edge_fast_fraction"] * 80.0
         - metrics["unsafe_recovery_fraction"] * 100.0
         - metrics["effective_flips_per_step"] * 35.0
-        - metrics["fall_rate"] * 120.0
+        - metrics["fall_rate"] * 450.0
     )
 
 
@@ -501,16 +512,14 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "
         f"unsafe_recovery_fraction={metrics['unsafe_recovery_fraction']:.3f} "
         f"avg_target_distance={metrics['avg_target_distance']:.3f} "
-        f"avg_target_alignment={metrics['avg_target_alignment']:.3f} "
+        f"avg_route_alignment={metrics['avg_route_alignment']:.3f} "
+        f"avg_route_lookahead_alignment={metrics['avg_route_lookahead_alignment']:.3f} "
+        f"avg_recovery_alignment={metrics['avg_recovery_alignment']:.3f} "
         f"avg_hold_progress={metrics['avg_hold_progress']:.3f} "
         f"avg_recovery_speed={metrics['avg_recovery_speed']:.3f} "
         f"avg_unsafe_recovery={metrics['avg_unsafe_recovery']:.3f} "
         f"avg_speed_signal={metrics['avg_speed_signal']:.3f} "
         f"avg_edge_clearance={metrics['avg_edge_clearance']:.3f} "
-        f"near_car_fraction={metrics['near_car_fraction']:.3f} "
-        f"nearest_car_inside_fraction={metrics['nearest_car_inside_fraction']:.3f} "
-        f"avg_nearest_car_distance={metrics['avg_nearest_car_distance']:.3f} "
-        f"avg_nearest_car_approach={metrics['avg_nearest_car_approach']:.3f} "
         + " ".join(
             f"{name}={stats[name] / episodes:.3f}"
             for name in (
@@ -520,11 +529,9 @@ def print_summary(label: str, stats, episodes_override: int = None):
                 "complete",
                 "safety",
                 "control",
-                "speed",
                 "alive",
                 "death",
                 "timeout",
-                "contest",
             )
             if name in stats
         ),
