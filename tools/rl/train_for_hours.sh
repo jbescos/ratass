@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
-log_file="${RL_TRAIN_LOG:-logs/rl-curriculum-route-escape51-survival-v2.log}"
+log_file="${RL_TRAIN_LOG:-logs/rl-curriculum-route-cars62-v1.log}"
 
 resolve_log_path() {
   if [[ "${log_file}" == /* ]]; then
@@ -29,7 +29,7 @@ fi
 cd "${repo_root}"
 preset="${1:-${RL_PRESET:-curriculum}}"
 
-export RL_CURRICULUM_CHECKPOINT_DIR="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-route-escape51-survival-v2}"
+export RL_CURRICULUM_CHECKPOINT_DIR="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-route-cars62-v1}"
 export RL_CURRICULUM_TARGET_EASY_ITERATIONS="${RL_CURRICULUM_TARGET_EASY_ITERATIONS:-400}"
 export RL_CURRICULUM_TARGET_HARD_ITERATIONS="${RL_CURRICULUM_TARGET_HARD_ITERATIONS:-400}"
 export RL_CURRICULUM_TARGET_2_ITERATIONS="${RL_CURRICULUM_TARGET_2_ITERATIONS:-400}"
@@ -49,6 +49,7 @@ export RL_HIDDEN_LAYERS="${RL_HIDDEN_LAYERS:-2}"
 export RL_CHECKPOINT_EVERY="${RL_CHECKPOINT_EVERY:-10}"
 export RL_BEST_EVAL_EPISODES_PER_MAP="${RL_BEST_EVAL_EPISODES_PER_MAP:-1}"
 export RL_PACKAGE_EVERY_CYCLES="${RL_PACKAGE_EVERY_CYCLES:-0}"
+export RL_FRESH_START="${RL_FRESH_START:-1}"
 
 if [[ -n "${RL_INIT_POLICY:-}" && ! -f "${RL_INIT_POLICY}" ]]; then
   echo "init_policy_missing=${RL_INIT_POLICY}; starting from scratch"

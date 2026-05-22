@@ -64,6 +64,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final String CAR_COUNT_PREF_KEY = CAR_COUNT_PROPERTY;
     private static final String PLAYER_CAR_PROPERTY = "cars.player.index";
     private static final String PLAYER_CAR_PREF_KEY = PLAYER_CAR_PROPERTY;
+    private static final String SANDBOX_MAP_PREF_KEY = "sandbox.map.index";
     private static final String THEME_DIRECTORY = "theme";
     private static final String THEME_MANIFEST_PATH = "themes.txt";
     private static final String THEME_CAR_SHEET_PATH = "cars/cars.png";
@@ -94,7 +95,6 @@ public class RatassGame extends ApplicationAdapter {
     private static final int MAIN_MENU_SANDBOX_SELECTION = 1;
     private static final int MAIN_MENU_OPTIONS_SELECTION = 2;
     private static final int MAIN_MENU_EXIT_SELECTION = 3;
-    private static final String SANDBOX_MAP_ID = "map000";
     private static final int PAUSE_MENU_RESTART_SELECTION = 0;
     private static final int PAUSE_MENU_OPTIONS_SELECTION = 1;
     private static final int PAUSE_MENU_MAIN_MENU_SELECTION = 2;
@@ -157,9 +157,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final float PLAYER_CAMERA_FOLLOW_LERP_SPEED = 7.5f;
     private static final int ROUND_SPAWN_ATTEMPTS = 3200;
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
+    private static final float ROUND_SPAWN_CROWDED_SAFE_MARGIN = 1.0f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
-    public static final int RL_OBSERVATION_SIZE = 51;
+    public static final int RL_OBSERVATION_SIZE = 62;
     public static final int RL_ACTION_SIZE = 2;
     public static final int RL_REWARD_BREAKDOWN_SIZE = 9;
     private static final int RL_REWARD_PROGRESS = 0;
@@ -194,6 +195,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_HAZARD_DISTANCE_NORMALIZER = 12f;
     private static final float RL_DEFAULT_TARGET_RADIUS = 1.65f;
     private static final float RL_DEFAULT_TARGET_HOLD_SECONDS = 0.85f;
+    private static final float RL_DEFAULT_TARGET_DEADLINE_SECONDS = 0f;
     private static final float RL_TARGET_SPAWN_MARGIN = 1.25f;
     private static final float RL_TARGET_MIN_MOVE_DISTANCE = 4.4f;
     private static final float RL_SOLO_SPAWN_SAFE_MARGIN = 3.0f;
@@ -201,29 +203,23 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_RAYCAST_DISTANCE = 22f;
     private static final float RL_SHORT_RAYCAST_DISTANCE = 7.5f;
     private static final float RL_RAYCAST_STEP = 0.40f;
+    private static final float RL_CAR_SENSOR_DISTANCE = 18f;
+    private static final float RL_CAR_SENSOR_RADIUS = 1.2f;
     private static final float RL_CONTROL_DEADZONE = 0.06f;
     private static final float RL_ACTION_FLIP_DEADZONE = 0.18f;
     private static final float RL_STEP_PENALTY = 0.015f;
-    private static final float RL_PROGRESS_REWARD = 1.15f;
-    private static final float RL_ROUTE_REGRESSION_PENALTY = 1.15f;
-    private static final float RL_ENTER_REWARD = 7.5f;
+    private static final float RL_PROGRESS_REWARD = 1.70f;
+    private static final float RL_ENTER_REWARD = 12.0f;
     private static final float RL_HOLD_STEP_REWARD = 0.18f;
-    private static final float RL_GOAL_COMPLETE_REWARD = 34.0f;
-    private static final float RL_DEATH_PENALTY = 90.0f;
-    private static final float RL_TIMEOUT_PENALTY = 4.0f;
+    private static final float RL_GOAL_COMPLETE_REWARD = 48.0f;
     private static final float RL_EDGE_DANGER_DISTANCE = 2.35f;
     private static final float RL_EDGE_WARNING_DISTANCE = 9.0f;
-    private static final float RL_EDGE_WARNING_SPEED = 1.65f;
-    private static final float RL_EDGE_SPEED_PENALTY = 1.20f;
-    private static final float RL_EDGE_THROTTLE_PENALTY = 0.35f;
-    private static final float RL_UNSAFE_RECOVERY_PENALTY = 1.05f;
-    private static final float RL_EDGE_RECOVERY_PROGRESS_REWARD = 0.85f;
-    private static final float RL_EDGE_REGRESSION_PENALTY = 0.70f;
-    private static final float RL_EDGE_STALL_PENALTY = 0.12f;
-    private static final float RL_AIRBORNE_PENALTY = 2.0f;
-    private static final float RL_STEER_JITTER_PENALTY = 0.020f;
-    private static final float RL_THROTTLE_FLIP_PENALTY = 0.025f;
-    private static final float RL_LOW_SPEED_STALL_PENALTY = 0.020f;
+    private static final int RL_AREA_GRID_COLUMNS = 8;
+    private static final int RL_AREA_GRID_ROWS = 8;
+    private static final int RL_AREA_STAY_GRACE_STEPS = 10;
+    private static final float RL_AREA_STAY_STEP_PENALTY = 0.006f;
+    private static final float RL_AREA_STAY_MAX_PENALTY = 0.30f;
+    private static final float RL_WALL_CONTACT_PENALTY = 0.35f;
     private static final float HUD_SIDEBAR_RATIO = 0.29f;
     private static final float HUD_SIDEBAR_MIN_WIDTH = 200f;
     private static final float HUD_SIDEBAR_PREFERRED_MIN_WIDTH = 260f;
@@ -484,6 +480,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<Rectangle> menuCarSheetSourceBounds = new Array<Rectangle>();
     private final Array<ThemeChoice> themeChoices = new Array<ThemeChoice>();
     private final Array<String> themeEnemyNames = new Array<String>();
+    private final Array<ArenaMap> sandboxMenuMaps = new Array<ArenaMap>();
     private final LinkedHashMap<String, Texture> arenaSurfaceTextureCache =
             new LinkedHashMap<String, Texture>();
     private final GlyphLayout glyphLayout = new GlyphLayout();
@@ -501,6 +498,8 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<SpawnPoint> roundSpawns = new Array<SpawnPoint>();
     private final Rectangle menuNewGameBounds = new Rectangle();
     private final Rectangle menuSandboxBounds = new Rectangle();
+    private final Rectangle menuSandboxPrevBounds = new Rectangle();
+    private final Rectangle menuSandboxNextBounds = new Rectangle();
     private final Rectangle menuOptionsBounds = new Rectangle();
     private final Rectangle menuExitBounds = new Rectangle();
     private final Rectangle pauseRestartBounds = new Rectangle();
@@ -619,6 +618,7 @@ public class RatassGame extends ApplicationAdapter {
     private boolean rlTrainingTargetMode;
     private float rlTrainingTargetRadius = RL_DEFAULT_TARGET_RADIUS;
     private float rlTrainingTargetHoldSeconds = RL_DEFAULT_TARGET_HOLD_SECONDS;
+    private float rlTrainingTargetDeadlineSeconds = RL_DEFAULT_TARGET_DEADLINE_SECONDS;
     private int countdownCueSecond;
     private int roundNumber;
     private int playerWins;
@@ -628,6 +628,7 @@ public class RatassGame extends ApplicationAdapter {
     private int selectedThemeIndex;
     private int selectedCarCount = DEFAULT_CAR_COUNT;
     private int selectedPlayerCarIndex = DEFAULT_PLAYER_CAR_INDEX;
+    private int selectedSandboxMapIndex;
     private int mainMenuSelection;
     private int pauseMenuSelection;
     private int optionsMenuSelection;
@@ -724,15 +725,69 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         Array<ArenaMap> sandboxMaps = new Array<ArenaMap>();
-        for (int i = 0; i < maps.size; i++) {
-            ArenaMap map = maps.get(i);
-            if (SANDBOX_MAP_ID.equals(map.getId())) {
-                sandboxMaps.add(map);
-                return sandboxMaps;
+        if (maps.size > 0) {
+            selectedSandboxMapIndex = clampSandboxMapIndex(selectedSandboxMapIndex, maps.size);
+            sandboxMaps.add(maps.get(selectedSandboxMapIndex));
+            return sandboxMaps;
+        }
+
+        Gdx.app.log("RatassGame", "No sandbox maps were found; using default maps.");
+        return maps;
+    }
+
+    private void refreshSandboxMenuMaps() {
+        sandboxMenuMaps.clear();
+        try {
+            sandboxMenuMaps.addAll(ArenaMaps.createDefaultSet(mapScale));
+        } catch (RuntimeException exception) {
+            if (Gdx.app != null) {
+                Gdx.app.error("RatassGame", "Could not load sandbox map list.", exception);
             }
         }
-        Gdx.app.log("RatassGame", "Sandbox map " + SANDBOX_MAP_ID + " was not found; using default maps.");
-        return maps;
+        selectedSandboxMapIndex = clampSandboxMapIndex(selectedSandboxMapIndex);
+    }
+
+    private int clampSandboxMapIndex(int index) {
+        return clampSandboxMapIndex(index, sandboxMenuMaps.size);
+    }
+
+    private int clampSandboxMapIndex(int index, int mapCount) {
+        if (mapCount <= 0) {
+            return 0;
+        }
+        return MathUtils.clamp(index, 0, mapCount - 1);
+    }
+
+    private ArenaMap getSelectedSandboxMenuMap() {
+        if (sandboxMenuMaps.size == 0) {
+            refreshSandboxMenuMaps();
+        }
+        if (sandboxMenuMaps.size == 0) {
+            return null;
+        }
+        selectedSandboxMapIndex = clampSandboxMapIndex(selectedSandboxMapIndex);
+        return sandboxMenuMaps.get(selectedSandboxMapIndex);
+    }
+
+    private void changeSandboxMapSelection(int direction) {
+        if (sandboxMenuMaps.size == 0) {
+            refreshSandboxMenuMaps();
+        }
+        if (sandboxMenuMaps.size == 0) {
+            selectedSandboxMapIndex = 0;
+            return;
+        }
+        selectedSandboxMapIndex =
+                (selectedSandboxMapIndex + direction + sandboxMenuMaps.size) % sandboxMenuMaps.size;
+        saveMenuSettings();
+    }
+
+    private String buildSandboxMapMenuValue() {
+        ArenaMap map = getSelectedSandboxMenuMap();
+        if (map == null) {
+            return "No maps";
+        }
+        return map.getId() + "  " + map.getName();
     }
 
     private RlPolicy loadRlEnemyPolicy() {
@@ -745,7 +800,7 @@ public class RatassGame extends ApplicationAdapter {
                 return null;
             }
             RlPolicy policy = RlPolicy.fromJson(policyFile.readString("UTF-8"));
-            if (policy.getObservationSize() != RL_OBSERVATION_SIZE
+            if (policy.getObservationSize() > RL_OBSERVATION_SIZE
                     || policy.getActionSize() != RL_ACTION_SIZE) {
                 Gdx.app.log(
                         "RatassGame",
@@ -759,6 +814,13 @@ public class RatassGame extends ApplicationAdapter {
                                 + RL_ACTION_SIZE
                                 + ". Retrain the policy for the current observation contract.");
                 return null;
+            }
+            if (policy.getObservationSize() < RL_OBSERVATION_SIZE) {
+                Gdx.app.log(
+                        "RatassGame",
+                        "Using older RL enemy policy with "
+                                + policy.getObservationSize()
+                                + " observations; new car sensors are ignored until retraining.");
             }
             return policy;
         } catch (RuntimeException exception) {
@@ -899,6 +961,7 @@ public class RatassGame extends ApplicationAdapter {
         selectedCarCount = loadConfiguredIntProperty(CAR_COUNT_PROPERTY, DEFAULT_CAR_COUNT);
         selectedPlayerCarIndex =
                 loadConfiguredIntProperty(PLAYER_CAR_PROPERTY, DEFAULT_PLAYER_CAR_INDEX);
+        selectedSandboxMapIndex = 0;
 
         Preferences preferences = loadPreferences();
         if (preferences != null) {
@@ -910,13 +973,17 @@ public class RatassGame extends ApplicationAdapter {
             selectedCarCount = preferences.getInteger(CAR_COUNT_PREF_KEY, selectedCarCount);
             selectedPlayerCarIndex =
                     preferences.getInteger(PLAYER_CAR_PREF_KEY, selectedPlayerCarIndex);
+            selectedSandboxMapIndex =
+                    preferences.getInteger(SANDBOX_MAP_PREF_KEY, selectedSandboxMapIndex);
         }
 
+        refreshSandboxMenuMaps();
         selectedThemeIndex = findThemeIndex(configuredThemeName);
         configuredThemeName = getCurrentTheme().name;
         cameraZoom = clampCameraZoom(cameraZoom);
         selectedCarCount = clampCarCount(selectedCarCount);
         selectedPlayerCarIndex = Math.max(0, selectedPlayerCarIndex);
+        selectedSandboxMapIndex = clampSandboxMapIndex(selectedSandboxMapIndex);
     }
 
     private Preferences loadPreferences() {
@@ -942,18 +1009,22 @@ public class RatassGame extends ApplicationAdapter {
         preferences.putFloat(CAMERA_ZOOM_PREF_KEY, cameraZoom);
         preferences.putInteger(CAR_COUNT_PREF_KEY, selectedCarCount);
         preferences.putInteger(PLAYER_CAR_PREF_KEY, selectedPlayerCarIndex);
+        preferences.putInteger(SANDBOX_MAP_PREF_KEY, selectedSandboxMapIndex);
         preferences.flush();
     }
 
     private void createRoster() {
         roster.clear();
         CarVisual playerVisual = getPlayerCarVisual();
+        boolean sandboxAutopilot = sandboxMode && rlEnemyPolicy != null;
         addRosterTemplate(
                 "You",
                 true,
                 new Color(playerVisual.color),
                 playerVisual,
-                "player");
+                "player",
+                false,
+                sandboxAutopilot);
 
         int enemyCount = getConfiguredEnemyCount();
         boolean modelControlledEnemies = rlEnemyPolicy != null;
@@ -1614,6 +1685,16 @@ public class RatassGame extends ApplicationAdapter {
                 || Gdx.input.isKeyJustPressed(Input.Keys.S)) {
             mainMenuSelection = Math.min(MAIN_MENU_EXIT_SELECTION, mainMenuSelection + 1);
         }
+        if (mainMenuSelection == MAIN_MENU_SANDBOX_SELECTION
+                && (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
+                || Gdx.input.isKeyJustPressed(Input.Keys.A))) {
+            changeSandboxMapSelection(-1);
+        }
+        if (mainMenuSelection == MAIN_MENU_SANDBOX_SELECTION
+                && (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)
+                || Gdx.input.isKeyJustPressed(Input.Keys.D))) {
+            changeSandboxMapSelection(1);
+        }
         if (Gdx.input.isKeyJustPressed(Input.Keys.O)) {
             openOptionsMenu(false);
             return;
@@ -1835,6 +1916,12 @@ public class RatassGame extends ApplicationAdapter {
             if (menuNewGameBounds.contains(x, y)) {
                 mainMenuSelection = MAIN_MENU_NEW_GAME_SELECTION;
                 startNewGame();
+            } else if (menuSandboxPrevBounds.contains(x, y)) {
+                mainMenuSelection = MAIN_MENU_SANDBOX_SELECTION;
+                changeSandboxMapSelection(-1);
+            } else if (menuSandboxNextBounds.contains(x, y)) {
+                mainMenuSelection = MAIN_MENU_SANDBOX_SELECTION;
+                changeSandboxMapSelection(1);
             } else if (menuSandboxBounds.contains(x, y)) {
                 mainMenuSelection = MAIN_MENU_SANDBOX_SELECTION;
                 startSandboxGame();
@@ -1925,6 +2012,24 @@ public class RatassGame extends ApplicationAdapter {
                 firstButtonY - menuButtonHeight - menuButtonGap,
                 buttonWidth,
                 menuButtonHeight);
+        float sandboxStepSize = Math.min(menuButtonHeight, Math.max(36f, menuButtonHeight * 0.78f));
+        float sandboxStepGap = Math.min(menuButtonGap, 10f);
+        if (availableWidth - buttonWidth >= (sandboxStepSize + sandboxStepGap) * 2f) {
+            float sandboxStepY = menuSandboxBounds.y + (menuSandboxBounds.height - sandboxStepSize) * 0.5f;
+            menuSandboxPrevBounds.set(
+                    menuSandboxBounds.x - sandboxStepSize - sandboxStepGap,
+                    sandboxStepY,
+                    sandboxStepSize,
+                    sandboxStepSize);
+            menuSandboxNextBounds.set(
+                    menuSandboxBounds.x + menuSandboxBounds.width + sandboxStepGap,
+                    sandboxStepY,
+                    sandboxStepSize,
+                    sandboxStepSize);
+        } else {
+            menuSandboxPrevBounds.set(0f, 0f, 0f, 0f);
+            menuSandboxNextBounds.set(0f, 0f, 0f, 0f);
+        }
         menuOptionsBounds.set(
                 buttonX,
                 firstButtonY - (menuButtonHeight + menuButtonGap) * 2f,
@@ -2270,6 +2375,10 @@ public class RatassGame extends ApplicationAdapter {
     private void drawMainMenu(float hudWidth, float hudHeight) {
         drawMenuButton(menuNewGameBounds, "New Game", mainMenuSelection == MAIN_MENU_NEW_GAME_SELECTION);
         drawMenuButton(menuSandboxBounds, "Sandbox", mainMenuSelection == MAIN_MENU_SANDBOX_SELECTION);
+        if (sandboxMenuMaps.size > 1 && menuSandboxPrevBounds.width > 0f) {
+            drawMenuStepButton(menuSandboxPrevBounds, "<", mainMenuSelection == MAIN_MENU_SANDBOX_SELECTION);
+            drawMenuStepButton(menuSandboxNextBounds, ">", mainMenuSelection == MAIN_MENU_SANDBOX_SELECTION);
+        }
         drawMenuButton(menuOptionsBounds, "Options", mainMenuSelection == MAIN_MENU_OPTIONS_SELECTION);
         drawMenuButton(menuExitBounds, "Exit", mainMenuSelection == MAIN_MENU_EXIT_SELECTION);
 
@@ -2279,6 +2388,12 @@ public class RatassGame extends ApplicationAdapter {
 
         hudFont.setColor(0.76f, 0.84f, 0.88f, 1f);
         drawTextCentered(hudFont, getCurrentTheme().displayName, hudWidth * 0.5f, hudHeight * 0.65f);
+        hudFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+        drawTextCentered(
+                hudFont,
+                truncateTextToWidth(hudFont, buildSandboxMapMenuValue(), menuSandboxBounds.width - 18f),
+                hudWidth * 0.5f,
+                menuSandboxBounds.y + menuSandboxBounds.height * 0.27f);
         spriteBatch.end();
     }
 
@@ -2686,6 +2801,12 @@ public class RatassGame extends ApplicationAdapter {
                     safeZoneActive,
                     safeZonePosition,
                     safeZoneRadius,
+                    safeZoneActive
+                            ? MathUtils.clamp(
+                                    safeZoneTimer / Math.max(0.001f, SAFE_ZONE_DURATION),
+                                    0f,
+                                    1f)
+                            : 1f,
                     cars,
                     rlEnemyPolicy);
         }
@@ -2697,7 +2818,7 @@ public class RatassGame extends ApplicationAdapter {
             cars.get(i).capturePreviousTransform();
         }
         world.step(delta, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
-        checkForEliminations();
+        resolveArenaWallCollisions();
 
         if (!roundOver) {
             updateRoundState();
@@ -2713,18 +2834,13 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private void checkForEliminations() {
+    private void resolveArenaWallCollisions() {
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
             if (!car.active || car.body == null) {
                 continue;
             }
-
-            Vector2 position = car.body.getPosition();
-            if (!currentMap.supports(position)
-                    && currentMap.distanceToSafety(position) > EDGE_FALLOFF_MARGIN) {
-                eliminateCar(car);
-            }
+            car.resolveArenaWallCollision(currentMap);
         }
     }
 
@@ -2858,7 +2974,6 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
         if (rlTrainingTargetMode) {
-            safeZoneTimer = Math.max(rlTrainingTargetHoldSeconds, 0.001f);
             return;
         }
 
@@ -2951,7 +3066,11 @@ public class RatassGame extends ApplicationAdapter {
     private void activateSafeZone() {
         safeZoneTimer = SAFE_ZONE_DURATION;
         if (rlTrainingTargetMode) {
-            safeZoneTimer = Math.max(rlTrainingTargetHoldSeconds, 0.001f);
+            safeZoneTimer = Math.max(
+                    rlTrainingTargetHoldSeconds,
+                    rlTrainingTargetDeadlineSeconds > 0f
+                            ? rlTrainingTargetDeadlineSeconds
+                            : SAFE_ZONE_DURATION);
         }
         safeZoneActive = true;
         safeZoneWave++;
@@ -3367,7 +3486,10 @@ public class RatassGame extends ApplicationAdapter {
                         (float) (count - (DEFAULT_ENEMY_NAMES.length + 1)) / 42f,
                         0f,
                         1f);
-        return MathUtils.lerp(ROUND_SPAWN_SAFE_MARGIN, 0.82f, crowdedAlpha);
+        return MathUtils.lerp(
+                ROUND_SPAWN_SAFE_MARGIN,
+                ROUND_SPAWN_CROWDED_SAFE_MARGIN,
+                crowdedAlpha);
     }
 
     private float getRoundSpawnMinDistance(int count) {
@@ -6535,6 +6657,9 @@ public class RatassGame extends ApplicationAdapter {
         private static final float EDGE_FINISH_DISTANCE = 2.5f;
         private static final float BASE_EDGE_FINISH_IMPULSE = 3.2f;
         private static final float EMPOWERED_EDGE_FINISH_MULTIPLIER = 1.75f;
+        private static final float ARENA_WALL_MARGIN = 0.82f;
+        private static final float ARENA_WALL_TANGENTIAL_DAMPING = 0.72f;
+        private static final float ARENA_WALL_CONTACT_DURATION = 0.28f;
 
         private final CarTemplate template;
         private final String name;
@@ -6551,6 +6676,9 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 pendingImpactImpulse = new Vector2();
         private final Vector2 impactRecoveryPoint = new Vector2();
         private final Vector2 impactOutward = new Vector2();
+        private final Vector2 arenaWallPosition = new Vector2();
+        private final Vector2 arenaWallCorrection = new Vector2();
+        private final Vector2 arenaWallVelocity = new Vector2();
         private final Vector2 previousRenderPosition = new Vector2();
         private final Vector2 renderPosition = new Vector2();
         private final Rectangle rlObservationBounds = new Rectangle();
@@ -6561,6 +6689,7 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 rlObservationRouteLookahead = new Vector2();
         private final Vector2 rlObservationSide = new Vector2();
         private final float[] rlObservationRays = new float[6];
+        private final float[] rlObservationCarRays = new float[6];
 
         private Body body;
         private boolean active = true;
@@ -6574,6 +6703,7 @@ public class RatassGame extends ApplicationAdapter {
         private float impactSlideStrength;
         private float controlLockTimer;
         private float recentImpactTimer;
+        private float arenaWallContactTimer;
         private float ramChargeTimer;
         private float rlDecisionTimer;
         private float lastThrottleCommand;
@@ -6659,6 +6789,7 @@ public class RatassGame extends ApplicationAdapter {
                 boolean safeZoneActive,
                 Vector2 safeZonePosition,
                 float safeZoneRadius,
+                float targetTimeRemaining,
                 Array<Car> cars,
                 RlPolicy rlPolicy) {
             if (!active || body == null) {
@@ -6673,13 +6804,7 @@ public class RatassGame extends ApplicationAdapter {
             float turn = 0f;
 
             if (allowControl && controlLockTimer <= 0f) {
-                if (playerControlled) {
-                    throttle = playerThrottle;
-                    turn = playerTurn;
-                } else if (externallyControlled) {
-                    throttle = externalControlDecision.throttle;
-                    turn = externalControlDecision.turn;
-                } else if (modelControlled && rlPolicy != null) {
+                if (modelControlled && rlPolicy != null) {
                     AiControlDecision decision =
                             planWithRlPolicy(
                                     delta,
@@ -6688,9 +6813,16 @@ public class RatassGame extends ApplicationAdapter {
                                     safeZoneActive,
                                     safeZonePosition,
                                     safeZoneRadius,
+                                    targetTimeRemaining,
                                     cars);
                     throttle = decision.throttle;
                     turn = decision.turn;
+                } else if (playerControlled) {
+                    throttle = playerThrottle;
+                    turn = playerTurn;
+                } else if (externallyControlled) {
+                    throttle = externalControlDecision.throttle;
+                    turn = externalControlDecision.turn;
                 }
             }
             lastThrottleCommand = allowControl && controlLockTimer <= 0f ? throttle : 0f;
@@ -6711,6 +6843,7 @@ public class RatassGame extends ApplicationAdapter {
                 boolean safeZoneActive,
                 Vector2 safeZonePosition,
                 float safeZoneRadius,
+                float targetTimeRemaining,
                 Array<Car> cars) {
             rlDecisionTimer -= delta;
             if (rlDecisionTimer <= 0f) {
@@ -6729,7 +6862,7 @@ public class RatassGame extends ApplicationAdapter {
                         safeZonePosition,
                         safeZoneRadius,
                         0f,
-                        1f,
+                        targetTimeRemaining,
                         externalControlDecision.throttle,
                         externalControlDecision.turn,
                         positionNormalizer,
@@ -6738,7 +6871,9 @@ public class RatassGame extends ApplicationAdapter {
                         rlObservationRouteTarget,
                         rlObservationRouteLookahead,
                         rlObservationSide,
-                        rlObservationRays);
+                        rlObservationRays,
+                        rlObservationCarRays,
+                        cars);
                 policy.computeAction(
                         rlObservation,
                         rlScratchA,
@@ -6796,8 +6931,13 @@ public class RatassGame extends ApplicationAdapter {
             if (recentImpactTimer == 0f) {
                 lastAttackerId = -1;
             }
+            arenaWallContactTimer = Math.max(0f, arenaWallContactTimer - delta);
             controlLockTimer = Math.max(0f, controlLockTimer - delta);
             ramChargeTimer = Math.max(0f, ramChargeTimer - delta);
+        }
+
+        private boolean hasRecentArenaWallContact() {
+            return arenaWallContactTimer > 0f;
         }
 
         private float advanceImpactSlide(float delta) {
@@ -6868,7 +7008,7 @@ public class RatassGame extends ApplicationAdapter {
 
             float steeringStrength;
             float turnTorque;
-            if (playerControlled) {
+            if (playerControlled && !modelControlled) {
                 steeringStrength = MathUtils.clamp(body.getLinearVelocity().len() / 4.3f, 0.62f, 1.3f);
                 turnTorque = PLAYER_TURN_TORQUE;
             } else {
@@ -6899,6 +7039,51 @@ public class RatassGame extends ApplicationAdapter {
                 working.set(body.getLinearVelocity()).scl(maxSpeed / currentSpeed);
                 body.setLinearVelocity(working);
             }
+        }
+
+        private void resolveArenaWallCollision(ArenaMap arenaMap) {
+            if (!active || body == null || arenaMap == null) {
+                return;
+            }
+
+            Vector2 position = body.getPosition();
+            if (arenaMap.supports(position)
+                    && arenaMap.distanceToHazard(position) >= ARENA_WALL_MARGIN) {
+                return;
+            }
+
+            arenaWallPosition.set(position);
+            arenaMap.clampToPlayable(arenaWallPosition, ARENA_WALL_MARGIN);
+            arenaWallCorrection.set(arenaWallPosition).sub(position);
+            if (arenaWallCorrection.isZero(0.0001f)) {
+                arenaMap.findRecoveryPoint(position, arenaWallPosition);
+                arenaWallCorrection.set(arenaWallPosition).sub(position);
+                if (arenaWallCorrection.isZero(0.0001f)) {
+                    return;
+                }
+            }
+
+            body.setTransform(arenaWallPosition, body.getAngle());
+
+            arenaWallCorrection.nor();
+            arenaWallVelocity.set(body.getLinearVelocity());
+            float tangentX = -arenaWallCorrection.y;
+            float tangentY = arenaWallCorrection.x;
+            float normalSpeed = arenaWallVelocity.dot(arenaWallCorrection);
+            float tangentSpeed =
+                    (arenaWallVelocity.x * tangentX + arenaWallVelocity.y * tangentY)
+                            * ARENA_WALL_TANGENTIAL_DAMPING;
+            arenaWallVelocity.set(tangentX * tangentSpeed, tangentY * tangentSpeed);
+            if (normalSpeed > 0f) {
+                arenaWallVelocity.mulAdd(arenaWallCorrection, normalSpeed);
+            }
+            float maxSpeed = MAX_SPEED * (growthBoosted ? MAX_GROWTH_SPEED_MULTIPLIER : 1f);
+            if (arenaWallVelocity.len2() > maxSpeed * maxSpeed) {
+                arenaWallVelocity.setLength(maxSpeed);
+            }
+            body.setLinearVelocity(arenaWallVelocity);
+
+            arenaWallContactTimer = ARENA_WALL_CONTACT_DURATION;
         }
 
         private void absorbCollision(
@@ -7059,6 +7244,7 @@ public class RatassGame extends ApplicationAdapter {
             impactSlideStrength = 0f;
             controlLockTimer = 0f;
             recentImpactTimer = 0f;
+            arenaWallContactTimer = 0f;
             lastThrottleCommand = 0f;
             externalControlDecision.set(0f, 0f);
             rawExternalControlDecision.set(0f, 0f);
@@ -7113,11 +7299,11 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private String getPersonalityDisplayName() {
-            if (playerControlled) {
-                return "Player";
-            }
             if (modelControlled) {
                 return "RL";
+            }
+            if (playerControlled) {
+                return "Player";
             }
             return "Idle";
         }
@@ -7199,7 +7385,7 @@ public class RatassGame extends ApplicationAdapter {
             Vector2 safeZonePosition,
             float safeZoneRadius,
             float holdProgress,
-            float holdRemaining,
+            float targetTimeRemaining,
             float previousThrottle,
             float previousTurn,
             float positionNormalizer,
@@ -7208,7 +7394,9 @@ public class RatassGame extends ApplicationAdapter {
             Vector2 observationRouteTarget,
             Vector2 observationRouteLookahead,
             Vector2 observationSide,
-            float[] rayScratch) {
+            float[] rayScratch,
+            float[] carRayScratch,
+            Array<Car> cars) {
         for (int i = 0; i < RL_OBSERVATION_SIZE; i++) {
             observations[offset + i] = 0f;
         }
@@ -7357,8 +7545,7 @@ public class RatassGame extends ApplicationAdapter {
         float forwardSpeed = observationForward.dot(velocity);
         float lateralSpeed = observationSide.dot(velocity);
         float edgeDistance = arenaMap.approximateDistanceToHazard(position);
-        float safetyDistance = arenaMap.distanceToSafety(position);
-        boolean grounded = arenaMap.supports(position) && safetyDistance <= EDGE_FALLOFF_MARGIN;
+        boolean wallContact = car.hasRecentArenaWallContact();
         float recoverySpeed = observationRecovery.dot(velocity);
         float recoveryForwardAlignment =
                 MathUtils.clamp(observationRecovery.dot(observationForward), -1f, 1f);
@@ -7377,10 +7564,11 @@ public class RatassGame extends ApplicationAdapter {
         float speedSignal = MathUtils.clamp(speed / Car.MAX_SPEED, 0f, 1f);
         float edgeClearance =
                 MathUtils.clamp(edgeDistance / RL_HAZARD_DISTANCE_NORMALIZER, 0f, 1f);
-        float danger =
+        float wallProximity =
                 1f - MathUtils.clamp(edgeDistance / Math.max(0.0001f, RL_EDGE_WARNING_DISTANCE), 0f, 1f);
 
         fillRlRayObservations(rayScratch, 0, arenaMap, position, observationForward, observationSide);
+        fillRlCarRayObservations(carRayScratch, 0, cars, car, position, observationForward, observationSide);
         float shortForward =
                 sampleRlRayClearance(
                         arenaMap,
@@ -7403,6 +7591,71 @@ public class RatassGame extends ApplicationAdapter {
                         observationForward.y - observationSide.y,
                         RL_SHORT_RAYCAST_DISTANCE);
 
+        float nearestCarForward = 0f;
+        float nearestCarSide = 0f;
+        float nearestCarDistance = 1f;
+        float nearestCarApproach = 0f;
+        float nearestCarInsideCircle = 0f;
+        if (cars != null) {
+            float nearestDistanceSquared = Float.MAX_VALUE;
+            Car nearestCar = null;
+            Vector2 nearestPosition = null;
+            for (int i = 0; i < cars.size; i++) {
+                Car other = cars.get(i);
+                if (other == null || other == car || !other.active || other.body == null) {
+                    continue;
+                }
+                Vector2 otherPosition = other.body.getPosition();
+                float dx = otherPosition.x - position.x;
+                float dy = otherPosition.y - position.y;
+                float distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared < nearestDistanceSquared) {
+                    nearestDistanceSquared = distanceSquared;
+                    nearestCar = other;
+                    nearestPosition = otherPosition;
+                }
+            }
+            if (nearestCar != null && nearestPosition != null) {
+                float dx = nearestPosition.x - position.x;
+                float dy = nearestPosition.y - position.y;
+                float distance = (float) Math.sqrt(dx * dx + dy * dy);
+                nearestCarForward =
+                        MathUtils.clamp(
+                                (dx * observationForward.x + dy * observationForward.y)
+                                        / RL_CAR_SENSOR_DISTANCE,
+                                -1f,
+                                1f);
+                nearestCarSide =
+                        MathUtils.clamp(
+                                (dx * observationSide.x + dy * observationSide.y)
+                                        / RL_CAR_SENSOR_DISTANCE,
+                                -1f,
+                                1f);
+                nearestCarDistance =
+                        MathUtils.clamp(
+                                Math.max(0f, distance - RL_CAR_SENSOR_RADIUS)
+                                        / RL_CAR_SENSOR_DISTANCE,
+                                0f,
+                                1f);
+                if (distance > 0.0001f) {
+                    Vector2 otherVelocity = nearestCar.body.getLinearVelocity();
+                    float relativeVelocityX = otherVelocity.x - velocity.x;
+                    float relativeVelocityY = otherVelocity.y - velocity.y;
+                    float unitX = dx / distance;
+                    float unitY = dy / distance;
+                    float closingSpeed = -(relativeVelocityX * unitX + relativeVelocityY * unitY);
+                    nearestCarApproach = normalizedRlValue(closingSpeed, Car.MAX_SPEED);
+                }
+                nearestCarInsideCircle =
+                        safeZoneActive
+                                        && safeZonePosition != null
+                                        && safeZoneRadius > 0f
+                                        && nearestPosition.dst(safeZonePosition) <= safeZoneRadius
+                                ? 1f
+                                : 0f;
+            }
+        }
+
         observations[offset] = 1f;
         observations[offset + 1] = normalizedRlValue(targetDx, positionNormalizer);
         observations[offset + 2] = normalizedRlValue(targetDy, positionNormalizer);
@@ -7416,20 +7669,20 @@ public class RatassGame extends ApplicationAdapter {
         observations[offset + 10] = targetForwardAlignment;
         observations[offset + 11] = insideCircle ? 1f : 0f;
         observations[offset + 12] = MathUtils.clamp(holdProgress, 0f, 1f);
-        observations[offset + 13] = MathUtils.clamp(holdRemaining, 0f, 1f);
+        observations[offset + 13] = MathUtils.clamp(targetTimeRemaining, 0f, 1f);
         observations[offset + 14] = normalizedRlValue(forwardSpeed, Car.MAX_SPEED);
         observations[offset + 15] = normalizedRlValue(lateralSpeed, Car.MAX_SPEED);
         observations[offset + 16] =
                 normalizedRlValue(car.body.getAngularVelocity(), RL_ANGULAR_VELOCITY_NORMALIZER);
         observations[offset + 17] = speedSignal;
         observations[offset + 18] = edgeClearance;
-        observations[offset + 19] = grounded ? 1f : -1f;
-        observations[offset + 20] = MathUtils.clamp(danger, 0f, 1f);
+        observations[offset + 19] = wallContact ? 1f : -1f;
+        observations[offset + 20] = MathUtils.clamp(wallProximity, 0f, 1f);
         observations[offset + 21] = observationRecovery.x;
         observations[offset + 22] = observationRecovery.y;
-        observations[offset + 23] = normalizedRlValue(recoverySpeed, Car.MAX_SPEED) * danger;
+        observations[offset + 23] = normalizedRlValue(recoverySpeed, Car.MAX_SPEED) * wallProximity;
         observations[offset + 24] =
-                MathUtils.clamp(-recoverySpeed / Car.MAX_SPEED, 0f, 1f) * danger;
+                MathUtils.clamp(-recoverySpeed / Car.MAX_SPEED, 0f, 1f) * wallProximity;
         for (int i = 0; i < 6; i++) {
             observations[offset + 25 + i] = rayScratch[i];
         }
@@ -7454,6 +7707,14 @@ public class RatassGame extends ApplicationAdapter {
         observations[offset + 48] = recoveryForwardAlignment;
         observations[offset + 49] = recoverySideAlignment;
         observations[offset + 50] = recoveryClearance;
+        for (int i = 0; i < 6; i++) {
+            observations[offset + 51 + i] = carRayScratch[i];
+        }
+        observations[offset + 57] = nearestCarForward;
+        observations[offset + 58] = nearestCarSide;
+        observations[offset + 59] = nearestCarDistance;
+        observations[offset + 60] = nearestCarApproach;
+        observations[offset + 61] = nearestCarInsideCircle;
     }
 
     private static void fillRlRayObservations(
@@ -7519,6 +7780,74 @@ public class RatassGame extends ApplicationAdapter {
         return 1f;
     }
 
+    private static void fillRlCarRayObservations(
+            float[] observations,
+            int offset,
+            Array<Car> cars,
+            Car self,
+            Vector2 carPosition,
+            Vector2 forward,
+            Vector2 side) {
+        observations[offset] = sampleRlCarRayClearance(cars, self, carPosition, forward.x, forward.y);
+        observations[offset + 1] =
+                sampleRlCarRayClearance(
+                        cars,
+                        self,
+                        carPosition,
+                        forward.x + side.x,
+                        forward.y + side.y);
+        observations[offset + 2] =
+                sampleRlCarRayClearance(
+                        cars,
+                        self,
+                        carPosition,
+                        forward.x - side.x,
+                        forward.y - side.y);
+        observations[offset + 3] = sampleRlCarRayClearance(cars, self, carPosition, side.x, side.y);
+        observations[offset + 4] = sampleRlCarRayClearance(cars, self, carPosition, -side.x, -side.y);
+        observations[offset + 5] =
+                sampleRlCarRayClearance(cars, self, carPosition, -forward.x, -forward.y);
+    }
+
+    private static float sampleRlCarRayClearance(
+            Array<Car> cars,
+            Car self,
+            Vector2 position,
+            float directionX,
+            float directionY) {
+        if (cars == null || position == null) {
+            return 1f;
+        }
+        float length = (float) Math.sqrt(directionX * directionX + directionY * directionY);
+        if (length <= 0.0001f) {
+            return 1f;
+        }
+        float unitX = directionX / length;
+        float unitY = directionY / length;
+        float nearest = RL_CAR_SENSOR_DISTANCE;
+        for (int i = 0; i < cars.size; i++) {
+            Car other = cars.get(i);
+            if (other == null || other == self || !other.active || other.body == null) {
+                continue;
+            }
+            Vector2 otherPosition = other.body.getPosition();
+            float dx = otherPosition.x - position.x;
+            float dy = otherPosition.y - position.y;
+            float along = dx * unitX + dy * unitY;
+            if (along < 0f || along > RL_CAR_SENSOR_DISTANCE + RL_CAR_SENSOR_RADIUS) {
+                continue;
+            }
+            float perpendicularX = dx - along * unitX;
+            float perpendicularY = dy - along * unitY;
+            float perpendicularSquared =
+                    perpendicularX * perpendicularX + perpendicularY * perpendicularY;
+            if (perpendicularSquared <= RL_CAR_SENSOR_RADIUS * RL_CAR_SENSOR_RADIUS) {
+                nearest = Math.min(nearest, Math.max(0f, along - RL_CAR_SENSOR_RADIUS));
+            }
+        }
+        return MathUtils.clamp(nearest / RL_CAR_SENSOR_DISTANCE, 0f, 1f);
+    }
+
     private static float normalizedRlValue(float value, float normalizer) {
         return MathUtils.clamp(value / Math.max(0.0001f, normalizer), -1f, 1f);
     }
@@ -7532,6 +7861,7 @@ public class RatassGame extends ApplicationAdapter {
         public int maxGoals = RL_DEFAULT_MAX_GOALS;
         public float targetRadius = RL_DEFAULT_TARGET_RADIUS;
         public float targetHoldSeconds = RL_DEFAULT_TARGET_HOLD_SECONDS;
+        public float targetDeadlineSeconds = RL_DEFAULT_TARGET_DEADLINE_SECONDS;
         public long seed = 1L;
         public boolean skipCountdown = true;
 
@@ -7574,6 +7904,11 @@ public class RatassGame extends ApplicationAdapter {
 
         public RlTrainingConfig withTargetHoldSeconds(float targetHoldSeconds) {
             this.targetHoldSeconds = targetHoldSeconds;
+            return this;
+        }
+
+        public RlTrainingConfig withTargetDeadlineSeconds(float targetDeadlineSeconds) {
+            this.targetDeadlineSeconds = targetDeadlineSeconds;
             return this;
         }
 
@@ -7669,15 +8004,22 @@ public class RatassGame extends ApplicationAdapter {
         private final float[] currentActionTurn;
         private final float[] previousActionTurn;
         private final float[] goalHoldTimers;
+        private final float[] targetDeadlineTimers;
         private final float[] totalInsideTime;
         private final float[] progressTowardTarget;
+        private final float[] bestSafeZoneRouteDistances;
+        private final int[] lastAreaIndices;
+        private final int[] areaStaySteps;
         private final float[] observationRays = new float[6];
+        private final float[] observationCarRays = new float[6];
         private final int[] goalsReached;
         private final int[] fallDeaths;
         private final int[] edgeRiskEvents;
         private final int[] goalEnterRewardSequences;
+        private final int[] bestSafeZoneRouteSequences;
         private final boolean[] goalEnterEvents;
         private final boolean[] goalCompleteEvents;
+        private final boolean[] targetTimeoutEvents;
         private final boolean[] edgeRiskStepEvents;
         private final boolean[] dones;
         private final int controlledAgentCount;
@@ -7710,14 +8052,20 @@ public class RatassGame extends ApplicationAdapter {
             currentActionTurn = new float[controlledAgentCount];
             previousActionTurn = new float[controlledAgentCount];
             goalHoldTimers = new float[controlledAgentCount];
+            targetDeadlineTimers = new float[controlledAgentCount];
             totalInsideTime = new float[controlledAgentCount];
             progressTowardTarget = new float[controlledAgentCount];
+            bestSafeZoneRouteDistances = new float[controlledAgentCount];
+            lastAreaIndices = new int[controlledAgentCount];
+            areaStaySteps = new int[controlledAgentCount];
             goalsReached = new int[controlledAgentCount];
             fallDeaths = new int[controlledAgentCount];
             edgeRiskEvents = new int[controlledAgentCount];
             goalEnterRewardSequences = new int[controlledAgentCount];
+            bestSafeZoneRouteSequences = new int[controlledAgentCount];
             goalEnterEvents = new boolean[controlledAgentCount];
             goalCompleteEvents = new boolean[controlledAgentCount];
+            targetTimeoutEvents = new boolean[controlledAgentCount];
             edgeRiskStepEvents = new boolean[controlledAgentCount];
             dones = new boolean[controlledAgentCount];
         }
@@ -7750,6 +8098,7 @@ public class RatassGame extends ApplicationAdapter {
                     Math.max(SAFE_ZONE_MIN_RADIUS, config.targetRadius);
             game.rlTrainingTargetHoldSeconds =
                     Math.max(0.05f, config.targetHoldSeconds);
+            game.rlTrainingTargetDeadlineSeconds = getTargetDeadlineSeconds();
             game.mapProgression =
                     new MapProgression(
                             trainingMaps,
@@ -7767,6 +8116,7 @@ public class RatassGame extends ApplicationAdapter {
             game.pointPickupActive = false;
             game.safeZoneActive = false;
             game.spawnSafeZone();
+            resetTargetDeadlines();
 
             actionStep = 0;
             episodeStarted = true;
@@ -7794,9 +8144,12 @@ public class RatassGame extends ApplicationAdapter {
                 game.stepSimulation(PHYSICS_STEP);
             }
             actionStep++;
+            clearStepEvents();
 
             boolean maxStepsReached = !game.roundOver && actionStep >= getMaxActionSteps();
 
+            captureSnapshots(afterSnapshots);
+            updateTargetDeadlines(repeats * PHYSICS_STEP);
             captureSnapshots(afterSnapshots);
             updateGoalProgress(repeats * PHYSICS_STEP);
             episodeDone =
@@ -7848,6 +8201,27 @@ public class RatassGame extends ApplicationAdapter {
             return config.maxGoals <= 0 ? RL_DEFAULT_MAX_GOALS : config.maxGoals;
         }
 
+        private float getTargetDeadlineSeconds() {
+            if (config.targetDeadlineSeconds > 0f) {
+                return Math.max(config.targetHoldSeconds + PHYSICS_STEP, config.targetDeadlineSeconds);
+            }
+            float episodeSeconds =
+                    getMaxActionSteps()
+                            * Math.max(1, config.actionRepeat)
+                            * PHYSICS_STEP;
+            float perGoalSeconds = episodeSeconds / Math.max(1, getMaxGoals());
+            return Math.max(SAFE_ZONE_DURATION, perGoalSeconds * 0.85f);
+        }
+
+        private void resetTargetDeadlines() {
+            float deadline = getTargetDeadlineSeconds();
+            for (int i = 0; i < getControlledAgentCount(); i++) {
+                targetDeadlineTimers[i] = deadline;
+                targetTimeoutEvents[i] = false;
+            }
+            game.safeZoneTimer = deadline;
+        }
+
         private void applyActions(float[] actions) {
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
                 Car car = getControlledCar(agentIndex);
@@ -7892,13 +8266,12 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             Vector2 position = car.body.getPosition();
+            snapshot.areaIndex = getMapAreaIndex(position);
             snapshot.edgeDistance = game.currentMap.approximateDistanceToHazard(position);
-            float safetyDistance = game.currentMap.distanceToSafety(position);
             Vector2 velocity = car.body.getLinearVelocity();
             snapshot.speed = velocity.len();
-            snapshot.grounded =
-                    game.currentMap.supports(position)
-                            && safetyDistance <= EDGE_FALLOFF_MARGIN;
+            snapshot.nearestCarDistance = getNearestActiveCarDistance(car, position);
+            snapshot.wallContact = car.hasRecentArenaWallContact();
             snapshot.angularSpeed = Math.abs(car.body.getAngularVelocity());
             snapshot.effectiveThrottle = car.externalControlDecision.throttle;
             if (game.safeZoneActive) {
@@ -7928,17 +8301,92 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
+        private int getMapAreaIndex(Vector2 position) {
+            if (game.currentMap == null || position == null) {
+                return -1;
+            }
+            game.currentMap.getBounds(observationBounds);
+            if (observationBounds.width <= 0f || observationBounds.height <= 0f) {
+                return -1;
+            }
+            float normalizedX =
+                    MathUtils.clamp(
+                            (position.x - observationBounds.x) / observationBounds.width,
+                            0f,
+                            0.9999f);
+            float normalizedY =
+                    MathUtils.clamp(
+                            (position.y - observationBounds.y) / observationBounds.height,
+                            0f,
+                            0.9999f);
+            int column =
+                    MathUtils.clamp(
+                            (int) (normalizedX * RL_AREA_GRID_COLUMNS),
+                            0,
+                            RL_AREA_GRID_COLUMNS - 1);
+            int row =
+                    MathUtils.clamp(
+                            (int) (normalizedY * RL_AREA_GRID_ROWS),
+                            0,
+                            RL_AREA_GRID_ROWS - 1);
+            return row * RL_AREA_GRID_COLUMNS + column;
+        }
+
+        private float getNearestActiveCarDistance(Car self, Vector2 position) {
+            float nearestDistance = Float.MAX_VALUE;
+            for (int i = 0; i < game.cars.size; i++) {
+                Car other = game.cars.get(i);
+                if (other == null || other == self || !other.active || other.body == null) {
+                    continue;
+                }
+                nearestDistance = Math.min(nearestDistance, position.dst(other.body.getPosition()));
+            }
+            return nearestDistance;
+        }
+
         private void clearStepEvents() {
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
                 progressTowardTarget[agentIndex] = 0f;
                 goalEnterEvents[agentIndex] = false;
                 goalCompleteEvents[agentIndex] = false;
+                targetTimeoutEvents[agentIndex] = false;
                 edgeRiskStepEvents[agentIndex] = false;
             }
         }
 
+        private void updateTargetDeadlines(float elapsedSeconds) {
+            if (!game.safeZoneActive || game.safeZoneRadius <= 0f) {
+                resetTargetDeadlines();
+                return;
+            }
+
+            float maxRemaining = 0f;
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                RlAgentSnapshot after = afterSnapshots[agentIndex];
+                if (!after.active) {
+                    continue;
+                }
+                if (after.safeZoneInside) {
+                    maxRemaining = Math.max(maxRemaining, targetDeadlineTimers[agentIndex]);
+                    continue;
+                }
+
+                targetDeadlineTimers[agentIndex] =
+                        Math.max(0f, targetDeadlineTimers[agentIndex] - elapsedSeconds);
+                maxRemaining = Math.max(maxRemaining, targetDeadlineTimers[agentIndex]);
+                if (targetDeadlineTimers[agentIndex] <= 0f) {
+                    Car car = getControlledCar(agentIndex);
+                    if (car != null && car.active) {
+                        car.eliminatedBySafeZone = true;
+                        game.eliminateCar(car);
+                        targetTimeoutEvents[agentIndex] = true;
+                    }
+                }
+            }
+            game.safeZoneTimer = maxRemaining;
+        }
+
         private void updateGoalProgress(float elapsedSeconds) {
-            clearStepEvents();
             boolean spawnNextTarget = false;
             float targetHoldSeconds = Math.max(0.05f, config.targetHoldSeconds);
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
@@ -7951,8 +8399,17 @@ public class RatassGame extends ApplicationAdapter {
 
                 if (before.safeZoneActive
                         && before.safeZoneSequence == after.safeZoneSequence) {
-                    progressTowardTarget[agentIndex] =
-                            before.safeZoneRouteDistance - after.safeZoneRouteDistance;
+                    if (bestSafeZoneRouteSequences[agentIndex] != after.safeZoneSequence
+                            || bestSafeZoneRouteDistances[agentIndex] >= Float.MAX_VALUE * 0.5f) {
+                        bestSafeZoneRouteSequences[agentIndex] = after.safeZoneSequence;
+                        bestSafeZoneRouteDistances[agentIndex] = before.safeZoneRouteDistance;
+                    }
+                    float bestRouteDistance = bestSafeZoneRouteDistances[agentIndex];
+                    if (after.safeZoneRouteDistance < bestRouteDistance) {
+                        progressTowardTarget[agentIndex] =
+                                bestRouteDistance - after.safeZoneRouteDistance;
+                        bestSafeZoneRouteDistances[agentIndex] = after.safeZoneRouteDistance;
+                    }
                 }
 
                 if (after.safeZoneInside) {
@@ -7980,6 +8437,7 @@ public class RatassGame extends ApplicationAdapter {
                 game.growthPickupActive = false;
                 game.pointPickupActive = false;
                 game.spawnSafeZone();
+                resetTargetDeadlines();
             }
         }
 
@@ -7993,7 +8451,6 @@ public class RatassGame extends ApplicationAdapter {
                 if (before.active) {
                     if (!after.active) {
                         fallDeaths[agentIndex]++;
-                        reward += recordReward(agentIndex, RL_REWARD_DEATH, -RL_DEATH_PENALTY);
                     } else {
                         reward += recordReward(agentIndex, RL_REWARD_ALIVE, -RL_STEP_PENALTY);
                         reward += recordReward(
@@ -8034,13 +8491,6 @@ public class RatassGame extends ApplicationAdapter {
                     }
                 }
 
-                if (episodeDone
-                        && after.active
-                        && goalsReached[agentIndex] < getMaxGoals()
-                        && actionStep >= getMaxActionSteps()) {
-                    reward += recordReward(agentIndex, RL_REWARD_TIMEOUT, -RL_TIMEOUT_PENALTY);
-                }
-
                 rewards[agentIndex] = reward;
                 dones[agentIndex] = episodeDone || !after.active;
             }
@@ -8060,107 +8510,39 @@ public class RatassGame extends ApplicationAdapter {
 
         private float getProgressReward(int agentIndex, RlAgentSnapshot after) {
             float progress = MathUtils.clamp(progressTowardTarget[agentIndex], -1.25f, 1.25f);
-            if (progress >= 0f) {
-                return progress * RL_PROGRESS_REWARD;
-            }
-            return progress * RL_ROUTE_REGRESSION_PENALTY;
+            return Math.max(0f, progress) * RL_PROGRESS_REWARD;
         }
 
         private float getSafetyReward(
                 int agentIndex,
                 RlAgentSnapshot before,
                 RlAgentSnapshot after) {
-            float reward = -getEdgeRiskPenalty(agentIndex, after);
-            if (before.active && after.active && after.edgeDistance < RL_EDGE_WARNING_DISTANCE) {
-                float danger =
-                        1f - MathUtils.clamp(
-                                after.edgeDistance / Math.max(0.0001f, RL_EDGE_WARNING_DISTANCE),
-                                0f,
-                                1f);
-                float edgeProgress =
-                        MathUtils.clamp(after.edgeDistance - before.edgeDistance, -1.25f, 1.25f);
-                if (edgeProgress > 0f) {
-                    reward += edgeProgress * (0.25f + danger) * RL_EDGE_RECOVERY_PROGRESS_REWARD;
-                } else if (edgeProgress < 0f) {
-                    reward += edgeProgress * (0.35f + danger) * RL_EDGE_REGRESSION_PENALTY;
-                }
-                if (!after.safeZoneInside
-                        && after.speed < 0.65f
-                        && after.edgeDistance < RL_EDGE_DANGER_DISTANCE * 1.35f) {
-                    reward -= (1f - MathUtils.clamp(after.speed / 0.65f, 0f, 1f))
-                            * (0.35f + danger)
-                            * RL_EDGE_STALL_PENALTY;
-                    edgeRiskStepEvents[agentIndex] = true;
-                }
-            }
-            if (edgeRiskStepEvents[agentIndex]) {
+            if (after.wallContact) {
                 edgeRiskEvents[agentIndex]++;
+                return -RL_WALL_CONTACT_PENALTY;
             }
-            return reward;
-        }
-
-        private float getEdgeRiskPenalty(int agentIndex, RlAgentSnapshot after) {
-            float penalty = 0f;
-            if (!after.grounded) {
-                penalty += RL_AIRBORNE_PENALTY;
-            }
-            if (after.edgeDistance < RL_EDGE_WARNING_DISTANCE) {
-                float danger =
-                        1f - MathUtils.clamp(
-                                after.edgeDistance / Math.max(0.0001f, RL_EDGE_WARNING_DISTANCE),
-                                0f,
-                                1f);
-                float unsafeSpeed =
-                        MathUtils.clamp(
-                                (after.speed - RL_EDGE_WARNING_SPEED * 0.45f)
-                                        / Math.max(0.001f, Car.MAX_SPEED),
-                                0f,
-                                1f);
-                if (unsafeSpeed > 0f) {
-                    penalty += unsafeSpeed * (0.35f + danger) * RL_EDGE_SPEED_PENALTY;
-                    edgeRiskStepEvents[agentIndex] = true;
-                }
-                if (after.recoverySpeed < 0f) {
-                    penalty +=
-                            MathUtils.clamp(-after.recoverySpeed / Car.MAX_SPEED, 0f, 1f)
-                                    * (0.35f + danger)
-                                    * RL_UNSAFE_RECOVERY_PENALTY;
-                    edgeRiskStepEvents[agentIndex] = true;
-                }
-                if (currentActionThrottle[agentIndex] > RL_ACTION_FLIP_DEADZONE
-                        && after.recoverySpeed < -0.05f) {
-                    penalty +=
-                            currentActionThrottle[agentIndex]
-                                    * danger
-                                    * RL_EDGE_THROTTLE_PENALTY;
-                    edgeRiskStepEvents[agentIndex] = true;
-                }
-            }
-            return penalty;
+            return 0f;
         }
 
         private float getControlPenalty(
                 int agentIndex,
                 RlAgentSnapshot before,
                 RlAgentSnapshot after) {
-            float penalty = 0f;
-            float previousThrottle = previousActionThrottle[agentIndex];
-            float currentThrottle = currentActionThrottle[agentIndex];
-            if (Math.abs(previousThrottle) >= RL_ACTION_FLIP_DEADZONE
-                    && Math.abs(currentThrottle) >= RL_ACTION_FLIP_DEADZONE
-                    && previousThrottle * currentThrottle < 0f) {
-                penalty += RL_THROTTLE_FLIP_PENALTY;
+            if (after.safeZoneInside || after.areaIndex < 0) {
+                areaStaySteps[agentIndex] = 0;
+                lastAreaIndices[agentIndex] = after.areaIndex;
+                return 0f;
             }
-            penalty +=
-                    Math.abs(currentActionTurn[agentIndex] - previousActionTurn[agentIndex])
-                            * RL_STEER_JITTER_PENALTY;
-            if (!after.safeZoneInside
-                    && Math.abs(after.effectiveThrottle) < RL_ACTION_FLIP_DEADZONE
-                    && after.speed < 1.15f
-                    && after.angularSpeed < 1.80f) {
-                penalty += RL_LOW_SPEED_STALL_PENALTY;
+            if (lastAreaIndices[agentIndex] != after.areaIndex) {
+                lastAreaIndices[agentIndex] = after.areaIndex;
+                areaStaySteps[agentIndex] = 0;
+                return 0f;
             }
-            return penalty;
+            areaStaySteps[agentIndex]++;
+            int penalizedSteps = Math.max(0, areaStaySteps[agentIndex] - RL_AREA_STAY_GRACE_STEPS);
+            return Math.min(
+                    RL_AREA_STAY_MAX_PENALTY,
+                    penalizedSteps * RL_AREA_STAY_STEP_PENALTY);
         }
 
         private void buildObservations() {
@@ -8184,6 +8566,12 @@ public class RatassGame extends ApplicationAdapter {
                                         / Math.max(0.05f, config.targetHoldSeconds),
                                 0f,
                                 1f);
+                float targetTimeRemaining =
+                        MathUtils.clamp(
+                                targetDeadlineTimers[agentIndex]
+                                        / Math.max(0.001f, getTargetDeadlineSeconds()),
+                                0f,
+                                1f);
                 fillRlObservation(
                         observations,
                         agentIndex * RL_OBSERVATION_SIZE,
@@ -8193,7 +8581,7 @@ public class RatassGame extends ApplicationAdapter {
                         game.safeZonePosition,
                         game.safeZoneRadius,
                         holdProgress,
-                        1f - holdProgress,
+                        targetTimeRemaining,
                         currentActionThrottle[agentIndex],
                         currentActionTurn[agentIndex],
                         positionNormalizer,
@@ -8202,7 +8590,9 @@ public class RatassGame extends ApplicationAdapter {
                         observationRouteTarget,
                         observationRouteLookahead,
                         observationSide,
-                        observationRays);
+                        observationRays,
+                        observationCarRays,
+                        game.cars);
             }
         }
 
@@ -8277,14 +8667,20 @@ public class RatassGame extends ApplicationAdapter {
         private void clearEpisodeMetrics() {
             for (int i = 0; i < getControlledAgentCount(); i++) {
                 goalHoldTimers[i] = 0f;
+                targetDeadlineTimers[i] = getTargetDeadlineSeconds();
                 totalInsideTime[i] = 0f;
                 progressTowardTarget[i] = 0f;
+                bestSafeZoneRouteDistances[i] = Float.MAX_VALUE;
+                lastAreaIndices[i] = -1;
+                areaStaySteps[i] = 0;
                 goalsReached[i] = 0;
                 fallDeaths[i] = 0;
                 edgeRiskEvents[i] = 0;
                 goalEnterRewardSequences[i] = -1;
+                bestSafeZoneRouteSequences[i] = -1;
                 goalEnterEvents[i] = false;
                 goalCompleteEvents[i] = false;
+                targetTimeoutEvents[i] = false;
                 edgeRiskStepEvents[i] = false;
             }
         }
@@ -8374,13 +8770,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final class RlAgentSnapshot {
         private boolean active;
         private int safeZoneSequence;
+        private int areaIndex;
         private boolean safeZoneActive;
         private boolean safeZoneInside;
-        private boolean grounded;
+        private boolean wallContact;
         private float edgeDistance;
         private float safeZoneRouteDistance;
         private float safeZoneRadius;
         private float speed;
+        private float nearestCarDistance;
         private float effectiveThrottle;
         private float recoverySpeed;
         private float angularSpeed;
@@ -8388,13 +8786,15 @@ public class RatassGame extends ApplicationAdapter {
         private void clear() {
             active = false;
             safeZoneSequence = 0;
+            areaIndex = -1;
             safeZoneActive = false;
             safeZoneInside = false;
-            grounded = false;
+            wallContact = false;
             edgeDistance = 0f;
             safeZoneRouteDistance = 0f;
             safeZoneRadius = 0f;
             speed = 0f;
+            nearestCarDistance = Float.MAX_VALUE;
             effectiveThrottle = 0f;
             recoverySpeed = 0f;
             angularSpeed = 0f;

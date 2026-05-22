@@ -12,6 +12,31 @@ set_default() {
   fi
 }
 
+is_true() {
+  [[ "${1:-}" == "1" || "${1:-}" == "true" || "${1:-}" == "yes" ]]
+}
+
+fresh_start_enabled() {
+  is_true "${RL_FRESH_START:-1}"
+}
+
+clean_checkpoint_dir_for_fresh_start() {
+  local checkpoint_dir="$1"
+  if ! fresh_start_enabled; then
+    return
+  fi
+  if [[ -z "${checkpoint_dir}" || "${checkpoint_dir}" == "/" ]]; then
+    echo "fresh_start_invalid_checkpoint_dir=${checkpoint_dir}" >&2
+    exit 2
+  fi
+  if [[ -e "${checkpoint_dir}" ]]; then
+    echo "fresh_start_remove_checkpoint_dir=${checkpoint_dir}"
+    rm -rf -- "${checkpoint_dir}"
+  else
+    echo "fresh_start_checkpoint_dir_absent=${checkpoint_dir}"
+  fi
+}
+
 usage() {
   cat <<'EOF'
 usage: bash tools/rl/train_forever.sh [preset]
@@ -42,7 +67,7 @@ set_target_cars_defaults() {
   set_default RL_TARGET_HOLD_SECONDS "0.85"
   set_default RL_MAX_GOALS "6"
   set_default RL_MAX_ACTION_STEPS "1350"
-  set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-route-escape51-survival-v2"
+  set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-route-cars62-v1"
 }
 
 run_curriculum_phase() {
@@ -59,14 +84,16 @@ run_curriculum_phase() {
     RL_MAX_CYCLES="${max_cycles}" \
     RL_INIT_POLICY="${init_policy}" \
     RL_BEST_EVAL_STATE="${best_eval_state}" \
+    RL_FRESH_START=0 \
     bash "${script_dir}/train_forever.sh" "${phase}"
 }
 
 run_curriculum() {
-  local checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-route-escape51-survival-v2}"
+  local checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-route-cars62-v1}"
   local target_4_iterations="${RL_CURRICULUM_TARGET_4_ITERATIONS:-${RL_CURRICULUM_TARGET_MANY_ITERATIONS:-400}}"
   local target_4_max_cycles="${RL_CURRICULUM_TARGET_4_MAX_CYCLES:-${RL_CURRICULUM_TARGET_MANY_MAX_CYCLES:-1}}"
 
+  clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
   run_curriculum_phase "target-easy" "${RL_CURRICULUM_TARGET_EASY_ITERATIONS:-400}" 1 "${checkpoint_dir}" "${RL_INIT_POLICY:-}"
   run_curriculum_phase "target-hard" "${RL_CURRICULUM_TARGET_HARD_ITERATIONS:-400}" 1 "${checkpoint_dir}" ""
   run_curriculum_phase "target-2" "${RL_CURRICULUM_TARGET_2_ITERATIONS:-400}" "${RL_CURRICULUM_TARGET_2_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
@@ -78,8 +105,9 @@ run_curriculum() {
 }
 
 run_diagnostic() {
-  local checkpoint_dir="${RL_DIAGNOSTIC_CHECKPOINT_DIR:-rl-checkpoints-diagnostic-route-escape51-survival-v2}"
+  local checkpoint_dir="${RL_DIAGNOSTIC_CHECKPOINT_DIR:-rl-checkpoints-diagnostic-route-cars62-v1}"
 
+  clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
   run_curriculum_phase "target-easy" "${RL_DIAGNOSTIC_TARGET_EASY_ITERATIONS:-40}" 1 "${checkpoint_dir}" "${RL_INIT_POLICY:-}"
   run_curriculum_phase "target-hard" "${RL_DIAGNOSTIC_TARGET_HARD_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
   run_curriculum_phase "target-4" "${RL_DIAGNOSTIC_TARGET_4_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
@@ -115,7 +143,7 @@ case "${preset}" in
     set_default RL_TARGET_HOLD_SECONDS "0.55"
     set_default RL_MAX_GOALS "4"
     set_default RL_MAX_ACTION_STEPS "1000"
-    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-route-escape51-survival-v2"
+    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-route-cars62-v1"
     ;;
   "target-hard")
     set_default RL_CONTROLLED_AGENTS "1"
@@ -125,7 +153,7 @@ case "${preset}" in
     set_default RL_TARGET_HOLD_SECONDS "0.75"
     set_default RL_MAX_GOALS "5"
     set_default RL_MAX_ACTION_STEPS "1250"
-    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-route-escape51-survival-v2"
+    set_default RL_CHECKPOINT_DIR "rl-checkpoints-target-circle-route-cars62-v1"
     ;;
   "target-2")
     set_target_cars_defaults "2"
@@ -156,7 +184,7 @@ objective="target"
 default_controlled_agents=1
 default_field_size=1
 default_max_action_steps=1350
-default_checkpoint_dir="rl-checkpoints-target-circle-route-escape51-survival-v2"
+default_checkpoint_dir="rl-checkpoints-target-circle-route-cars62-v1"
 export_objective="target-circle-v1"
 no_reward_summary="${RL_NO_REWARD_SUMMARY:-1}"
 if [[ -n "${RL_WORKERS:-}" ]]; then
@@ -173,6 +201,7 @@ max_action_steps="${RL_MAX_ACTION_STEPS:-${default_max_action_steps}}"
 max_goals="${RL_MAX_GOALS:-6}"
 target_radius="${RL_TARGET_RADIUS:-1.65}"
 target_hold_seconds="${RL_TARGET_HOLD_SECONDS:-0.85}"
+target_deadline_seconds="${RL_TARGET_DEADLINE_SECONDS:-0}"
 train_batch_size="${RL_TRAIN_BATCH_SIZE:-4096}"
 minibatch_size="${RL_MINIBATCH_SIZE:-512}"
 lr="${RL_LR:-3e-4}"
@@ -195,14 +224,16 @@ best_export="${RL_BEST_EXPORT:-1}"
 best_output="${RL_BEST_OUTPUT:-assets/ai/rl_enemy_policy.json}"
 best_eval_episodes_per_map="${RL_BEST_EVAL_EPISODES_PER_MAP:-1}"
 best_eval_episodes="${RL_BEST_EVAL_EPISODES:-0}"
+best_eval_controlled_agents="${RL_BEST_EVAL_CONTROLLED_AGENTS:-${controlled_agents}}"
 best_eval_field_size="${RL_BEST_EVAL_FIELD_SIZE:-${field_size}}"
 best_eval_steps="${RL_BEST_EVAL_STEPS:-0}"
 best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS-${map_ids}}"
 best_eval_state="${RL_BEST_EVAL_STATE:-}"
 
+clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
 checkpoint_file="${checkpoint_dir}/rllib_checkpoint.json"
 
-echo "training_step_start preset=${preset:-target} objective=${objective} checkpoint_dir=${checkpoint_dir} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} target_radius=${target_radius} target_hold_seconds=${target_hold_seconds} max_goals=${max_goals} max_action_steps=${max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} workers=${workers} ray_cpus=${ray_num_cpus} init_policy=${init_policy:-none} best_eval_maps=${best_eval_map_ids:-all}"
+echo "training_step_start preset=${preset:-target} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} target_radius=${target_radius} target_hold_seconds=${target_hold_seconds} target_deadline_seconds=${target_deadline_seconds} max_goals=${max_goals} max_action_steps=${max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} workers=${workers} ray_cpus=${ray_num_cpus} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all}"
 
 common_args=(
   --checkpoint-dir "${checkpoint_dir}"
@@ -214,6 +245,7 @@ common_args=(
   --max-goals "${max_goals}"
   --target-radius "${target_radius}"
   --target-hold-seconds "${target_hold_seconds}"
+  --target-deadline-seconds "${target_deadline_seconds}"
   --train-batch-size "${train_batch_size}"
   --minibatch-size "${minibatch_size}"
   --lr "${lr}"
@@ -243,6 +275,7 @@ if [[ "${best_export}" == "1" || "${best_export}" == "true" ]]; then
     --best-export-objective "${export_objective}"
     --best-eval-episodes-per-map "${best_eval_episodes_per_map}"
     --best-eval-episodes "${best_eval_episodes}"
+    --best-eval-controlled-agents "${best_eval_controlled_agents}"
     --best-eval-field-size "${best_eval_field_size}"
     --best-eval-steps "${best_eval_steps}"
   )
@@ -262,6 +295,7 @@ export_policy() {
 
   "${python_bin}" tools/rl/export_policy.py \
     --checkpoint-dir "${checkpoint_dir}" \
+    --output "${best_output}" \
     --objective "${export_objective}"
 }
 
@@ -275,11 +309,7 @@ should_package_cycle() {
 }
 
 finish_from_latest_checkpoint() {
-  if [[ "${best_export}" == "1" || "${best_export}" == "true" ]]; then
-    echo "best_export_mode=enabled latest_checkpoint_export=skipped"
-  else
-    export_policy
-  fi
+  export_policy
   if should_package_cycle 1; then
     package_game
   fi
@@ -312,11 +342,7 @@ while true; do
   echo "training_step_cycle preset=${preset:-target} cycle=${cycle} iterations=${iterations_per_cycle} resume=${resume} init_policy=${init_policy:-none} checkpoint_dir=${checkpoint_dir}"
   "${python_bin}" tools/rl/train_rllib.py "${cycle_args[@]}" --iterations "${iterations_per_cycle}"
 
-  if [[ "${best_export}" == "1" || "${best_export}" == "true" ]]; then
-    echo "best_export_mode=enabled latest_checkpoint_export=skipped"
-  else
-    export_policy
-  fi
+  export_policy
   if should_package_cycle "${cycle}"; then
     package_game
   fi

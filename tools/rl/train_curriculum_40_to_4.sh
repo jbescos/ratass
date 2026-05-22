@@ -5,9 +5,29 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 cd "${repo_root}"
 
-log_file="${RL_TRAIN_LOG:-logs/rl-curriculum-40-to-4-route-escape51-survival-v2.log}"
-checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-40-to-4-route-escape51-survival-v2}"
+log_file="${RL_TRAIN_LOG:-logs/rl-curriculum-40-to-4-route-cars62-v1.log}"
+checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-40-to-4-route-cars62-v1}"
 iterations="${RL_CURRICULUM_ITERATIONS:-40}"
+
+is_true() {
+  [[ "${1:-}" == "1" || "${1:-}" == "true" || "${1:-}" == "yes" ]]
+}
+
+clean_checkpoint_dir_for_fresh_start() {
+  if ! is_true "${RL_FRESH_START:-1}"; then
+    return
+  fi
+  if [[ -z "${checkpoint_dir}" || "${checkpoint_dir}" == "/" ]]; then
+    echo "fresh_start_invalid_checkpoint_dir=${checkpoint_dir}" >&2
+    exit 2
+  fi
+  if [[ -e "${checkpoint_dir}" ]]; then
+    echo "fresh_start_remove_checkpoint_dir=${checkpoint_dir}"
+    rm -rf -- "${checkpoint_dir}"
+  else
+    echo "fresh_start_checkpoint_dir_absent=${checkpoint_dir}"
+  fi
+}
 
 run_phase() {
   local phase="$1"
@@ -21,6 +41,7 @@ run_phase() {
     RL_MAX_CYCLES=1 \
     RL_INIT_POLICY="${init_policy}" \
     RL_BEST_EVAL_STATE="${best_eval_state}" \
+    RL_FRESH_START=0 \
     bash "${script_dir}/train_forever.sh" "${phase}"
 }
 
@@ -33,6 +54,7 @@ run_all() {
   export RL_CHECKPOINT_EVERY="${RL_CHECKPOINT_EVERY:-10}"
   export RL_BEST_EVAL_EPISODES_PER_MAP="${RL_BEST_EVAL_EPISODES_PER_MAP:-1}"
   export RL_PACKAGE_EVERY_CYCLES="${RL_PACKAGE_EVERY_CYCLES:-0}"
+  export RL_FRESH_START="${RL_FRESH_START:-1}"
 
   local init_policy="${RL_INIT_POLICY:-}"
   if [[ -n "${init_policy}" && ! -f "${init_policy}" ]]; then
@@ -40,25 +62,26 @@ run_all() {
     init_policy=""
   fi
 
+  clean_checkpoint_dir_for_fresh_start
   run_phase "target-easy" "${init_policy}"
   run_phase "target-hard" ""
   run_phase "target-2" ""
   run_phase "target-4" ""
 }
 
-if [[ "${1:-}" == "--foreground" ]]; then
-  run_all
+if [[ "${1:-}" == "--detach" ]]; then
+  log_path="${log_file}"
+  if [[ "${log_path}" != /* ]]; then
+    log_path="${repo_root}/${log_path}"
+  fi
+  mkdir -p "$(dirname "${log_path}")"
+  (
+    cd "${repo_root}"
+    setsid nohup env RL_DETACH=0 bash "${BASH_SOURCE[0]}" >> "${log_path}" 2>&1 < /dev/null &
+    printf '%s\n' "$!" > "${log_path}.pid"
+  )
+  printf 'pid=%s log=%s\n' "$(cat "${log_path}.pid")" "${log_path}"
   exit 0
 fi
 
-log_path="${log_file}"
-if [[ "${log_path}" != /* ]]; then
-  log_path="${repo_root}/${log_path}"
-fi
-mkdir -p "$(dirname "${log_path}")"
-(
-  cd "${repo_root}"
-  setsid nohup env RL_DETACH=0 bash "${BASH_SOURCE[0]}" --foreground >> "${log_path}" 2>&1 < /dev/null &
-  printf '%s\n' "$!" > "${log_path}.pid"
-)
-printf 'pid=%s log=%s\n' "$(cat "${log_path}.pid")" "${log_path}"
+run_all

@@ -28,7 +28,7 @@ still runs on CPU.
 
 ## Environment Contract
 
-- Observation size: `51` floats per learner.
+- Observation size: `62` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
 - Default PPO network: two fully-connected hidden layers of width `1024`
   with `tanh` activation.
@@ -36,15 +36,17 @@ still runs on CPU.
   computed from the map hazard field, a farther route lookahead vector,
   normalized route distance, route alignment, car-frame velocity, angular
   velocity, inside-circle state, hold progress, local hazard ray clearances,
-  short braking rays, recovery direction in both world and car frame, and
-  previous action. Car/opponent sensors are intentionally not part of this
-  one-car survival contract.
+  short braking rays, recovery direction in both world and car frame, previous
+  action, six opponent-car ray clearances, and nearest-car relative state.
 - Rewards are bucketed as `progress`, `enter`, `hold`, `complete`, `safety`,
-  `control`, `alive`, `death`, and `timeout`. The `progress` bucket is symmetric route
-  distance progress/regression toward the target circle, not straight-line
-  distance through hazards. The `enter` bucket pays once per target sequence,
-  so re-entering or skimming the circle cannot farm reward. There is no speed,
-  car-contest, or push reward.
+  `control`, `alive`, `death`, and `timeout`. The `progress` bucket only pays
+  new best route-distance progress toward the target circle, not straight-line
+  distance through hazards, so backing up cannot farm the same progress again.
+  The `enter` bucket pays once per target sequence, so re-entering or skimming
+  the circle cannot farm reward. There is no speed, car-contest, or push reward.
+  The `safety` bucket penalizes wall contact. The `control` bucket penalizes
+  staying in the same map area while outside the circle, with the penalty
+  increasing until the learner moves into another area.
 - Java exposes episode metrics for goals reached, fall deaths, inside-target
   time, route progress toward target, and edge-risk events.
 - One-car target training uses a larger random-spawn hazard margin than normal
@@ -116,8 +118,10 @@ hole-heavy maps, then ramps the number of learner cars through `2`, `4`, `8`,
 `16`, `32`, and finally `50` cars forever by default. Each phase keeps a
 separate best-evaluation state so harder crowded phases are not compared
 against easier single-car scores. Checkpoint output defaults to
-`rl-checkpoints-curriculum-route-escape51-survival-v2` for long curriculum
-runs.
+`rl-checkpoints-curriculum-route-cars62-v1` for long curriculum
+runs. Training scripts delete their checkpoint directory at startup by default,
+so a new run starts from scratch instead of resuming an older checkpoint. Set
+`RL_FRESH_START=0` only when you intentionally want to resume.
 
 ## Docker
 
@@ -133,8 +137,10 @@ Torch install.
 ```bash
 python tools/rl/export_policy.py
 python tools/rl/evaluate_policy.py --episodes 20
+python tools/rl/evaluate_policy.py --episodes 5 --controlled-agents 4 --field-size 4
 ```
 
-Export writes `assets/ai/rl_enemy_policy.json`. If that JSON was produced for an
-older observation size, the game ignores it until a new policy is trained and
+Export writes `assets/ai/rl_enemy_policy.json`. If that JSON was produced for a
+smaller observation size, the game can still run it against the unchanged input
+prefix, but newly added sensors are ignored until a new policy is trained and
 exported.

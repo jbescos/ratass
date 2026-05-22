@@ -116,6 +116,7 @@ gradle-app.setting
 /.docker-home/
 /logs/
 __pycache__/
+/assets/ai/rl_enemy_policy*_diagnostic*.json
 
 ## Generated assets
 /assets/theme/themes.txt

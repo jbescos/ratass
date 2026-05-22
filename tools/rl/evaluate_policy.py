@@ -15,6 +15,7 @@ import jpype
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_POLICY = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
+OBS_CLOSE_CAR_THRESHOLD = 0.18
 
 
 def start_jvm(jar_path: Path) -> None:
@@ -43,8 +44,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--jar", default=os.fspath(DEFAULT_JAR))
     parser.add_argument("--policy", default=os.fspath(DEFAULT_POLICY))
     parser.add_argument("--episodes", type=int, default=20)
+    parser.add_argument(
+        "--controlled-agents",
+        type=int,
+        default=None,
+        help="number of learner cars to control with the evaluated policy",
+    )
     parser.add_argument("--field-size", type=int, default=None)
     parser.add_argument("--steps", type=int, default=None)
+    parser.add_argument(
+        "--target-deadline-seconds",
+        type=float,
+        default=0.0,
+        help="seconds a learner can stay outside a target circle before dying; 0 uses the Java default",
+    )
     parser.add_argument("--seed", type=int, default=20260506)
     parser.add_argument("--flip-deadzone", type=float, default=0.18)
     parser.add_argument("--map-id", default="")
@@ -127,6 +140,7 @@ def make_stats():
         "death": 0.0,
         "timeout": 0.0,
         "inside_steps": 0,
+        "wall_contact_steps": 0,
         "near_edge_steps": 0,
         "near_edge_fast_steps": 0,
         "unsafe_recovery_steps": 0,
@@ -139,6 +153,12 @@ def make_stats():
         "avg_unsafe_recovery": 0.0,
         "avg_speed": 0.0,
         "avg_edge_clearance": 0.0,
+        "observation_samples": 0,
+        "near_car_steps": 0,
+        "close_car_steps": 0,
+        "nearest_car_inside_steps": 0,
+        "avg_nearest_car_distance": 0.0,
+        "avg_nearest_car_approach": 0.0,
     }
 
 
@@ -149,12 +169,20 @@ def add_stats(target, source):
         target[key] += value
 
 
-def build_config(ratass_game, args, steps_limit: int, field_size: int, arena_map=None):
+def build_config(
+    ratass_game,
+    args,
+    steps_limit: int,
+    controlled_agents: int,
+    field_size: int,
+    arena_map=None,
+):
     config = (
         ratass_game.RlTrainingConfig()
-        .withControlledAgentCount(1)
+        .withControlledAgentCount(controlled_agents)
         .withFieldSize(field_size)
         .withMaxActionSteps(steps_limit)
+        .withTargetDeadlineSeconds(args.target_deadline_seconds)
         .withSeed(args.seed)
     )
     if arena_map is not None:
@@ -190,7 +218,8 @@ def open_trace(trace_dir: str, map_id: str, episode: int):
             "effective_throttle",
             "effective_turn",
             "speed",
-            "edge_clearance",
+            "wall_clearance",
+            "wall_contact",
             "target_dx",
             "target_dy",
             "target_distance",
@@ -201,9 +230,9 @@ def open_trace(trace_dir: str, map_id: str, episode: int):
             "route_distance",
             "inside_circle",
             "hold_progress",
-            "hold_remaining",
-            "recovery_speed",
-            "unsafe_recovery_speed",
+            "target_time_remaining",
+            "wall_recovery_speed",
+            "wall_inward_speed",
             "ray_forward",
             "ray_front_left",
             "ray_front_right",
@@ -222,6 +251,17 @@ def open_trace(trace_dir: str, map_id: str, episode: int):
             "recovery_forward",
             "recovery_side",
             "recovery_clearance",
+            "car_ray_forward",
+            "car_ray_front_left",
+            "car_ray_front_right",
+            "car_ray_left",
+            "car_ray_right",
+            "car_ray_rear",
+            "nearest_car_forward",
+            "nearest_car_side",
+            "nearest_car_distance",
+            "nearest_car_approach",
+            "nearest_car_inside_circle",
         ]
     )
     return handle, writer
@@ -252,6 +292,7 @@ def trace_step(writer, step, result, reward, throttle, turn):
             f"{effective_turn:.6f}",
             f"{observations[17]:.6f}",
             f"{observations[18]:.6f}",
+            f"{observations[19]:.6f}",
             f"{observations[1]:.6f}",
             f"{observations[2]:.6f}",
             f"{observations[3]:.6f}",
@@ -283,31 +324,57 @@ def trace_step(writer, step, result, reward, throttle, turn):
             f"{observations[48]:.6f}",
             f"{observations[49]:.6f}",
             f"{observations[50]:.6f}",
+            f"{observations[51]:.6f}",
+            f"{observations[52]:.6f}",
+            f"{observations[53]:.6f}",
+            f"{observations[54]:.6f}",
+            f"{observations[55]:.6f}",
+            f"{observations[56]:.6f}",
+            f"{observations[57]:.6f}",
+            f"{observations[58]:.6f}",
+            f"{observations[59]:.6f}",
+            f"{observations[60]:.6f}",
+            f"{observations[61]:.6f}",
         ]
     )
 
 
-def update_observation_stats(stats, result):
+def update_observation_stats(stats, result, controlled_agents: int, observation_size: int):
     observations = [float(value) for value in result.observations]
-    stats["avg_speed"] += observations[17]
-    stats["avg_edge_clearance"] += observations[18]
-    stats["avg_target_distance"] += observations[3]
-    stats["avg_route_alignment"] += observations[7]
-    stats["avg_route_lookahead_alignment"] += observations[45]
-    stats["avg_recovery_alignment"] += observations[48]
-    stats["avg_hold_progress"] += observations[12]
-    stats["avg_recovery_speed"] += observations[23]
-    stats["avg_unsafe_recovery"] += observations[24]
-    if observations[11] > 0.5:
-        stats["inside_steps"] += 1
-    if observations[18] < 0.25:
-        stats["near_edge_steps"] += 1
-    if observations[18] < 0.25 and observations[17] > 0.32:
-        stats["near_edge_fast_steps"] += 1
-    if observations[24] > 0.18:
-        stats["unsafe_recovery_steps"] += 1
-    if len(result.progressTowardTarget) > 0:
-        stats["progress_total"] += float(result.progressTowardTarget[0])
+    for agent_index in range(controlled_agents):
+        offset = agent_index * observation_size
+        if offset + observation_size > len(observations):
+            break
+        stats["observation_samples"] += 1
+        stats["avg_speed"] += observations[offset + 17]
+        stats["avg_edge_clearance"] += observations[offset + 18]
+        stats["avg_target_distance"] += observations[offset + 3]
+        stats["avg_route_alignment"] += observations[offset + 7]
+        stats["avg_route_lookahead_alignment"] += observations[offset + 45]
+        stats["avg_recovery_alignment"] += observations[offset + 48]
+        stats["avg_hold_progress"] += observations[offset + 12]
+        stats["avg_recovery_speed"] += observations[offset + 23]
+        stats["avg_unsafe_recovery"] += observations[offset + 24]
+        stats["avg_nearest_car_distance"] += observations[offset + 59]
+        stats["avg_nearest_car_approach"] += observations[offset + 60]
+        if observations[offset + 11] > 0.5:
+            stats["inside_steps"] += 1
+        if observations[offset + 19] > 0.5:
+            stats["wall_contact_steps"] += 1
+        if observations[offset + 18] < 0.25:
+            stats["near_edge_steps"] += 1
+        if observations[offset + 18] < 0.25 and observations[offset + 17] > 0.32:
+            stats["near_edge_fast_steps"] += 1
+        if observations[offset + 24] > 0.18:
+            stats["unsafe_recovery_steps"] += 1
+        if observations[offset + 59] < 1.0:
+            stats["near_car_steps"] += 1
+        if observations[offset + 59] < OBS_CLOSE_CAR_THRESHOLD:
+            stats["close_car_steps"] += 1
+        if observations[offset + 61] > 0.5:
+            stats["nearest_car_inside_steps"] += 1
+    for agent_index in range(min(controlled_agents, len(result.progressTowardTarget))):
+        stats["progress_total"] += float(result.progressTowardTarget[agent_index])
 
 
 def run_episode(
@@ -317,6 +384,8 @@ def run_episode(
     java_float_array,
     ai_control_decision,
     scratch_size,
+    env_observation_size,
+    controlled_agents,
     steps_limit,
     episode,
 ):
@@ -334,24 +403,36 @@ def run_episode(
     small_actions = 0
     effective_small_actions = 0
     reward_breakdown_names = [str(name) for name in result.rewardBreakdownNames]
-    reward_breakdown_totals = [0.0 for _ in reward_breakdown_names]
+    reward_breakdown_totals = [0.0 for _ in range(len(reward_breakdown_names) * controlled_agents)]
     last_raw_sign = 0
     last_effective_sign = 0
     trace_handle, trace_writer = open_trace(args.trace_dir, map_id, episode)
 
     try:
         while not result.episodeDone and steps < steps_limit:
-            observation = java_float_array([float(value) for value in result.observations])
-            scratch_a = java_float_array(scratch_size)
-            scratch_b = java_float_array(scratch_size)
-            decision = policy.computeAction(
-                observation,
-                scratch_a,
-                scratch_b,
-                ai_control_decision(),
-            )
-            throttle = float(decision.throttle)
-            turn = float(decision.turn)
+            flat_observations = [float(value) for value in result.observations]
+            action_values = []
+            throttle = 0.0
+            turn = 0.0
+            for agent_index in range(controlled_agents):
+                offset = agent_index * env_observation_size
+                observation = java_float_array(
+                    flat_observations[offset : offset + env_observation_size]
+                )
+                scratch_a = java_float_array(scratch_size)
+                scratch_b = java_float_array(scratch_size)
+                decision = policy.computeAction(
+                    observation,
+                    scratch_a,
+                    scratch_b,
+                    ai_control_decision(),
+                )
+                agent_throttle = float(decision.throttle)
+                agent_turn = float(decision.turn)
+                action_values.extend([agent_throttle, agent_turn])
+                if agent_index == 0:
+                    throttle = agent_throttle
+                    turn = agent_turn
             sign = throttle_sign(throttle, args.flip_deadzone)
             if sign != 0:
                 if last_raw_sign != 0:
@@ -364,10 +445,10 @@ def run_episode(
             if abs(throttle) < args.flip_deadzone:
                 small_actions += 1
 
-            result = environment.step(java_float_array([throttle, turn]))
+            result = environment.step(java_float_array(action_values))
             step_reward = sum(float(value) for value in result.rewards)
             trace_step(trace_writer, steps + 1, result, step_reward, throttle, turn)
-            update_observation_stats(stats, result)
+            update_observation_stats(stats, result, controlled_agents, env_observation_size)
 
             effective_throttle = float(result.effectiveActions[0])
             effective_sign = throttle_sign(effective_throttle, args.flip_deadzone)
@@ -404,15 +485,31 @@ def run_episode(
     stats["small"] = small_actions
     stats["effective_small"] = effective_small_actions
     if len(result.goalsReached) > 0:
-        stats["goals"] = int(result.goalsReached[0])
+        stats["goals"] = sum(
+            int(result.goalsReached[index])
+            for index in range(min(controlled_agents, len(result.goalsReached)))
+        )
     if len(result.fallDeaths) > 0:
-        stats["falls"] = int(result.fallDeaths[0])
+        stats["falls"] = sum(
+            int(result.fallDeaths[index])
+            for index in range(min(controlled_agents, len(result.fallDeaths)))
+        )
     if len(result.edgeRiskEvents) > 0:
-        stats["edge_risk_events"] = int(result.edgeRiskEvents[0])
+        stats["edge_risk_events"] = sum(
+            int(result.edgeRiskEvents[index])
+            for index in range(min(controlled_agents, len(result.edgeRiskEvents)))
+        )
     if len(result.insideTime) > 0:
-        stats["inside_time"] = float(result.insideTime[0])
-    for name, value in zip(reward_breakdown_names, reward_breakdown_totals):
-        stats[name] = stats.get(name, 0.0) + value
+        stats["inside_time"] = sum(
+            float(result.insideTime[index])
+            for index in range(min(controlled_agents, len(result.insideTime)))
+        )
+    for agent_index in range(controlled_agents):
+        breakdown_offset = agent_index * len(reward_breakdown_names)
+        for bucket, name in enumerate(reward_breakdown_names):
+            index = breakdown_offset + bucket
+            if index < len(reward_breakdown_totals):
+                stats[name] = stats.get(name, 0.0) + reward_breakdown_totals[index]
 
     if not args.quiet:
         raw_flip_rate = raw_flips / max(1, raw_nonzero_pairs)
@@ -440,6 +537,7 @@ def run_episode(
 def summary_metrics(stats, episodes_override: int = None):
     episodes = episodes_override if episodes_override is not None else max(1, stats["episodes"])
     actions = max(1, stats["actions"])
+    observation_samples = max(1, stats["observation_samples"])
     return {
         "success_rate": stats["successes"] / episodes,
         "avg_steps": stats["steps"] / episodes,
@@ -453,27 +551,32 @@ def summary_metrics(stats, episodes_override: int = None):
         "effective_flips_per_step": stats["effective_flips"] / actions,
         "effective_reverse_fraction": stats["effective_reverse"] / actions,
         "effective_small_throttle_fraction": stats["effective_small"] / actions,
-        "inside_fraction": stats["inside_steps"] / actions,
-        "near_edge_fraction": stats["near_edge_steps"] / actions,
-        "near_edge_fast_fraction": stats["near_edge_fast_steps"] / actions,
-        "unsafe_recovery_fraction": stats["unsafe_recovery_steps"] / actions,
-        "avg_target_distance": stats["avg_target_distance"] / actions,
-        "avg_route_alignment": stats["avg_route_alignment"] / actions,
-        "avg_route_lookahead_alignment": stats["avg_route_lookahead_alignment"] / actions,
-        "avg_recovery_alignment": stats["avg_recovery_alignment"] / actions,
-        "avg_hold_progress": stats["avg_hold_progress"] / actions,
-        "avg_recovery_speed": stats["avg_recovery_speed"] / actions,
-        "avg_unsafe_recovery": stats["avg_unsafe_recovery"] / actions,
-        "avg_speed_signal": stats["avg_speed"] / actions,
-        "avg_edge_clearance": stats["avg_edge_clearance"] / actions,
+        "inside_fraction": stats["inside_steps"] / observation_samples,
+        "wall_contact_fraction": stats["wall_contact_steps"] / observation_samples,
+        "near_edge_fraction": stats["near_edge_steps"] / observation_samples,
+        "near_edge_fast_fraction": stats["near_edge_fast_steps"] / observation_samples,
+        "unsafe_recovery_fraction": stats["unsafe_recovery_steps"] / observation_samples,
+        "avg_target_distance": stats["avg_target_distance"] / observation_samples,
+        "avg_route_alignment": stats["avg_route_alignment"] / observation_samples,
+        "avg_route_lookahead_alignment": stats["avg_route_lookahead_alignment"] / observation_samples,
+        "avg_recovery_alignment": stats["avg_recovery_alignment"] / observation_samples,
+        "avg_hold_progress": stats["avg_hold_progress"] / observation_samples,
+        "avg_recovery_speed": stats["avg_recovery_speed"] / observation_samples,
+        "avg_unsafe_recovery": stats["avg_unsafe_recovery"] / observation_samples,
+        "avg_speed_signal": stats["avg_speed"] / observation_samples,
+        "avg_edge_clearance": stats["avg_edge_clearance"] / observation_samples,
+        "near_car_fraction": stats["near_car_steps"] / observation_samples,
+        "close_car_fraction": stats["close_car_steps"] / observation_samples,
+        "nearest_car_inside_fraction": stats["nearest_car_inside_steps"] / observation_samples,
+        "avg_nearest_car_distance": stats["avg_nearest_car_distance"] / observation_samples,
+        "avg_nearest_car_approach": stats["avg_nearest_car_approach"] / observation_samples,
     }
 
 
 def evaluation_score(stats, episodes_override: int = None) -> float:
     metrics = summary_metrics(stats, episodes_override)
-    # Reward remains the main signal, but the score explicitly guards against
-    # policies that look good by reward while still driving near holes or
-    # oscillating controls.
+    # Reward remains the main signal. Walls are survivable now, so evaluation
+    # only applies a small smoothness cost for repeated wall contact.
     return (
         metrics["avg_reward"]
         + metrics["avg_goals"] * 35.0
@@ -483,8 +586,7 @@ def evaluation_score(stats, episodes_override: int = None) -> float:
         + metrics["progress_avg"] * 4.0
         + metrics["avg_route_alignment"] * 10.0
         + metrics["avg_route_lookahead_alignment"] * 5.0
-        - metrics["near_edge_fast_fraction"] * 80.0
-        - metrics["unsafe_recovery_fraction"] * 100.0
+        - metrics["wall_contact_fraction"] * 12.0
         - metrics["effective_flips_per_step"] * 35.0
         - metrics["fall_rate"] * 450.0
     )
@@ -499,6 +601,7 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"avg_steps={metrics['avg_steps']:.1f} "
         f"avg_reward={metrics['avg_reward']:.3f} "
         f"avg_goals={metrics['avg_goals']:.3f} "
+        f"death_rate={metrics['fall_rate']:.3f} "
         f"fall_rate={metrics['fall_rate']:.3f} "
         f"inside_time_avg={metrics['inside_time_avg']:.3f} "
         f"progress_avg={metrics['progress_avg']:.3f} "
@@ -508,6 +611,7 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"effective_reverse_fraction={metrics['effective_reverse_fraction']:.3f} "
         f"effective_small_throttle_fraction={metrics['effective_small_throttle_fraction']:.3f} "
         f"inside_fraction={metrics['inside_fraction']:.3f} "
+        f"wall_contact_fraction={metrics['wall_contact_fraction']:.3f} "
         f"near_edge_fraction={metrics['near_edge_fraction']:.3f} "
         f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "
         f"unsafe_recovery_fraction={metrics['unsafe_recovery_fraction']:.3f} "
@@ -520,6 +624,11 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"avg_unsafe_recovery={metrics['avg_unsafe_recovery']:.3f} "
         f"avg_speed_signal={metrics['avg_speed_signal']:.3f} "
         f"avg_edge_clearance={metrics['avg_edge_clearance']:.3f} "
+        f"near_car_fraction={metrics['near_car_fraction']:.3f} "
+        f"close_car_fraction={metrics['close_car_fraction']:.3f} "
+        f"nearest_car_inside_fraction={metrics['nearest_car_inside_fraction']:.3f} "
+        f"avg_nearest_car_distance={metrics['avg_nearest_car_distance']:.3f} "
+        f"avg_nearest_car_approach={metrics['avg_nearest_car_approach']:.3f} "
         + " ".join(
             f"{name}={stats[name] / episodes:.3f}"
             for name in (
@@ -548,8 +657,12 @@ def print_evaluation_score(stats):
         f"avg_steps={metrics['avg_steps']:.1f} "
         f"success_rate={metrics['success_rate']:.3f} "
         f"avg_goals={metrics['avg_goals']:.3f} "
+        f"death_rate={metrics['fall_rate']:.3f} "
         f"fall_rate={metrics['fall_rate']:.3f} "
         f"inside_fraction={metrics['inside_fraction']:.3f} "
+        f"wall_contact_fraction={metrics['wall_contact_fraction']:.3f} "
+        f"near_car_fraction={metrics['near_car_fraction']:.3f} "
+        f"close_car_fraction={metrics['close_car_fraction']:.3f} "
         f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "
         f"unsafe_recovery_fraction={metrics['unsafe_recovery_fraction']:.3f}",
         flush=True,
@@ -569,7 +682,12 @@ def main() -> None:
 
     policy = rl_policy.fromJson(policy_path.read_text(encoding="utf-8"))
     field_size = args.field_size if args.field_size is not None else 1
+    controlled_agents = args.controlled_agents if args.controlled_agents is not None else 1
+    if controlled_agents < 1:
+        raise ValueError("--controlled-agents must be at least 1")
+    field_size = max(field_size, controlled_agents)
     steps_limit = args.steps if args.steps is not None else 1350
+    env_observation_size = int(ratass_game.RL_OBSERVATION_SIZE)
     scratch_size = int(policy.getScratchSize())
     total_stats = make_stats()
     per_map = defaultdict(make_stats)
@@ -591,6 +709,7 @@ def main() -> None:
             ratass_game,
             args,
             steps_limit,
+            controlled_agents,
             field_size,
             arena_map,
         )
@@ -606,6 +725,8 @@ def main() -> None:
                     java_float_array,
                     ai_control_decision,
                     scratch_size,
+                    env_observation_size,
+                    controlled_agents,
                     steps_limit,
                     episode_counter,
                 )

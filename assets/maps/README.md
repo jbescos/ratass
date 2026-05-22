@@ -32,3 +32,13 @@ Mask colors:
 - black or near-black: void, holes, or outside the arena
 - red circles: spawn points
 - blue markers: spawn facing direction, paired with the nearest red spawn
+
+Regenerate masks after changing visible map art:
+
+```bash
+python3 tools/rebuild_map_masks.py --spawns 50
+```
+
+The rebuilt masks use the visible map PNG dimensions, redraw 50 red spawn
+markers per map, and place each blue facing marker along a locally safe
+playable line.

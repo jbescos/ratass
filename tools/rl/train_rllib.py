@@ -35,8 +35,8 @@ from export_policy import export_policy as export_checkpoint_policy
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-target-circle-route-escape51-survival-v2"
-OBSERVATION_SIZE = 51
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-target-circle-route-cars62-v1"
+OBSERVATION_SIZE = 62
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
@@ -254,6 +254,9 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withMaxGoals(int(env_config.get("max_goals", 6)))
         training_config.withTargetRadius(float(env_config.get("target_radius", 1.65)))
         training_config.withTargetHoldSeconds(float(env_config.get("target_hold_seconds", 0.85)))
+        training_config.withTargetDeadlineSeconds(
+            float(env_config.get("target_deadline_seconds", 0.0))
+        )
         training_config.withSeed(int(env_config.get("seed", 1)))
         self._add_selected_maps(training_config, env_config.get("map_ids", ""))
 
@@ -479,6 +482,7 @@ def build_algorithm(args):
         "max_goals": args.max_goals,
         "target_radius": args.target_radius,
         "target_hold_seconds": args.target_hold_seconds,
+        "target_deadline_seconds": args.target_deadline_seconds,
         "seed": args.seed,
         "map_ids": args.map_ids,
         "objective": args.objective,
@@ -761,6 +765,11 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         episodes_per_map = 1
 
     field_size = args.best_eval_field_size if args.best_eval_field_size > 0 else args.field_size
+    controlled_agents = (
+        args.best_eval_controlled_agents
+        if args.best_eval_controlled_agents > 0
+        else args.controlled_agents
+    )
     command = [
         sys.executable,
         os.fspath(REPO_ROOT / "tools" / "rl" / "evaluate_policy.py"),
@@ -771,8 +780,12 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         "--quiet",
         "--objective",
         args.objective,
+        "--controlled-agents",
+        str(controlled_agents),
         "--field-size",
         str(field_size),
+        "--target-deadline-seconds",
+        str(args.target_deadline_seconds),
     ]
     if episodes_per_map > 0:
         command.extend(["--episodes-per-map", str(episodes_per_map)])
@@ -819,6 +832,14 @@ def maybe_promote_best_policy(
     candidate_policy = best_eval_candidate_path(args, checkpoint_dir)
     export_objective = args.best_export_objective or EXPORT_OBJECTIVES[args.objective]
     export_checkpoint_policy(checkpoint_dir, candidate_policy, export_objective)
+    output_file = Path(args.best_export_output).resolve()
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(candidate_policy, output_file)
+    print(
+        f"latest_policy_exported output={output_file} iteration={iteration} "
+        f"checkpoint={saved_checkpoint}",
+        flush=True,
+    )
     score, metrics = run_policy_evaluation(args, candidate_policy)
     if score is None:
         return
@@ -836,9 +857,6 @@ def maybe_promote_best_policy(
         )
         return
 
-    output_file = Path(args.best_export_output).resolve()
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(candidate_policy, output_file)
     archive_file = best_eval_archive_path(args, checkpoint_dir)
     shutil.copyfile(candidate_policy, archive_file)
     next_state = {
@@ -886,6 +904,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-goals", type=int, default=6)
     parser.add_argument("--target-radius", type=float, default=1.65)
     parser.add_argument("--target-hold-seconds", type=float, default=0.85)
+    parser.add_argument(
+        "--target-deadline-seconds",
+        type=float,
+        default=0.0,
+        help="seconds a learner can stay outside a target circle before dying; 0 derives from max steps/goals",
+    )
     parser.add_argument("--num-gpus", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
@@ -974,6 +998,12 @@ def parse_args() -> argparse.Namespace:
         help="shuffled episodes for checkpoint evaluation when episodes-per-map is 0",
     )
     parser.add_argument(
+        "--best-eval-controlled-agents",
+        type=int,
+        default=0,
+        help="controlled learner cars used by checkpoint evaluation; defaults to the training controlled-agent count",
+    )
+    parser.add_argument(
         "--best-eval-field-size",
         type=int,
         default=0,
@@ -1037,39 +1067,51 @@ def main() -> None:
 
     try:
         last_saved_iteration = 0
-        for iteration in range(1, args.iterations + 1):
-            summary_mark = REWARD_SUMMARY.mark()
-            result = algorithm.train()
-            reward_mean = read_metric(
-                result,
-                ("episode_reward_mean",),
-                ("episode_return_mean",),
-                ("env_runners", "episode_return_mean"),
-            )
-            length_mean = read_metric(
-                result,
-                ("episode_len_mean",),
-                ("env_runners", "episode_len_mean"),
-            )
-            episodes = read_metric(
-                result,
-                ("episodes_this_iter",),
-                ("num_episodes",),
-                ("env_runners", "num_episodes"),
-            )
+        current_iteration = 0
+        try:
+            for iteration in range(1, args.iterations + 1):
+                current_iteration = iteration
+                summary_mark = REWARD_SUMMARY.mark()
+                result = algorithm.train()
+                reward_mean = read_metric(
+                    result,
+                    ("episode_reward_mean",),
+                    ("episode_return_mean",),
+                    ("env_runners", "episode_return_mean"),
+                )
+                length_mean = read_metric(
+                    result,
+                    ("episode_len_mean",),
+                    ("env_runners", "episode_len_mean"),
+                )
+                episodes = read_metric(
+                    result,
+                    ("episodes_this_iter",),
+                    ("num_episodes",),
+                    ("env_runners", "num_episodes"),
+                )
+                print(
+                    f"iteration={iteration} "
+                    f"reward_mean={reward_mean:.3f} "
+                    f"episode_len_mean={length_mean:.1f} "
+                    f"episodes={episodes:.0f}",
+                    flush=True,
+                )
+                if not args.no_reward_summary:
+                    for line in REWARD_SUMMARY.render_since(summary_mark, iteration):
+                        print(line, flush=True)
+                if args.checkpoint_every > 0 and iteration % args.checkpoint_every == 0:
+                    save_checkpoint(algorithm, checkpoint_dir, args, iteration)
+                    last_saved_iteration = iteration
+        except KeyboardInterrupt:
+            save_iteration = current_iteration if current_iteration > 0 else last_saved_iteration
+            save_iteration = max(1, save_iteration)
             print(
-                f"iteration={iteration} "
-                f"reward_mean={reward_mean:.3f} "
-                f"episode_len_mean={length_mean:.1f} "
-                f"episodes={episodes:.0f}",
+                f"interrupted=1 saving_checkpoint=1 iteration={save_iteration}",
                 flush=True,
             )
-            if not args.no_reward_summary:
-                for line in REWARD_SUMMARY.render_since(summary_mark, iteration):
-                    print(line, flush=True)
-            if args.checkpoint_every > 0 and iteration % args.checkpoint_every == 0:
-                save_checkpoint(algorithm, checkpoint_dir, args, iteration)
-                last_saved_iteration = iteration
+            save_checkpoint(algorithm, checkpoint_dir, args, save_iteration)
+            raise SystemExit(130)
 
         if last_saved_iteration != args.iterations:
             save_checkpoint(algorithm, checkpoint_dir, args, args.iterations)
