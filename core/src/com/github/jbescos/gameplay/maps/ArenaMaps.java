@@ -8,7 +8,7 @@ import com.github.jbescos.gameplay.ArenaShape;
 import com.github.jbescos.gameplay.SpawnPoint;
 
 public final class ArenaMaps {
-    private static final float DEFAULT_MAP_SCALE = 4f;
+    private static final float DEFAULT_MAP_SCALE = 8f;
     private static final int TRAINING_SPAWN_COUNT = 24;
 
     private ArenaMaps() {
@@ -71,6 +71,7 @@ public final class ArenaMaps {
             float x = MathUtils.cos(angle) * radius;
             float y = MathUtils.sin(angle) * radius;
             builder.spawn(SpawnPoint.facingPoint(x, y, 0f, 0f));
+            builder.checkpoint(SpawnPoint.facingPoint(x, y, 0f, 0f));
             builder.recoveryPoint(x * 0.62f, y * 0.62f);
         }
     }

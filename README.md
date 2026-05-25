@@ -1,11 +1,11 @@
 # ratass
 
-Small LibGDX rooftop car-sumo prototype.
+Small LibGDX self-driving racing prototype.
 
 ## Objective
 
-Shove every other car off the platform and stay on the roof yourself. Last car
-remaining wins the round.
+Cars race through ordered checkpoints on circuit maps. The first car to complete
+the configured laps starts a short finish timeout for the rest of the field.
 
 ## Controls
 
@@ -35,12 +35,12 @@ The browser build output is written to `html/target/ratass-html-1.0/`.
 The Android module is still kept in the repository but is not part of the Maven
 reactor yet.
 
-## RL target training
+## RL race training
 
 The old scripted/evolution AI has been removed. The remaining training path is
-the target-circle reinforcement-learning environment under `tools/rl/`.
+the checkpoint-race reinforcement-learning environment under `tools/rl/`.
 
-Build the desktop jar, then run a target-training smoke or curriculum:
+Build the desktop jar, then run a race-training smoke or curriculum:
 
 `mvn -pl desktop -am package`
 

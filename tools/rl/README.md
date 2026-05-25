@@ -1,6 +1,6 @@
-# Ratass RL Target Training
+# Ratass RL Race Training
 
-The Java game owns the Box2D simulation and target-circle environment. Python
+The Java game owns the Box2D simulation and checkpoint-race environment. Python
 uses JPype to step that environment and RLlib PPO to train a policy.
 
 The old scripted driving AI, behavior/evolution tuning, combat objective, and
@@ -28,30 +28,29 @@ still runs on CPU.
 
 ## Environment Contract
 
-- Observation size: `62` floats per learner.
+- Observation size: `68` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
 - Default PPO network: two fully-connected hidden layers of width `1024`
   with `tanh` activation.
-- Target observations include relative target vector, a route waypoint vector
-  computed from the map hazard field, a farther route lookahead vector,
+- Race observations include relative next-checkpoint vector, a route waypoint
+  vector computed from the map hazard field, a farther route lookahead vector,
   normalized route distance, route alignment, car-frame velocity, angular
-  velocity, inside-circle state, hold progress, local hazard ray clearances,
-  short braking rays, recovery direction in both world and car frame, previous
-  action, six opponent-car ray clearances, and nearest-car relative state.
-- Rewards are bucketed as `progress`, `enter`, `hold`, `complete`, `safety`,
-  `control`, `alive`, `death`, and `timeout`. The `progress` bucket only pays
-  new best route-distance progress toward the target circle, not straight-line
-  distance through hazards, so backing up cannot farm the same progress again.
-  The `enter` bucket pays once per target sequence, so re-entering or skimming
-  the circle cannot farm reward. There is no speed, car-contest, or push reward.
-  The `safety` bucket penalizes wall contact. The `control` bucket penalizes
-  staying in the same map area while outside the circle, with the penalty
-  increasing until the learner moves into another area.
-- Java exposes episode metrics for goals reached, fall deaths, inside-target
-  time, route progress toward target, and edge-risk events.
-- One-car target training uses a larger random-spawn hazard margin than normal
-  gameplay so early hard-map learning is about navigation instead of immediate
-  unrecoverable edge starts.
+  velocity, near-checkpoint state, local track-limit ray clearances, short
+  braking rays, track slowdown, steering authority, lateral slip, braking
+  distance, previous action, six opponent-car ray clearances, and nearest-car
+  relative state.
+- Rewards are bucketed as `checkpoint_progress`, `checkpoint`, `step_cost`,
+  `off_road`, `steering`, `reverse_speed`, `elimination`, and `car_push`. The
+  progress bucket only pays new best progress along the ordered checkpoint route
+  while the car is moving forward. Braking is not penalized, but actual negative
+  forward speed is. Car collisions are treated as push/contact penalties, not as
+  rewards.
+- Java exposes episode metrics for checkpoints reached, eliminations, and route
+  progress toward the checkpoint.
+- The shell training presets stage the episode target through `1`, `2`, and `3`
+  checkpoints before full-lap episodes (`RL_MAX_CHECKPOINTS=-1`). The live game
+  can still run longer races because the same checkpoint-following policy repeats
+  around the loop.
 
 ## Train
 
@@ -64,22 +63,22 @@ Useful knobs:
 ```bash
 python tools/rl/train_rllib.py \
   --controlled-agents 1 \
-  --max-goals 6 \
-  --target-radius 1.65 \
-  --target-hold-seconds 0.85 \
-  --max-action-steps 1350
+  --max-checkpoints -1 \
+  --checkpoint-radius 3.0 \
+  --max-action-steps 6400
 ```
 
-Focus training on specific maps:
+By default, training uses every map discovered by the Java loader. To focus on a
+temporary subset, pass explicit map ids:
 
 ```bash
-python tools/rl/train_rllib.py --map-ids map001,map003,map006 --iterations 100
+python tools/rl/train_rllib.py --map-ids <map-id-a>,<map-id-b> --iterations 100
 ```
 
 ## Curriculum
 
 ```bash
-bash tools/rl/train_forever.sh curriculum
+bash tools/rl/train_curriculum_400.sh
 ```
 
 Fast diagnostic curriculum for checking reward or observation changes before
@@ -89,11 +88,25 @@ spending hours on a full run:
 bash tools/rl/train_forever.sh diagnostic
 ```
 
+Check whether loaded checkpoint centers, checkpoint gates, and first route
+targets sit on playable road:
+
+```bash
+.venv-rl/bin/python tools/rl/check_map_geometry.py
+```
+
+Write a short per-step policy trace after training. This is intentionally off
+during training; enable it only for small evaluation runs:
+
+```bash
+.venv-rl/bin/python tools/rl/evaluate_policy.py --episodes 1 --steps 300 --controlled-agents 1 --field-size 1 --map-id map003 --trace-dir logs/rl-trace
+```
+
 Convenience wrappers:
 
 ```bash
 bash tools/rl/train_curriculum_400.sh
-bash tools/rl/train_curriculum_40_to_4.sh
+bash tools/rl/train_race_single_400_all_maps.sh
 ```
 
 Common presets:
@@ -102,26 +115,32 @@ Common presets:
 bash tools/rl/train_forever.sh diagnostic
 bash tools/rl/train_forever.sh quick
 bash tools/rl/train_forever.sh fast
-bash tools/rl/train_forever.sh target-easy
-bash tools/rl/train_forever.sh target-hard
-bash tools/rl/train_forever.sh target-2
-bash tools/rl/train_forever.sh target-4
-bash tools/rl/train_forever.sh target-8
-bash tools/rl/train_forever.sh target-16
-bash tools/rl/train_forever.sh target-32
-bash tools/rl/train_forever.sh target-many
-bash tools/rl/train_forever.sh target-crowd
+bash tools/rl/train_forever.sh race-single
+bash tools/rl/train_forever.sh race-2
+bash tools/rl/train_forever.sh race-4
+bash tools/rl/train_forever.sh race-8
+bash tools/rl/train_forever.sh race-16
+bash tools/rl/train_forever.sh race-20
 ```
 
-The curriculum starts with larger targets on easier maps, then moves to
-hole-heavy maps, then ramps the number of learner cars through `2`, `4`, `8`,
-`16`, `32`, and finally `50` cars forever by default. Each phase keeps a
-separate best-evaluation state so harder crowded phases are not compared
-against easier single-car scores. Checkpoint output defaults to
-`rl-checkpoints-curriculum-route-cars62-v1` for long curriculum
-runs. Training scripts delete their checkpoint directory at startup by default,
-so a new run starts from scratch instead of resuming an older checkpoint. Set
-`RL_FRESH_START=0` only when you intentionally want to resume.
+The current convenience curriculum trains the race objective on all discovered
+mask maps. Every car-count phase is split into checkpoint stages: reach `1`
+checkpoint, then `2`, then `3`, then a full lap. After that, the curriculum ramps
+learner cars through `1`, `2`, `4`, `8`, `16`, and finally `20` cars forever by
+default. The 400-iteration single-car wrapper splits its budget into `100`
+iterations for each checkpoint stage. Each phase keeps a separate
+best-evaluation state so harder crowded phases are not compared against easier
+single-car scores. The playable policy at `assets/ai/rl_enemy_policy.json` tracks
+the best model from the latest trained stage, so stopping early still leaves a
+usable model from the most recent stage. Checkpoint output defaults to
+`rl-checkpoints-curriculum-400-race-physics68-1024x2-v1` for the 400-iteration
+wrapper. Training scripts delete their checkpoint directory at startup by
+default, so a new run starts from scratch instead of resuming an older
+checkpoint. Set `RL_FRESH_START=0` only when you intentionally want to resume.
+Race training and policy evaluation use route-aligned random road spawns by
+default, and the Java environment assigns the next checkpoint from the same route
+selector used to face the car. Set `RL_RANDOM_RACE_SPAWNS=0` or pass
+`--fixed-race-spawns` only when you intentionally want fixed-start debugging.
 
 ## Docker
 

@@ -5,7 +5,7 @@ cd /workspace/ratass
 
 mkdir -p rl-logs
 
-objective="${1:-target}"
+objective="${1:-race}"
 timestamp="$(date +%Y%m%d-%H%M%S)"
 log_file="${RL_LOG_FILE:-rl-logs/${objective}-docker-${timestamp}.log}"
 
@@ -14,6 +14,7 @@ exec > >(tee -a "${log_file}") 2>&1
 
 export PYTHON_BIN="${PYTHON_BIN:-/opt/ratass-rl-venv/bin/python}"
 export RL_RAY_TEMP_DIR="${RL_RAY_TEMP_DIR:-rl-logs/ray}"
+export RL_RANDOM_RACE_SPAWNS="${RL_RANDOM_RACE_SPAWNS:-1}"
 
 echo "docker_training_started=$(date -Is)"
 echo "repo=/workspace/ratass"

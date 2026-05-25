@@ -17,9 +17,9 @@ public final class RlSmokeMain {
         int controlledAgents = 1;
         int fieldSize = 1;
         int actionRepeat = 4;
-        int maxGoals = 6;
-        float targetRadius = 1.65f;
-        float targetHoldSeconds = 0.85f;
+        int maxCheckpoints = 6;
+        float checkpointRadius = 3.0f;
+        boolean raceMode = true;
         long seed = 1L;
 
         for (int i = 0; i < args.length; i++) {
@@ -34,12 +34,17 @@ public final class RlSmokeMain {
                 fieldSize = Integer.parseInt(args[++i]);
             } else if ("--action-repeat".equals(arg) && i + 1 < args.length) {
                 actionRepeat = Integer.parseInt(args[++i]);
-            } else if ("--max-goals".equals(arg) && i + 1 < args.length) {
-                maxGoals = Integer.parseInt(args[++i]);
-            } else if ("--target-radius".equals(arg) && i + 1 < args.length) {
-                targetRadius = Float.parseFloat(args[++i]);
-            } else if ("--target-hold-seconds".equals(arg) && i + 1 < args.length) {
-                targetHoldSeconds = Float.parseFloat(args[++i]);
+            } else if ("--max-checkpoints".equals(arg) && i + 1 < args.length) {
+                maxCheckpoints = Integer.parseInt(args[++i]);
+            } else if ("--checkpoint-radius".equals(arg) && i + 1 < args.length) {
+                checkpointRadius = Float.parseFloat(args[++i]);
+            } else if ("--objective".equals(arg) && i + 1 < args.length) {
+                String objective = args[++i];
+                if ("race".equals(objective)) {
+                    raceMode = true;
+                } else {
+                    throw new IllegalArgumentException("Only race objective is supported: " + objective);
+                }
             } else if ("--seed".equals(arg) && i + 1 < args.length) {
                 seed = Long.parseLong(args[++i]);
             } else {
@@ -55,9 +60,9 @@ public final class RlSmokeMain {
                         .withFieldSize(fieldSize)
                         .withActionRepeat(actionRepeat)
                         .withMaxActionSteps(maxSteps)
-                        .withMaxGoals(maxGoals)
-                        .withTargetRadius(targetRadius)
-                        .withTargetHoldSeconds(targetHoldSeconds)
+                        .withMaxCheckpoints(maxCheckpoints)
+                        .withCheckpointRadius(checkpointRadius)
+                        .withRaceMode(raceMode)
                         .withSeed(seed);
         Random random = new Random(seed ^ 0xC0FFEE);
 
@@ -95,17 +100,15 @@ public final class RlSmokeMain {
 
                 System.out.printf(
                         Locale.US,
-                        "episode=%d steps=%d reward=%.3f goals=%d falls=%d edgeRisk=%d "
-                                + "insideTime=%.3f progress=%.3f success=%s%n",
+                        "episode=%d steps=%d reward=%.3f checkpoints=%d eliminations=%d "
+                                + "progress=%.3f success=%s%n",
                         episode + 1,
                         steps,
                         totalReward,
-                        result.goalsReached.length > 0 ? result.goalsReached[0] : 0,
-                        result.fallDeaths.length > 0 ? result.fallDeaths[0] : 0,
-                        result.edgeRiskEvents.length > 0 ? result.edgeRiskEvents[0] : 0,
-                        result.insideTime.length > 0 ? result.insideTime[0] : 0f,
-                        result.progressTowardTarget.length > 0
-                                ? result.progressTowardTarget[0]
+                        result.checkpointsReached.length > 0 ? result.checkpointsReached[0] : 0,
+                        result.eliminations.length > 0 ? result.eliminations[0] : 0,
+                        result.progressTowardCheckpoint.length > 0
+                                ? result.progressTowardCheckpoint[0]
                                 : 0f,
                         result.winnerAgentIndex == 0 ? "true" : "false");
             }

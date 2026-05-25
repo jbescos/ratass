@@ -24,6 +24,7 @@ public final class ArenaMap {
     private final Array<ArenaShape> solidZones = new Array<ArenaShape>();
     private final Array<ArenaShape> holeZones = new Array<ArenaShape>();
     private final Array<SpawnPoint> spawnPoints = new Array<SpawnPoint>();
+    private final Array<SpawnPoint> checkpoints = new Array<SpawnPoint>();
     private final Array<Vector2> recoveryPoints = new Array<Vector2>();
     private final Rectangle bounds = new Rectangle();
     private final Vector2 scratchCandidate = new Vector2();
@@ -52,6 +53,7 @@ public final class ArenaMap {
             Array<ArenaShape> solidZones,
             Array<ArenaShape> holeZones,
             Array<SpawnPoint> spawnPoints,
+            Array<SpawnPoint> checkpoints,
             Array<Vector2> recoveryPoints) {
         this.id = id;
         this.name = name;
@@ -61,6 +63,7 @@ public final class ArenaMap {
         this.solidZones.addAll(solidZones);
         this.holeZones.addAll(holeZones);
         this.spawnPoints.addAll(spawnPoints);
+        this.checkpoints.addAll(checkpoints);
 
         for (int i = 0; i < recoveryPoints.size; i++) {
             this.recoveryPoints.add(new Vector2(recoveryPoints.get(i)));
@@ -147,6 +150,14 @@ public final class ArenaMap {
 
     public SpawnPoint getSpawn(int index) {
         return spawnPoints.get(index);
+    }
+
+    public int getCheckpointCount() {
+        return checkpoints.size;
+    }
+
+    public SpawnPoint getCheckpoint(int index) {
+        return checkpoints.get(index);
     }
 
     public Rectangle getBounds(Rectangle out) {
@@ -939,6 +950,7 @@ public final class ArenaMap {
         private final Array<ArenaShape> solidZones = new Array<ArenaShape>();
         private final Array<ArenaShape> holeZones = new Array<ArenaShape>();
         private final Array<SpawnPoint> spawnPoints = new Array<SpawnPoint>();
+        private final Array<SpawnPoint> checkpoints = new Array<SpawnPoint>();
         private final Array<Vector2> recoveryPoints = new Array<Vector2>();
 
         private Builder(String id, String name) {
@@ -971,6 +983,11 @@ public final class ArenaMap {
             return this;
         }
 
+        public Builder checkpoint(SpawnPoint checkpoint) {
+            checkpoints.add(checkpoint);
+            return this;
+        }
+
         public Builder recoveryPoint(float x, float y) {
             recoveryPoints.add(new Vector2(x, y));
             return this;
@@ -994,6 +1011,9 @@ public final class ArenaMap {
             }
             for (int i = 0; i < spawnPoints.size; i++) {
                 spawnPoints.set(i, spawnPoints.get(i).scale(factor));
+            }
+            for (int i = 0; i < checkpoints.size; i++) {
+                checkpoints.set(i, checkpoints.get(i).scale(factor));
             }
             for (int i = 0; i < recoveryPoints.size; i++) {
                 recoveryPoints.get(i).scl(factor);
@@ -1025,6 +1045,7 @@ public final class ArenaMap {
                     solidZones,
                     holeZones,
                     spawnPoints,
+                    checkpoints,
                     recoveryPoints);
         }
     }

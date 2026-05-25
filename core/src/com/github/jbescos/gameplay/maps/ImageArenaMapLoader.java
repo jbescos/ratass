@@ -25,14 +25,20 @@ final class ImageArenaMapLoader {
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
     private static final String CACHE_SUFFIX = ".ser";
-    private static final int CACHE_VERSION = 2;
-    private static final float BASE_WORLD_HEIGHT = 18f;
+    private static final int CACHE_VERSION = 17;
+    private static final float BASE_WORLD_HEIGHT = 22f;
     private static final int MAX_SEQUENTIAL_MAP_SCAN = 1000;
     private static final int MAX_SHAPE_MASK_LONG_SIDE = 512;
     private static final int MIN_MARKER_PIXELS = 24;
+    private static final int MARKER_PLAYABLE_CONTEXT_RADIUS = 10;
+    private static final int CHECKPOINT_CENTER_GATE_SAMPLES = 25;
     private static final int RECOVERY_COLUMNS = 18;
     private static final int RECOVERY_ROWS = 10;
     private static final float RECOVERY_SAFE_MARGIN = 0.85f;
+    private static final float CHECKPOINT_ORDER_ROUTE_MARGIN = 1.20f;
+    private static final float CHECKPOINT_ORDER_SCORE_EPSILON = 0.001f;
+    private static final boolean DEBUG_CHECKPOINT_ORDER =
+            Boolean.getBoolean("ratass.debugCheckpointOrder");
 
     private ImageArenaMapLoader() {
     }
@@ -46,7 +52,7 @@ final class ImageArenaMapLoader {
         Array<FileHandle> maskFiles = findMaskFiles();
         if (maskFiles.size == 0) {
             throw new IllegalStateException(
-                    "No picture map masks found. Add files like assets/maps/map000_mask.png.");
+                    "No picture map masks found. Add files like assets/maps/<name>_mask.png.");
         }
 
         Array<ArenaMap> maps = new Array<ArenaMap>();
@@ -137,15 +143,31 @@ final class ImageArenaMapLoader {
             Array<SpawnPoint> spawnPoints =
                     buildSpawnPoints(parseResult, mask.getWidth(), mask.getHeight(), worldMinX, worldMinY,
                             worldWidth, worldHeight);
-            Array<Vector2> recoveryPoints = new Array<Vector2>();
+            Array<Vector2> recoveryPoints = buildRecoveryPoints(
+                    spawnPoints,
+                    shape,
+                    worldMinX,
+                    worldMinY,
+                    worldWidth,
+                    worldHeight,
+                    mapScale);
+            ArenaMap routeOrderingMap =
+                    buildRouteOrderingMap(baseName, surfacePath, shape, spawnPoints, recoveryPoints);
+            Array<SpawnPoint> checkpoints =
+                    buildCheckpoints(parseResult, mask.getWidth(), mask.getHeight(), worldMinX, worldMinY,
+                            worldWidth, worldHeight, shape);
+            alignCheckpointPathWithSpawns(spawnPoints, checkpoints);
+            orderCheckpointPathByRoute(checkpoints, routeOrderingMap);
+            alignCheckpointPathWithSpawns(spawnPoints, checkpoints);
             for (int i = 0; i < spawnPoints.size; i++) {
                 SpawnPoint spawnPoint = spawnPoints.get(i);
                 builder.spawn(spawnPoint);
-                builder.recoveryPoint(spawnPoint.x, spawnPoint.y);
-                recoveryPoints.add(new Vector2(spawnPoint.x, spawnPoint.y));
+            }
+            addRecoveryPoints(builder, recoveryPoints);
+            for (int i = 0; i < checkpoints.size; i++) {
+                builder.checkpoint(checkpoints.get(i));
             }
 
-            addRecoveryGrid(builder, recoveryPoints, shape, worldMinX, worldMinY, worldWidth, worldHeight, mapScale);
             ArenaMap map = builder.build();
             writeCachedMap(maskFile, buildCachedMapData(
                     maskFile,
@@ -160,6 +182,7 @@ final class ImageArenaMapLoader {
                     worldHeight,
                     shape,
                     spawnPoints,
+                    checkpoints,
                     recoveryPoints));
             return map;
         } finally {
@@ -189,6 +212,36 @@ final class ImageArenaMapLoader {
                 .solid(shape);
         for (int i = 0; i < cached.spawnX.length; i++) {
             builder.spawn(new SpawnPoint(cached.spawnX[i], cached.spawnY[i], cached.spawnAngle[i]));
+        }
+        for (int i = 0; i < cached.checkpointX.length; i++) {
+            boolean hasGate =
+                    cached.checkpointHasGate != null
+                            && cached.checkpointGateStartX != null
+                            && cached.checkpointGateStartY != null
+                            && cached.checkpointGateEndX != null
+                            && cached.checkpointGateEndY != null
+                            && i < cached.checkpointHasGate.length
+                            && i < cached.checkpointGateStartX.length
+                            && i < cached.checkpointGateStartY.length
+                            && i < cached.checkpointGateEndX.length
+                            && i < cached.checkpointGateEndY.length
+                            && cached.checkpointHasGate[i];
+            if (hasGate) {
+                builder.checkpoint(SpawnPoint.facingGate(
+                        cached.checkpointX[i],
+                        cached.checkpointY[i],
+                        cached.checkpointX[i] - MathUtils.sin(cached.checkpointAngle[i]),
+                        cached.checkpointY[i] + MathUtils.cos(cached.checkpointAngle[i]),
+                        cached.checkpointGateStartX[i],
+                        cached.checkpointGateStartY[i],
+                        cached.checkpointGateEndX[i],
+                        cached.checkpointGateEndY[i]));
+            } else {
+                builder.checkpoint(new SpawnPoint(
+                        cached.checkpointX[i],
+                        cached.checkpointY[i],
+                        cached.checkpointAngle[i]));
+            }
         }
         for (int i = 0; i < cached.recoveryX.length; i++) {
             builder.recoveryPoint(cached.recoveryX[i], cached.recoveryY[i]);
@@ -349,6 +402,7 @@ final class ImageArenaMapLoader {
             float worldHeight,
             MaskArenaShape shape,
             Array<SpawnPoint> spawnPoints,
+            Array<SpawnPoint> checkpoints,
             Array<Vector2> recoveryPoints) {
         CachedMapData cached = new CachedMapData();
         cached.version = CACHE_VERSION;
@@ -381,6 +435,25 @@ final class ImageArenaMapLoader {
             cached.spawnY[i] = spawnPoint.y;
             cached.spawnAngle[i] = spawnPoint.angleRad;
         }
+        cached.checkpointX = new float[checkpoints.size];
+        cached.checkpointY = new float[checkpoints.size];
+        cached.checkpointAngle = new float[checkpoints.size];
+        cached.checkpointHasGate = new boolean[checkpoints.size];
+        cached.checkpointGateStartX = new float[checkpoints.size];
+        cached.checkpointGateStartY = new float[checkpoints.size];
+        cached.checkpointGateEndX = new float[checkpoints.size];
+        cached.checkpointGateEndY = new float[checkpoints.size];
+        for (int i = 0; i < checkpoints.size; i++) {
+            SpawnPoint checkpoint = checkpoints.get(i);
+            cached.checkpointX[i] = checkpoint.x;
+            cached.checkpointY[i] = checkpoint.y;
+            cached.checkpointAngle[i] = checkpoint.angleRad;
+            cached.checkpointHasGate[i] = checkpoint.hasGate;
+            cached.checkpointGateStartX[i] = checkpoint.gateStartX;
+            cached.checkpointGateStartY[i] = checkpoint.gateStartY;
+            cached.checkpointGateEndX[i] = checkpoint.gateEndX;
+            cached.checkpointGateEndY[i] = checkpoint.gateEndY;
+        }
         cached.recoveryX = new float[recoveryPoints.size];
         cached.recoveryY = new float[recoveryPoints.size];
         for (int i = 0; i < recoveryPoints.size; i++) {
@@ -398,15 +471,20 @@ final class ImageArenaMapLoader {
         boolean[] shapePlayable = new boolean[shapeDimensions.width * shapeDimensions.height];
         boolean[] redMarkers = new boolean[width * height];
         boolean[] blueMarkers = new boolean[width * height];
+        boolean[] greenMarkers = new boolean[width * height];
+        boolean[] basePlayable = new boolean[width * height];
 
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int pixel = mask.getPixel(x, y);
                 boolean red = isRedMarker(pixel);
                 boolean blue = isBlueMarker(pixel);
+                boolean green = isGreenMarker(pixel);
                 int index = y * width + x;
                 redMarkers[index] = red;
                 blueMarkers[index] = blue;
+                greenMarkers[index] = green;
+                basePlayable[index] = isPlayable(pixel);
             }
         }
 
@@ -414,8 +492,8 @@ final class ImageArenaMapLoader {
             int sourceY = sampleSourceCoordinate(y, shapeDimensions.height, height);
             for (int x = 0; x < shapeDimensions.width; x++) {
                 int sourceX = sampleSourceCoordinate(x, shapeDimensions.width, width);
-                int pixel = mask.getPixel(sourceX, sourceY);
-                shapePlayable[y * shapeDimensions.width + x] = isPlayableForShape(pixel);
+                shapePlayable[y * shapeDimensions.width + x] =
+                        isPlayableForShape(mask, basePlayable, sourceX, sourceY, width, height);
             }
         }
 
@@ -423,6 +501,7 @@ final class ImageArenaMapLoader {
                 new MaskParseResult(shapePlayable, shapeDimensions.width, shapeDimensions.height);
         collectMarkerComponents(redMarkers, width, height, result.redMarkers);
         collectMarkerComponents(blueMarkers, width, height, result.blueMarkers);
+        collectMarkerComponents(greenMarkers, width, height, result.greenMarkers);
         return result;
     }
 
@@ -455,16 +534,10 @@ final class ImageArenaMapLoader {
             float worldHeight) {
         Array<SpawnPoint> spawns = new Array<SpawnPoint>();
         boolean[] blueUsed = new boolean[parseResult.blueMarkers.size];
-        parseResult.redMarkers.sort(new Comparator<MarkerComponent>() {
-            @Override
-            public int compare(MarkerComponent left, MarkerComponent right) {
-                int rowCompare = Float.compare(left.centerY, right.centerY);
-                return rowCompare != 0 ? rowCompare : Float.compare(left.centerX, right.centerX);
-            }
-        });
+        Array<MarkerComponent> orderedRedMarkers = orderSpawnMarkers(parseResult);
 
-        for (int i = 0; i < parseResult.redMarkers.size; i++) {
-            MarkerComponent red = parseResult.redMarkers.get(i);
+        for (int i = 0; i < orderedRedMarkers.size; i++) {
+            MarkerComponent red = orderedRedMarkers.get(i);
             int blueIndex = findNearestUnusedMarker(red, parseResult.blueMarkers, blueUsed);
             Vector2 redWorld = imageToWorld(red.centerX, red.centerY, imageWidth, imageHeight,
                     worldMinX, worldMinY, worldWidth, worldHeight);
@@ -485,19 +558,504 @@ final class ImageArenaMapLoader {
         return spawns;
     }
 
-    private static int findNearestUnusedMarker(
-            MarkerComponent source,
-            Array<MarkerComponent> candidates,
-            boolean[] used) {
+    private static Array<SpawnPoint> buildCheckpoints(
+            MaskParseResult parseResult,
+            int imageWidth,
+            int imageHeight,
+            float worldMinX,
+            float worldMinY,
+            float worldWidth,
+            float worldHeight,
+            MaskArenaShape shape) {
+        Array<MarkerComponent> orderedMarkers = orderCheckpointMarkers(parseResult);
+        if (orderedMarkers.size == 0) {
+            throw new IllegalStateException("Picture map mask requires green race checkpoint markers.");
+        }
+
+        Array<CheckpointDefinition> definitions = new Array<CheckpointDefinition>();
+        for (int i = 0; i < orderedMarkers.size; i++) {
+            MarkerComponent marker = orderedMarkers.get(i);
+            Vector2 markerPosition = imageToWorld(
+                    marker.centerX,
+                    marker.centerY,
+                    imageWidth,
+                    imageHeight,
+                    worldMinX,
+                    worldMinY,
+                    worldWidth,
+                    worldHeight);
+            if (marker.hasUsableGate()) {
+                Vector2 gateStart = imageToWorld(
+                        marker.gateStartX,
+                        marker.gateStartY,
+                        imageWidth,
+                        imageHeight,
+                        worldMinX,
+                        worldMinY,
+                        worldWidth,
+                        worldHeight);
+                Vector2 gateEnd = imageToWorld(
+                        marker.gateEndX,
+                        marker.gateEndY,
+                        imageWidth,
+                        imageHeight,
+                        worldMinX,
+                        worldMinY,
+                        worldWidth,
+                        worldHeight);
+                definitions.add(new CheckpointDefinition(
+                        chooseGateCheckpointCenter(markerPosition, gateStart, gateEnd, shape),
+                        gateStart,
+                        gateEnd,
+                        true));
+            } else {
+                definitions.add(new CheckpointDefinition(markerPosition, null, null, false));
+            }
+        }
+
+        Array<SpawnPoint> checkpoints = new Array<SpawnPoint>();
+        for (int i = 0; i < definitions.size; i++) {
+            CheckpointDefinition definition = definitions.get(i);
+            Vector2 current = definition.position;
+            Vector2 next = definitions.get((i + 1) % definitions.size).position;
+            if (definition.hasGate) {
+                checkpoints.add(SpawnPoint.facingGate(
+                        current.x,
+                        current.y,
+                        next.x,
+                        next.y,
+                        definition.gateStart.x,
+                        definition.gateStart.y,
+                        definition.gateEnd.x,
+                        definition.gateEnd.y));
+            } else {
+                checkpoints.add(SpawnPoint.facingPoint(current.x, current.y, next.x, next.y));
+            }
+        }
+        return checkpoints;
+    }
+
+    private static Vector2 chooseGateCheckpointCenter(
+            Vector2 markerPosition,
+            Vector2 gateStart,
+            Vector2 gateEnd,
+            MaskArenaShape shape) {
+        Vector2 best = new Vector2(markerPosition);
+        float bestClearance = shape == null ? 0f : shape.depthInside(best.x, best.y);
+        float bestDistanceToMarker = 0f;
+        for (int i = 0; i < CHECKPOINT_CENTER_GATE_SAMPLES; i++) {
+            float alpha = i / (float) (CHECKPOINT_CENTER_GATE_SAMPLES - 1);
+            float x = MathUtils.lerp(gateStart.x, gateEnd.x, alpha);
+            float y = MathUtils.lerp(gateStart.y, gateEnd.y, alpha);
+            float clearance = shape == null ? 0f : shape.depthInside(x, y);
+            float distanceToMarker = Vector2.dst2(x, y, markerPosition.x, markerPosition.y);
+            if (clearance > bestClearance + 0.001f
+                    || (Math.abs(clearance - bestClearance) <= 0.001f
+                            && distanceToMarker < bestDistanceToMarker)) {
+                best.set(x, y);
+                bestClearance = clearance;
+                bestDistanceToMarker = distanceToMarker;
+            }
+        }
+        return best;
+    }
+
+    private static ArenaMap buildRouteOrderingMap(
+            String baseName,
+            String surfacePath,
+            MaskArenaShape shape,
+            Array<SpawnPoint> spawnPoints,
+            Array<Vector2> recoveryPoints) {
+        ArenaMap.Builder builder = ArenaMap.builder(
+                        baseName + "-checkpoint-order",
+                        displayName(baseName))
+                .focusPoint(0f, 0f)
+                .surfaceImagePath(surfacePath)
+                .solid(shape);
+        for (int i = 0; i < spawnPoints.size; i++) {
+            builder.spawn(spawnPoints.get(i));
+        }
+        addRecoveryPoints(builder, recoveryPoints);
+        return builder.build();
+    }
+
+    private static void orderCheckpointPathByRoute(
+            Array<SpawnPoint> checkpoints,
+            ArenaMap routeMap) {
+        if (checkpoints.size <= 2 || routeMap == null) {
+            return;
+        }
+
+        float[][] routeDistances = calculateCheckpointRouteDistances(checkpoints, routeMap);
+        int[] originalOrder = buildIdentityOrder(checkpoints.size);
+        RouteOrderScore originalScore = scoreRouteOrder(originalOrder, routeDistances);
+        int[] bestOrder = null;
+        RouteOrderScore bestScore = null;
+        for (int start = 0; start < checkpoints.size; start++) {
+            int[] order = buildGreedyRouteOrder(routeDistances, start);
+            improveRouteOrder(order, routeDistances);
+            RouteOrderScore score = scoreRouteOrder(order, routeDistances);
+            if (bestScore == null || score.isBetterThan(bestScore)) {
+                bestScore = score;
+                bestOrder = order;
+            }
+
+            order = buildCheapestInsertionRouteOrder(routeDistances, start);
+            improveRouteOrder(order, routeDistances);
+            score = scoreRouteOrder(order, routeDistances);
+            if (bestScore == null || score.isBetterThan(bestScore)) {
+                bestScore = score;
+                bestOrder = order;
+            }
+        }
+
+        if (bestOrder == null) {
+            return;
+        }
+
+        if (DEBUG_CHECKPOINT_ORDER) {
+            System.out.println(
+                    "checkpoint-order map="
+                            + routeMap.getId()
+                            + " original="
+                            + originalScore
+                            + " best="
+                            + bestScore
+                            + " order="
+                            + formatOrder(bestOrder));
+        }
+
+        Array<SpawnPoint> original = new Array<SpawnPoint>(checkpoints);
+        for (int i = 0; i < checkpoints.size; i++) {
+            checkpoints.set(i, original.get(bestOrder[i]));
+        }
+        refreshCheckpointDirections(checkpoints);
+    }
+
+    private static float[][] calculateCheckpointRouteDistances(
+            Array<SpawnPoint> checkpoints,
+            ArenaMap routeMap) {
+        int count = checkpoints.size;
+        float[][] routeDistances = new float[count][count];
+        Vector2 from = new Vector2();
+        Vector2 goal = new Vector2();
+        for (int fromIndex = 0; fromIndex < count; fromIndex++) {
+            SpawnPoint fromCheckpoint = checkpoints.get(fromIndex);
+            from.set(fromCheckpoint.x, fromCheckpoint.y);
+            for (int toIndex = 0; toIndex < count; toIndex++) {
+                if (fromIndex == toIndex) {
+                    routeDistances[fromIndex][toIndex] = 0f;
+                    continue;
+                }
+                SpawnPoint toCheckpoint = checkpoints.get(toIndex);
+                goal.set(toCheckpoint.x, toCheckpoint.y);
+                routeDistances[fromIndex][toIndex] =
+                        routeMap.estimateDriveDistance(
+                                from,
+                                goal,
+                                CHECKPOINT_ORDER_ROUTE_MARGIN);
+            }
+        }
+        return routeDistances;
+    }
+
+    private static int[] buildGreedyRouteOrder(float[][] routeDistances, int start) {
+        int count = routeDistances.length;
+        int[] order = new int[count];
+        boolean[] used = new boolean[count];
+        order[0] = start;
+        used[start] = true;
+        for (int orderIndex = 1; orderIndex < count; orderIndex++) {
+            int current = order[orderIndex - 1];
+            int bestIndex = -1;
+            float bestDistance = Float.MAX_VALUE;
+            for (int candidate = 0; candidate < count; candidate++) {
+                if (used[candidate]) {
+                    continue;
+                }
+                float distance = routeDistances[current][candidate];
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestIndex = candidate;
+                }
+            }
+            if (bestIndex < 0) {
+                bestIndex = 0;
+            }
+            order[orderIndex] = bestIndex;
+            used[bestIndex] = true;
+        }
+        return order;
+    }
+
+    private static int[] buildIdentityOrder(int count) {
+        int[] order = new int[count];
+        for (int i = 0; i < count; i++) {
+            order[i] = i;
+        }
+        return order;
+    }
+
+    private static int[] buildCheapestInsertionRouteOrder(float[][] routeDistances, int start) {
+        int count = routeDistances.length;
+        int[] order = new int[count];
+        boolean[] used = new boolean[count];
+        order[0] = start;
+        used[start] = true;
+        int orderSize = 1;
+
+        while (orderSize < count) {
+            int bestCandidate = -1;
+            int bestInsertIndex = orderSize;
+            RouteOrderScore bestScore = null;
+            for (int candidate = 0; candidate < count; candidate++) {
+                if (used[candidate]) {
+                    continue;
+                }
+
+                for (int insertIndex = 0; insertIndex <= orderSize; insertIndex++) {
+                    int[] candidateOrder = copyWithInsertedIndex(order, orderSize, candidate, insertIndex);
+                    RouteOrderScore score = scoreRouteOrder(candidateOrder, orderSize + 1, routeDistances);
+                    if (bestScore == null || score.isBetterThan(bestScore)) {
+                        bestScore = score;
+                        bestCandidate = candidate;
+                        bestInsertIndex = insertIndex;
+                    }
+                }
+            }
+
+            if (bestCandidate < 0) {
+                break;
+            }
+
+            insertIndex(order, orderSize, bestCandidate, bestInsertIndex);
+            used[bestCandidate] = true;
+            orderSize++;
+        }
+
+        return order;
+    }
+
+    private static void improveRouteOrder(int[] order, float[][] routeDistances) {
+        if (order.length <= 3) {
+            return;
+        }
+
+        boolean improved = true;
+        int passes = 0;
+        int maxPasses = order.length * order.length * 2;
+        while (improved && passes++ < maxPasses) {
+            improved = false;
+            RouteOrderScore baseScore = scoreRouteOrder(order, routeDistances);
+            for (int start = 0; start < order.length - 1 && !improved; start++) {
+                for (int end = start + 1; end < order.length; end++) {
+                    reverseOrderSegment(order, start, end);
+                    RouteOrderScore candidateScore = scoreRouteOrder(order, routeDistances);
+                    if (candidateScore.isBetterThan(baseScore)) {
+                        improved = true;
+                        break;
+                    }
+                    reverseOrderSegment(order, start, end);
+                }
+            }
+            if (!improved) {
+                improved = improveRouteOrderByRelocation(order, routeDistances, baseScore);
+            }
+        }
+    }
+
+    private static RouteOrderScore scoreRouteOrder(int[] order, float[][] routeDistances) {
+        return scoreRouteOrder(order, order.length, routeDistances);
+    }
+
+    private static RouteOrderScore scoreRouteOrder(int[] order, int orderSize, float[][] routeDistances) {
+        float maxSegment = 0f;
+        float total = 0f;
+        for (int i = 0; i < orderSize; i++) {
+            float distance = routeDistances[order[i]][order[(i + 1) % orderSize]];
+            maxSegment = Math.max(maxSegment, distance);
+            total += distance;
+        }
+        return new RouteOrderScore(maxSegment, total);
+    }
+
+    private static boolean improveRouteOrderByRelocation(
+            int[] order,
+            float[][] routeDistances,
+            RouteOrderScore baseScore) {
+        for (int fromIndex = 0; fromIndex < order.length; fromIndex++) {
+            for (int insertIndex = 0; insertIndex < order.length; insertIndex++) {
+                int[] candidateOrder = copyWithMovedIndex(order, fromIndex, insertIndex);
+                RouteOrderScore candidateScore = scoreRouteOrder(candidateOrder, routeDistances);
+                if (candidateScore.isBetterThan(baseScore)) {
+                    System.arraycopy(candidateOrder, 0, order, 0, order.length);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static int[] copyWithInsertedIndex(
+            int[] order,
+            int orderSize,
+            int value,
+            int insertIndex) {
+        int[] result = new int[order.length];
+        int outputIndex = 0;
+        for (int i = 0; i < orderSize; i++) {
+            if (outputIndex == insertIndex) {
+                result[outputIndex++] = value;
+            }
+            result[outputIndex++] = order[i];
+        }
+        if (outputIndex == insertIndex) {
+            result[outputIndex++] = value;
+        }
+        return result;
+    }
+
+    private static void insertIndex(
+            int[] order,
+            int orderSize,
+            int value,
+            int insertIndex) {
+        for (int i = orderSize; i > insertIndex; i--) {
+            order[i] = order[i - 1];
+        }
+        order[insertIndex] = value;
+    }
+
+    private static int[] copyWithMovedIndex(int[] order, int fromIndex, int insertIndex) {
+        int[] compact = new int[order.length - 1];
+        int compactIndex = 0;
+        int value = order[fromIndex];
+        for (int i = 0; i < order.length; i++) {
+            if (i != fromIndex) {
+                compact[compactIndex++] = order[i];
+            }
+        }
+
+        int[] result = new int[order.length];
+        int outputIndex = 0;
+        for (int i = 0; i < compact.length; i++) {
+            if (outputIndex == insertIndex) {
+                result[outputIndex++] = value;
+            }
+            result[outputIndex++] = compact[i];
+        }
+        if (outputIndex == insertIndex) {
+            result[outputIndex++] = value;
+        }
+        return result;
+    }
+
+    private static String formatOrder(int[] order) {
+        StringBuilder builder = new StringBuilder("[");
+        for (int i = 0; i < order.length; i++) {
+            if (i > 0) {
+                builder.append(',');
+            }
+            builder.append(order[i]);
+        }
+        return builder.append(']').toString();
+    }
+
+    private static void reverseOrderSegment(int[] order, int start, int end) {
+        while (start < end) {
+            int temporary = order[start];
+            order[start] = order[end];
+            order[end] = temporary;
+            start++;
+            end--;
+        }
+    }
+
+    private static void alignCheckpointPathWithSpawns(
+            Array<SpawnPoint> spawnPoints,
+            Array<SpawnPoint> checkpoints) {
+        if (spawnPoints.size == 0 || checkpoints.size <= 2) {
+            return;
+        }
+
+        Vector2 forward = averageSpawnForward(spawnPoints);
+        if (forward.isZero(0.0001f)) {
+            return;
+        }
+
+        SpawnPoint frontSpawn = findFrontSpawnPoint(spawnPoints, forward);
+        if (frontSpawn == null) {
+            return;
+        }
+
+        float lookahead = Math.max(12f, averageCheckpointGap(checkpoints) * 1.35f);
+        int checkpointIndex = findNearestCheckpointIndex(
+                checkpoints,
+                frontSpawn.x + forward.x * lookahead,
+                frontSpawn.y + forward.y * lookahead);
+        if (checkpointIndex < 0) {
+            return;
+        }
+
+        SpawnPoint current = checkpoints.get(checkpointIndex);
+        SpawnPoint next = checkpoints.get((checkpointIndex + 1) % checkpoints.size);
+        SpawnPoint previous = checkpoints.get((checkpointIndex + checkpoints.size - 1) % checkpoints.size);
+        float nextAlignment = checkpointDirectionAlignment(current, next, forward);
+        float previousAlignment = checkpointDirectionAlignment(current, previous, forward);
+        if (previousAlignment > nextAlignment + 0.10f && previousAlignment > 0.05f) {
+            reverseCheckpointPath(checkpoints);
+        }
+    }
+
+    private static Vector2 averageSpawnForward(Array<SpawnPoint> spawnPoints) {
+        Vector2 forward = new Vector2();
+        for (int i = 0; i < spawnPoints.size; i++) {
+            SpawnPoint spawnPoint = spawnPoints.get(i);
+            forward.x += -MathUtils.sin(spawnPoint.angleRad);
+            forward.y += MathUtils.cos(spawnPoint.angleRad);
+        }
+        if (!forward.isZero(0.0001f)) {
+            forward.nor();
+        }
+        return forward;
+    }
+
+    private static SpawnPoint findFrontSpawnPoint(
+            Array<SpawnPoint> spawnPoints,
+            Vector2 forward) {
+        SpawnPoint frontSpawn = null;
+        float bestProjection = -Float.MAX_VALUE;
+        for (int i = 0; i < spawnPoints.size; i++) {
+            SpawnPoint spawnPoint = spawnPoints.get(i);
+            float projection = spawnPoint.x * forward.x + spawnPoint.y * forward.y;
+            if (frontSpawn == null || projection > bestProjection) {
+                frontSpawn = spawnPoint;
+                bestProjection = projection;
+            }
+        }
+        return frontSpawn;
+    }
+
+    private static float averageCheckpointGap(Array<SpawnPoint> checkpoints) {
+        float total = 0f;
+        for (int i = 0; i < checkpoints.size; i++) {
+            SpawnPoint current = checkpoints.get(i);
+            SpawnPoint next = checkpoints.get((i + 1) % checkpoints.size);
+            total += Vector2.dst(current.x, current.y, next.x, next.y);
+        }
+        return total / checkpoints.size;
+    }
+
+    private static int findNearestCheckpointIndex(
+            Array<SpawnPoint> checkpoints,
+            float x,
+            float y) {
         int bestIndex = -1;
         float bestDistance = Float.MAX_VALUE;
-        for (int i = 0; i < candidates.size; i++) {
-            if (used[i]) {
-                continue;
-            }
-            MarkerComponent candidate = candidates.get(i);
-            float dx = candidate.centerX - source.centerX;
-            float dy = candidate.centerY - source.centerY;
+        for (int i = 0; i < checkpoints.size; i++) {
+            SpawnPoint checkpoint = checkpoints.get(i);
+            float dx = checkpoint.x - x;
+            float dy = checkpoint.y - y;
             float distance = dx * dx + dy * dy;
             if (distance < bestDistance) {
                 bestDistance = distance;
@@ -507,15 +1065,361 @@ final class ImageArenaMapLoader {
         return bestIndex;
     }
 
-    private static void addRecoveryGrid(
-            ArenaMap.Builder builder,
-            Array<Vector2> recoveryPoints,
+    private static float checkpointDirectionAlignment(
+            SpawnPoint from,
+            SpawnPoint to,
+            Vector2 forward) {
+        float dx = to.x - from.x;
+        float dy = to.y - from.y;
+        float length = (float) Math.sqrt(dx * dx + dy * dy);
+        if (length <= 0.0001f) {
+            return -1f;
+        }
+        return (dx * forward.x + dy * forward.y) / length;
+    }
+
+    private static void reverseCheckpointPath(Array<SpawnPoint> checkpoints) {
+        for (int left = 0, right = checkpoints.size - 1; left < right; left++, right--) {
+            SpawnPoint temporary = checkpoints.get(left);
+            checkpoints.set(left, checkpoints.get(right));
+            checkpoints.set(right, temporary);
+        }
+        refreshCheckpointDirections(checkpoints);
+    }
+
+    private static void refreshCheckpointDirections(Array<SpawnPoint> checkpoints) {
+        for (int i = 0; i < checkpoints.size; i++) {
+            SpawnPoint checkpoint = checkpoints.get(i);
+            SpawnPoint next = checkpoints.get((i + 1) % checkpoints.size);
+            checkpoints.set(
+                    i,
+                    SpawnPoint.facingGate(
+                            checkpoint.x,
+                            checkpoint.y,
+                            next.x,
+                            next.y,
+                            checkpoint.gateStartX,
+                            checkpoint.gateStartY,
+                            checkpoint.gateEndX,
+                            checkpoint.gateEndY));
+        }
+    }
+
+    private static Array<MarkerComponent> orderSpawnMarkers(MaskParseResult parseResult) {
+        Array<MarkerComponent> ordered = new Array<MarkerComponent>();
+        ordered.addAll(parseResult.redMarkers);
+        if (ordered.size <= 1) {
+            return ordered;
+        }
+
+        final MarkerDirectionBasis basis = calculateMarkerDirectionBasis(parseResult);
+        if (!basis.valid) {
+            ordered.sort(new Comparator<MarkerComponent>() {
+                @Override
+                public int compare(MarkerComponent left, MarkerComponent right) {
+                    int rowCompare = Float.compare(left.centerY, right.centerY);
+                    return rowCompare != 0 ? rowCompare : Float.compare(left.centerX, right.centerX);
+                }
+            });
+            return ordered;
+        }
+
+        ordered.sort(new Comparator<MarkerComponent>() {
+            @Override
+            public int compare(MarkerComponent left, MarkerComponent right) {
+                float leftForward = project(left, basis.tangentX, basis.tangentY);
+                float rightForward = project(right, basis.tangentX, basis.tangentY);
+                int forwardCompare = Float.compare(rightForward, leftForward);
+                if (forwardCompare != 0) {
+                    return forwardCompare;
+                }
+
+                float leftSide = project(left, basis.sideX, basis.sideY);
+                float rightSide = project(right, basis.sideX, basis.sideY);
+                return Float.compare(leftSide, rightSide);
+            }
+        });
+        return ordered;
+    }
+
+    private static Array<MarkerComponent> orderCheckpointMarkers(MaskParseResult parseResult) {
+        Array<MarkerComponent> markers = parseResult.greenMarkers;
+        Array<MarkerComponent> ordered = new Array<MarkerComponent>();
+        if (markers.size <= 1) {
+            ordered.addAll(markers);
+            return ordered;
+        }
+
+        MarkerDirectionBasis basis = calculateMarkerDirectionBasis(parseResult);
+        boolean[] used = new boolean[markers.size];
+        int currentIndex = findStartCheckpointIndex(parseResult, markers, basis);
+        if (currentIndex < 0) {
+            currentIndex = findLargestMarker(markers);
+        }
+
+        float directionX = basis.valid ? basis.tangentX : 1f;
+        float directionY = basis.valid ? basis.tangentY : 0f;
+        for (int step = 0; step < markers.size; step++) {
+            MarkerComponent current = markers.get(currentIndex);
+            ordered.add(current);
+            used[currentIndex] = true;
+            if (step == markers.size - 1) {
+                break;
+            }
+
+            int nextIndex = findNextMarkerByDirection(current, markers, used, directionX, directionY);
+            if (nextIndex < 0) {
+                nextIndex = findNearestUnusedMarkerIndex(current, markers, used);
+            }
+            MarkerComponent next = markers.get(nextIndex);
+            float dx = next.centerX - current.centerX;
+            float dy = next.centerY - current.centerY;
+            float length = (float) Math.sqrt(dx * dx + dy * dy);
+            if (length > 0.0001f) {
+                directionX = dx / length;
+                directionY = dy / length;
+            }
+            currentIndex = nextIndex;
+        }
+        alignCheckpointOrderWithSpawnDirection(parseResult, basis, ordered);
+        return ordered;
+    }
+
+    private static void alignCheckpointOrderWithSpawnDirection(
+            MaskParseResult parseResult,
+            MarkerDirectionBasis basis,
+            Array<MarkerComponent> ordered) {
+        if (!basis.valid || ordered.size <= 2 || parseResult.redMarkers.size == 0) {
+            return;
+        }
+
+        MarkerComponent frontSpawn = findFrontSpawnMarker(parseResult, basis);
+        if (frontSpawn == null) {
+            return;
+        }
+
+        float lookahead = Math.max(42f, basis.averageMarkerGap * 2.65f);
+        int startIndex = findNearestMarkerToPoint(
+                frontSpawn.centerX + basis.tangentX * lookahead,
+                frontSpawn.centerY + basis.tangentY * lookahead,
+                ordered,
+                null);
+        if (startIndex < 0) {
+            return;
+        }
+
+        MarkerComponent current = ordered.get(startIndex);
+        MarkerComponent next = ordered.get((startIndex + 1) % ordered.size);
+        MarkerComponent previous = ordered.get((startIndex + ordered.size - 1) % ordered.size);
+        float nextAlignment = checkpointDirectionAlignment(current, next, basis);
+        float previousAlignment = checkpointDirectionAlignment(current, previous, basis);
+        if (previousAlignment > nextAlignment + 0.10f && previousAlignment > 0.05f) {
+            reverseMarkerOrder(ordered);
+        }
+    }
+
+    private static MarkerComponent findFrontSpawnMarker(
+            MaskParseResult parseResult,
+            MarkerDirectionBasis basis) {
+        MarkerComponent frontSpawn = null;
+        float bestProjection = -Float.MAX_VALUE;
+        for (int i = 0; i < parseResult.redMarkers.size; i++) {
+            MarkerComponent red = parseResult.redMarkers.get(i);
+            float projection = project(red, basis.tangentX, basis.tangentY);
+            if (frontSpawn == null || projection > bestProjection) {
+                frontSpawn = red;
+                bestProjection = projection;
+            }
+        }
+        return frontSpawn;
+    }
+
+    private static float checkpointDirectionAlignment(
+            MarkerComponent from,
+            MarkerComponent to,
+            MarkerDirectionBasis basis) {
+        float dx = to.centerX - from.centerX;
+        float dy = to.centerY - from.centerY;
+        float length = (float) Math.sqrt(dx * dx + dy * dy);
+        if (length <= 0.0001f) {
+            return -1f;
+        }
+        return (dx * basis.tangentX + dy * basis.tangentY) / length;
+    }
+
+    private static void reverseMarkerOrder(Array<MarkerComponent> ordered) {
+        for (int left = 0, right = ordered.size - 1; left < right; left++, right--) {
+            MarkerComponent temporary = ordered.get(left);
+            ordered.set(left, ordered.get(right));
+            ordered.set(right, temporary);
+        }
+    }
+
+    private static int findStartCheckpointIndex(
+            MaskParseResult parseResult,
+            Array<MarkerComponent> checkpoints,
+            MarkerDirectionBasis basis) {
+        if (!basis.valid || parseResult.redMarkers.size == 0) {
+            return -1;
+        }
+
+        MarkerComponent frontSpawn = findFrontSpawnMarker(parseResult, basis);
+        if (frontSpawn == null) {
+            return -1;
+        }
+
+        float lookahead = Math.max(42f, basis.averageMarkerGap * 2.65f);
+        return findNearestMarkerToPoint(
+                frontSpawn.centerX + basis.tangentX * lookahead,
+                frontSpawn.centerY + basis.tangentY * lookahead,
+                checkpoints,
+                null);
+    }
+
+    private static int findNextMarkerByDirection(
+            MarkerComponent current,
+            Array<MarkerComponent> markers,
+            boolean[] used,
+            float directionX,
+            float directionY) {
+        int bestIndex = -1;
+        float bestScore = Float.MAX_VALUE;
+        for (int i = 0; i < markers.size; i++) {
+            if (used[i]) {
+                continue;
+            }
+            MarkerComponent candidate = markers.get(i);
+            float dx = candidate.centerX - current.centerX;
+            float dy = candidate.centerY - current.centerY;
+            float distance = (float) Math.sqrt(dx * dx + dy * dy);
+            if (distance <= 0.0001f) {
+                continue;
+            }
+            float unitX = dx / distance;
+            float unitY = dy / distance;
+            float forward = directionX * unitX + directionY * unitY;
+            float sideways = Math.abs(directionX * unitY - directionY * unitX);
+            float score = distance * (1f + sideways * 1.8f) - forward * distance * 0.35f;
+            if (forward < -0.1f) {
+                score += 100000f + distance * 12f;
+            } else if (forward < 0.15f) {
+                score += distance * 2.4f;
+            }
+            if (score < bestScore) {
+                bestScore = score;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
+    private static MarkerDirectionBasis calculateMarkerDirectionBasis(MaskParseResult parseResult) {
+        float sumX = 0f;
+        float sumY = 0f;
+        float gapSum = 0f;
+        int count = 0;
+        for (int i = 0; i < parseResult.redMarkers.size; i++) {
+            MarkerComponent red = parseResult.redMarkers.get(i);
+            int blueIndex = findNearestUnusedMarker(red, parseResult.blueMarkers, null);
+            if (blueIndex < 0) {
+                continue;
+            }
+            MarkerComponent blue = parseResult.blueMarkers.get(blueIndex);
+            float dx = blue.centerX - red.centerX;
+            float dy = blue.centerY - red.centerY;
+            float length = (float) Math.sqrt(dx * dx + dy * dy);
+            if (length <= 0.0001f) {
+                continue;
+            }
+            sumX += dx / length;
+            sumY += dy / length;
+            gapSum += length;
+            count++;
+        }
+
+        float length = (float) Math.sqrt(sumX * sumX + sumY * sumY);
+        if (count == 0 || length <= 0.0001f) {
+            return MarkerDirectionBasis.invalid();
+        }
+        float tangentX = sumX / length;
+        float tangentY = sumY / length;
+        return new MarkerDirectionBasis(
+                true,
+                tangentX,
+                tangentY,
+                -tangentY,
+                tangentX,
+                gapSum / count);
+    }
+
+    private static float project(MarkerComponent marker, float axisX, float axisY) {
+        return marker.centerX * axisX + marker.centerY * axisY;
+    }
+
+    private static int findLargestMarker(Array<MarkerComponent> markers) {
+        int bestIndex = 0;
+        int bestArea = markers.get(0).area;
+        for (int i = 1; i < markers.size; i++) {
+            int area = markers.get(i).area;
+            if (area > bestArea) {
+                bestArea = area;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
+    private static int findNearestUnusedMarkerIndex(
+            MarkerComponent source,
+            Array<MarkerComponent> candidates,
+            boolean[] used) {
+        return findNearestUnusedMarker(source, candidates, used);
+    }
+
+    private static int findNearestUnusedMarker(
+            MarkerComponent source,
+            Array<MarkerComponent> candidates,
+            boolean[] used) {
+        return findNearestMarkerToPoint(source.centerX, source.centerY, candidates, used);
+    }
+
+    private static int findNearestMarkerToPoint(
+            float sourceX,
+            float sourceY,
+            Array<MarkerComponent> candidates,
+            boolean[] used) {
+        int bestIndex = -1;
+        float bestDistance = Float.MAX_VALUE;
+        for (int i = 0; i < candidates.size; i++) {
+            if (used != null && used[i]) {
+                continue;
+            }
+            MarkerComponent candidate = candidates.get(i);
+            float dx = candidate.centerX - sourceX;
+            float dy = candidate.centerY - sourceY;
+            float distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
+    private static Array<Vector2> buildRecoveryPoints(
+            Array<SpawnPoint> spawnPoints,
             MaskArenaShape shape,
             float worldMinX,
             float worldMinY,
             float worldWidth,
             float worldHeight,
             float mapScale) {
+        Array<Vector2> recoveryPoints = new Array<Vector2>();
+        for (int i = 0; i < spawnPoints.size; i++) {
+            SpawnPoint spawnPoint = spawnPoints.get(i);
+            recoveryPoints.add(new Vector2(spawnPoint.x, spawnPoint.y));
+        }
+
         int rows = Math.max(RECOVERY_ROWS, Math.round(RECOVERY_ROWS * mapScale));
         int columns = Math.max(RECOVERY_COLUMNS, Math.round(RECOVERY_COLUMNS * mapScale));
         for (int row = 0; row < rows; row++) {
@@ -523,10 +1427,19 @@ final class ImageArenaMapLoader {
             for (int column = 0; column < columns; column++) {
                 float x = worldMinX + (column + 0.5f) * worldWidth / columns;
                 if (shape.depthInside(x, y) >= RECOVERY_SAFE_MARGIN) {
-                    builder.recoveryPoint(x, y);
                     recoveryPoints.add(new Vector2(x, y));
                 }
             }
+        }
+        return recoveryPoints;
+    }
+
+    private static void addRecoveryPoints(
+            ArenaMap.Builder builder,
+            Array<Vector2> recoveryPoints) {
+        for (int i = 0; i < recoveryPoints.size; i++) {
+            Vector2 recoveryPoint = recoveryPoints.get(i);
+            builder.recoveryPoint(recoveryPoint.x, recoveryPoint.y);
         }
     }
 
@@ -549,6 +1462,13 @@ final class ImageArenaMapLoader {
                 int area = 0;
                 float sumX = 0f;
                 float sumY = 0f;
+                double sumXX = 0.0;
+                double sumYY = 0.0;
+                double sumXY = 0.0;
+                int minX = width;
+                int minY = height;
+                int maxX = 0;
+                int maxY = 0;
                 stack[stackSize++] = startIndex;
                 visited[startIndex] = true;
 
@@ -559,6 +1479,13 @@ final class ImageArenaMapLoader {
                     area++;
                     sumX += currentX;
                     sumY += currentY;
+                    sumXX += (double) currentX * currentX;
+                    sumYY += (double) currentY * currentY;
+                    sumXY += (double) currentX * currentY;
+                    minX = Math.min(minX, currentX);
+                    minY = Math.min(minY, currentY);
+                    maxX = Math.max(maxX, currentX);
+                    maxY = Math.max(maxY, currentY);
 
                     for (int offsetY = -1; offsetY <= 1; offsetY++) {
                         int nextY = currentY + offsetY;
@@ -584,7 +1511,22 @@ final class ImageArenaMapLoader {
                 }
 
                 if (area >= MIN_MARKER_PIXELS) {
-                    out.add(new MarkerComponent(sumX / area, sumY / area, area));
+                    float centerX = sumX / area;
+                    float centerY = sumY / area;
+                    float covarianceXX = (float) (sumXX / area - centerX * centerX);
+                    float covarianceYY = (float) (sumYY / area - centerY * centerY);
+                    float covarianceXY = (float) (sumXY / area - centerX * centerY);
+                    out.add(new MarkerComponent(
+                            centerX,
+                            centerY,
+                            area,
+                            minX,
+                            minY,
+                            maxX,
+                            maxY,
+                            covarianceXX,
+                            covarianceYY,
+                            covarianceXY));
                 }
             }
         }
@@ -598,8 +1540,42 @@ final class ImageArenaMapLoader {
         return alpha >= 96 && red >= 145 && green >= 145 && blue >= 145;
     }
 
-    private static boolean isPlayableForShape(int pixel) {
-        return isPlayable(pixel) || isRedMarker(pixel) || isBlueMarker(pixel);
+    private static boolean isPlayableForShape(
+            Pixmap mask,
+            boolean[] basePlayable,
+            int x,
+            int y,
+            int width,
+            int height) {
+        int pixel = mask.getPixel(x, y);
+        if (isPlayable(pixel)) {
+            return true;
+        }
+        if (!isRedMarker(pixel) && !isBlueMarker(pixel) && !isGreenMarker(pixel)) {
+            return false;
+        }
+        return hasNearbyBasePlayablePixel(basePlayable, x, y, width, height);
+    }
+
+    private static boolean hasNearbyBasePlayablePixel(
+            boolean[] basePlayable,
+            int x,
+            int y,
+            int width,
+            int height) {
+        int minX = Math.max(0, x - MARKER_PLAYABLE_CONTEXT_RADIUS);
+        int maxX = Math.min(width - 1, x + MARKER_PLAYABLE_CONTEXT_RADIUS);
+        int minY = Math.max(0, y - MARKER_PLAYABLE_CONTEXT_RADIUS);
+        int maxY = Math.min(height - 1, y + MARKER_PLAYABLE_CONTEXT_RADIUS);
+        for (int sampleY = minY; sampleY <= maxY; sampleY++) {
+            int rowOffset = sampleY * width;
+            for (int sampleX = minX; sampleX <= maxX; sampleX++) {
+                if (basePlayable[rowOffset + sampleX]) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean isRedMarker(int pixel) {
@@ -616,6 +1592,14 @@ final class ImageArenaMapLoader {
         int blue = (pixel >>> 8) & 0xff;
         int alpha = pixel & 0xff;
         return alpha >= 96 && blue >= 140 && red <= 120 && green <= 170;
+    }
+
+    private static boolean isGreenMarker(int pixel) {
+        int red = (pixel >>> 24) & 0xff;
+        int green = (pixel >>> 16) & 0xff;
+        int blue = (pixel >>> 8) & 0xff;
+        int alpha = pixel & 0xff;
+        return alpha >= 96 && green >= 145 && red <= 125 && blue <= 135;
     }
 
     private static Vector2 imageToWorld(
@@ -649,6 +1633,7 @@ final class ImageArenaMapLoader {
         private final int shapeHeight;
         private final Array<MarkerComponent> redMarkers = new Array<MarkerComponent>();
         private final Array<MarkerComponent> blueMarkers = new Array<MarkerComponent>();
+        private final Array<MarkerComponent> greenMarkers = new Array<MarkerComponent>();
 
         private MaskParseResult(boolean[] shapePlayable, int shapeWidth, int shapeHeight) {
             this.shapePlayable = shapePlayable;
@@ -678,15 +1663,146 @@ final class ImageArenaMapLoader {
     }
 
     private static final class MarkerComponent {
+        private static final float MIN_GATE_PIXEL_LENGTH = 8f;
+
         private final float centerX;
         private final float centerY;
         @SuppressWarnings("unused")
         private final int area;
+        private final float gateStartX;
+        private final float gateStartY;
+        private final float gateEndX;
+        private final float gateEndY;
 
-        private MarkerComponent(float centerX, float centerY, int area) {
+        private MarkerComponent(
+                float centerX,
+                float centerY,
+                int area,
+                int minX,
+                int minY,
+                int maxX,
+                int maxY,
+                float covarianceXX,
+                float covarianceYY,
+                float covarianceXY) {
             this.centerX = centerX;
             this.centerY = centerY;
             this.area = area;
+
+            float axisAngle = 0.5f * MathUtils.atan2(2f * covarianceXY, covarianceXX - covarianceYY);
+            float axisX = MathUtils.cos(axisAngle);
+            float axisY = MathUtils.sin(axisAngle);
+            if (Math.abs(covarianceXX - covarianceYY) < 0.0001f
+                    && Math.abs(covarianceXY) < 0.0001f) {
+                if ((maxY - minY) > (maxX - minX)) {
+                    axisX = 0f;
+                    axisY = 1f;
+                } else {
+                    axisX = 1f;
+                    axisY = 0f;
+                }
+            }
+
+            float minProjection = Float.MAX_VALUE;
+            float maxProjection = -Float.MAX_VALUE;
+            minProjection = Math.min(minProjection, projectCorner(minX, minY, centerX, centerY, axisX, axisY));
+            minProjection = Math.min(minProjection, projectCorner(minX, maxY, centerX, centerY, axisX, axisY));
+            minProjection = Math.min(minProjection, projectCorner(maxX, minY, centerX, centerY, axisX, axisY));
+            minProjection = Math.min(minProjection, projectCorner(maxX, maxY, centerX, centerY, axisX, axisY));
+            maxProjection = Math.max(maxProjection, projectCorner(minX, minY, centerX, centerY, axisX, axisY));
+            maxProjection = Math.max(maxProjection, projectCorner(minX, maxY, centerX, centerY, axisX, axisY));
+            maxProjection = Math.max(maxProjection, projectCorner(maxX, minY, centerX, centerY, axisX, axisY));
+            maxProjection = Math.max(maxProjection, projectCorner(maxX, maxY, centerX, centerY, axisX, axisY));
+
+            gateStartX = centerX + axisX * minProjection;
+            gateStartY = centerY + axisY * minProjection;
+            gateEndX = centerX + axisX * maxProjection;
+            gateEndY = centerY + axisY * maxProjection;
+        }
+
+        private boolean hasUsableGate() {
+            float dx = gateEndX - gateStartX;
+            float dy = gateEndY - gateStartY;
+            return dx * dx + dy * dy >= MIN_GATE_PIXEL_LENGTH * MIN_GATE_PIXEL_LENGTH;
+        }
+
+        private static float projectCorner(
+                float x,
+                float y,
+                float centerX,
+                float centerY,
+                float axisX,
+                float axisY) {
+            return (x - centerX) * axisX + (y - centerY) * axisY;
+        }
+    }
+
+    private static final class MarkerDirectionBasis {
+        private final boolean valid;
+        private final float tangentX;
+        private final float tangentY;
+        private final float sideX;
+        private final float sideY;
+        private final float averageMarkerGap;
+
+        private MarkerDirectionBasis(
+                boolean valid,
+                float tangentX,
+                float tangentY,
+                float sideX,
+                float sideY,
+                float averageMarkerGap) {
+            this.valid = valid;
+            this.tangentX = tangentX;
+            this.tangentY = tangentY;
+            this.sideX = sideX;
+            this.sideY = sideY;
+            this.averageMarkerGap = averageMarkerGap;
+        }
+
+        private static MarkerDirectionBasis invalid() {
+            return new MarkerDirectionBasis(false, 1f, 0f, 0f, 1f, 0f);
+        }
+    }
+
+    private static final class CheckpointDefinition {
+        private final Vector2 position;
+        private final Vector2 gateStart;
+        private final Vector2 gateEnd;
+        private final boolean hasGate;
+
+        private CheckpointDefinition(
+                Vector2 position,
+                Vector2 gateStart,
+                Vector2 gateEnd,
+                boolean hasGate) {
+            this.position = position;
+            this.gateStart = gateStart;
+            this.gateEnd = gateEnd;
+            this.hasGate = hasGate;
+        }
+    }
+
+    private static final class RouteOrderScore {
+        private final float maxSegment;
+        private final float total;
+
+        private RouteOrderScore(float maxSegment, float total) {
+            this.maxSegment = maxSegment;
+            this.total = total;
+        }
+
+        private boolean isBetterThan(RouteOrderScore other) {
+            if (maxSegment < other.maxSegment - CHECKPOINT_ORDER_SCORE_EPSILON) {
+                return true;
+            }
+            return Math.abs(maxSegment - other.maxSegment) <= CHECKPOINT_ORDER_SCORE_EPSILON
+                    && total < other.total - CHECKPOINT_ORDER_SCORE_EPSILON;
+        }
+
+        @Override
+        public String toString() {
+            return "{max=" + maxSegment + ", total=" + total + "}";
         }
     }
 
@@ -719,6 +1835,14 @@ final class ImageArenaMapLoader {
         private float[] spawnX;
         private float[] spawnY;
         private float[] spawnAngle;
+        private float[] checkpointX;
+        private float[] checkpointY;
+        private float[] checkpointAngle;
+        private boolean[] checkpointHasGate;
+        private float[] checkpointGateStartX;
+        private float[] checkpointGateStartY;
+        private float[] checkpointGateEndX;
+        private float[] checkpointGateEndY;
         private float[] recoveryX;
         private float[] recoveryY;
     }

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import platform
 import re
@@ -35,8 +36,8 @@ from export_policy import export_policy as export_checkpoint_policy
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
-DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-target-circle-route-cars62-v1"
-OBSERVATION_SIZE = 62
+DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
+OBSERVATION_SIZE = 68
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
@@ -45,9 +46,7 @@ EXPORTED_ACTOR_LAYERS = (
     "encoder.encoder.net.mlp.2",
     "pi.net.mlp.0",
 )
-EXPORT_OBJECTIVES = {
-    "target": "target-circle-v1",
-}
+EXPORT_OBJECTIVES = {"race": "race-checkpoints-v1"}
 
 
 def _metric_token(value: str) -> str:
@@ -72,10 +71,8 @@ class RewardSummary:
         reward_total: float,
         bucket_names: List[str],
         bucket_totals: np.ndarray,
-        goals_reached: int,
-        fall_deaths: int,
-        edge_risk_events: int,
-        inside_time: float,
+        checkpoints_reached: int,
+        eliminations: int,
         progress_total: float,
     ) -> None:
         self._episodes.append(
@@ -86,10 +83,8 @@ class RewardSummary:
                 "reward_total": float(reward_total),
                 "bucket_names": list(bucket_names),
                 "bucket_totals": np.asarray(bucket_totals, dtype=np.float64).copy(),
-                "goals_reached": int(goals_reached),
-                "fall_deaths": int(fall_deaths),
-                "edge_risk_events": int(edge_risk_events),
-                "inside_time": float(inside_time),
+                "checkpoints_reached": int(checkpoints_reached),
+                "eliminations": int(eliminations),
                 "progress_total": float(progress_total),
             }
         )
@@ -113,10 +108,8 @@ class RewardSummary:
                     "agent": episode["agent"],
                     "episodes": 0,
                     "reward_total": 0.0,
-                    "goals_reached": 0,
-                    "fall_deaths": 0,
-                    "edge_risk_events": 0,
-                    "inside_time": 0.0,
+                    "checkpoints_reached": 0,
+                    "eliminations": 0,
                     "progress_total": 0.0,
                     "bucket_names": episode["bucket_names"],
                     "bucket_totals": np.zeros_like(episode["bucket_totals"]),
@@ -125,10 +118,8 @@ class RewardSummary:
 
             group["episodes"] += 1
             group["reward_total"] += episode["reward_total"]
-            group["goals_reached"] += episode["goals_reached"]
-            group["fall_deaths"] += episode["fall_deaths"]
-            group["edge_risk_events"] += episode["edge_risk_events"]
-            group["inside_time"] += episode["inside_time"]
+            group["checkpoints_reached"] += episode["checkpoints_reached"]
+            group["eliminations"] += episode["eliminations"]
             group["progress_total"] += episode["progress_total"]
             group["bucket_totals"] += episode["bucket_totals"]
 
@@ -142,11 +133,9 @@ class RewardSummary:
                 f"map_name={_metric_token(group['map_name'])}",
                 f"car={_metric_token(group['agent'])}",
                 f"episodes={group['episodes']}",
-                f"goals_avg={group['goals_reached'] / episode_count:.3f}",
-                f"falls_avg={group['fall_deaths'] / episode_count:.3f}",
-                f"inside_time_avg={group['inside_time'] / episode_count:.3f}",
+                f"checkpoints_avg={group['checkpoints_reached'] / episode_count:.3f}",
+                f"eliminations_avg={group['eliminations'] / episode_count:.3f}",
                 f"progress_avg={group['progress_total'] / episode_count:.3f}",
-                f"edge_risk_avg={group['edge_risk_events'] / episode_count:.3f}",
                 f"reward_avg={reward_avg:.3f}",
                 f"reward_total={group['reward_total']:.3f}",
             ]
@@ -250,13 +239,14 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         )
         training_config.withFieldSize(int(env_config.get("field_size", DEFAULT_FIELD_SIZE)))
         training_config.withActionRepeat(int(env_config.get("action_repeat", 4)))
-        training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 1350)))
-        training_config.withMaxGoals(int(env_config.get("max_goals", 6)))
-        training_config.withTargetRadius(float(env_config.get("target_radius", 1.65)))
-        training_config.withTargetHoldSeconds(float(env_config.get("target_hold_seconds", 0.85)))
-        training_config.withTargetDeadlineSeconds(
-            float(env_config.get("target_deadline_seconds", 0.0))
+        training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 6400)))
+        training_config.withMaxCheckpoints(int(env_config.get("max_checkpoints", 6)))
+        training_config.withCheckpointRadius(float(env_config.get("checkpoint_radius", 3.0)))
+        training_config.withCheckpointDeadlineSeconds(
+            float(env_config.get("checkpoint_deadline_seconds", 0.0))
         )
+        training_config.withRaceMode(True)
+        training_config.withRandomRaceSpawns(bool(env_config.get("random_race_spawns", False)))
         training_config.withSeed(int(env_config.get("seed", 1)))
         self._add_selected_maps(training_config, env_config.get("map_ids", ""))
 
@@ -358,12 +348,10 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                 "current_map_id": str(result.currentMapId),
                 "current_map_name": str(result.currentMapName),
                 "agent_done": bool(result.dones[self._agent_index(agent)]),
-                "goals_reached": int(result.goalsReached[self._agent_index(agent)]),
-                "fall_deaths": int(result.fallDeaths[self._agent_index(agent)]),
-                "edge_risk_events": int(result.edgeRiskEvents[self._agent_index(agent)]),
-                "inside_time": float(result.insideTime[self._agent_index(agent)]),
-                "progress_toward_target": float(
-                    result.progressTowardTarget[self._agent_index(agent)]
+                "checkpoints_reached": int(result.checkpointsReached[self._agent_index(agent)]),
+                "eliminations": int(result.eliminations[self._agent_index(agent)]),
+                "progress_toward_checkpoint": float(
+                    result.progressTowardCheckpoint[self._agent_index(agent)]
                 ),
             }
             for agent in current_agents
@@ -417,7 +405,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             if agent in self._episode_bucket_totals and index < breakdown.shape[0]:
                 self._episode_bucket_totals[agent] += breakdown[index]
             if agent in self._episode_progress_totals:
-                self._episode_progress_totals[agent] += float(result.progressTowardTarget[index])
+                self._episode_progress_totals[agent] += float(result.progressTowardCheckpoint[index])
 
     def _finalize_episode_accounting(self, result) -> None:
         for agent in self._agents:
@@ -432,10 +420,8 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                     agent,
                     np.zeros(len(self._reward_breakdown_names), dtype=np.float64),
                 ),
-                int(result.goalsReached[index]),
-                int(result.fallDeaths[index]),
-                int(result.edgeRiskEvents[index]),
-                float(result.insideTime[index]),
+                int(result.checkpointsReached[index]),
+                int(result.eliminations[index]),
                 self._episode_progress_totals.get(agent, 0.0),
             )
 
@@ -479,10 +465,10 @@ def build_algorithm(args):
         "field_size": args.field_size,
         "action_repeat": args.action_repeat,
         "max_action_steps": args.max_action_steps,
-        "max_goals": args.max_goals,
-        "target_radius": args.target_radius,
-        "target_hold_seconds": args.target_hold_seconds,
-        "target_deadline_seconds": args.target_deadline_seconds,
+        "max_checkpoints": args.max_checkpoints,
+        "checkpoint_radius": args.checkpoint_radius,
+        "checkpoint_deadline_seconds": args.checkpoint_deadline_seconds,
+        "random_race_spawns": args.random_race_spawns,
         "seed": args.seed,
         "map_ids": args.map_ids,
         "objective": args.objective,
@@ -522,9 +508,18 @@ def build_algorithm(args):
     )
 
     if hasattr(config, "env_runners"):
-        config = config.env_runners(num_env_runners=args.workers)
+        config = config.env_runners(
+            num_env_runners=args.workers,
+            sample_timeout_s=args.sample_timeout_s,
+        )
     else:
-        config = config.rollouts(num_rollout_workers=args.workers)
+        try:
+            config = config.rollouts(
+                num_rollout_workers=args.workers,
+                sample_timeout_s=args.sample_timeout_s,
+            )
+        except TypeError:
+            config = config.rollouts(num_rollout_workers=args.workers)
 
     if hasattr(config, "build_algo"):
         return config.build_algo()
@@ -701,6 +696,22 @@ def read_metric(result: Dict, *paths: Tuple[str, ...], default: float = float("n
     return default
 
 
+def has_metric(value: float) -> bool:
+    return math.isfinite(value)
+
+
+def format_metric(value: float, precision: int = 3) -> str:
+    if not has_metric(value):
+        return "none"
+    return f"{value:.{precision}f}"
+
+
+def format_count_metric(value: float) -> str:
+    if not has_metric(value):
+        return "0"
+    return f"{value:.0f}"
+
+
 def checkpoint_path(save_result) -> str:
     checkpoint = getattr(save_result, "checkpoint", save_result)
     path = getattr(checkpoint, "path", None)
@@ -784,8 +795,12 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         str(controlled_agents),
         "--field-size",
         str(field_size),
-        "--target-deadline-seconds",
-        str(args.target_deadline_seconds),
+        "--checkpoint-deadline-seconds",
+        str(args.checkpoint_deadline_seconds),
+        "--checkpoint-radius",
+        str(args.checkpoint_radius),
+        "--max-checkpoints",
+        str(args.max_checkpoints),
     ]
     if episodes_per_map > 0:
         command.extend(["--episodes-per-map", str(episodes_per_map)])
@@ -795,6 +810,7 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         command.extend(["--steps", str(args.best_eval_steps)])
     if args.best_eval_map_ids:
         command.extend(["--map-ids", args.best_eval_map_ids])
+    command.append("--random-race-spawns" if args.random_race_spawns else "--fixed-race-spawns")
 
     completed = subprocess.run(
         command,
@@ -833,15 +849,20 @@ def maybe_promote_best_policy(
     export_objective = args.best_export_objective or EXPORT_OBJECTIVES[args.objective]
     export_checkpoint_policy(checkpoint_dir, candidate_policy, export_objective)
     output_file = Path(args.best_export_output).resolve()
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(candidate_policy, output_file)
-    print(
-        f"latest_policy_exported output={output_file} iteration={iteration} "
-        f"checkpoint={saved_checkpoint}",
-        flush=True,
-    )
     score, metrics = run_policy_evaluation(args, candidate_policy)
     if score is None:
+        return
+    try:
+        avg_checkpoints = float(metrics.get("avg_checkpoints", "nan"))
+    except (TypeError, ValueError):
+        avg_checkpoints = float("nan")
+    if avg_checkpoints < args.best_eval_min_checkpoints:
+        print(
+            f"best_policy_rejected score={score:.3f} "
+            f"avg_checkpoints={avg_checkpoints:.3f} "
+            f"min_checkpoints={args.best_eval_min_checkpoints:.3f}",
+            flush=True,
+        )
         return
 
     state_path = best_eval_state_path(args, checkpoint_dir)
@@ -850,6 +871,18 @@ def maybe_promote_best_policy(
         previous_score = float(state.get("best_score", "-inf"))
     except (TypeError, ValueError):
         previous_score = float("-inf")
+    if output_file.exists() and not args.best_eval_ignore_installed:
+        installed_score, installed_metrics = run_policy_evaluation(args, output_file)
+        if installed_score is not None and installed_score > previous_score:
+            previous_score = installed_score
+            state = {
+                "best_score": installed_score,
+                "iteration": 0,
+                "checkpoint": "installed_policy",
+                "policy": os.fspath(output_file),
+                "archived_policy": os.fspath(output_file),
+                "metrics": installed_metrics,
+            }
     if score <= previous_score:
         print(
             f"best_policy_unchanged score={score:.3f} best_score={previous_score:.3f}",
@@ -859,6 +892,8 @@ def maybe_promote_best_policy(
 
     archive_file = best_eval_archive_path(args, checkpoint_dir)
     shutil.copyfile(candidate_policy, archive_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(candidate_policy, output_file)
     next_state = {
         "best_score": score,
         "iteration": iteration,
@@ -891,37 +926,53 @@ def parse_args() -> argparse.Namespace:
         "--controlled-agents",
         type=int,
         default=None,
-        help="controlled learner cars sharing the policy; defaults to 1 for stable target training",
+        help="controlled learner cars sharing the race policy",
     )
     parser.add_argument(
         "--field-size",
         type=int,
         default=None,
-        help="kept for compatibility; target training uses controlled learners only",
+        help="kept for compatibility; race training uses controlled learners only",
     )
     parser.add_argument("--action-repeat", type=int, default=4)
-    parser.add_argument("--max-action-steps", type=int, default=1350)
-    parser.add_argument("--max-goals", type=int, default=6)
-    parser.add_argument("--target-radius", type=float, default=1.65)
-    parser.add_argument("--target-hold-seconds", type=float, default=0.85)
+    parser.add_argument("--max-action-steps", type=int, default=6400)
     parser.add_argument(
-        "--target-deadline-seconds",
+        "--max-checkpoints",
+        type=int,
+        default=6,
+        help="episode checkpoint target; -1 means one current-map lap, 0 means the full live-race lap count",
+    )
+    parser.add_argument("--checkpoint-radius", type=float, default=3.0)
+    parser.add_argument(
+        "--checkpoint-deadline-seconds",
         type=float,
         default=0.0,
-        help="seconds a learner can stay outside a target circle before dying; 0 derives from max steps/goals",
+        help="seconds a learner can go without crossing the next checkpoint; 0 derives from max steps/checkpoints",
+    )
+    parser.add_argument(
+        "--random-race-spawns",
+        action="store_true",
+        default=True,
+        help="spawn learners at safe random road locations, facing the route to the next checkpoint",
+    )
+    parser.add_argument(
+        "--fixed-race-spawns",
+        action="store_false",
+        dest="random_race_spawns",
+        help="debug override: use fixed map spawn points instead of random road spawns",
     )
     parser.add_argument("--num-gpus", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
         "--objective",
-        choices=("target",),
-        default="target",
-        help="target trains cars to reach and hold randomized circle targets",
+        choices=("race",),
+        default="race",
+        help="race follows ordered map checkpoints",
     )
     parser.add_argument(
         "--map-ids",
         default="",
-        help="comma-separated map ids to train on, for example map004,map006",
+        help="optional comma-separated map ids to train on; defaults to all discovered masks",
     )
     parser.add_argument("--gamma", type=float, default=0.995)
     parser.add_argument("--lr", type=float, default=3e-4)
@@ -956,6 +1007,12 @@ def parse_args() -> argparse.Namespace:
         "--ray-temp-dir",
         default="",
         help="optional Ray temp directory, useful for keeping logs/checkpoints local",
+    )
+    parser.add_argument(
+        "--sample-timeout-s",
+        type=float,
+        default=600.0,
+        help="seconds to wait for remote RLlib env runners before treating an iteration as having no samples",
     )
     parser.add_argument(
         "--resume",
@@ -998,6 +1055,12 @@ def parse_args() -> argparse.Namespace:
         help="shuffled episodes for checkpoint evaluation when episodes-per-map is 0",
     )
     parser.add_argument(
+        "--best-eval-min-checkpoints",
+        type=float,
+        default=1.0,
+        help="do not promote/export a policy unless evaluation reaches at least this many average checkpoints",
+    )
+    parser.add_argument(
         "--best-eval-controlled-agents",
         type=int,
         default=0,
@@ -1024,6 +1087,14 @@ def parse_args() -> argparse.Namespace:
         "--best-eval-state",
         default="",
         help="JSON state file that stores the best evaluation score",
+    )
+    parser.add_argument(
+        "--best-eval-ignore-installed",
+        action="store_true",
+        help=(
+            "compare candidate policies only against the current best-eval state, "
+            "not the policy currently installed at --best-export-output"
+        ),
     )
     args = parser.parse_args()
     apply_objective_defaults(args)
@@ -1090,11 +1161,25 @@ def main() -> None:
                     ("num_episodes",),
                     ("env_runners", "num_episodes"),
                 )
+                env_steps_sampled = read_metric(
+                    result,
+                    ("num_env_steps_sampled",),
+                    ("num_env_steps_sampled_lifetime",),
+                    ("env_runners", "num_env_steps_sampled"),
+                    ("env_runners", "num_env_steps_sampled_lifetime"),
+                )
+                metric_status = (
+                    "ok"
+                    if has_metric(reward_mean) and has_metric(length_mean) and has_metric(episodes)
+                    else "no_completed_episodes"
+                )
                 print(
                     f"iteration={iteration} "
-                    f"reward_mean={reward_mean:.3f} "
-                    f"episode_len_mean={length_mean:.1f} "
-                    f"episodes={episodes:.0f}",
+                    f"reward_mean={format_metric(reward_mean)} "
+                    f"episode_len_mean={format_metric(length_mean, 1)} "
+                    f"episodes={format_count_metric(episodes)} "
+                    f"metric_status={metric_status} "
+                    f"env_steps_sampled={format_count_metric(env_steps_sampled)}",
                     flush=True,
                 )
                 if not args.no_reward_summary:
