@@ -25,7 +25,7 @@ final class ImageArenaMapLoader {
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
     private static final String CACHE_SUFFIX = ".ser";
-    private static final int CACHE_VERSION = 17;
+    private static final int CACHE_VERSION = 18;
     private static final float BASE_WORLD_HEIGHT = 22f;
     private static final int MAX_SEQUENTIAL_MAP_SCAN = 1000;
     private static final int MAX_SHAPE_MASK_LONG_SIDE = 512;
@@ -988,21 +988,37 @@ final class ImageArenaMapLoader {
             return;
         }
 
-        float lookahead = Math.max(12f, averageCheckpointGap(checkpoints) * 1.35f);
-        int checkpointIndex = findNearestCheckpointIndex(
-                checkpoints,
-                frontSpawn.x + forward.x * lookahead,
-                frontSpawn.y + forward.y * lookahead);
-        if (checkpointIndex < 0) {
-            return;
-        }
+        float averageGap = averageCheckpointGap(checkpoints);
+        float[] lookaheads = {
+            MathUtils.clamp(averageGap * 0.30f, 8f, 18f),
+            MathUtils.clamp(averageGap * 0.45f, 10f, 26f),
+            MathUtils.clamp(averageGap * 0.65f, 12f, 34f),
+            Math.max(12f, averageGap * 1.35f)
+        };
+        int forwardVotes = 0;
+        int reverseVotes = 0;
+        for (int i = 0; i < lookaheads.length; i++) {
+            float lookahead = lookaheads[i];
+            int checkpointIndex = findNearestCheckpointIndex(
+                    checkpoints,
+                    frontSpawn.x + forward.x * lookahead,
+                    frontSpawn.y + forward.y * lookahead);
+            if (checkpointIndex < 0) {
+                continue;
+            }
 
-        SpawnPoint current = checkpoints.get(checkpointIndex);
-        SpawnPoint next = checkpoints.get((checkpointIndex + 1) % checkpoints.size);
-        SpawnPoint previous = checkpoints.get((checkpointIndex + checkpoints.size - 1) % checkpoints.size);
-        float nextAlignment = checkpointDirectionAlignment(current, next, forward);
-        float previousAlignment = checkpointDirectionAlignment(current, previous, forward);
-        if (previousAlignment > nextAlignment + 0.10f && previousAlignment > 0.05f) {
+            SpawnPoint current = checkpoints.get(checkpointIndex);
+            SpawnPoint next = checkpoints.get((checkpointIndex + 1) % checkpoints.size);
+            SpawnPoint previous = checkpoints.get((checkpointIndex + checkpoints.size - 1) % checkpoints.size);
+            float nextAlignment = checkpointDirectionAlignment(current, next, forward);
+            float previousAlignment = checkpointDirectionAlignment(current, previous, forward);
+            if (previousAlignment > nextAlignment + 0.10f && previousAlignment > 0.05f) {
+                reverseVotes++;
+            } else if (nextAlignment > previousAlignment + 0.10f && nextAlignment > 0.05f) {
+                forwardVotes++;
+            }
+        }
+        if (reverseVotes > forwardVotes) {
             reverseCheckpointPath(checkpoints);
         }
     }
