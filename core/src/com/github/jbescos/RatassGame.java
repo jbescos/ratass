@@ -76,6 +76,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final String THEME_FLAT_CAR_SHEET_PATH = "cars.png";
     private static final String THEME_ENEMY_NAMES_PATH = "enemy-names.txt";
     private static final String RL_ENEMY_POLICY_PATH = "ai/rl_enemy_policy.json";
+    private static final String RL_POLICY_DIRECTORY = "ai/policies";
+    private static final String RL_POLICY_FILE_NAME = "rl_enemy_policy.json";
+    private static final String RL_DEFAULT_POLICY_ID = "default";
+    private static final int RL_PROFILE_POLICY_COUNT = 21;
     private static final ThemeChoice[] FALLBACK_THEME_CHOICES = new ThemeChoice[] {
             new ThemeChoice("infernal", "Infernal"),
             new ThemeChoice("sport", "Sport Cars"),
@@ -703,6 +707,7 @@ public class RatassGame extends ApplicationAdapter {
     private Car playerCar;
     private Car winner;
     private RlPolicy rlEnemyPolicy;
+    private final Map<String, RlPolicy> rlPolicies = new LinkedHashMap<String, RlPolicy>();
     private String eventCalloutTitle = "";
     private String eventCalloutSubline = "";
     private String configuredThemeName = DEFAULT_THEME_NAME;
@@ -864,11 +869,49 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private RlPolicy loadRlEnemyPolicy() {
+        rlPolicies.clear();
+        RlPolicy legacyPolicy = loadRlPolicy(RL_ENEMY_POLICY_PATH, "legacy");
+        RlPolicy defaultPolicy =
+                loadRlPolicy(
+                        buildRlPolicyPath(RL_DEFAULT_POLICY_ID),
+                        RL_DEFAULT_POLICY_ID);
+        if (defaultPolicy == null) {
+            defaultPolicy = legacyPolicy;
+        }
+        if (defaultPolicy != null) {
+            rlPolicies.put(RL_DEFAULT_POLICY_ID, defaultPolicy);
+        }
+
+        for (int i = 0; i < RL_PROFILE_POLICY_COUNT; i++) {
+            String policyId = formatRlPolicyId(i);
+            RlPolicy policy = loadRlPolicy(buildRlPolicyPath(policyId), policyId);
+            if (policy != null) {
+                rlPolicies.put(policyId, policy);
+            }
+        }
+        return defaultPolicy;
+    }
+
+    private String buildRlPolicyPath(String policyId) {
+        return RL_POLICY_DIRECTORY + "/" + policyId + "/" + RL_POLICY_FILE_NAME;
+    }
+
+    private String formatRlPolicyId(int policyIndex) {
+        return String.format(Locale.US, "%02d", Math.max(0, policyIndex));
+    }
+
+    private RlPolicy getRlPolicyForProfile(int policyIndex) {
+        String policyId = formatRlPolicyId(policyIndex);
+        RlPolicy policy = rlPolicies.get(policyId);
+        return policy == null ? rlEnemyPolicy : policy;
+    }
+
+    private RlPolicy loadRlPolicy(String path, String policyId) {
         if (Gdx.files == null) {
             return null;
         }
         try {
-            FileHandle policyFile = Gdx.files.internal(RL_ENEMY_POLICY_PATH);
+            FileHandle policyFile = Gdx.files.internal(path);
             if (!policyFile.exists()) {
                 return null;
             }
@@ -877,7 +920,9 @@ public class RatassGame extends ApplicationAdapter {
                     || policy.getActionSize() != RL_ACTION_SIZE) {
                 Gdx.app.log(
                         "RatassGame",
-                        "Ignoring RL enemy policy with observation/action size "
+                        "Ignoring RL policy "
+                                + policyId
+                                + " with observation/action size "
                                 + policy.getObservationSize()
                                 + "/"
                                 + policy.getActionSize()
@@ -891,13 +936,15 @@ public class RatassGame extends ApplicationAdapter {
             if (policy.getObservationSize() < RL_OBSERVATION_SIZE) {
                 Gdx.app.log(
                         "RatassGame",
-                        "Using older RL enemy policy with "
+                        "Using older RL policy "
+                                + policyId
+                                + " with "
                                 + policy.getObservationSize()
                                 + " observations; new car sensors are ignored until retraining.");
             }
             return policy;
         } catch (RuntimeException exception) {
-            Gdx.app.error("RatassGame", "Could not load RL enemy policy.", exception);
+            Gdx.app.error("RatassGame", "Could not load RL policy " + policyId + " from " + path + ".", exception);
             return null;
         }
     }
@@ -1093,7 +1140,8 @@ public class RatassGame extends ApplicationAdapter {
     private void createRoster() {
         roster.clear();
         CarVisual playerVisual = getPlayerCarVisual();
-        boolean playerAutopilot = rlEnemyPolicy != null;
+        RlPolicy playerPolicy = getRlPolicyForProfile(0);
+        boolean playerAutopilot = playerPolicy != null;
         addRosterTemplate(
                 "You",
                 true,
@@ -1101,20 +1149,23 @@ public class RatassGame extends ApplicationAdapter {
                 playerVisual,
                 "player",
                 false,
-                playerAutopilot);
+                playerAutopilot,
+                playerPolicy);
 
         int enemyCount = getConfiguredEnemyCount();
-        boolean modelControlledEnemies = rlEnemyPolicy != null;
         for (int enemyIndex = 0; enemyIndex < enemyCount; enemyIndex++) {
             CarVisual visual = getEnemyCarVisual(enemyIndex);
+            RlPolicy enemyPolicy = getRlPolicyForProfile(enemyIndex + 1);
+            boolean modelControlledEnemy = enemyPolicy != null;
             addRosterTemplate(
                     getEnemyName(enemyIndex),
                     false,
                     new Color(visual.color),
                     visual,
                     "rl-" + enemyIndex,
-                    !modelControlledEnemies,
-                    modelControlledEnemies);
+                    !modelControlledEnemy,
+                    modelControlledEnemy,
+                    enemyPolicy);
         }
         invalidateLeaderboard();
     }
@@ -1225,6 +1276,26 @@ public class RatassGame extends ApplicationAdapter {
             String statsLabel,
             boolean externallyControlled,
             boolean modelControlled) {
+        addRosterTemplate(
+                name,
+                playerControlled,
+                color,
+                visual,
+                statsLabel,
+                externallyControlled,
+                modelControlled,
+                null);
+    }
+
+    private void addRosterTemplate(
+            String name,
+            boolean playerControlled,
+            Color color,
+            CarVisual visual,
+            String statsLabel,
+            boolean externallyControlled,
+            boolean modelControlled,
+            RlPolicy rlPolicy) {
         roster.add(new CarTemplate(
                 roster.size,
                 name,
@@ -1234,6 +1305,7 @@ public class RatassGame extends ApplicationAdapter {
                 statsLabel,
                 externallyControlled,
                 modelControlled,
+                rlPolicy,
                 CarPhysics.DEFAULT));
     }
 
@@ -3072,7 +3144,7 @@ public class RatassGame extends ApplicationAdapter {
                     checkpointRadius,
                     targetTimeRemaining,
                     cars,
-                    rlEnemyPolicy);
+                    car.template.rlPolicy);
         }
         if (!allowControl && !roundOver) {
             freezeCarsForCountdown();
@@ -8796,6 +8868,19 @@ public class RatassGame extends ApplicationAdapter {
         public boolean raceMode = true;
         public boolean randomRaceSpawns;
         public boolean debugTraceEnabled;
+        public float stepPenalty = RL_STEP_PENALTY;
+        public float progressReward = RL_PROGRESS_REWARD;
+        public float checkpointReward = RL_CHECKPOINT_REWARD;
+        public float steeringPenalty = RL_STEERING_PENALTY;
+        public float reverseSpeedFreeEpsilon = RL_REVERSE_SPEED_FREE_EPSILON;
+        public float reverseSpeedPenaltyPerUnit = RL_REVERSE_SPEED_PENALTY_PER_UNIT;
+        public float reverseSpeedMaxPenalty = RL_REVERSE_SPEED_MAX_PENALTY;
+        public float carPushPenalty = RL_CAR_PUSH_PENALTY;
+        public float carPushMaxStepPenalty = RL_CAR_PUSH_MAX_STEP_PENALTY;
+        public float offRoadPenalty = RL_OFF_ROAD_PENALTY;
+        public float offRoadDistancePenalty = RL_OFF_ROAD_DISTANCE_PENALTY;
+        public float offRoadMaxPenalty = RL_OFF_ROAD_MAX_PENALTY;
+        public float eliminationPenalty = RL_ELIMINATION_PENALTY;
 
         public RlTrainingConfig addMap(ArenaMap map) {
             if (map != null) {
@@ -8861,6 +8946,57 @@ public class RatassGame extends ApplicationAdapter {
 
         public RlTrainingConfig withDebugTraceEnabled(boolean debugTraceEnabled) {
             this.debugTraceEnabled = debugTraceEnabled;
+            return this;
+        }
+
+        public RlTrainingConfig withStepPenalty(float stepPenalty) {
+            this.stepPenalty = stepPenalty;
+            return this;
+        }
+
+        public RlTrainingConfig withProgressReward(float progressReward) {
+            this.progressReward = progressReward;
+            return this;
+        }
+
+        public RlTrainingConfig withCheckpointReward(float checkpointReward) {
+            this.checkpointReward = checkpointReward;
+            return this;
+        }
+
+        public RlTrainingConfig withSteeringPenalty(float steeringPenalty) {
+            this.steeringPenalty = steeringPenalty;
+            return this;
+        }
+
+        public RlTrainingConfig withReverseSpeedPenalty(
+                float freeEpsilon,
+                float penaltyPerUnit,
+                float maxPenalty) {
+            this.reverseSpeedFreeEpsilon = freeEpsilon;
+            this.reverseSpeedPenaltyPerUnit = penaltyPerUnit;
+            this.reverseSpeedMaxPenalty = maxPenalty;
+            return this;
+        }
+
+        public RlTrainingConfig withCarPushPenalty(float penalty, float maxStepPenalty) {
+            this.carPushPenalty = penalty;
+            this.carPushMaxStepPenalty = maxStepPenalty;
+            return this;
+        }
+
+        public RlTrainingConfig withOffRoadPenalty(
+                float penalty,
+                float distancePenalty,
+                float maxPenalty) {
+            this.offRoadPenalty = penalty;
+            this.offRoadDistancePenalty = distancePenalty;
+            this.offRoadMaxPenalty = maxPenalty;
+            return this;
+        }
+
+        public RlTrainingConfig withEliminationPenalty(float eliminationPenalty) {
+            this.eliminationPenalty = eliminationPenalty;
             return this;
         }
 
@@ -9573,9 +9709,9 @@ public class RatassGame extends ApplicationAdapter {
                         reward += recordReward(
                                 agentIndex,
                                 RL_REWARD_ELIMINATION,
-                                -RL_ELIMINATION_PENALTY);
+                                -config.eliminationPenalty);
                     } else {
-                        reward += recordReward(agentIndex, RL_REWARD_STEP_COST, -RL_STEP_PENALTY);
+                        reward += recordReward(agentIndex, RL_REWARD_STEP_COST, -config.stepPenalty);
                         reward += recordReward(
                                 agentIndex,
                                 RL_REWARD_STEERING,
@@ -9602,7 +9738,7 @@ public class RatassGame extends ApplicationAdapter {
                             reward += recordReward(
                                     agentIndex,
                                     RL_REWARD_CHECKPOINT,
-                                    RL_CHECKPOINT_REWARD);
+                                    config.checkpointReward);
                         }
                     }
                 }
@@ -9626,9 +9762,9 @@ public class RatassGame extends ApplicationAdapter {
 
         private float getOffRoadPenalty(RlAgentSnapshot snapshot) {
             return Math.min(
-                    RL_OFF_ROAD_MAX_PENALTY,
-                    RL_OFF_ROAD_PENALTY
-                            + snapshot.offRoadDistance * RL_OFF_ROAD_DISTANCE_PENALTY);
+                    config.offRoadMaxPenalty,
+                    config.offRoadPenalty
+                            + snapshot.offRoadDistance * config.offRoadDistancePenalty);
         }
 
         private float getProgressReward(int agentIndex, RlAgentSnapshot after) {
@@ -9636,25 +9772,25 @@ public class RatassGame extends ApplicationAdapter {
                 return 0f;
             }
             float progress = MathUtils.clamp(progressTowardCheckpoint[agentIndex], 0f, 1.50f);
-            return progress * RL_PROGRESS_REWARD;
+            return progress * config.progressReward;
         }
 
         private float getReverseSpeedPenalty(RlAgentSnapshot snapshot) {
             float reverseSpeed =
-                    Math.max(0f, -snapshot.signedForwardSpeed - RL_REVERSE_SPEED_FREE_EPSILON);
+                    Math.max(0f, -snapshot.signedForwardSpeed - config.reverseSpeedFreeEpsilon);
             return Math.min(
-                    RL_REVERSE_SPEED_MAX_PENALTY,
-                    reverseSpeed * RL_REVERSE_SPEED_PENALTY_PER_UNIT);
+                    config.reverseSpeedMaxPenalty,
+                    reverseSpeed * config.reverseSpeedPenaltyPerUnit);
         }
 
         private float getSteeringPenalty(int agentIndex) {
             float turn = MathUtils.clamp(currentActionTurn[agentIndex], -1f, 1f);
-            return turn * turn * RL_STEERING_PENALTY;
+            return turn * turn * config.steeringPenalty;
         }
 
         private float getCarPushPenalty(RlAgentSnapshot before, RlAgentSnapshot after) {
             int hits = Math.max(0, after.carHitCount - before.carHitCount);
-            return Math.min(RL_CAR_PUSH_MAX_STEP_PENALTY, hits * RL_CAR_PUSH_PENALTY);
+            return Math.min(config.carPushMaxStepPenalty, hits * config.carPushPenalty);
         }
 
         private void buildObservations() {
@@ -10099,6 +10235,7 @@ public class RatassGame extends ApplicationAdapter {
         private final String statsLabel;
         private final boolean externallyControlled;
         private final boolean modelControlled;
+        private final RlPolicy rlPolicy;
         private CarPhysics physics;
         private Texture spriteTexture;
         private boolean ownsSpriteTexture;
@@ -10131,6 +10268,7 @@ public class RatassGame extends ApplicationAdapter {
                 String statsLabel,
                 boolean externallyControlled,
                 boolean modelControlled,
+                RlPolicy rlPolicy,
                 CarPhysics physics) {
             this.vehicleId = vehicleId;
             this.name = name;
@@ -10140,6 +10278,7 @@ public class RatassGame extends ApplicationAdapter {
             this.statsLabel = statsLabel == null || statsLabel.length() == 0 ? name : statsLabel;
             this.externallyControlled = externallyControlled;
             this.modelControlled = modelControlled;
+            this.rlPolicy = rlPolicy;
             this.physics = physics == null ? CarPhysics.DEFAULT : physics;
         }
     }

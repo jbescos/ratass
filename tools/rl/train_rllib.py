@@ -248,6 +248,27 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withRaceMode(True)
         training_config.withRandomRaceSpawns(bool(env_config.get("random_race_spawns", False)))
         training_config.withSeed(int(env_config.get("seed", 1)))
+        training_config.withStepPenalty(float(env_config.get("reward_step_penalty", 0.006)))
+        training_config.withProgressReward(float(env_config.get("reward_progress", 1.60)))
+        training_config.withCheckpointReward(float(env_config.get("reward_checkpoint", 30.0)))
+        training_config.withSteeringPenalty(float(env_config.get("reward_steering_penalty", 0.010)))
+        training_config.withReverseSpeedPenalty(
+            float(env_config.get("reward_reverse_free_epsilon", 0.20)),
+            float(env_config.get("reward_reverse_penalty_per_unit", 0.08)),
+            float(env_config.get("reward_reverse_max_penalty", 0.90)),
+        )
+        training_config.withCarPushPenalty(
+            float(env_config.get("reward_car_push_penalty", 3.0)),
+            float(env_config.get("reward_car_push_max_step_penalty", 8.0)),
+        )
+        training_config.withOffRoadPenalty(
+            float(env_config.get("reward_off_road_penalty", 0.80)),
+            float(env_config.get("reward_off_road_distance_penalty", 0.22)),
+            float(env_config.get("reward_off_road_max_penalty", 5.0)),
+        )
+        training_config.withEliminationPenalty(
+            float(env_config.get("reward_elimination_penalty", 128.0))
+        )
         self._add_selected_maps(training_config, env_config.get("map_ids", ""))
 
         self._java_float_array = jpype.JArray(jpype.JFloat)
@@ -473,6 +494,19 @@ def build_algorithm(args):
         "map_ids": args.map_ids,
         "objective": args.objective,
         "reward_summary": not args.no_reward_summary,
+        "reward_step_penalty": args.reward_step_penalty,
+        "reward_progress": args.reward_progress,
+        "reward_checkpoint": args.reward_checkpoint,
+        "reward_steering_penalty": args.reward_steering_penalty,
+        "reward_reverse_free_epsilon": args.reward_reverse_free_epsilon,
+        "reward_reverse_penalty_per_unit": args.reward_reverse_penalty_per_unit,
+        "reward_reverse_max_penalty": args.reward_reverse_max_penalty,
+        "reward_car_push_penalty": args.reward_car_push_penalty,
+        "reward_car_push_max_step_penalty": args.reward_car_push_max_step_penalty,
+        "reward_off_road_penalty": args.reward_off_road_penalty,
+        "reward_off_road_distance_penalty": args.reward_off_road_distance_penalty,
+        "reward_off_road_max_penalty": args.reward_off_road_max_penalty,
+        "reward_elimination_penalty": args.reward_elimination_penalty,
     }
     config = (
         PPOConfig()
@@ -974,6 +1008,19 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="optional comma-separated map ids to train on; defaults to all discovered masks",
     )
+    parser.add_argument("--reward-step-penalty", type=float, default=0.006)
+    parser.add_argument("--reward-progress", type=float, default=1.60)
+    parser.add_argument("--reward-checkpoint", type=float, default=30.0)
+    parser.add_argument("--reward-steering-penalty", type=float, default=0.010)
+    parser.add_argument("--reward-reverse-free-epsilon", type=float, default=0.20)
+    parser.add_argument("--reward-reverse-penalty-per-unit", type=float, default=0.08)
+    parser.add_argument("--reward-reverse-max-penalty", type=float, default=0.90)
+    parser.add_argument("--reward-car-push-penalty", type=float, default=3.0)
+    parser.add_argument("--reward-car-push-max-step-penalty", type=float, default=8.0)
+    parser.add_argument("--reward-off-road-penalty", type=float, default=0.80)
+    parser.add_argument("--reward-off-road-distance-penalty", type=float, default=0.22)
+    parser.add_argument("--reward-off-road-max-penalty", type=float, default=5.0)
+    parser.add_argument("--reward-elimination-penalty", type=float, default=128.0)
     parser.add_argument("--gamma", type=float, default=0.995)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--train-batch-size", type=int, default=8192)

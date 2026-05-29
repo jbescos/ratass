@@ -4,6 +4,20 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 python_bin="${PYTHON_BIN:-.venv-rl/bin/python}"
 
+source "${script_dir}/policy_profiles.sh"
+
+if [[ -n "${RL_POLICY_ID:-}" ]] && ! rl_policy_batch_active; then
+  normalized_policy_id="$(rl_policy_normalize_id "${RL_POLICY_ID}")"
+  export RL_POLICY_ID="${normalized_policy_id}"
+  rl_policy_load_properties "${RL_POLICY_ID}"
+  export RL_BEST_OUTPUT="${RL_BEST_OUTPUT:-assets/ai/policies/${RL_POLICY_ID}/rl_enemy_policy.json}"
+  export RL_CURRICULUM_CHECKPOINT_DIR="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints/policies/${RL_POLICY_ID}/forever}"
+  export RL_CHECKPOINT_DIR="${RL_CHECKPOINT_DIR:-${RL_CURRICULUM_CHECKPOINT_DIR}}"
+  export RL_TRAIN_LOG="${RL_TRAIN_LOG:-logs/rl-policy-${RL_POLICY_ID}-forever.log}"
+  export RL_POLICY_EXPLICIT_SELECTION=1
+  rl_policy_configure_resume
+fi
+
 set_default() {
   local name="$1"
   local value="$2"
@@ -82,7 +96,7 @@ run_curriculum_phase() {
   local best_eval_min_checkpoints="${RL_BEST_EVAL_MIN_CHECKPOINTS:-}"
   local phase_best_output="${RL_BEST_OUTPUT:-assets/ai/rl_enemy_policy.json}"
   if [[ "${iterations}" -le 0 ]]; then
-    echo "curriculum_phase_skip=${phase} iterations=${iterations} max_checkpoints=${max_checkpoints}"
+    echo "curriculum_phase_skip policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} iterations=${iterations} max_checkpoints=${max_checkpoints}"
     return
   fi
   if [[ -z "${best_eval_min_checkpoints}" ]]; then
@@ -92,7 +106,37 @@ run_curriculum_phase() {
       best_eval_min_checkpoints="1"
     fi
   fi
-  echo "curriculum_phase=${phase} preset=${preset} iterations=${iterations} max_cycles=${max_cycles} max_checkpoints=${max_checkpoints} checkpoint_dir=${checkpoint_dir} best_eval_state=${best_eval_state} best_output=${phase_best_output} init_policy=${init_policy:-none}"
+  if phase_state_completed "${phase}" && ! is_true "${RL_RETRAIN_COMPLETED:-0}"; then
+    echo "curriculum_phase_skip_completed policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} state=${RL_POLICY_TRAINING_STATE}"
+    return
+  fi
+  if [[ -n "${RL_POLICY_STATUS_FILE:-}" ]]; then
+    mkdir -p "$(dirname "${RL_POLICY_STATUS_FILE}")"
+    {
+      printf 'status=running\n'
+      printf 'updated_at=%s\n' "$(date -Is)"
+      printf 'policy_id=%s\n' "${RL_POLICY_ID:-legacy}"
+      printf 'policy_index=%s\n' "${RL_POLICY_INDEX:-}"
+      printf 'policy_total=%s\n' "${RL_POLICY_TOTAL:-}"
+      printf 'current_phase=%s\n' "${phase}"
+      printf 'preset=%s\n' "${preset}"
+      printf 'phase_iterations=%s\n' "${iterations}"
+      printf 'max_checkpoints=%s\n' "${max_checkpoints}"
+      printf 'checkpoint_dir=%s\n' "${checkpoint_dir}"
+      printf 'output=%s\n' "${phase_best_output}"
+      printf 'training_state=%s\n' "${RL_POLICY_TRAINING_STATE:-}"
+    } > "${RL_POLICY_STATUS_FILE}"
+  fi
+  append_phase_state \
+    "status=running" \
+    "completed_profile=0" \
+    "current_phase=${phase}" \
+    "preset=${preset}" \
+    "phase_iterations=${iterations}" \
+    "max_cycles=${max_cycles}" \
+    "max_checkpoints=${max_checkpoints}"
+  echo "CURRENT_TRAINING_CAR=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} preset=${preset} iterations=${iterations} cars=${RL_CONTROLLED_AGENTS:-?} max_checkpoints=${max_checkpoints}"
+  echo "curriculum_phase=${phase} policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} preset=${preset} iterations=${iterations} max_cycles=${max_cycles} max_checkpoints=${max_checkpoints} checkpoint_dir=${checkpoint_dir} best_eval_state=${best_eval_state} best_output=${phase_best_output} init_policy=${init_policy:-none}"
   env \
     RL_CHECKPOINT_DIR="${checkpoint_dir}" \
     RL_FOREVER_ITERATIONS="${iterations}" \
@@ -105,6 +149,13 @@ run_curriculum_phase() {
     RL_CHECKPOINT_STAGE_ACTIVE=1 \
     RL_FRESH_START=0 \
     bash "${script_dir}/train_forever.sh" "${preset}"
+  local phase_key
+  phase_key="$(phase_state_key "${phase}")"
+  append_phase_state \
+    "status=running" \
+    "completed_profile=0" \
+    "last_completed_phase=${phase}" \
+    "completed_phase_${phase_key}=1"
 }
 
 checkpoint_stage_label() {
@@ -114,27 +165,151 @@ checkpoint_stage_label() {
   esac
 }
 
+normalize_checkpoint_stage() {
+  case "$1" in
+    "lap"|"full"|"-1") printf '%s\n' "-1" ;;
+    "")
+      echo "empty_checkpoint_stage=1" >&2
+      return 2
+      ;;
+    *)
+      if [[ "$1" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$1"
+        return 0
+      fi
+      echo "invalid_checkpoint_stage=$1 expected=positive_integer_or_lap" >&2
+      return 2
+      ;;
+  esac
+}
+
+split_csv_compact() {
+  local raw="${1:-}"
+  raw="${raw//[[:space:]]/}"
+  if [[ -z "${raw}" ]]; then
+    return 0
+  fi
+  IFS=',' read -r -a split_csv_result <<< "${raw}"
+}
+
+phase_state_key() {
+  printf '%s' "$1" | tr -c '[:alnum:]_' '_'
+}
+
+phase_state_completed() {
+  local phase="$1"
+  local key
+  if [[ -z "${RL_POLICY_TRAINING_STATE:-}" || ! -f "${RL_POLICY_TRAINING_STATE}" ]]; then
+    return 1
+  fi
+  key="$(phase_state_key "${phase}")"
+  grep -q "^completed_phase_${key}=1$" "${RL_POLICY_TRAINING_STATE}"
+}
+
+append_phase_state() {
+  if [[ -z "${RL_POLICY_TRAINING_STATE:-}" ]]; then
+    return
+  fi
+  mkdir -p "$(dirname "${RL_POLICY_TRAINING_STATE}")"
+  {
+    printf 'updated_at=%s\n' "$(date -Is)"
+    printf 'policy_id=%s\n' "${RL_POLICY_ID:-legacy}"
+    printf 'checkpoint_dir=%s\n' "${RL_CURRICULUM_CHECKPOINT_DIR:-${RL_CHECKPOINT_DIR:-}}"
+    printf 'output=%s\n' "${RL_BEST_OUTPUT:-}"
+    printf '%s\n' "$@"
+  } >> "${RL_POLICY_TRAINING_STATE}"
+}
+
+default_iterations_for_agent_count() {
+  case "$1" in
+    1) printf '%s\n' "${RL_CURRICULUM_RACE_1_ITERATIONS:-400}" ;;
+    2) printf '%s\n' "${RL_CURRICULUM_RACE_2_ITERATIONS:-400}" ;;
+    4) printf '%s\n' "${RL_CURRICULUM_RACE_4_ITERATIONS:-400}" ;;
+    8) printf '%s\n' "${RL_CURRICULUM_RACE_8_ITERATIONS:-500}" ;;
+    16) printf '%s\n' "${RL_CURRICULUM_RACE_16_ITERATIONS:-600}" ;;
+    20) printf '%s\n' "${RL_CURRICULUM_RACE_20_ITERATIONS:-800}" ;;
+    *) printf '%s\n' "${RL_CURRICULUM_AGENT_ITERATIONS:-400}" ;;
+  esac
+}
+
+default_max_cycles_for_agent_count() {
+  case "$1" in
+    1) printf '%s\n' "${RL_CURRICULUM_RACE_1_MAX_CYCLES:-1}" ;;
+    2) printf '%s\n' "${RL_CURRICULUM_RACE_2_MAX_CYCLES:-1}" ;;
+    4) printf '%s\n' "${RL_CURRICULUM_RACE_4_MAX_CYCLES:-1}" ;;
+    8) printf '%s\n' "${RL_CURRICULUM_RACE_8_MAX_CYCLES:-1}" ;;
+    16) printf '%s\n' "${RL_CURRICULUM_RACE_16_MAX_CYCLES:-1}" ;;
+    20) printf '%s\n' "${RL_CURRICULUM_RACE_20_MAX_CYCLES:-0}" ;;
+    *) printf '%s\n' "${RL_CURRICULUM_AGENT_MAX_CYCLES:-1}" ;;
+  esac
+}
+
+preset_for_agent_count() {
+  case "$1" in
+    1) printf '%s\n' "race-single" ;;
+    2|4|8|16|20) printf 'race-%s\n' "$1" ;;
+    *)
+      echo "unsupported_controlled_agent_stage=$1 supported=1,2,4,8,16,20" >&2
+      return 2
+      ;;
+  esac
+}
+
 run_checkpoint_curriculum_for_preset() {
   local preset="$1"
   local total_iterations="$2"
   local final_max_cycles="$3"
   local checkpoint_dir="$4"
   local init_policy="$5"
-  local base=$((total_iterations / 4))
-  local remainder=$((total_iterations % 4))
-  local checkpoints=(1 2 3 -1)
+  local stage_specs=()
+  local stage_iterations=()
+  local split_csv_result=()
   local index
 
-  for index in 0 1 2 3; do
-    local phase_iterations="${base}"
-    if [[ "${index}" -lt "${remainder}" ]]; then
-      phase_iterations=$((phase_iterations + 1))
+  split_csv_compact "${RL_STAGE_CHECKPOINTS:-1,2,3,lap}"
+  stage_specs=("${split_csv_result[@]}")
+  if [[ "${#stage_specs[@]}" -eq 0 ]]; then
+    echo "empty_stage_schedule=1" >&2
+    return 2
+  fi
+
+  if [[ -n "${RL_STAGE_ITERATIONS:-}" ]]; then
+    split_csv_compact "${RL_STAGE_ITERATIONS}"
+    stage_iterations=("${split_csv_result[@]}")
+    if [[ "${#stage_iterations[@]}" -ne "${#stage_specs[@]}" ]]; then
+      echo "stage_iterations_count_mismatch=${#stage_iterations[@]} expected=${#stage_specs[@]} action=redistribute_total_iterations" >&2
+      stage_iterations=()
+      local base=$((total_iterations / ${#stage_specs[@]}))
+      local remainder=$((total_iterations % ${#stage_specs[@]}))
+      for ((index = 0; index < ${#stage_specs[@]}; index++)); do
+        local generated_iterations="${base}"
+        if [[ "${index}" -lt "${remainder}" ]]; then
+          generated_iterations=$((generated_iterations + 1))
+        fi
+        stage_iterations+=("${generated_iterations}")
+      done
     fi
+  else
+    local base=$((total_iterations / ${#stage_specs[@]}))
+    local remainder=$((total_iterations % ${#stage_specs[@]}))
+    for ((index = 0; index < ${#stage_specs[@]}; index++)); do
+      local generated_iterations="${base}"
+      if [[ "${index}" -lt "${remainder}" ]]; then
+        generated_iterations=$((generated_iterations + 1))
+      fi
+      stage_iterations+=("${generated_iterations}")
+    done
+  fi
+
+  echo "checkpoint_curriculum_schedule preset=${preset} stages=${RL_STAGE_CHECKPOINTS:-1,2,3,lap} stage_iterations=${stage_iterations[*]} total_iterations=${total_iterations}"
+  for ((index = 0; index < ${#stage_specs[@]}; index++)); do
+    local phase_iterations="${stage_iterations[index]}"
     local max_cycles=1
-    if [[ "${index}" -eq 3 ]]; then
+    if [[ "${index}" -eq $((${#stage_specs[@]} - 1)) ]]; then
       max_cycles="${final_max_cycles}"
     fi
-    local checkpoint_target="${checkpoints[index]}"
+    local checkpoint_target
+    checkpoint_target="$(normalize_checkpoint_stage "${stage_specs[index]}")"
     local checkpoint_label
     checkpoint_label="$(checkpoint_stage_label "${checkpoint_target}")"
     run_curriculum_phase \
@@ -151,20 +326,69 @@ run_checkpoint_curriculum_for_preset() {
 
 run_race_curriculum() {
   local checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-race-f1-1024x2-v1}"
-  local race_1_iterations="${RL_CURRICULUM_RACE_1_ITERATIONS:-400}"
-  local race_2_iterations="${RL_CURRICULUM_RACE_2_ITERATIONS:-400}"
-  local race_4_iterations="${RL_CURRICULUM_RACE_4_ITERATIONS:-400}"
-  local race_8_iterations="${RL_CURRICULUM_RACE_8_ITERATIONS:-500}"
-  local race_16_iterations="${RL_CURRICULUM_RACE_16_ITERATIONS:-600}"
-  local race_20_iterations="${RL_CURRICULUM_RACE_20_ITERATIONS:-800}"
+  local agent_stages=()
+  local agent_iterations=()
+  local agent_max_cycles=()
+  local split_csv_result=()
+  local index
 
   clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
-  run_checkpoint_curriculum_for_preset "race-single" "${race_1_iterations}" "${RL_CURRICULUM_RACE_1_MAX_CYCLES:-1}" "${checkpoint_dir}" "${RL_INIT_POLICY:-}"
-  run_checkpoint_curriculum_for_preset "race-2" "${race_2_iterations}" "${RL_CURRICULUM_RACE_2_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
-  run_checkpoint_curriculum_for_preset "race-4" "${race_4_iterations}" "${RL_CURRICULUM_RACE_4_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
-  run_checkpoint_curriculum_for_preset "race-8" "${race_8_iterations}" "${RL_CURRICULUM_RACE_8_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
-  run_checkpoint_curriculum_for_preset "race-16" "${race_16_iterations}" "${RL_CURRICULUM_RACE_16_MAX_CYCLES:-1}" "${checkpoint_dir}" ""
-  run_checkpoint_curriculum_for_preset "race-20" "${race_20_iterations}" "${RL_CURRICULUM_RACE_20_MAX_CYCLES:-0}" "${checkpoint_dir}" ""
+  split_csv_compact "${RL_TRAINING_CAR_STAGES:-${RL_CONTROLLED_AGENT_STAGES:-1,2,4,8,20}}"
+  agent_stages=("${split_csv_result[@]}")
+  if [[ "${#agent_stages[@]}" -eq 0 ]]; then
+    echo "empty_controlled_agent_stages=1" >&2
+    return 2
+  fi
+
+  local configured_agent_iterations="${RL_TRAINING_CAR_ITERATIONS:-${RL_CONTROLLED_AGENT_ITERATIONS:-}}"
+  if [[ -n "${configured_agent_iterations}" ]]; then
+    split_csv_compact "${configured_agent_iterations}"
+    agent_iterations=("${split_csv_result[@]}")
+    if [[ "${#agent_iterations[@]}" -ne "${#agent_stages[@]}" ]]; then
+      echo "controlled_agent_iterations_count_mismatch=${#agent_iterations[@]} expected=${#agent_stages[@]} action=use_stage_defaults" >&2
+      agent_iterations=()
+      for index in "${!agent_stages[@]}"; do
+        agent_iterations+=("$(default_iterations_for_agent_count "${agent_stages[index]}")")
+      done
+    fi
+  else
+    for index in "${!agent_stages[@]}"; do
+      agent_iterations+=("$(default_iterations_for_agent_count "${agent_stages[index]}")")
+    done
+  fi
+
+  local configured_agent_max_cycles="${RL_TRAINING_CAR_MAX_CYCLES:-${RL_CONTROLLED_AGENT_MAX_CYCLES:-}}"
+  if [[ -n "${configured_agent_max_cycles}" ]]; then
+    split_csv_compact "${configured_agent_max_cycles}"
+    agent_max_cycles=("${split_csv_result[@]}")
+    if [[ "${#agent_max_cycles[@]}" -ne "${#agent_stages[@]}" ]]; then
+      echo "controlled_agent_max_cycles_count_mismatch=${#agent_max_cycles[@]} expected=${#agent_stages[@]} action=use_stage_defaults" >&2
+      agent_max_cycles=()
+      for index in "${!agent_stages[@]}"; do
+        agent_max_cycles+=("$(default_max_cycles_for_agent_count "${agent_stages[index]}")")
+      done
+    fi
+  else
+    for index in "${!agent_stages[@]}"; do
+      agent_max_cycles+=("$(default_max_cycles_for_agent_count "${agent_stages[index]}")")
+    done
+  fi
+
+  echo "agent_curriculum_schedule policy=${RL_POLICY_ID:-legacy} agent_stages=${agent_stages[*]} agent_iterations=${agent_iterations[*]} agent_max_cycles=${agent_max_cycles[*]}"
+  for index in "${!agent_stages[@]}"; do
+    local preset_for_stage
+    preset_for_stage="$(preset_for_agent_count "${agent_stages[index]}")"
+    local stage_init_policy=""
+    if [[ "${index}" -eq 0 ]]; then
+      stage_init_policy="${RL_INIT_POLICY:-}"
+    fi
+    run_checkpoint_curriculum_for_preset \
+      "${preset_for_stage}" \
+      "${agent_iterations[index]}" \
+      "${agent_max_cycles[index]}" \
+      "${checkpoint_dir}" \
+      "${stage_init_policy}"
+  done
 }
 
 run_curriculum() {
@@ -296,6 +520,7 @@ random_race_spawns="${RL_RANDOM_RACE_SPAWNS:-1}"
 train_batch_size="${RL_TRAIN_BATCH_SIZE:-4096}"
 minibatch_size="${RL_MINIBATCH_SIZE:-512}"
 lr="${RL_LR:-3e-4}"
+gamma="${RL_GAMMA:-0.995}"
 hidden_size="${RL_HIDDEN_SIZE:-1024}"
 hidden_layers="${RL_HIDDEN_LAYERS:-2}"
 hidden_activation="${RL_HIDDEN_ACTIVATION:-tanh}"
@@ -323,11 +548,24 @@ best_eval_steps="${RL_BEST_EVAL_STEPS:-0}"
 best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS-${map_ids}}"
 best_eval_state="${RL_BEST_EVAL_STATE:-}"
 best_eval_ignore_installed="${RL_BEST_EVAL_IGNORE_INSTALLED:-1}"
+reward_step_penalty="${RL_REWARD_STEP_PENALTY:-0.006}"
+reward_progress="${RL_REWARD_PROGRESS:-1.60}"
+reward_checkpoint="${RL_REWARD_CHECKPOINT:-30.0}"
+reward_steering_penalty="${RL_REWARD_STEERING_PENALTY:-0.010}"
+reward_reverse_free_epsilon="${RL_REWARD_REVERSE_FREE_EPSILON:-0.20}"
+reward_reverse_penalty_per_unit="${RL_REWARD_REVERSE_PENALTY_PER_UNIT:-0.08}"
+reward_reverse_max_penalty="${RL_REWARD_REVERSE_MAX_PENALTY:-0.90}"
+reward_car_push_penalty="${RL_REWARD_CAR_PUSH_PENALTY:-3.0}"
+reward_car_push_max_step_penalty="${RL_REWARD_CAR_PUSH_MAX_STEP_PENALTY:-8.0}"
+reward_off_road_penalty="${RL_REWARD_OFF_ROAD_PENALTY:-0.80}"
+reward_off_road_distance_penalty="${RL_REWARD_OFF_ROAD_DISTANCE_PENALTY:-0.22}"
+reward_off_road_max_penalty="${RL_REWARD_OFF_ROAD_MAX_PENALTY:-5.0}"
+reward_elimination_penalty="${RL_REWARD_ELIMINATION_PENALTY:-128.0}"
 
 clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
 checkpoint_file="${checkpoint_dir}/rllib_checkpoint.json"
 
-echo "training_step_start preset=${preset:-race} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} random_race_spawns=${random_race_spawns} checkpoint_radius=${checkpoint_radius} checkpoint_deadline_seconds=${checkpoint_deadline_seconds} max_checkpoints=${max_checkpoints} max_action_steps=${max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all}"
+echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} random_race_spawns=${random_race_spawns} checkpoint_radius=${checkpoint_radius} checkpoint_deadline_seconds=${checkpoint_deadline_seconds} max_checkpoints=${max_checkpoints} max_action_steps=${max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all}"
 
 common_args=(
   --checkpoint-dir "${checkpoint_dir}"
@@ -342,6 +580,7 @@ common_args=(
   --train-batch-size "${train_batch_size}"
   --minibatch-size "${minibatch_size}"
   --lr "${lr}"
+  --gamma "${gamma}"
   --hidden-size "${hidden_size}"
   --hidden-layers "${hidden_layers}"
   --hidden-activation "${hidden_activation}"
@@ -349,6 +588,19 @@ common_args=(
   --num-gpus "${num_gpus}"
   --objective "${objective}"
   --sample-timeout-s "${sample_timeout_s}"
+  --reward-step-penalty "${reward_step_penalty}"
+  --reward-progress "${reward_progress}"
+  --reward-checkpoint "${reward_checkpoint}"
+  --reward-steering-penalty "${reward_steering_penalty}"
+  --reward-reverse-free-epsilon "${reward_reverse_free_epsilon}"
+  --reward-reverse-penalty-per-unit "${reward_reverse_penalty_per_unit}"
+  --reward-reverse-max-penalty "${reward_reverse_max_penalty}"
+  --reward-car-push-penalty "${reward_car_push_penalty}"
+  --reward-car-push-max-step-penalty "${reward_car_push_max_step_penalty}"
+  --reward-off-road-penalty "${reward_off_road_penalty}"
+  --reward-off-road-distance-penalty "${reward_off_road_distance_penalty}"
+  --reward-off-road-max-penalty "${reward_off_road_max_penalty}"
+  --reward-elimination-penalty "${reward_elimination_penalty}"
 )
 
 if [[ -n "${map_ids}" ]]; then

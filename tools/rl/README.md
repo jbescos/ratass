@@ -78,14 +78,13 @@ python tools/rl/train_rllib.py --map-ids <map-id-a>,<map-id-b> --iterations 100
 ## Curriculum
 
 ```bash
-bash tools/rl/train_curriculum_400.sh
+tools/rl/train.sh
 ```
 
-Fast diagnostic curriculum for checking reward or observation changes before
-spending hours on a full run:
+Train one specific profile:
 
 ```bash
-bash tools/rl/train_forever.sh diagnostic
+tools/rl/train.sh 04
 ```
 
 Check whether loaded checkpoint centers, checkpoint gates, and first route
@@ -102,14 +101,15 @@ during training; enable it only for small evaluation runs:
 .venv-rl/bin/python tools/rl/evaluate_policy.py --episodes 1 --steps 300 --controlled-agents 1 --field-size 1 --map-id map003 --trace-dir logs/rl-trace
 ```
 
-Convenience wrappers:
+Docker training uses the same profile system:
 
 ```bash
-bash tools/rl/train_curriculum_400.sh
-bash tools/rl/train_race_single_400_all_maps.sh
+tools/rl/train_docker.sh
+tools/rl/train_docker.sh 04
 ```
 
-Common presets:
+Internal presets are still available through `train_forever.sh` when debugging
+the trainer directly:
 
 ```bash
 bash tools/rl/train_forever.sh diagnostic

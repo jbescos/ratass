@@ -23,4 +23,4 @@ echo "python=${PYTHON_BIN}"
 java -version
 mvn -version
 
-exec bash tools/rl/train_forever.sh "$@"
+exec bash tools/rl/train.sh "$@"
