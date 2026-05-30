@@ -30,9 +30,17 @@ public final class ArenaMaps {
         float scale = Math.max(0.1f, mapScale);
         if (Gdx.files != null) {
             try {
-                Array<ArenaMap> pictureMaps = ImageArenaMapLoader.loadDefaultMaps(scale);
-                if (pictureMaps.size > 0) {
-                    return pictureMaps;
+                Array<ArenaMap> trainingMaps = ImageArenaMapLoader.loadTrainingMaps(scale);
+                if (trainingMaps.size > 0) {
+                    return trainingMaps;
+                }
+            } catch (RuntimeException ignored) {
+                // Synthetic training maps are optional in smoke runs and packaged builds.
+            }
+            try {
+                Array<ArenaMap> gameMaps = ImageArenaMapLoader.loadDefaultMaps(scale);
+                if (gameMaps.size > 0) {
+                    return gameMaps;
                 }
             } catch (RuntimeException ignored) {
                 // Headless unit/smoke runs can execute without LibGDX file services.

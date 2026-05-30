@@ -1,10 +1,10 @@
-# RL Policy Profiles
+# RL Driver Profiles
 
 Each subdirectory is one trainable driving personality. The game loads models from
 `assets/ai/policies/<id>/rl_enemy_policy.json`; if a specific id is missing it falls back to
 `assets/ai/policies/default/rl_enemy_policy.json`.
 
-Use `profile.properties` to configure a personality. Numbered profiles inherit
+Use `profile.properties` to configure a personality. Named profiles inherit
 `tools/rl/policies/default/profile.properties` and can override any `RL_*` value.
 
 Common properties:
@@ -17,11 +17,14 @@ RL_HIDDEN_ACTIVATION=tanh
 RL_LR=3e-4
 RL_GAMMA=0.995
 
-# Curriculum. These are total learner cars in the training environment.
+# Checkpoint curriculum for single-car learning.
 RL_STAGE_CHECKPOINTS=1,2,3,lap
-RL_TRAINING_CAR_STAGES=1,2,4,8,20
-RL_TRAINING_CAR_ITERATIONS=400,400,400,500,800
-RL_TRAINING_CAR_MAX_CYCLES=1,1,1,1,0
+
+# Optional multi-car curriculum. Stages above 1 car train lap-only with the
+# fixed grid; checkpoint stages are always single-car.
+RL_TRAINING_CAR_STAGES=1,2
+RL_TRAINING_CAR_ITERATIONS=430,150
+RL_TRAINING_CAR_MAX_CYCLES=1,1
 
 # Rewards.
 RL_REWARD_PROGRESS=1.60
@@ -35,7 +38,7 @@ Recommended commands:
 
 ```bash
 bash tools/rl/train.sh
-bash tools/rl/train.sh 04
+bash tools/rl/train.sh aggressive
 bash tools/rl/train_docker.sh
-bash tools/rl/train_docker.sh 04
+bash tools/rl/train_docker.sh aggressive
 ```

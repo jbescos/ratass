@@ -22,12 +22,13 @@ public final class RlPolicySmokeMain {
 
         RlPolicy policy = RlPolicy.fromJson(readString(input));
         float[] observation = new float[policy.getObservationSize()];
-        observation[0] = 1f;
-        observation[8] = 0.35f;
-        observation[9] = 0.75f;
-        observation[10] = 0.20f;
-        observation[18] = 1f;
-        observation[19] = 0.18f;
+        setObservation(observation, 7, 0.35f);
+        setObservation(observation, 8, 0.75f);
+        setObservation(observation, 9, 0.20f);
+        setObservation(observation, 17, 1f);
+        setObservation(observation, 18, 0.18f);
+        setObservation(observation, 41, 0.75f);
+        setObservation(observation, 42, 0.75f);
 
         float[] scratchA = new float[policy.getScratchSize()];
         float[] scratchB = new float[policy.getScratchSize()];
@@ -42,6 +43,12 @@ public final class RlPolicySmokeMain {
                 policy.getActionSize(),
                 decision.throttle,
                 decision.turn);
+    }
+
+    private static void setObservation(float[] observation, int index, float value) {
+        if (index >= 0 && index < observation.length) {
+            observation[index] = value;
+        }
     }
 
     private static String readString(InputStream input) throws IOException {

@@ -1,8 +1,10 @@
 package com.github.jbescos.gameplay.maps;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Files.FileType;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.PixmapIO;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
@@ -22,10 +24,11 @@ import java.util.zip.GZIPOutputStream;
 
 final class ImageArenaMapLoader {
     private static final String MAPS_DIRECTORY = "maps";
+    private static final String TRAINING_MAPS_DIRECTORY = "tools/rl/trainingMaps";
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
     private static final String CACHE_SUFFIX = ".ser";
-    private static final int CACHE_VERSION = 18;
+    private static final int CACHE_VERSION = 26;
     private static final float BASE_WORLD_HEIGHT = 22f;
     private static final int MAX_SEQUENTIAL_MAP_SCAN = 1000;
     private static final int MAX_SHAPE_MASK_LONG_SIDE = 512;
@@ -37,6 +40,25 @@ final class ImageArenaMapLoader {
     private static final float RECOVERY_SAFE_MARGIN = 0.85f;
     private static final float CHECKPOINT_ORDER_ROUTE_MARGIN = 1.20f;
     private static final float CHECKPOINT_ORDER_SCORE_EPSILON = 0.001f;
+    private static final int CHECKPOINT_ORDER_TRACE_DISTANCE_PIXELS = 8;
+    private static final int CHECKPOINT_ORDER_DOT_RADIUS = 4;
+    private static final int CHECKPOINT_ORDER_LABEL_SCALE = 3;
+    private static final int CHECKPOINT_ORDER_LABEL_GAP = 9;
+    private static final int CHECKPOINT_ORDER_LABEL_COLOR = rgba8888(88, 88, 88);
+    private static final int CHECKPOINT_ORDER_MARKER_MIN_PIXELS = 8;
+    private static final int CHECKPOINT_ORDER_MANUAL_DISTANCE_PIXELS = 120;
+    private static final String[][] DIGIT_BITMAPS = {
+        {"111", "101", "101", "101", "101", "101", "111"},
+        {"010", "110", "010", "010", "010", "010", "111"},
+        {"111", "001", "001", "111", "100", "100", "111"},
+        {"111", "001", "001", "111", "001", "001", "111"},
+        {"101", "101", "101", "111", "001", "001", "001"},
+        {"111", "100", "100", "111", "001", "001", "111"},
+        {"111", "100", "100", "111", "101", "101", "111"},
+        {"111", "001", "001", "010", "010", "100", "100"},
+        {"111", "101", "101", "111", "101", "101", "111"},
+        {"111", "101", "101", "111", "001", "001", "111"}
+    };
     private static final boolean DEBUG_CHECKPOINT_ORDER =
             Boolean.getBoolean("ratass.debugCheckpointOrder");
 
@@ -44,15 +66,31 @@ final class ImageArenaMapLoader {
     }
 
     static Array<ArenaMap> loadDefaultMaps(float mapScale) {
+        return loadMapsFromDirectory(MAPS_DIRECTORY, mapScale, true);
+    }
+
+    static Array<ArenaMap> loadTrainingMaps(float mapScale) {
+        return loadMapsFromDirectory(TRAINING_MAPS_DIRECTORY, mapScale, false);
+    }
+
+    private static Array<ArenaMap> loadMapsFromDirectory(
+            String directoryPath,
+            float mapScale,
+            boolean requireMaps) {
         if (Gdx.files == null) {
             throw new IllegalStateException("Picture maps require Gdx.files to be available.");
         }
 
         float scale = Math.max(0.1f, mapScale);
-        Array<FileHandle> maskFiles = findMaskFiles();
+        Array<FileHandle> maskFiles = findMaskFiles(directoryPath);
         if (maskFiles.size == 0) {
+            if (!requireMaps) {
+                return new Array<ArenaMap>();
+            }
             throw new IllegalStateException(
-                    "No picture map masks found. Add files like assets/maps/<name>_mask.png.");
+                    "No picture map masks found. Add files like "
+                            + directoryPath
+                            + "/<name>_mask.png.");
         }
 
         Array<ArenaMap> maps = new Array<ArenaMap>();
@@ -62,24 +100,16 @@ final class ImageArenaMapLoader {
         return maps;
     }
 
-    private static Array<FileHandle> findMaskFiles() {
+    private static Array<FileHandle> findMaskFiles(String directoryPath) {
         Array<FileHandle> maskFiles = new Array<FileHandle>();
         HashSet<String> seenPaths = new HashSet<String>();
-        FileHandle directory = Gdx.files.internal(MAPS_DIRECTORY);
-        if (directory.exists() && directory.isDirectory()) {
-            FileHandle[] children = directory.list();
-            for (int i = 0; i < children.length; i++) {
-                FileHandle child = children[i];
-                if (child.name().endsWith(MASK_SUFFIX)) {
-                    addMaskFile(maskFiles, seenPaths, child);
-                }
-            }
-        }
+        collectMaskFiles(maskFiles, seenPaths, Gdx.files.local(directoryPath));
+        collectMaskFiles(maskFiles, seenPaths, Gdx.files.internal(directoryPath));
 
         if (maskFiles.size == 0) {
             for (int i = 0; i < MAX_SEQUENTIAL_MAP_SCAN; i++) {
                 FileHandle handle = Gdx.files.internal(
-                        MAPS_DIRECTORY + "/map" + zeroPad3(i) + MASK_SUFFIX);
+                        directoryPath + "/map" + zeroPad3(i) + MASK_SUFFIX);
                 if (handle.exists()) {
                     addMaskFile(maskFiles, seenPaths, handle);
                 }
@@ -95,6 +125,22 @@ final class ImageArenaMapLoader {
         return maskFiles;
     }
 
+    private static void collectMaskFiles(
+            Array<FileHandle> maskFiles,
+            HashSet<String> seenPaths,
+            FileHandle directory) {
+        if (directory == null || !directory.exists() || !directory.isDirectory()) {
+            return;
+        }
+        FileHandle[] children = directory.list();
+        for (int i = 0; i < children.length; i++) {
+            FileHandle child = children[i];
+            if (child.name().endsWith(MASK_SUFFIX)) {
+                addMaskFile(maskFiles, seenPaths, child);
+            }
+        }
+    }
+
     private static void addMaskFile(
             Array<FileHandle> maskFiles,
             HashSet<String> seenPaths,
@@ -107,8 +153,8 @@ final class ImageArenaMapLoader {
     private static ArenaMap loadMap(FileHandle maskFile, float mapScale) {
         String baseName =
                 maskFile.name().substring(0, maskFile.name().length() - MASK_SUFFIX.length());
-        String surfacePath = MAPS_DIRECTORY + "/" + baseName + IMAGE_SUFFIX;
-        FileHandle surfaceFile = Gdx.files.internal(surfacePath);
+        FileHandle surfaceFile = maskFile.sibling(baseName + IMAGE_SUFFIX);
+        String surfacePath = surfaceFile.path();
         if (!surfaceFile.exists()) {
             surfacePath = maskFile.path();
         }
@@ -120,12 +166,15 @@ final class ImageArenaMapLoader {
 
         Pixmap mask = new Pixmap(maskFile);
         try {
+            Array<CheckpointOrderMarker> checkpointOrderMarkers = collectCheckpointOrderMarkers(mask);
+            removeCheckpointOrderAnnotations(mask);
             WorldSize worldSize = calculateWorldSize(mask.getWidth(), mask.getHeight(), mapScale);
             float worldWidth = worldSize.width;
             float worldHeight = worldSize.height;
             float worldMinX = -worldWidth * 0.5f;
             float worldMinY = -worldHeight * 0.5f;
             MaskParseResult parseResult = parseMask(mask);
+            parseResult.checkpointOrderMarkers.addAll(checkpointOrderMarkers);
             MaskArenaShape shape = new MaskArenaShape(
                     parseResult.shapePlayable,
                     parseResult.shapeWidth,
@@ -157,8 +206,11 @@ final class ImageArenaMapLoader {
                     buildCheckpoints(parseResult, mask.getWidth(), mask.getHeight(), worldMinX, worldMinY,
                             worldWidth, worldHeight, shape);
             alignCheckpointPathWithSpawns(spawnPoints, checkpoints);
-            orderCheckpointPathByRoute(checkpoints, routeOrderingMap);
+            if (!parseResult.checkpointOrderByBorder) {
+                orderCheckpointPathByRoute(checkpoints, routeOrderingMap);
+            }
             alignCheckpointPathWithSpawns(spawnPoints, checkpoints);
+            writeCheckpointOrderAnnotations(maskFile, mask, checkpoints, worldMinX, worldMinY, worldWidth, worldHeight);
             for (int i = 0; i < spawnPoints.size; i++) {
                 SpawnPoint spawnPoint = spawnPoints.get(i);
                 builder.spawn(spawnPoint);
@@ -329,6 +381,415 @@ final class ImageArenaMapLoader {
         }
     }
 
+    private static void removeCheckpointOrderAnnotations(Pixmap mask) {
+        boolean[] annotationPixels = new boolean[mask.getWidth() * mask.getHeight()];
+        for (int y = 0; y < mask.getHeight(); y++) {
+            for (int x = 0; x < mask.getWidth(); x++) {
+                int index = y * mask.getWidth() + x;
+                int pixel = mask.getPixel(x, y);
+                if (isCheckpointOrderMarker(pixel) || isCheckpointLabelPixel(pixel)) {
+                    annotationPixels[index] = true;
+                    mask.drawPixel(x, y, rgba8888(255, 255, 255));
+                } else if (!isCanonicalMaskPixel(pixel)) {
+                    mask.drawPixel(x, y, isBrightPixel(pixel) ? rgba8888(255, 255, 255) : rgba8888(0, 0, 0));
+                }
+            }
+        }
+        repairGreenMarkerGaps(mask, annotationPixels);
+    }
+
+    private static void repairGreenMarkerGaps(Pixmap mask, boolean[] candidates) {
+        boolean[] repair = new boolean[mask.getWidth() * mask.getHeight()];
+        int[][] directions = {{1, 0}, {0, 1}, {1, 1}, {1, -1}};
+        for (int y = 1; y < mask.getHeight() - 1; y++) {
+            for (int x = 1; x < mask.getWidth() - 1; x++) {
+                int index = y * mask.getWidth() + x;
+                if (!candidates[index]) {
+                    continue;
+                }
+                int pixel = mask.getPixel(x, y);
+                if (!isWhitePixel(pixel)) {
+                    continue;
+                }
+                for (int d = 0; d < directions.length && !repair[index]; d++) {
+                    int dx = directions[d][0];
+                    int dy = directions[d][1];
+                    if (hasGreenOnBothSides(mask, x, y, dx, dy, 12)) {
+                        repair[index] = true;
+                        break;
+                    }
+                }
+            }
+        }
+        int green = rgba8888(35, 210, 85);
+        for (int i = 0; i < repair.length; i++) {
+            if (repair[i]) {
+                mask.drawPixel(i % mask.getWidth(), i / mask.getWidth(), green);
+            }
+        }
+    }
+
+    private static Array<CheckpointOrderMarker> collectCheckpointOrderMarkers(Pixmap mask) {
+        int width = mask.getWidth();
+        int height = mask.getHeight();
+        boolean[] visited = new boolean[width * height];
+        int[] stack = new int[width * height];
+        Array<CheckpointOrderMarker> markers = new Array<CheckpointOrderMarker>();
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int startIndex = y * width + x;
+                if (visited[startIndex] || !isCheckpointOrderMarker(mask.getPixel(x, y))) {
+                    continue;
+                }
+
+                int stackSize = 0;
+                int area = 0;
+                int orderSum = 0;
+                float sumX = 0f;
+                float sumY = 0f;
+                stack[stackSize++] = startIndex;
+                visited[startIndex] = true;
+                while (stackSize > 0) {
+                    int index = stack[--stackSize];
+                    int currentX = index % width;
+                    int currentY = index / width;
+                    int pixel = mask.getPixel(currentX, currentY);
+                    area++;
+                    sumX += currentX;
+                    sumY += currentY;
+                    orderSum += checkpointOrderValue(pixel);
+
+                    for (int offsetY = -1; offsetY <= 1; offsetY++) {
+                        int nextY = currentY + offsetY;
+                        if (nextY < 0 || nextY >= height) {
+                            continue;
+                        }
+                        for (int offsetX = -1; offsetX <= 1; offsetX++) {
+                            if (offsetX == 0 && offsetY == 0) {
+                                continue;
+                            }
+                            int nextX = currentX + offsetX;
+                            if (nextX < 0 || nextX >= width) {
+                                continue;
+                            }
+                            int nextIndex = nextY * width + nextX;
+                            if (visited[nextIndex] || !isCheckpointOrderMarker(mask.getPixel(nextX, nextY))) {
+                                continue;
+                            }
+                            visited[nextIndex] = true;
+                            stack[stackSize++] = nextIndex;
+                        }
+                    }
+                }
+
+                if (area >= CHECKPOINT_ORDER_MARKER_MIN_PIXELS) {
+                    markers.add(new CheckpointOrderMarker(
+                            MathUtils.clamp(Math.round(orderSum / (float) area), 1, 250),
+                            sumX / area,
+                            sumY / area));
+                }
+            }
+        }
+
+        return markers;
+    }
+
+    private static boolean hasGreenOnBothSides(
+            Pixmap mask,
+            int x,
+            int y,
+            int dx,
+            int dy,
+            int maximumDistance) {
+        boolean negative = false;
+        boolean positive = false;
+        for (int distance = 1; distance <= maximumDistance; distance++) {
+            int negativeX = x - dx * distance;
+            int negativeY = y - dy * distance;
+            if (negativeX >= 0
+                    && negativeY >= 0
+                    && negativeX < mask.getWidth()
+                    && negativeY < mask.getHeight()
+                    && isGreenMarker(mask.getPixel(negativeX, negativeY))) {
+                negative = true;
+            }
+
+            int positiveX = x + dx * distance;
+            int positiveY = y + dy * distance;
+            if (positiveX >= 0
+                    && positiveY >= 0
+                    && positiveX < mask.getWidth()
+                    && positiveY < mask.getHeight()
+                    && isGreenMarker(mask.getPixel(positiveX, positiveY))) {
+                positive = true;
+            }
+            if (negative && positive) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isCanonicalMaskPixel(int pixel) {
+        return isBlackPixel(pixel)
+                || isWhitePixel(pixel)
+                || isRedMarker(pixel)
+                || isBlueMarker(pixel)
+                || isGreenMarker(pixel)
+                || isCheckpointOrderMarker(pixel)
+                || isCheckpointLabelPixel(pixel);
+    }
+
+    private static boolean isBlackPixel(int pixel) {
+        int red = (pixel >>> 24) & 0xff;
+        int green = (pixel >>> 16) & 0xff;
+        int blue = (pixel >>> 8) & 0xff;
+        int alpha = pixel & 0xff;
+        return alpha >= 96 && red <= 32 && green <= 32 && blue <= 32;
+    }
+
+    private static boolean isWhitePixel(int pixel) {
+        int red = (pixel >>> 24) & 0xff;
+        int green = (pixel >>> 16) & 0xff;
+        int blue = (pixel >>> 8) & 0xff;
+        int alpha = pixel & 0xff;
+        return alpha >= 96 && red >= 220 && green >= 220 && blue >= 220;
+    }
+
+    private static boolean isBrightPixel(int pixel) {
+        int red = (pixel >>> 24) & 0xff;
+        int green = (pixel >>> 16) & 0xff;
+        int blue = (pixel >>> 8) & 0xff;
+        return red + green + blue >= 240;
+    }
+
+    private static void writeCheckpointOrderAnnotations(
+            FileHandle maskFile,
+            Pixmap mask,
+            Array<SpawnPoint> checkpoints,
+            float worldMinX,
+            float worldMinY,
+            float worldWidth,
+            float worldHeight) {
+        if (!canWriteMaskAnnotations(maskFile) || checkpoints.size == 0) {
+            return;
+        }
+
+        removeCheckpointOrderAnnotations(mask);
+        for (int i = 0; i < checkpoints.size; i++) {
+            SpawnPoint checkpoint = checkpoints.get(i);
+            int centerX = worldToImageX(checkpoint.x, mask.getWidth(), worldMinX, worldWidth);
+            int centerY = worldToImageY(checkpoint.y, mask.getHeight(), worldMinY, worldHeight);
+            Vector2 tangent = checkpointAnnotationTangent(checkpoint, mask.getWidth(), mask.getHeight(),
+                    worldMinX, worldMinY, worldWidth, worldHeight);
+            Vector2 normal = new Vector2(-tangent.y, tangent.x);
+            AnnotationAnchor anchor = findCheckpointAnnotationAnchor(mask, centerX, centerY, tangent, normal, i + 1);
+            drawOrderDot(mask, anchor.dotX, anchor.dotY, i + 1);
+            drawNumber(mask, Integer.toString(i + 1), anchor.labelX, anchor.labelY, CHECKPOINT_ORDER_LABEL_SCALE);
+        }
+
+        try {
+            PixmapIO.writePNG(maskFile, mask);
+        } catch (RuntimeException ignored) {
+            // Some packaged/internal file handles are intentionally not writable.
+        }
+    }
+
+    private static boolean canWriteMaskAnnotations(FileHandle maskFile) {
+        return maskFile.type() == FileType.Local || maskFile.type() == FileType.Absolute;
+    }
+
+    private static AnnotationAnchor findCheckpointAnnotationAnchor(
+            Pixmap mask,
+            int centerX,
+            int centerY,
+            Vector2 tangent,
+            Vector2 normal,
+            int order) {
+        int labelWidth = numberPixelWidth(Integer.toString(order), CHECKPOINT_ORDER_LABEL_SCALE);
+        int labelHeight = 7 * CHECKPOINT_ORDER_LABEL_SCALE;
+        int bestDotX = centerX;
+        int bestDotY = centerY;
+        int bestLabelX = centerX + CHECKPOINT_ORDER_LABEL_GAP;
+        int bestLabelY = centerY - labelHeight / 2;
+        int bestScore = Integer.MIN_VALUE;
+        float[] distances = {10f, 16f, 23f, 31f, 40f, 52f};
+        Vector2[] directions = {
+            new Vector2(normal),
+            new Vector2(-normal.x, -normal.y),
+            new Vector2(tangent),
+            new Vector2(-tangent.x, -tangent.y),
+            new Vector2(normal.x + tangent.x, normal.y + tangent.y),
+            new Vector2(normal.x - tangent.x, normal.y - tangent.y),
+            new Vector2(-normal.x + tangent.x, -normal.y + tangent.y),
+            new Vector2(-normal.x - tangent.x, -normal.y - tangent.y)
+        };
+
+        for (int d = 0; d < distances.length; d++) {
+            for (int directionIndex = 0; directionIndex < directions.length; directionIndex++) {
+                Vector2 direction = directions[directionIndex];
+                if (direction.isZero(0.0001f)) {
+                    continue;
+                }
+                direction.nor();
+                int dotX = Math.round(centerX + direction.x * distances[d]);
+                int dotY = Math.round(centerY + direction.y * distances[d]);
+                int labelX = dotX + CHECKPOINT_ORDER_DOT_RADIUS + CHECKPOINT_ORDER_LABEL_GAP;
+                int labelY = dotY - labelHeight / 2;
+                int score = annotationRoadScore(mask, dotX, dotY, labelX, labelY, labelWidth, labelHeight);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestDotX = dotX;
+                    bestDotY = dotY;
+                    bestLabelX = labelX;
+                    bestLabelY = labelY;
+                }
+            }
+        }
+        return new AnnotationAnchor(bestDotX, bestDotY, bestLabelX, bestLabelY);
+    }
+
+    private static int annotationRoadScore(
+            Pixmap mask,
+            int dotX,
+            int dotY,
+            int labelX,
+            int labelY,
+            int labelWidth,
+            int labelHeight) {
+        int score = 0;
+        for (int y = dotY - CHECKPOINT_ORDER_DOT_RADIUS; y <= dotY + CHECKPOINT_ORDER_DOT_RADIUS; y++) {
+            for (int x = dotX - CHECKPOINT_ORDER_DOT_RADIUS; x <= dotX + CHECKPOINT_ORDER_DOT_RADIUS; x++) {
+                if (x < 0 || y < 0 || x >= mask.getWidth() || y >= mask.getHeight()) {
+                    score -= 12;
+                } else if (isDrawableAnnotationPixel(mask.getPixel(x, y))) {
+                    score += 2;
+                } else if (isRedMarker(mask.getPixel(x, y))
+                        || isBlueMarker(mask.getPixel(x, y))
+                        || isGreenMarker(mask.getPixel(x, y))) {
+                    score -= 20;
+                } else {
+                    score -= 4;
+                }
+            }
+        }
+        for (int y = labelY; y < labelY + labelHeight; y++) {
+            for (int x = labelX; x < labelX + labelWidth; x++) {
+                if (x < 0 || y < 0 || x >= mask.getWidth() || y >= mask.getHeight()) {
+                    score -= 4;
+                } else if (isDrawableAnnotationPixel(mask.getPixel(x, y))) {
+                    score++;
+                } else if (isRedMarker(mask.getPixel(x, y))
+                        || isBlueMarker(mask.getPixel(x, y))
+                        || isGreenMarker(mask.getPixel(x, y))) {
+                    score -= 8;
+                }
+            }
+        }
+        return score;
+    }
+
+    private static Vector2 checkpointAnnotationTangent(
+            SpawnPoint checkpoint,
+            int imageWidth,
+            int imageHeight,
+            float worldMinX,
+            float worldMinY,
+            float worldWidth,
+            float worldHeight) {
+        if (checkpoint.hasGate) {
+            int startX = worldToImageX(checkpoint.gateStartX, imageWidth, worldMinX, worldWidth);
+            int startY = worldToImageY(checkpoint.gateStartY, imageHeight, worldMinY, worldHeight);
+            int endX = worldToImageX(checkpoint.gateEndX, imageWidth, worldMinX, worldWidth);
+            int endY = worldToImageY(checkpoint.gateEndY, imageHeight, worldMinY, worldHeight);
+            Vector2 tangent = new Vector2(endX - startX, endY - startY);
+            if (!tangent.isZero(0.0001f)) {
+                return tangent.nor();
+            }
+        }
+        return new Vector2(-MathUtils.sin(checkpoint.angleRad), -MathUtils.cos(checkpoint.angleRad)).nor();
+    }
+
+    private static void drawOrderDot(Pixmap mask, int centerX, int centerY, int order) {
+        int color = checkpointOrderColor(order);
+        int radiusSquared = CHECKPOINT_ORDER_DOT_RADIUS * CHECKPOINT_ORDER_DOT_RADIUS;
+        for (int y = centerY - CHECKPOINT_ORDER_DOT_RADIUS; y <= centerY + CHECKPOINT_ORDER_DOT_RADIUS; y++) {
+            for (int x = centerX - CHECKPOINT_ORDER_DOT_RADIUS; x <= centerX + CHECKPOINT_ORDER_DOT_RADIUS; x++) {
+                int dx = x - centerX;
+                int dy = y - centerY;
+                if (dx * dx + dy * dy <= radiusSquared) {
+                    drawPixelIfInside(mask, x, y, color);
+                }
+            }
+        }
+    }
+
+    private static int checkpointOrderColor(int order) {
+        return rgba8888(255, MathUtils.clamp(order, 1, 250), 255);
+    }
+
+    private static void drawNumber(Pixmap mask, String text, int x, int y, int scale) {
+        int cursorX = x;
+        for (int i = 0; i < text.length(); i++) {
+            int digit = text.charAt(i) - '0';
+            if (digit >= 0 && digit <= 9) {
+                drawDigit(mask, digit, cursorX, y, scale);
+                cursorX += 4 * scale;
+            }
+        }
+    }
+
+    private static int numberPixelWidth(String text, int scale) {
+        return Math.max(1, text.length() * 4 * scale - scale);
+    }
+
+    private static void drawDigit(Pixmap mask, int digit, int x, int y, int scale) {
+        String[] rows = DIGIT_BITMAPS[digit];
+        for (int row = 0; row < rows.length; row++) {
+            String pattern = rows[row];
+            for (int column = 0; column < pattern.length(); column++) {
+                if (pattern.charAt(column) != '1') {
+                    continue;
+                }
+                for (int sy = 0; sy < scale; sy++) {
+                    for (int sx = 0; sx < scale; sx++) {
+                        drawPixelIfInside(
+                                mask,
+                                x + column * scale + sx,
+                                y + row * scale + sy,
+                                CHECKPOINT_ORDER_LABEL_COLOR);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void drawPixelIfInside(Pixmap mask, int x, int y, int color) {
+        if (x >= 0
+                && y >= 0
+                && x < mask.getWidth()
+                && y < mask.getHeight()
+                && isDrawableAnnotationPixel(mask.getPixel(x, y))) {
+            mask.drawPixel(x, y, color);
+        }
+    }
+
+    private static boolean isDrawableAnnotationPixel(int pixel) {
+        return isWhitePixel(pixel) || isCheckpointOrderMarker(pixel) || isCheckpointLabelPixel(pixel);
+    }
+
+    private static int worldToImageX(float x, int imageWidth, float worldMinX, float worldWidth) {
+        return MathUtils.clamp(Math.round((x - worldMinX) * imageWidth / worldWidth - 0.5f), 0, imageWidth - 1);
+    }
+
+    private static int worldToImageY(float y, int imageHeight, float worldMinY, float worldHeight) {
+        return MathUtils.clamp(
+                Math.round((worldMinY + worldHeight - y) * imageHeight / worldHeight - 0.5f),
+                0,
+                imageHeight - 1);
+    }
+
     private static ObjectInputStream openCachedMapInput(FileHandle cacheFile) throws IOException {
         BufferedInputStream bufferedInput = new BufferedInputStream(cacheFile.read());
         bufferedInput.mark(2);
@@ -346,18 +807,52 @@ final class ImageArenaMapLoader {
         Array<FileHandle> cacheFiles = new Array<FileHandle>();
         HashSet<String> seenPaths = new HashSet<String>();
         addCacheFile(cacheFiles, seenPaths, maskFile.sibling(baseName + CACHE_SUFFIX));
-        addCacheFile(cacheFiles, seenPaths, Gdx.files.local("assets/" + MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
-        addCacheFile(cacheFiles, seenPaths, Gdx.files.local(MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
+        if (isDefaultMapMask(maskFile)) {
+            addCacheFile(cacheFiles, seenPaths,
+                    Gdx.files.local("assets/" + MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
+            addCacheFile(cacheFiles, seenPaths, Gdx.files.local(MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
+        } else {
+            addCacheFile(cacheFiles, seenPaths, localCacheBesideMask(maskFile, baseName));
+        }
         return cacheFiles;
     }
 
     private static Array<FileHandle> writableCacheFiles(FileHandle maskFile, String baseName) {
         Array<FileHandle> cacheFiles = new Array<FileHandle>();
         HashSet<String> seenPaths = new HashSet<String>();
-        addCacheFile(cacheFiles, seenPaths, Gdx.files.local("assets/" + MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
-        addCacheFile(cacheFiles, seenPaths, Gdx.files.local(MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
         addCacheFile(cacheFiles, seenPaths, maskFile.sibling(baseName + CACHE_SUFFIX));
+        if (isDefaultMapMask(maskFile)) {
+            addCacheFile(cacheFiles, seenPaths,
+                    Gdx.files.local("assets/" + MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
+            addCacheFile(cacheFiles, seenPaths, Gdx.files.local(MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
+        } else {
+            addCacheFile(cacheFiles, seenPaths, localCacheBesideMask(maskFile, baseName));
+        }
         return cacheFiles;
+    }
+
+    private static FileHandle localCacheBesideMask(FileHandle maskFile, String baseName) {
+        if (maskFile == null || maskFile.type() == FileType.Absolute) {
+            return null;
+        }
+        FileHandle parent = maskFile.parent();
+        if (parent == null || parent.path() == null || parent.path().length() == 0) {
+            return null;
+        }
+        return Gdx.files.local(parent.path() + "/" + baseName + CACHE_SUFFIX);
+    }
+
+    private static boolean isDefaultMapMask(FileHandle maskFile) {
+        if (maskFile == null) {
+            return false;
+        }
+        String parentPath = normalizePath(maskFile.parent().path());
+        return MAPS_DIRECTORY.equals(parentPath)
+                || ("assets/" + MAPS_DIRECTORY).equals(parentPath);
+    }
+
+    private static String normalizePath(String path) {
+        return path == null ? "" : path.replace('\\', '/');
     }
 
     private static void addCacheFile(
@@ -473,6 +968,7 @@ final class ImageArenaMapLoader {
         boolean[] blueMarkers = new boolean[width * height];
         boolean[] greenMarkers = new boolean[width * height];
         boolean[] basePlayable = new boolean[width * height];
+        boolean[] pathPlayable = new boolean[width * height];
 
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
@@ -488,6 +984,17 @@ final class ImageArenaMapLoader {
             }
         }
 
+        for (int y = 0; y < height; y++) {
+            int rowOffset = y * width;
+            for (int x = 0; x < width; x++) {
+                int index = rowOffset + x;
+                pathPlayable[index] =
+                        basePlayable[index]
+                                || ((redMarkers[index] || blueMarkers[index] || greenMarkers[index])
+                                        && hasNearbyBasePlayablePixel(basePlayable, x, y, width, height));
+            }
+        }
+
         for (int y = 0; y < shapeDimensions.height; y++) {
             int sourceY = sampleSourceCoordinate(y, shapeDimensions.height, height);
             for (int x = 0; x < shapeDimensions.width; x++) {
@@ -498,7 +1005,13 @@ final class ImageArenaMapLoader {
         }
 
         MaskParseResult result =
-                new MaskParseResult(shapePlayable, shapeDimensions.width, shapeDimensions.height);
+                new MaskParseResult(
+                        shapePlayable,
+                        shapeDimensions.width,
+                        shapeDimensions.height,
+                        pathPlayable,
+                        width,
+                        height);
         collectMarkerComponents(redMarkers, width, height, result.redMarkers);
         collectMarkerComponents(blueMarkers, width, height, result.blueMarkers);
         collectMarkerComponents(greenMarkers, width, height, result.greenMarkers);
@@ -1166,7 +1679,21 @@ final class ImageArenaMapLoader {
             return ordered;
         }
 
+        Array<MarkerComponent> manuallyOrdered = orderCheckpointMarkersByManualOrder(parseResult);
+        if (manuallyOrdered.size == markers.size) {
+            parseResult.checkpointOrderByBorder = true;
+            return manuallyOrdered;
+        }
+
         MarkerDirectionBasis basis = calculateMarkerDirectionBasis(parseResult);
+        Array<MarkerComponent> borderOrdered = orderCheckpointMarkersByBorder(parseResult);
+        if (borderOrdered.size == markers.size) {
+            alignCheckpointOrderWithSpawnDirection(parseResult, basis, borderOrdered);
+            alignCheckpointOrderWithSpawnGridPosition(parseResult, borderOrdered);
+            parseResult.checkpointOrderByBorder = true;
+            return borderOrdered;
+        }
+
         boolean[] used = new boolean[markers.size];
         int currentIndex = findStartCheckpointIndex(parseResult, markers, basis);
         if (currentIndex < 0) {
@@ -1198,7 +1725,275 @@ final class ImageArenaMapLoader {
             currentIndex = nextIndex;
         }
         alignCheckpointOrderWithSpawnDirection(parseResult, basis, ordered);
+        alignCheckpointOrderWithSpawnGridPosition(parseResult, ordered);
         return ordered;
+    }
+
+    private static Array<MarkerComponent> orderCheckpointMarkersByManualOrder(MaskParseResult parseResult) {
+        Array<MarkerComponent> ordered = new Array<MarkerComponent>();
+        if (parseResult.checkpointOrderMarkers.size != parseResult.greenMarkers.size) {
+            return ordered;
+        }
+
+        Array<CheckpointOrderMarker> orderMarkers =
+                new Array<CheckpointOrderMarker>(parseResult.checkpointOrderMarkers);
+        orderMarkers.sort(new Comparator<CheckpointOrderMarker>() {
+            @Override
+            public int compare(CheckpointOrderMarker left, CheckpointOrderMarker right) {
+                return Integer.compare(left.order, right.order);
+            }
+        });
+
+        boolean[] used = new boolean[parseResult.greenMarkers.size];
+        int previousOrder = -1;
+        float maximumDistanceSquared =
+                CHECKPOINT_ORDER_MANUAL_DISTANCE_PIXELS * CHECKPOINT_ORDER_MANUAL_DISTANCE_PIXELS;
+        for (int i = 0; i < orderMarkers.size; i++) {
+            CheckpointOrderMarker orderMarker = orderMarkers.get(i);
+            if (orderMarker.order == previousOrder) {
+                ordered.clear();
+                return ordered;
+            }
+            previousOrder = orderMarker.order;
+
+            int markerIndex = findNearestManualOrderCheckpoint(orderMarker, parseResult.greenMarkers, used);
+            if (markerIndex < 0) {
+                ordered.clear();
+                return ordered;
+            }
+
+            MarkerComponent marker = parseResult.greenMarkers.get(markerIndex);
+            if (Vector2.dst2(orderMarker.centerX, orderMarker.centerY, marker.centerX, marker.centerY)
+                    > maximumDistanceSquared) {
+                ordered.clear();
+                return ordered;
+            }
+            used[markerIndex] = true;
+            ordered.add(marker);
+        }
+
+        return ordered;
+    }
+
+    private static int findNearestManualOrderCheckpoint(
+            CheckpointOrderMarker orderMarker,
+            Array<MarkerComponent> checkpoints,
+            boolean[] used) {
+        int bestIndex = -1;
+        float bestDistance = Float.MAX_VALUE;
+        for (int i = 0; i < checkpoints.size; i++) {
+            if (used[i]) {
+                continue;
+            }
+            MarkerComponent checkpoint = checkpoints.get(i);
+            float distance = Vector2.dst2(
+                    orderMarker.centerX,
+                    orderMarker.centerY,
+                    checkpoint.centerX,
+                    checkpoint.centerY);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
+    private static Array<MarkerComponent> orderCheckpointMarkersByBorder(MaskParseResult parseResult) {
+        Array<MarkerComponent> ordered = new Array<MarkerComponent>();
+        Array<Integer> border = tracePlayableBorder(parseResult.pathPlayable, parseResult.imageWidth, parseResult.imageHeight);
+        if (border.size == 0) {
+            return ordered;
+        }
+
+        boolean[] used = new boolean[parseResult.greenMarkers.size];
+        int lastMarkerIndex = -1;
+        for (int i = 0; i < border.size; i++) {
+            int point = border.get(i);
+            int x = point % parseResult.imageWidth;
+            int y = point / parseResult.imageWidth;
+            int markerIndex = findCheckpointAtBorderPoint(x, y, parseResult.greenMarkers, used);
+            if (markerIndex < 0 || markerIndex == lastMarkerIndex) {
+                continue;
+            }
+            used[markerIndex] = true;
+            ordered.add(parseResult.greenMarkers.get(markerIndex));
+            lastMarkerIndex = markerIndex;
+            if (ordered.size == parseResult.greenMarkers.size) {
+                break;
+            }
+        }
+
+        if (ordered.size != parseResult.greenMarkers.size && DEBUG_CHECKPOINT_ORDER) {
+            System.out.println(
+                    "checkpoint-border-order incomplete checkpoints="
+                            + ordered.size
+                            + "/"
+                            + parseResult.greenMarkers.size);
+        }
+        return ordered;
+    }
+
+    private static int findCheckpointAtBorderPoint(
+            int x,
+            int y,
+            Array<MarkerComponent> markers,
+            boolean[] used) {
+        int bestIndex = -1;
+        float bestDistance = Float.MAX_VALUE;
+        float maximumDistance = CHECKPOINT_ORDER_TRACE_DISTANCE_PIXELS * CHECKPOINT_ORDER_TRACE_DISTANCE_PIXELS;
+        for (int i = 0; i < markers.size; i++) {
+            if (used[i]) {
+                continue;
+            }
+            MarkerComponent marker = markers.get(i);
+            if (!marker.hasUsableGate()) {
+                continue;
+            }
+            float distance = distanceToSegmentSquared(
+                    x,
+                    y,
+                    marker.gateStartX,
+                    marker.gateStartY,
+                    marker.gateEndX,
+                    marker.gateEndY);
+            if (distance <= maximumDistance && distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
+    private static float distanceToSegmentSquared(
+            float x,
+            float y,
+            float startX,
+            float startY,
+            float endX,
+            float endY) {
+        float dx = endX - startX;
+        float dy = endY - startY;
+        float lengthSquared = dx * dx + dy * dy;
+        if (lengthSquared <= 0.0001f) {
+            return Vector2.dst2(x, y, startX, startY);
+        }
+        float t = ((x - startX) * dx + (y - startY) * dy) / lengthSquared;
+        t = MathUtils.clamp(t, 0f, 1f);
+        float projectionX = startX + dx * t;
+        float projectionY = startY + dy * t;
+        return Vector2.dst2(x, y, projectionX, projectionY);
+    }
+
+    private static Array<Integer> tracePlayableBorder(boolean[] playable, int width, int height) {
+        boolean[] border = buildBorderMask(playable, width, height);
+        int start = findTopLeftBorderPixel(border, width, height);
+        Array<Integer> contour = new Array<Integer>();
+        if (start < 0) {
+            return contour;
+        }
+
+        final int[] offsetX = {-1, -1, 0, 1, 1, 1, 0, -1};
+        final int[] offsetY = {0, -1, -1, -1, 0, 1, 1, 1};
+        int current = start;
+        int backtrack = start - 1;
+        int initialBacktrack = backtrack;
+        int maximumSteps = width * height * 4;
+        for (int step = 0; step < maximumSteps; step++) {
+            contour.add(current);
+            int currentX = current % width;
+            int currentY = current / width;
+            int backtrackDirection = neighborDirection(
+                    currentX,
+                    currentY,
+                    backtrack % width,
+                    backtrack / width,
+                    offsetX,
+                    offsetY);
+            if (backtrackDirection < 0) {
+                backtrackDirection = 0;
+            }
+
+            int next = -1;
+            int nextBacktrack = backtrack;
+            for (int i = 1; i <= 8; i++) {
+                int direction = (backtrackDirection + i) & 7;
+                int nx = currentX + offsetX[direction];
+                int ny = currentY + offsetY[direction];
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+                    continue;
+                }
+                int candidate = ny * width + nx;
+                if (!border[candidate]) {
+                    continue;
+                }
+                int previousDirection = (direction + 7) & 7;
+                next = candidate;
+                nextBacktrack = (currentY + offsetY[previousDirection]) * width + currentX + offsetX[previousDirection];
+                break;
+            }
+
+            if (next < 0) {
+                break;
+            }
+            current = next;
+            backtrack = nextBacktrack;
+            if (current == start && backtrack == initialBacktrack && contour.size > 1) {
+                break;
+            }
+        }
+        return contour;
+    }
+
+    private static boolean[] buildBorderMask(boolean[] playable, int width, int height) {
+        boolean[] border = new boolean[playable.length];
+        for (int y = 0; y < height; y++) {
+            int rowOffset = y * width;
+            for (int x = 0; x < width; x++) {
+                int index = rowOffset + x;
+                if (!playable[index]) {
+                    continue;
+                }
+                if (x == 0 || y == 0 || x == width - 1 || y == height - 1
+                        || !playable[index - 1]
+                        || !playable[index + 1]
+                        || !playable[index - width]
+                        || !playable[index + width]) {
+                    border[index] = true;
+                }
+            }
+        }
+        return border;
+    }
+
+    private static int findTopLeftBorderPixel(boolean[] border, int width, int height) {
+        for (int y = 0; y < height; y++) {
+            int rowOffset = y * width;
+            for (int x = 0; x < width; x++) {
+                int index = rowOffset + x;
+                if (border[index]) {
+                    return index;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static int neighborDirection(
+            int centerX,
+            int centerY,
+            int neighborX,
+            int neighborY,
+            int[] offsetX,
+            int[] offsetY) {
+        int dx = neighborX - centerX;
+        int dy = neighborY - centerY;
+        for (int i = 0; i < offsetX.length; i++) {
+            if (offsetX[i] == dx && offsetY[i] == dy) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static void alignCheckpointOrderWithSpawnDirection(
@@ -1224,13 +2019,54 @@ final class ImageArenaMapLoader {
             return;
         }
 
-        MarkerComponent current = ordered.get(startIndex);
-        MarkerComponent next = ordered.get((startIndex + 1) % ordered.size);
-        MarkerComponent previous = ordered.get((startIndex + ordered.size - 1) % ordered.size);
+        rotateMarkerOrder(ordered, startIndex);
+        MarkerComponent current = ordered.get(0);
+        MarkerComponent next = ordered.get(1);
+        MarkerComponent previous = ordered.get(ordered.size - 1);
         float nextAlignment = checkpointDirectionAlignment(current, next, basis);
         float previousAlignment = checkpointDirectionAlignment(current, previous, basis);
         if (previousAlignment > nextAlignment + 0.10f && previousAlignment > 0.05f) {
-            reverseMarkerOrder(ordered);
+            reverseMarkerOrderAfterFirst(ordered);
+        }
+    }
+
+    private static void alignCheckpointOrderWithSpawnGridPosition(
+            MaskParseResult parseResult,
+            Array<MarkerComponent> ordered) {
+        if (ordered.size <= 2 || parseResult.redMarkers.size == 0) {
+            return;
+        }
+
+        float spawnCenterX = 0f;
+        float spawnCenterY = 0f;
+        for (int i = 0; i < parseResult.redMarkers.size; i++) {
+            MarkerComponent marker = parseResult.redMarkers.get(i);
+            spawnCenterX += marker.centerX;
+            spawnCenterY += marker.centerY;
+        }
+        spawnCenterX /= parseResult.redMarkers.size;
+        spawnCenterY /= parseResult.redMarkers.size;
+
+        int bestSegmentIndex = -1;
+        float bestDistance = Float.MAX_VALUE;
+        for (int i = 0; i < ordered.size; i++) {
+            MarkerComponent current = ordered.get(i);
+            MarkerComponent next = ordered.get((i + 1) % ordered.size);
+            float distance = distanceToSegmentSquared(
+                    spawnCenterX,
+                    spawnCenterY,
+                    current.centerX,
+                    current.centerY,
+                    next.centerX,
+                    next.centerY);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestSegmentIndex = i;
+            }
+        }
+
+        if (bestSegmentIndex >= 0) {
+            rotateMarkerOrder(ordered, (bestSegmentIndex + 1) % ordered.size);
         }
     }
 
@@ -1263,8 +2099,18 @@ final class ImageArenaMapLoader {
         return (dx * basis.tangentX + dy * basis.tangentY) / length;
     }
 
-    private static void reverseMarkerOrder(Array<MarkerComponent> ordered) {
-        for (int left = 0, right = ordered.size - 1; left < right; left++, right--) {
+    private static void rotateMarkerOrder(Array<MarkerComponent> ordered, int startIndex) {
+        if (startIndex <= 0 || startIndex >= ordered.size) {
+            return;
+        }
+        Array<MarkerComponent> original = new Array<MarkerComponent>(ordered);
+        for (int i = 0; i < ordered.size; i++) {
+            ordered.set(i, original.get((startIndex + i) % ordered.size));
+        }
+    }
+
+    private static void reverseMarkerOrderAfterFirst(Array<MarkerComponent> ordered) {
+        for (int left = 1, right = ordered.size - 1; left < right; left++, right--) {
             MarkerComponent temporary = ordered.get(left);
             ordered.set(left, ordered.get(right));
             ordered.set(right, temporary);
@@ -1553,7 +2399,41 @@ final class ImageArenaMapLoader {
         int green = (pixel >>> 16) & 0xff;
         int blue = (pixel >>> 8) & 0xff;
         int alpha = pixel & 0xff;
-        return alpha >= 96 && red >= 145 && green >= 145 && blue >= 145;
+        return alpha >= 96
+                && ((red >= 145 && green >= 145 && blue >= 145)
+                        || isCheckpointLabelPixel(red, green, blue)
+                        || isCheckpointOrderMarker(red, green, blue));
+    }
+
+    private static boolean isCheckpointLabelPixel(int pixel) {
+        int red = (pixel >>> 24) & 0xff;
+        int green = (pixel >>> 16) & 0xff;
+        int blue = (pixel >>> 8) & 0xff;
+        int alpha = pixel & 0xff;
+        return alpha >= 96 && isCheckpointLabelPixel(red, green, blue);
+    }
+
+    private static boolean isCheckpointLabelPixel(int red, int green, int blue) {
+        return red >= 70
+                && red <= 115
+                && Math.abs(red - green) <= 3
+                && Math.abs(green - blue) <= 3;
+    }
+
+    private static boolean isCheckpointOrderMarker(int pixel) {
+        int red = (pixel >>> 24) & 0xff;
+        int green = (pixel >>> 16) & 0xff;
+        int blue = (pixel >>> 8) & 0xff;
+        int alpha = pixel & 0xff;
+        return alpha >= 96 && isCheckpointOrderMarker(red, green, blue);
+    }
+
+    private static boolean isCheckpointOrderMarker(int red, int green, int blue) {
+        return red >= 245 && blue >= 245 && green >= 1 && green <= 250;
+    }
+
+    private static int checkpointOrderValue(int pixel) {
+        return (pixel >>> 16) & 0xff;
     }
 
     private static boolean isPlayableForShape(
@@ -1639,6 +2519,10 @@ final class ImageArenaMapLoader {
         return baseName;
     }
 
+    private static int rgba8888(int red, int green, int blue) {
+        return ((red & 0xff) << 24) | ((green & 0xff) << 16) | ((blue & 0xff) << 8) | 0xff;
+    }
+
     private static String zeroPad3(int value) {
         return (value < 10 ? "00" : value < 100 ? "0" : "") + value;
     }
@@ -1647,14 +2531,40 @@ final class ImageArenaMapLoader {
         private final boolean[] shapePlayable;
         private final int shapeWidth;
         private final int shapeHeight;
+        private final boolean[] pathPlayable;
+        private final int imageWidth;
+        private final int imageHeight;
         private final Array<MarkerComponent> redMarkers = new Array<MarkerComponent>();
         private final Array<MarkerComponent> blueMarkers = new Array<MarkerComponent>();
         private final Array<MarkerComponent> greenMarkers = new Array<MarkerComponent>();
+        private final Array<CheckpointOrderMarker> checkpointOrderMarkers = new Array<CheckpointOrderMarker>();
+        private boolean checkpointOrderByBorder;
 
-        private MaskParseResult(boolean[] shapePlayable, int shapeWidth, int shapeHeight) {
+        private MaskParseResult(
+                boolean[] shapePlayable,
+                int shapeWidth,
+                int shapeHeight,
+                boolean[] pathPlayable,
+                int imageWidth,
+                int imageHeight) {
             this.shapePlayable = shapePlayable;
             this.shapeWidth = shapeWidth;
             this.shapeHeight = shapeHeight;
+            this.pathPlayable = pathPlayable;
+            this.imageWidth = imageWidth;
+            this.imageHeight = imageHeight;
+        }
+    }
+
+    private static final class CheckpointOrderMarker {
+        private final int order;
+        private final float centerX;
+        private final float centerY;
+
+        private CheckpointOrderMarker(int order, float centerX, float centerY) {
+            this.order = order;
+            this.centerX = centerX;
+            this.centerY = centerY;
         }
     }
 
@@ -1796,6 +2706,20 @@ final class ImageArenaMapLoader {
             this.gateStart = gateStart;
             this.gateEnd = gateEnd;
             this.hasGate = hasGate;
+        }
+    }
+
+    private static final class AnnotationAnchor {
+        private final int dotX;
+        private final int dotY;
+        private final int labelX;
+        private final int labelY;
+
+        private AnnotationAnchor(int dotX, int dotY, int labelX, int labelY) {
+            this.dotX = dotX;
+            this.dotY = dotY;
+            this.labelX = labelX;
+            this.labelY = labelY;
         }
     }
 

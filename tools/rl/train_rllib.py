@@ -37,7 +37,7 @@ from export_policy import export_policy as export_checkpoint_policy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
-OBSERVATION_SIZE = 68
+OBSERVATION_SIZE = 46
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
@@ -72,7 +72,6 @@ class RewardSummary:
         bucket_names: List[str],
         bucket_totals: np.ndarray,
         checkpoints_reached: int,
-        eliminations: int,
         progress_total: float,
     ) -> None:
         self._episodes.append(
@@ -84,7 +83,6 @@ class RewardSummary:
                 "bucket_names": list(bucket_names),
                 "bucket_totals": np.asarray(bucket_totals, dtype=np.float64).copy(),
                 "checkpoints_reached": int(checkpoints_reached),
-                "eliminations": int(eliminations),
                 "progress_total": float(progress_total),
             }
         )
@@ -109,7 +107,6 @@ class RewardSummary:
                     "episodes": 0,
                     "reward_total": 0.0,
                     "checkpoints_reached": 0,
-                    "eliminations": 0,
                     "progress_total": 0.0,
                     "bucket_names": episode["bucket_names"],
                     "bucket_totals": np.zeros_like(episode["bucket_totals"]),
@@ -119,7 +116,6 @@ class RewardSummary:
             group["episodes"] += 1
             group["reward_total"] += episode["reward_total"]
             group["checkpoints_reached"] += episode["checkpoints_reached"]
-            group["eliminations"] += episode["eliminations"]
             group["progress_total"] += episode["progress_total"]
             group["bucket_totals"] += episode["bucket_totals"]
 
@@ -134,7 +130,6 @@ class RewardSummary:
                 f"car={_metric_token(group['agent'])}",
                 f"episodes={group['episodes']}",
                 f"checkpoints_avg={group['checkpoints_reached'] / episode_count:.3f}",
-                f"eliminations_avg={group['eliminations'] / episode_count:.3f}",
                 f"progress_avg={group['progress_total'] / episode_count:.3f}",
                 f"reward_avg={reward_avg:.3f}",
                 f"reward_total={group['reward_total']:.3f}",
@@ -247,9 +242,13 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         )
         training_config.withRaceMode(True)
         training_config.withRandomRaceSpawns(bool(env_config.get("random_race_spawns", False)))
-        training_config.withSeed(int(env_config.get("seed", 1)))
+        base_seed = int(env_config.get("seed", 1))
+        worker_index = int(getattr(env_config, "worker_index", 0) or 0)
+        vector_index = int(getattr(env_config, "vector_index", 0) or 0)
+        training_config.withSeed(base_seed + worker_index * 1_000_003 + vector_index * 10_007)
         training_config.withStepPenalty(float(env_config.get("reward_step_penalty", 0.006)))
         training_config.withProgressReward(float(env_config.get("reward_progress", 1.60)))
+        training_config.withSpeedReward(float(env_config.get("reward_speed", 0.020)))
         training_config.withCheckpointReward(float(env_config.get("reward_checkpoint", 30.0)))
         training_config.withSteeringPenalty(float(env_config.get("reward_steering_penalty", 0.010)))
         training_config.withReverseSpeedPenalty(
@@ -266,15 +265,17 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             float(env_config.get("reward_off_road_distance_penalty", 0.22)),
             float(env_config.get("reward_off_road_max_penalty", 5.0)),
         )
-        training_config.withEliminationPenalty(
-            float(env_config.get("reward_elimination_penalty", 128.0))
-        )
+        self._reward_summary_enabled = bool(env_config.get("reward_summary", True))
+        training_config.withRewardBreakdownEnabled(self._reward_summary_enabled)
+        training_config.withStepDetailsEnabled(self._reward_summary_enabled)
         self._add_selected_maps(training_config, env_config.get("map_ids", ""))
 
         self._java_float_array = jpype.JArray(jpype.JFloat)
         self._env = ratass_game.RlTrainingEnvironment(training_config)
         self._agent_count = int(self._env.getControlledAgentCount())
         self._agents = [f"learner_{i}" for i in range(self._agent_count)]
+        self._agent_indices = {agent: index for index, agent in enumerate(self._agents)}
+        self._java_action_buffer = self._java_float_array(self._agent_count * ACTION_SIZE)
         self.possible_agents = list(self._agents)
         self.agents = list(self._agents)
 
@@ -292,7 +293,6 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         )
         self.observation_spaces = {agent: observation_space for agent in self._agents}
         self.action_spaces = {agent: action_space for agent in self._agents}
-        self._reward_summary_enabled = bool(env_config.get("reward_summary", True))
         self._reward_breakdown_names: List[str] = []
         self._episode_map_id = ""
         self._episode_map_name = ""
@@ -310,11 +310,11 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             return
 
         arena_maps = jpype.JClass("com.github.jbescos.gameplay.maps.ArenaMaps")
-        maps = arena_maps.createDefaultSet()
         available = {}
-        for index in range(int(maps.size)):
-            arena_map = maps.get(index)
-            available[str(arena_map.getId())] = arena_map
+        for maps in (arena_maps.createHeadlessTrainingSet(), arena_maps.createDefaultSet()):
+            for index in range(int(maps.size)):
+                arena_map = maps.get(index)
+                available[str(arena_map.getId())] = arena_map
 
         missing = [map_id for map_id in selected_ids if map_id not in available]
         if missing:
@@ -336,55 +336,68 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         return self._observations(result, self.agents), {agent: {} for agent in self.agents}
 
     def step(self, action_dict):
-        actions = np.zeros((self._agent_count, ACTION_SIZE), dtype=np.float32)
-        current_agents = list(self._agents)
+        current_agents = self._agents
+        for action_index in range(self._agent_count * ACTION_SIZE):
+            self._java_action_buffer[action_index] = 0.0
         for agent in current_agents:
-            index = self._agent_index(agent)
-            action = np.asarray(action_dict.get(agent, np.zeros(ACTION_SIZE)), dtype=np.float32)
-            actions[index] = np.clip(action, -1.0, 1.0)
+            index = self._agent_indices[agent]
+            action = action_dict.get(agent)
+            throttle = 0.0
+            turn = 0.0
+            if action is not None:
+                if len(action) > 0:
+                    throttle = float(action[0])
+                if len(action) > 1:
+                    turn = float(action[1])
+            action_offset = index * ACTION_SIZE
+            self._java_action_buffer[action_offset] = min(1.0, max(-1.0, throttle))
+            self._java_action_buffer[action_offset + 1] = min(1.0, max(-1.0, turn))
 
-        result = self._env.step(self._java_float_array(actions.reshape(-1).tolist()))
+        result = self._env.step(self._java_action_buffer)
         rewards = {
-            agent: float(result.rewards[self._agent_index(agent)])
+            agent: float(result.rewards[index])
+            for index, agent in enumerate(current_agents)
+        }
+        episode_done = bool(result.episodeDone)
+        terminateds = {
+            agent: episode_done
             for agent in current_agents
         }
+        terminateds["__all__"] = episode_done
+        truncateds = {
+            agent: False
+            for agent in current_agents
+        }
+        truncateds["__all__"] = False
         reward_breakdown = None
         if self._reward_summary_enabled:
             reward_breakdown = self._reward_breakdown_array(result)
             self._record_step_accounting(reward_breakdown, rewards, current_agents, result)
-        # Keep all learner ids present until the Java episode ends. RLlib's
-        # new connector stack can still have pending module outputs for an
-        # agent after we report that individual agent as done, which can trip
-        # a KeyError inside unbatch_to_individual_items. Java ignores actions
-        # for inactive cars, so stable ids are the simpler contract here.
-        terminateds = {agent: bool(result.episodeDone) for agent in current_agents}
-        terminateds["__all__"] = bool(result.episodeDone)
-        truncateds = {agent: False for agent in current_agents}
-        truncateds["__all__"] = False
-        infos = {
-            agent: {
-                "action_step": int(result.actionStep),
-                "winner_agent_index": int(result.winnerAgentIndex),
-                "winner_label": str(result.winnerLabel),
-                "current_map_id": str(result.currentMapId),
-                "current_map_name": str(result.currentMapName),
-                "agent_done": bool(result.dones[self._agent_index(agent)]),
-                "checkpoints_reached": int(result.checkpointsReached[self._agent_index(agent)]),
-                "eliminations": int(result.eliminations[self._agent_index(agent)]),
-                "progress_toward_checkpoint": float(
-                    result.progressTowardCheckpoint[self._agent_index(agent)]
-                ),
-            }
-            for agent in current_agents
-        }
-        if self._reward_summary_enabled:
-            for agent in current_agents:
-                infos[agent]["reward_breakdown"] = self._reward_breakdown_for_agent(
-                    reward_breakdown,
-                    agent,
-                )
 
-        if result.episodeDone:
+        if self._reward_summary_enabled:
+            infos = {
+                agent: {
+                    "action_step": int(result.actionStep),
+                    "winner_agent_index": int(result.winnerAgentIndex),
+                    "winner_label": str(result.winnerLabel),
+                    "current_map_id": str(result.currentMapId),
+                    "current_map_name": str(result.currentMapName),
+                    "agent_done": bool(result.dones[index]),
+                    "checkpoints_reached": int(result.checkpointsReached[index]),
+                    "progress_toward_checkpoint": float(
+                        result.progressTowardCheckpoint[index]
+                    ),
+                    "reward_breakdown": self._reward_breakdown_for_agent(
+                        reward_breakdown,
+                        agent,
+                    ),
+                }
+                for index, agent in enumerate(current_agents)
+            }
+        else:
+            infos = {agent: {} for agent in current_agents}
+
+        if episode_done:
             if self._reward_summary_enabled:
                 self._finalize_episode_accounting(result)
             self.agents = []
@@ -396,13 +409,13 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         self._env.close()
 
     def _agent_index(self, agent: str) -> int:
-        return int(agent.rsplit("_", 1)[1])
+        return self._agent_indices[agent]
 
     def _observations(self, result, agents) -> Dict[str, np.ndarray]:
-        flat = np.asarray(list(result.observations), dtype=np.float32)
+        flat = np.asarray(result.observations, dtype=np.float32)
         observations = flat.reshape((self._agent_count, OBSERVATION_SIZE))
         return {
-            agent: observations[self._agent_index(agent)].copy()
+            agent: observations[self._agent_indices[agent]].copy()
             for agent in agents
         }
 
@@ -442,7 +455,6 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                     np.zeros(len(self._reward_breakdown_names), dtype=np.float64),
                 ),
                 int(result.checkpointsReached[index]),
-                int(result.eliminations[index]),
                 self._episode_progress_totals.get(agent, 0.0),
             )
 
@@ -459,7 +471,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         names = self._reward_breakdown_names
         if not names:
             return np.zeros((self._agent_count, 0), dtype=np.float64)
-        flat = np.asarray(list(result.rewardBreakdown), dtype=np.float64)
+        flat = np.asarray(result.rewardBreakdown, dtype=np.float64)
         expected_size = self._agent_count * len(names)
         if flat.size != expected_size:
             return np.zeros((self._agent_count, len(names)), dtype=np.float64)
@@ -496,6 +508,7 @@ def build_algorithm(args):
         "reward_summary": not args.no_reward_summary,
         "reward_step_penalty": args.reward_step_penalty,
         "reward_progress": args.reward_progress,
+        "reward_speed": args.reward_speed,
         "reward_checkpoint": args.reward_checkpoint,
         "reward_steering_penalty": args.reward_steering_penalty,
         "reward_reverse_free_epsilon": args.reward_reverse_free_epsilon,
@@ -506,7 +519,6 @@ def build_algorithm(args):
         "reward_off_road_penalty": args.reward_off_road_penalty,
         "reward_off_road_distance_penalty": args.reward_off_road_distance_penalty,
         "reward_off_road_max_penalty": args.reward_off_road_max_penalty,
-        "reward_elimination_penalty": args.reward_elimination_penalty,
     }
     config = (
         PPOConfig()
@@ -835,6 +847,8 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         str(args.checkpoint_radius),
         "--max-checkpoints",
         str(args.max_checkpoints),
+        "--seed",
+        str(args.seed),
     ]
     if episodes_per_map > 0:
         command.extend(["--episodes-per-map", str(episodes_per_map)])
@@ -875,9 +889,16 @@ def maybe_promote_best_policy(
         args,
         checkpoint_dir: Path,
         iteration: int,
-        saved_checkpoint: str) -> None:
+        saved_checkpoint: str) -> Dict[str, object]:
+    result: Dict[str, object] = {
+        "evaluated": False,
+        "accepted": False,
+        "promoted": False,
+        "score": None,
+        "previous_score": None,
+    }
     if not args.best_export_output:
-        return
+        return result
 
     candidate_policy = best_eval_candidate_path(args, checkpoint_dir)
     export_objective = args.best_export_objective or EXPORT_OBJECTIVES[args.objective]
@@ -885,7 +906,9 @@ def maybe_promote_best_policy(
     output_file = Path(args.best_export_output).resolve()
     score, metrics = run_policy_evaluation(args, candidate_policy)
     if score is None:
-        return
+        return result
+    result["evaluated"] = True
+    result["score"] = score
     try:
         avg_checkpoints = float(metrics.get("avg_checkpoints", "nan"))
     except (TypeError, ValueError):
@@ -897,7 +920,8 @@ def maybe_promote_best_policy(
             f"min_checkpoints={args.best_eval_min_checkpoints:.3f}",
             flush=True,
         )
-        return
+        return result
+    result["accepted"] = True
 
     state_path = best_eval_state_path(args, checkpoint_dir)
     state = read_best_state(state_path)
@@ -917,12 +941,13 @@ def maybe_promote_best_policy(
                 "archived_policy": os.fspath(output_file),
                 "metrics": installed_metrics,
             }
+    result["previous_score"] = previous_score
     if score <= previous_score:
         print(
             f"best_policy_unchanged score={score:.3f} best_score={previous_score:.3f}",
             flush=True,
         )
-        return
+        return result
 
     archive_file = best_eval_archive_path(args, checkpoint_dir)
     shutil.copyfile(candidate_policy, archive_file)
@@ -942,13 +967,15 @@ def maybe_promote_best_policy(
         f"output={output_file} state={state_path}",
         flush=True,
     )
+    result["promoted"] = True
+    return result
 
 
-def save_checkpoint(algorithm, checkpoint_dir: Path, args, iteration: int) -> None:
+def save_checkpoint(algorithm, checkpoint_dir: Path, args, iteration: int) -> Dict[str, object]:
     checkpoint = algorithm.save(str(checkpoint_dir))
     saved_path = checkpoint_path(checkpoint)
     print(f"checkpoint={saved_path}", flush=True)
-    maybe_promote_best_policy(args, checkpoint_dir, iteration, saved_path)
+    return maybe_promote_best_policy(args, checkpoint_dir, iteration, saved_path)
 
 
 def parse_args() -> argparse.Namespace:
@@ -986,14 +1013,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--random-race-spawns",
         action="store_true",
-        default=True,
-        help="spawn learners at safe random road locations, facing the route to the next checkpoint",
+        default=None,
+        help=(
+            "spawn learners at safe random road locations, facing the route to the next "
+            "checkpoint; valid for single-car checkpoint training"
+        ),
     )
     parser.add_argument(
         "--fixed-race-spawns",
         action="store_false",
         dest="random_race_spawns",
-        help="debug override: use fixed map spawn points instead of random road spawns",
+        help="use fixed map spawn points; required for full-lap training",
     )
     parser.add_argument("--num-gpus", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=1)
@@ -1010,6 +1040,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--reward-step-penalty", type=float, default=0.006)
     parser.add_argument("--reward-progress", type=float, default=1.60)
+    parser.add_argument("--reward-speed", type=float, default=0.020)
     parser.add_argument("--reward-checkpoint", type=float, default=30.0)
     parser.add_argument("--reward-steering-penalty", type=float, default=0.010)
     parser.add_argument("--reward-reverse-free-epsilon", type=float, default=0.20)
@@ -1020,7 +1051,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-off-road-penalty", type=float, default=0.80)
     parser.add_argument("--reward-off-road-distance-penalty", type=float, default=0.22)
     parser.add_argument("--reward-off-road-max-penalty", type=float, default=5.0)
-    parser.add_argument("--reward-elimination-penalty", type=float, default=128.0)
     parser.add_argument("--gamma", type=float, default=0.995)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--train-batch-size", type=int, default=8192)
@@ -1145,6 +1175,7 @@ def parse_args() -> argparse.Namespace:
     )
     args = parser.parse_args()
     apply_objective_defaults(args)
+    validate_spawn_configuration(args, parser)
     return args
 
 
@@ -1153,6 +1184,27 @@ def apply_objective_defaults(args: argparse.Namespace) -> None:
         args.controlled_agents = DEFAULT_CONTROLLED_AGENTS
     if args.field_size is None:
         args.field_size = max(DEFAULT_FIELD_SIZE, args.controlled_agents)
+
+
+def validate_spawn_configuration(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    if args.random_race_spawns is None:
+        args.random_race_spawns = args.max_checkpoints > 0
+
+    if args.max_checkpoints > 0:
+        if args.controlled_agents > 1:
+            parser.error(
+                "--controlled-agents must be 1 when --max-checkpoints is a checkpoint "
+                "stage; train multiple cars only with full-lap training"
+            )
+        if not args.random_race_spawns:
+            parser.error(
+                "checkpoint-stage training requires --random-race-spawns so saved "
+                "random spawn seeds can be reused"
+            )
+        return
+
+    if args.random_race_spawns:
+        parser.error("full-lap training requires fixed race spawns")
 
 
 def main() -> None:
@@ -1232,7 +1284,11 @@ def main() -> None:
                 if not args.no_reward_summary:
                     for line in REWARD_SUMMARY.render_since(summary_mark, iteration):
                         print(line, flush=True)
-                if args.checkpoint_every > 0 and iteration % args.checkpoint_every == 0:
+                checkpoint_due = (
+                    args.checkpoint_every > 0
+                    and iteration % args.checkpoint_every == 0
+                )
+                if checkpoint_due:
                     save_checkpoint(algorithm, checkpoint_dir, args, iteration)
                     last_saved_iteration = iteration
         except KeyboardInterrupt:
@@ -1245,8 +1301,9 @@ def main() -> None:
             save_checkpoint(algorithm, checkpoint_dir, args, save_iteration)
             raise SystemExit(130)
 
-        if last_saved_iteration != args.iterations:
-            save_checkpoint(algorithm, checkpoint_dir, args, args.iterations)
+        final_iteration = current_iteration if current_iteration > 0 else args.iterations
+        if last_saved_iteration != final_iteration:
+            save_checkpoint(algorithm, checkpoint_dir, args, final_iteration)
     finally:
         algorithm.stop()
 

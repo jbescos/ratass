@@ -16,15 +16,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_POLICY = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
 OBS_CLOSE_CAR_THRESHOLD = 0.18
+OBS_TRACE_SIZE = 46
 REWARD_BUCKETS = (
-    "checkpoint_progress",
     "checkpoint",
     "step_cost",
     "off_road",
     "steering",
     "reverse_speed",
-    "elimination",
     "car_push",
+    "speed",
 )
 
 
@@ -126,9 +126,12 @@ def available_maps():
 def select_map(ratass_game, map_id: str):
     if not map_id:
         return None
-    for arena_map in available_maps():
-        if str(arena_map.getId()) == map_id:
-            return arena_map
+    arena_maps = jpype.JClass("com.github.jbescos.gameplay.maps.ArenaMaps")
+    for maps in (arena_maps.createHeadlessTrainingSet(), arena_maps.createDefaultSet()):
+        for index in range(int(maps.size)):
+            arena_map = maps.get(index)
+            if str(arena_map.getId()) == map_id:
+                return arena_map
     raise ValueError(f"Unknown map id {map_id!r}")
 
 
@@ -155,15 +158,12 @@ def make_stats():
         "small": 0,
         "effective_small": 0,
         "checkpoints": 0,
-        "eliminations": 0,
         "progress_total": 0.0,
-        "checkpoint_progress": 0.0,
         "checkpoint": 0.0,
         "step_cost": 0.0,
         "off_road": 0.0,
         "steering": 0.0,
         "reverse_speed": 0.0,
-        "elimination": 0.0,
         "car_push": 0.0,
         "checkpoint_near_steps": 0,
         "wall_contact_steps": 0,
@@ -181,12 +181,17 @@ def make_stats():
         "avg_braking_risk": 0.0,
         "avg_speed": 0.0,
         "avg_edge_clearance": 0.0,
+        "avg_left_road_clearance": 0.0,
+        "avg_right_road_clearance": 0.0,
+        "avg_front_road_clearance": 0.0,
+        "avg_front_left_road_clearance": 0.0,
+        "avg_front_right_road_clearance": 0.0,
         "observation_samples": 0,
         "near_car_steps": 0,
         "close_car_steps": 0,
-        "nearest_car_near_checkpoint_steps": 0,
         "avg_nearest_car_distance": 0.0,
         "avg_nearest_car_approach": 0.0,
+        "avg_nearest_car_relative_forward_speed": 0.0,
     }
 
 
@@ -239,19 +244,17 @@ def open_trace(trace_dir: str, map_id: str, episode: int, debug_trace_names):
         [
             "step",
             "reward",
-            "progress",
             "checkpoint",
             "step_cost",
             "off_road",
             "steering",
             "reverse_speed",
-            "elimination",
             "car_push",
+            "speed",
             "throttle",
             "turn",
             "effective_throttle",
             "effective_turn",
-            "obs_active",
             "checkpoint_dx",
             "checkpoint_dy",
             "checkpoint_distance",
@@ -287,12 +290,17 @@ def open_trace(trace_dir: str, map_id: str, episode: int, debug_trace_names):
             "nearest_car_side",
             "nearest_car_distance",
             "nearest_car_approach",
-            "nearest_car_near_checkpoint",
+            "nearest_car_relative_forward_speed",
             "route_clearance",
             "checkpoint_clearance",
             "route_active",
             "second_checkpoint_forward",
             "second_checkpoint_side",
+            "left_road_clearance",
+            "right_road_clearance",
+            "front_road_clearance",
+            "front_left_road_clearance",
+            "front_right_road_clearance",
         ]
         + debug_headers
     )
@@ -319,7 +327,6 @@ def trace_step(writer, step, result, reward, throttle, turn):
             f"{breakdown[4]:.6f}" if len(breakdown) > 4 else "0.000000",
             f"{breakdown[5]:.6f}" if len(breakdown) > 5 else "0.000000",
             f"{breakdown[6]:.6f}" if len(breakdown) > 6 else "0.000000",
-            f"{breakdown[7]:.6f}" if len(breakdown) > 7 else "0.000000",
             f"{throttle:.6f}",
             f"{turn:.6f}",
             f"{effective_throttle:.6f}",
@@ -327,7 +334,7 @@ def trace_step(writer, step, result, reward, throttle, turn):
         ]
         + [
             f"{observations[index]:.6f}" if index < len(observations) else "0.000000"
-            for index in range(42)
+            for index in range(OBS_TRACE_SIZE)
         ]
         + [
             f"{debug_trace[index]:.6f}" if index < len(debug_trace) else "0.000000"
@@ -343,32 +350,36 @@ def update_observation_stats(stats, result, controlled_agents: int, observation_
         if offset + observation_size > len(observations):
             break
         stats["observation_samples"] += 1
-        stats["avg_speed"] += observations[offset + 17]
-        stats["avg_edge_clearance"] += observations[offset + 18]
-        stats["avg_checkpoint_distance"] += observations[offset + 3]
-        stats["avg_route_alignment"] += observations[offset + 7]
-        stats["avg_route_lookahead_alignment"] += observations[offset + 40]
-        stats["avg_track_slowdown"] += observations[offset + 20]
-        stats["avg_lateral_slip"] += abs(observations[offset + 22])
-        stats["avg_braking_risk"] += max(0.0, 1.0 - observations[offset + 37])
-        stats["avg_nearest_car_distance"] += observations[offset + 34]
-        stats["avg_nearest_car_approach"] += observations[offset + 35]
-        if observations[offset + 12] > 0.5:
+        stats["avg_speed"] += observations[offset + 16]
+        stats["avg_edge_clearance"] += observations[offset + 17]
+        stats["avg_checkpoint_distance"] += observations[offset + 2]
+        stats["avg_route_alignment"] += observations[offset + 6]
+        stats["avg_route_lookahead_alignment"] += observations[offset + 39]
+        stats["avg_track_slowdown"] += observations[offset + 19]
+        stats["avg_lateral_slip"] += abs(observations[offset + 21])
+        stats["avg_braking_risk"] += max(0.0, 1.0 - observations[offset + 36])
+        stats["avg_nearest_car_distance"] += observations[offset + 33]
+        stats["avg_nearest_car_approach"] += observations[offset + 34]
+        stats["avg_nearest_car_relative_forward_speed"] += observations[offset + 35]
+        stats["avg_left_road_clearance"] += observations[offset + 41]
+        stats["avg_right_road_clearance"] += observations[offset + 42]
+        stats["avg_front_road_clearance"] += observations[offset + 43]
+        stats["avg_front_left_road_clearance"] += observations[offset + 44]
+        stats["avg_front_right_road_clearance"] += observations[offset + 45]
+        if observations[offset + 11] > 0.5:
             stats["checkpoint_near_steps"] += 1
-        if observations[offset + 19] > 0.5:
+        if observations[offset + 18] > 0.5:
             stats["wall_contact_steps"] += 1
-        if observations[offset + 18] < 0.25:
+        if observations[offset + 17] < 0.25:
             stats["near_edge_steps"] += 1
-        if observations[offset + 18] < 0.25 and observations[offset + 17] > 0.32:
+        if observations[offset + 17] < 0.25 and observations[offset + 16] > 0.32:
             stats["near_edge_fast_steps"] += 1
-        if observations[offset + 37] < 0.82:
+        if observations[offset + 36] < 0.82:
             stats["braking_risk_steps"] += 1
-        if observations[offset + 34] < 1.0:
+        if observations[offset + 33] < 1.0:
             stats["near_car_steps"] += 1
-        if observations[offset + 34] < OBS_CLOSE_CAR_THRESHOLD:
+        if observations[offset + 33] < OBS_CLOSE_CAR_THRESHOLD:
             stats["close_car_steps"] += 1
-        if observations[offset + 36] > 0.5:
-            stats["nearest_car_near_checkpoint_steps"] += 1
     for agent_index in range(min(controlled_agents, len(result.progressTowardCheckpoint))):
         stats["progress_total"] += float(result.progressTowardCheckpoint[agent_index])
 
@@ -490,11 +501,6 @@ def run_episode(
             int(result.checkpointsReached[index])
             for index in range(min(controlled_agents, len(result.checkpointsReached)))
         )
-    if len(result.eliminations) > 0:
-        stats["eliminations"] = sum(
-            int(result.eliminations[index])
-            for index in range(min(controlled_agents, len(result.eliminations)))
-        )
     for agent_index in range(controlled_agents):
         breakdown_offset = agent_index * len(reward_breakdown_names)
         for bucket, name in enumerate(reward_breakdown_names):
@@ -515,7 +521,6 @@ def run_episode(
             f"effective_flips={effective_flips} "
             f"effective_flip_rate={effective_flip_rate:.3f} "
             f"checkpoints={stats['checkpoints']} "
-            f"eliminations={stats['eliminations']} "
             f"success={stats['successes']}",
             flush=True,
         )
@@ -532,7 +537,6 @@ def summary_metrics(stats, episodes_override: int = None):
         "avg_steps": stats["steps"] / episodes,
         "avg_reward": stats["reward"] / episodes,
         "avg_checkpoints": stats["checkpoints"] / episodes,
-        "elimination_rate": stats["eliminations"] / episodes,
         "progress_avg": stats["progress_total"] / episodes,
         "raw_flips_per_step": stats["raw_flips"] / actions,
         "effective_flips_per_step": stats["effective_flips"] / actions,
@@ -555,12 +559,19 @@ def summary_metrics(stats, episodes_override: int = None):
         "avg_braking_risk": stats["avg_braking_risk"] / observation_samples,
         "avg_speed_signal": stats["avg_speed"] / observation_samples,
         "avg_edge_clearance": stats["avg_edge_clearance"] / observation_samples,
+        "avg_left_road_clearance": stats["avg_left_road_clearance"] / observation_samples,
+        "avg_right_road_clearance": stats["avg_right_road_clearance"] / observation_samples,
+        "avg_front_road_clearance": stats["avg_front_road_clearance"] / observation_samples,
+        "avg_front_left_road_clearance":
+            stats["avg_front_left_road_clearance"] / observation_samples,
+        "avg_front_right_road_clearance":
+            stats["avg_front_right_road_clearance"] / observation_samples,
         "near_car_fraction": stats["near_car_steps"] / observation_samples,
         "close_car_fraction": stats["close_car_steps"] / observation_samples,
-        "nearest_car_near_checkpoint_fraction":
-            stats["nearest_car_near_checkpoint_steps"] / observation_samples,
         "avg_nearest_car_distance": stats["avg_nearest_car_distance"] / observation_samples,
         "avg_nearest_car_approach": stats["avg_nearest_car_approach"] / observation_samples,
+        "avg_nearest_car_relative_forward_speed":
+            stats["avg_nearest_car_relative_forward_speed"] / observation_samples,
     }
 
 
@@ -577,7 +588,6 @@ def evaluation_score(stats, episodes_override: int = None) -> float:
         + metrics["avg_route_lookahead_alignment"] * 5.0
         - metrics["off_road_fraction"] * 12.0
         - metrics["effective_flips_per_step"] * 35.0
-        - metrics["elimination_rate"] * 450.0
     )
 
 
@@ -590,7 +600,6 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"avg_steps={metrics['avg_steps']:.1f} "
         f"avg_reward={metrics['avg_reward']:.3f} "
         f"avg_checkpoints={metrics['avg_checkpoints']:.3f} "
-        f"elimination_rate={metrics['elimination_rate']:.3f} "
         f"progress_avg={metrics['progress_avg']:.3f} "
         f"raw_flips_per_step={metrics['raw_flips_per_step']:.3f} "
         f"effective_flips_per_step={metrics['effective_flips_per_step']:.3f} "
@@ -612,21 +621,24 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"avg_braking_risk={metrics['avg_braking_risk']:.3f} "
         f"avg_speed_signal={metrics['avg_speed_signal']:.3f} "
         f"avg_edge_clearance={metrics['avg_edge_clearance']:.3f} "
+        f"avg_left_road_clearance={metrics['avg_left_road_clearance']:.3f} "
+        f"avg_right_road_clearance={metrics['avg_right_road_clearance']:.3f} "
+        f"avg_front_road_clearance={metrics['avg_front_road_clearance']:.3f} "
+        f"avg_front_left_road_clearance={metrics['avg_front_left_road_clearance']:.3f} "
+        f"avg_front_right_road_clearance={metrics['avg_front_right_road_clearance']:.3f} "
         f"near_car_fraction={metrics['near_car_fraction']:.3f} "
         f"close_car_fraction={metrics['close_car_fraction']:.3f} "
-        f"nearest_car_near_checkpoint_fraction={metrics['nearest_car_near_checkpoint_fraction']:.3f} "
         f"avg_nearest_car_distance={metrics['avg_nearest_car_distance']:.3f} "
         f"avg_nearest_car_approach={metrics['avg_nearest_car_approach']:.3f} "
+        f"avg_nearest_car_relative_forward_speed={metrics['avg_nearest_car_relative_forward_speed']:.3f} "
         + " ".join(
             f"{name}={stats[name] / episodes:.3f}"
             for name in (
-                "checkpoint_progress",
                 "checkpoint",
                 "step_cost",
                 "off_road",
                 "steering",
                 "reverse_speed",
-                "elimination",
                 "car_push",
             )
             if name in stats
@@ -672,7 +684,6 @@ def print_evaluation_tables(total_stats, per_map) -> None:
                 format_table_number(metrics["avg_reward"]),
                 format_table_number(score),
                 format_table_number(metrics["avg_checkpoints"]),
-                format_table_number(metrics["elimination_rate"]),
                 format_table_number(metrics["off_road_fraction"]),
                 format_table_number(metrics["effective_reverse_fraction"]),
                 format_table_number(metrics["near_car_fraction"]),
@@ -686,6 +697,9 @@ def print_evaluation_tables(total_stats, per_map) -> None:
                 format_table_number(metrics["avg_route_lookahead_alignment"]),
                 format_table_number(metrics["avg_speed_signal"]),
                 format_table_number(metrics["avg_edge_clearance"]),
+                format_table_number(metrics["avg_front_road_clearance"]),
+                format_table_number(metrics["avg_left_road_clearance"]),
+                format_table_number(metrics["avg_right_road_clearance"]),
                 format_table_number(metrics["near_edge_fraction"]),
                 format_table_number(metrics["near_edge_fast_fraction"]),
                 format_table_number(metrics["braking_risk_fraction"]),
@@ -712,7 +726,6 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "reward",
             "score",
             "checkpoints",
-            "eliminations",
             "off_road",
             "reverse",
             "near_car",
@@ -728,6 +741,9 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "lookahead",
             "speed",
             "edge_clear",
+            "road_front",
+            "road_left",
+            "road_right",
             "near_edge",
             "edge_fast",
             "brake_risk",
@@ -739,14 +755,13 @@ def print_evaluation_tables(total_stats, per_map) -> None:
         "evaluation_rewards",
         [
             "scope",
-            "progress",
             "checkpoint",
             "step",
             "off_road",
             "steering",
             "reverse",
-            "elimination",
             "car_push",
+            "speed",
         ],
         reward_rows,
     )
@@ -761,9 +776,11 @@ def print_evaluation_score(stats):
         f"avg_steps={metrics['avg_steps']:.1f} "
         f"success_rate={metrics['success_rate']:.3f} "
         f"avg_checkpoints={metrics['avg_checkpoints']:.3f} "
-        f"elimination_rate={metrics['elimination_rate']:.3f} "
         f"checkpoint_near_fraction={metrics['checkpoint_near_fraction']:.3f} "
         f"off_road_fraction={metrics['off_road_fraction']:.3f} "
+        f"avg_left_road_clearance={metrics['avg_left_road_clearance']:.3f} "
+        f"avg_right_road_clearance={metrics['avg_right_road_clearance']:.3f} "
+        f"avg_front_road_clearance={metrics['avg_front_road_clearance']:.3f} "
         f"near_car_fraction={metrics['near_car_fraction']:.3f} "
         f"close_car_fraction={metrics['close_car_fraction']:.3f} "
         f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "

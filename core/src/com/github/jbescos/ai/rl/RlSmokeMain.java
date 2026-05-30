@@ -100,13 +100,11 @@ public final class RlSmokeMain {
 
                 System.out.printf(
                         Locale.US,
-                        "episode=%d steps=%d reward=%.3f checkpoints=%d eliminations=%d "
-                                + "progress=%.3f success=%s%n",
+                        "episode=%d steps=%d reward=%.3f checkpoints=%d progress=%.3f success=%s%n",
                         episode + 1,
                         steps,
                         totalReward,
                         result.checkpointsReached.length > 0 ? result.checkpointsReached[0] : 0,
-                        result.eliminations.length > 0 ? result.eliminations[0] : 0,
                         result.progressTowardCheckpoint.length > 0
                                 ? result.progressTowardCheckpoint[0]
                                 : 0f,

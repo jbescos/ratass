@@ -28,25 +28,26 @@ still runs on CPU.
 
 ## Environment Contract
 
-- Observation size: `68` floats per learner.
+- Observation size: `43` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
 - Default PPO network: two fully-connected hidden layers of width `1024`
   with `tanh` activation.
-- Race observations include relative next-checkpoint vector, a route waypoint
-  vector computed from the map hazard field, a farther route lookahead vector,
-  normalized route distance, route alignment, car-frame velocity, angular
-  velocity, near-checkpoint state, local track-limit ray clearances, short
-  braking rays, track slowdown, steering authority, lateral slip, braking
-  distance, previous action, six opponent-car ray clearances, and nearest-car
-  relative state.
-- Rewards are bucketed as `checkpoint_progress`, `checkpoint`, `step_cost`,
-  `off_road`, `steering`, `reverse_speed`, `elimination`, and `car_push`. The
-  progress bucket only pays new best progress along the ordered checkpoint route
-  while the car is moving forward. Braking is not penalized, but actual negative
-  forward speed is. Car collisions are treated as push/contact penalties, not as
-  rewards.
-- Java exposes episode metrics for checkpoints reached, eliminations, and route
-  progress toward the checkpoint.
+- Race observations include the relative next-checkpoint vector, a route waypoint
+  vector computed from the map hazard field, normalized route distance, route
+  alignment, edge clearance, off-road state, car-frame velocity, angular
+  velocity, near-checkpoint state, previous action, six opponent-car ray
+  clearances, nearest-car relative state, route/checkpoint clearance, route
+  active state, second-checkpoint alignment, and left/right road-clearance rays
+  that scan two car lengths laterally. The old constant `active` observation and
+  the broader experimental road-clearance ray set were removed.
+- Rewards are bucketed as `checkpoint`, `step_cost`, `off_road`, `steering`,
+  `reverse_speed`, and `car_push`. The `checkpoint` bucket includes both new
+  best progress along the ordered checkpoint route while the car is moving
+  forward and the larger reward for crossing the active checkpoint. Braking is
+  not penalized, but actual negative forward speed is. Car collisions are
+  treated as push/contact penalties, not as rewards.
+- Java exposes episode metrics for checkpoints reached and route progress toward
+  the checkpoint.
 - The shell training presets stage the episode target through `1`, `2`, and `3`
   checkpoints before full-lap episodes (`RL_MAX_CHECKPOINTS=-1`). The live game
   can still run longer races because the same checkpoint-following policy repeats
@@ -84,7 +85,7 @@ tools/rl/train.sh
 Train one specific profile:
 
 ```bash
-tools/rl/train.sh 04
+tools/rl/train.sh aggressive
 ```
 
 Check whether loaded checkpoint centers, checkpoint gates, and first route
@@ -105,7 +106,7 @@ Docker training uses the same profile system:
 
 ```bash
 tools/rl/train_docker.sh
-tools/rl/train_docker.sh 04
+tools/rl/train_docker.sh aggressive
 ```
 
 Internal presets are still available through `train_forever.sh` when debugging
@@ -123,9 +124,13 @@ bash tools/rl/train_forever.sh race-16
 bash tools/rl/train_forever.sh race-20
 ```
 
-The current convenience curriculum trains the race objective on all discovered
-mask maps. Every car-count phase is split into checkpoint stages: reach `1`
-checkpoint, then `2`, then `3`, then a full lap. After that, the curriculum ramps
+The current convenience curriculum trains the race objective on synthetic
+training-only masks from `tools/rl/trainingMaps` when they exist. Best-eval still
+uses the playable game masks from `assets/maps`, so the exported policy is
+selected by performance on the real circuits while most learning happens on
+circuits the player will not race on. Every car-count phase is split into
+checkpoint stages: reach `1` checkpoint, then `2`, then `3`, then a full lap.
+After that, the curriculum ramps
 learner cars through `1`, `2`, `4`, `8`, `16`, and finally `20` cars forever by
 default. The 400-iteration single-car wrapper splits its budget into `100`
 iterations for each checkpoint stage. Each phase keeps a separate
@@ -137,10 +142,23 @@ usable model from the most recent stage. Checkpoint output defaults to
 wrapper. Training scripts delete their checkpoint directory at startup by
 default, so a new run starts from scratch instead of resuming an older
 checkpoint. Set `RL_FRESH_START=0` only when you intentionally want to resume.
-Race training and policy evaluation use route-aligned random road spawns by
-default, and the Java environment assigns the next checkpoint from the same route
-selector used to face the car. Set `RL_RANDOM_RACE_SPAWNS=0` or pass
-`--fixed-race-spawns` only when you intentionally want fixed-start debugging.
+Checkpoint curriculum stages use single-car route-aligned random road spawns
+from saved per-stage seed files under the checkpoint directory, so a resumed run
+reuses the same training cases. Full-lap stages always use the fixed start grid.
+Multi-car training is valid only for full-lap stages; checkpoint stages fail
+fast if configured with more than one learner car.
+
+Regenerate the synthetic training maps and prebuild their caches:
+
+```bash
+python3 tools/rl/generate_training_maps.py
+mvn -q -DskipTests package
+.venv-rl/bin/python tools/rl/prebuild_training_map_cache.py
+```
+
+Training workers load the map set once when each Java environment starts. They
+do not reload PNGs every PPO iteration. The `.ser` files beside the masks keep
+startup fast by avoiding repeated mask parsing and distance-field generation.
 
 ## Docker
 

@@ -14,35 +14,33 @@ rl_policy_batch_active() {
 
 rl_policy_normalize_id() {
   local raw="$1"
-  if [[ "${raw}" == "default" ]]; then
+  local policy_id
+  policy_id="$(printf '%s' "${raw}" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${policy_id}" == "default" ]]; then
     printf '%s\n' "default"
     return 0
   fi
-  if [[ ! "${raw}" =~ ^[0-9]+$ ]]; then
+
+  if [[ ! "${policy_id}" =~ ^[a-z][a-z0-9_-]*$ ]]; then
     echo "invalid_policy_id=${raw}" >&2
     return 2
   fi
 
-  local value=$((10#${raw}))
-  if [[ "${value}" -lt 0 || "${value}" -gt 20 ]]; then
-    echo "invalid_policy_id=${raw} expected=default_or_00_to_20" >&2
+  if [[ ! -d "${rl_policy_config_root}/${policy_id}" ]]; then
+    echo "unknown_policy_id=${raw} available=$(rl_policy_list_all | paste -sd, -)" >&2
     return 2
   fi
-  printf '%02d\n' "${value}"
+  printf '%s\n' "${policy_id}"
 }
 
 rl_policy_list_all() {
   if [[ -d "${rl_policy_config_root}" ]]; then
     find "${rl_policy_config_root}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
-      | sort \
+      | LC_ALL=C sort \
       | awk '$0 != "default" { print } END { print "default" }'
     return
   fi
 
-  local index
-  for index in $(seq 0 20); do
-    printf '%02d\n' "${index}"
-  done
   printf '%s\n' "default"
 }
 
@@ -265,7 +263,7 @@ rl_policy_run_batch() {
         } >> "${RL_POLICY_TRAINING_STATE}"
       fi
       echo "============================================================"
-      echo "CURRENT_TRAINING_CAR=${policy_id} profile=${policy_index}/${policy_total} script=${script_key}"
+      echo "CURRENT_TRAINING_DRIVER=${policy_id} profile=${policy_index}/${policy_total} script=${script_key}"
       echo "CURRENT_TRAINING_OUTPUT=${RL_BEST_OUTPUT}"
       echo "CURRENT_TRAINING_STATUS_FILE=${RL_POLICY_STATUS_FILE}"
       echo "CURRENT_TRAINING_STATE_FILE=${RL_POLICY_TRAINING_STATE:-none}"
