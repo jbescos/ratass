@@ -66,8 +66,6 @@ def parse_args() -> argparse.Namespace:
         help="maximum RL actions per map/profile; 0 means no practical step limit",
     )
     parser.add_argument("--action-repeat", type=int, default=4)
-    parser.add_argument("--checkpoint-radius", type=float, default=3.0)
-    parser.add_argument("--checkpoint-deadline-seconds", type=float, default=60.0)
     parser.add_argument("--seed", type=int, default=20260531)
     parser.add_argument(
         "--timeout-seconds",
@@ -174,7 +172,7 @@ def load_policy(policy_path: Path):
     return rl_policy.fromJson(policy_path.read_text(encoding="utf-8"))
 
 
-def make_environment(args: argparse.Namespace, ratass_game, arena_map, checkpoint_target: int):
+def make_environment(args: argparse.Namespace, ratass_game, arena_map, route_target: int):
     max_action_steps = args.steps if args.steps > 0 else 2_147_483_647
     config = (
         ratass_game.RlTrainingConfig()
@@ -182,9 +180,7 @@ def make_environment(args: argparse.Namespace, ratass_game, arena_map, checkpoin
         .withFieldSize(1)
         .withActionRepeat(args.action_repeat)
         .withMaxActionSteps(max_action_steps)
-        .withMaxCheckpoints(checkpoint_target)
-        .withCheckpointRadius(args.checkpoint_radius)
-        .withCheckpointDeadlineSeconds(args.checkpoint_deadline_seconds)
+        .withRouteTargets(route_target)
         .withRaceMode(True)
         .withRandomRaceSpawns(bool(args.random_race_spawns))
         .withRewardBreakdownEnabled(False)
@@ -202,12 +198,8 @@ def run_lap_timing(args: argparse.Namespace, arena_map, profile: str, policy) ->
     java_float_array = jpype.JArray(jpype.JFloat)
 
     map_id = str(arena_map.getId())
-    checkpoint_count = int(arena_map.getCheckpointCount())
-    if checkpoint_count <= 0:
-        return TimedRun(map_id, profile, None, None, None, 0, args.laps, "no checkpoints")
-
-    checkpoint_target = checkpoint_count * max(1, args.laps)
-    env = make_environment(args, ratass_game, arena_map, checkpoint_target)
+    route_target = max(1, args.laps)
+    env = make_environment(args, ratass_game, arena_map, route_target)
     lap_times: list[float] = []
     total_time = 0.0
     last_lap_time = 0.0
@@ -253,8 +245,8 @@ def run_lap_timing(args: argparse.Namespace, arena_map, profile: str, policy) ->
             )
             result = env.step(java_float_array([float(decision.throttle), float(decision.turn)]))
             total_time = int(result.actionStep) * max(1, args.action_repeat) * PHYSICS_STEP_SECONDS
-            reached = int(result.checkpointsReached[0]) if len(result.checkpointsReached) > 0 else 0
-            while len(lap_times) < args.laps and reached >= (len(lap_times) + 1) * checkpoint_count:
+            reached = int(result.routeTargetsReached[0]) if len(result.routeTargetsReached) > 0 else 0
+            while len(lap_times) < args.laps and reached >= (len(lap_times) + 1):
                 lap_times.append(total_time - last_lap_time)
                 last_lap_time = total_time
     finally:

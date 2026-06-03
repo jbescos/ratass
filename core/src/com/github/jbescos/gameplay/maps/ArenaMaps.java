@@ -58,6 +58,7 @@ public final class ArenaMaps {
                 .focusPoint(0f, 0f)
                 .solid(ArenaShape.rectangle(0f, 0f, 42f, 28f))
                 .scale(scale);
+        addRectangleRoute(builder, 14f * scale, 8f * scale);
         addRingSpawns(builder, 10.5f * scale, TRAINING_SPAWN_COUNT);
         addRecoveryGrid(builder, 14f * scale, 8f * scale, 5, 3);
         return builder.build();
@@ -68,9 +69,24 @@ public final class ArenaMaps {
                 .focusPoint(0f, 0f)
                 .solid(ArenaShape.circle(0f, 0f, 17.5f))
                 .scale(scale);
+        addCircleRoute(builder, 10f * scale, 24);
         addRingSpawns(builder, 10f * scale, TRAINING_SPAWN_COUNT);
         addRecoveryGrid(builder, 9f * scale, 9f * scale, 5, 5);
         return builder.build();
+    }
+
+    private static void addRectangleRoute(ArenaMap.Builder builder, float halfWidth, float halfHeight) {
+        builder.routePoint(-halfWidth, -halfHeight);
+        builder.routePoint(halfWidth, -halfHeight);
+        builder.routePoint(halfWidth, halfHeight);
+        builder.routePoint(-halfWidth, halfHeight);
+    }
+
+    private static void addCircleRoute(ArenaMap.Builder builder, float radius, int count) {
+        for (int i = 0; i < count; i++) {
+            float angle = MathUtils.PI2 * i / count;
+            builder.routePoint(MathUtils.cos(angle) * radius, MathUtils.sin(angle) * radius);
+        }
     }
 
     private static void addRingSpawns(ArenaMap.Builder builder, float radius, int count) {

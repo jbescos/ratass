@@ -21,6 +21,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -37,7 +38,7 @@ from export_policy import export_policy as export_checkpoint_policy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
-OBSERVATION_SIZE = 46
+OBSERVATION_SIZE = 34
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
@@ -46,7 +47,13 @@ EXPORTED_ACTOR_LAYERS = (
     "encoder.encoder.net.mlp.2",
     "pi.net.mlp.0",
 )
-EXPORT_OBJECTIVES = {"race": "race-checkpoints-v1"}
+EXPORT_OBJECTIVES = {"race": "race-route-progress-v1"}
+INCOMPATIBLE_CHECKPOINT_PATTERNS = (
+    "Error(s) in loading state_dict",
+    "size mismatch",
+    "Missing key(s)",
+    "Unexpected key(s)",
+)
 
 
 def _metric_token(value: str) -> str:
@@ -71,7 +78,7 @@ class RewardSummary:
         reward_total: float,
         bucket_names: List[str],
         bucket_totals: np.ndarray,
-        checkpoints_reached: int,
+        targets_reached: int,
         progress_total: float,
     ) -> None:
         self._episodes.append(
@@ -82,7 +89,7 @@ class RewardSummary:
                 "reward_total": float(reward_total),
                 "bucket_names": list(bucket_names),
                 "bucket_totals": np.asarray(bucket_totals, dtype=np.float64).copy(),
-                "checkpoints_reached": int(checkpoints_reached),
+                "targets_reached": int(targets_reached),
                 "progress_total": float(progress_total),
             }
         )
@@ -106,7 +113,7 @@ class RewardSummary:
                     "agent": episode["agent"],
                     "episodes": 0,
                     "reward_total": 0.0,
-                    "checkpoints_reached": 0,
+                    "targets_reached": 0,
                     "progress_total": 0.0,
                     "bucket_names": episode["bucket_names"],
                     "bucket_totals": np.zeros_like(episode["bucket_totals"]),
@@ -115,7 +122,7 @@ class RewardSummary:
 
             group["episodes"] += 1
             group["reward_total"] += episode["reward_total"]
-            group["checkpoints_reached"] += episode["checkpoints_reached"]
+            group["targets_reached"] += episode["targets_reached"]
             group["progress_total"] += episode["progress_total"]
             group["bucket_totals"] += episode["bucket_totals"]
 
@@ -129,7 +136,7 @@ class RewardSummary:
                 f"map_name={_metric_token(group['map_name'])}",
                 f"car={_metric_token(group['agent'])}",
                 f"episodes={group['episodes']}",
-                f"checkpoints_avg={group['checkpoints_reached'] / episode_count:.3f}",
+                f"targets_avg={group['targets_reached'] / episode_count:.3f}",
                 f"progress_avg={group['progress_total'] / episode_count:.3f}",
                 f"reward_avg={reward_avg:.3f}",
                 f"reward_total={group['reward_total']:.3f}",
@@ -235,11 +242,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withFieldSize(int(env_config.get("field_size", DEFAULT_FIELD_SIZE)))
         training_config.withActionRepeat(int(env_config.get("action_repeat", 4)))
         training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 6400)))
-        training_config.withMaxCheckpoints(int(env_config.get("max_checkpoints", 6)))
-        training_config.withCheckpointRadius(float(env_config.get("checkpoint_radius", 3.0)))
-        training_config.withCheckpointDeadlineSeconds(
-            float(env_config.get("checkpoint_deadline_seconds", 0.0))
-        )
+        training_config.withRouteTargets(int(env_config.get("route_targets", 6)))
         training_config.withRaceMode(True)
         training_config.withRandomRaceSpawns(bool(env_config.get("random_race_spawns", False)))
         base_seed = int(env_config.get("seed", 1))
@@ -249,7 +252,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withStepPenalty(float(env_config.get("reward_step_penalty", 0.006)))
         training_config.withProgressReward(float(env_config.get("reward_progress", 1.60)))
         training_config.withSpeedReward(float(env_config.get("reward_speed", 0.020)))
-        training_config.withCheckpointReward(float(env_config.get("reward_checkpoint", 30.0)))
+        training_config.withRouteTargetReward(float(env_config.get("reward_route_target", 30.0)))
         training_config.withSteeringPenalty(float(env_config.get("reward_steering_penalty", 0.010)))
         training_config.withReverseSpeedPenalty(
             float(env_config.get("reward_reverse_free_epsilon", 0.20)),
@@ -383,9 +386,9 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                     "current_map_id": str(result.currentMapId),
                     "current_map_name": str(result.currentMapName),
                     "agent_done": bool(result.dones[index]),
-                    "checkpoints_reached": int(result.checkpointsReached[index]),
-                    "progress_toward_checkpoint": float(
-                        result.progressTowardCheckpoint[index]
+                    "route_targets_reached": int(result.routeTargetsReached[index]),
+                    "route_progress_delta": float(
+                        result.routeProgressDeltas[index]
                     ),
                     "reward_breakdown": self._reward_breakdown_for_agent(
                         reward_breakdown,
@@ -439,7 +442,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             if agent in self._episode_bucket_totals and index < breakdown.shape[0]:
                 self._episode_bucket_totals[agent] += breakdown[index]
             if agent in self._episode_progress_totals:
-                self._episode_progress_totals[agent] += float(result.progressTowardCheckpoint[index])
+                self._episode_progress_totals[agent] += float(result.routeProgressDeltas[index])
 
     def _finalize_episode_accounting(self, result) -> None:
         for agent in self._agents:
@@ -454,7 +457,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                     agent,
                     np.zeros(len(self._reward_breakdown_names), dtype=np.float64),
                 ),
-                int(result.checkpointsReached[index]),
+                int(result.routeTargetsReached[index]),
                 self._episode_progress_totals.get(agent, 0.0),
             )
 
@@ -498,9 +501,7 @@ def build_algorithm(args):
         "field_size": args.field_size,
         "action_repeat": args.action_repeat,
         "max_action_steps": args.max_action_steps,
-        "max_checkpoints": args.max_checkpoints,
-        "checkpoint_radius": args.checkpoint_radius,
-        "checkpoint_deadline_seconds": args.checkpoint_deadline_seconds,
+        "route_targets": args.route_targets,
         "random_race_spawns": args.random_race_spawns,
         "seed": args.seed,
         "map_ids": args.map_ids,
@@ -509,7 +510,7 @@ def build_algorithm(args):
         "reward_step_penalty": args.reward_step_penalty,
         "reward_progress": args.reward_progress,
         "reward_speed": args.reward_speed,
-        "reward_checkpoint": args.reward_checkpoint,
+        "reward_route_target": args.reward_route_target,
         "reward_steering_penalty": args.reward_steering_penalty,
         "reward_reverse_free_epsilon": args.reward_reverse_free_epsilon,
         "reward_reverse_penalty_per_unit": args.reward_reverse_penalty_per_unit,
@@ -727,6 +728,65 @@ def configure_ray_runtime(args: argparse.Namespace) -> None:
         ray.init(**init_kwargs)
 
 
+def is_incompatible_checkpoint_error(error: BaseException) -> bool:
+    message = str(error)
+    return any(pattern in message for pattern in INCOMPATIBLE_CHECKPOINT_PATTERNS)
+
+
+def archive_incompatible_checkpoint(checkpoint_dir: Path) -> Path:
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    archive_dir = checkpoint_dir.with_name(f"{checkpoint_dir.name}.incompatible-{timestamp}")
+    suffix = 1
+    while archive_dir.exists():
+        archive_dir = checkpoint_dir.with_name(
+            f"{checkpoint_dir.name}.incompatible-{timestamp}-{suffix}"
+        )
+        suffix += 1
+    shutil.move(os.fspath(checkpoint_dir), os.fspath(archive_dir))
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    configure_ray_output(checkpoint_dir)
+    return archive_dir
+
+
+def build_algorithm_with_restore(args, checkpoint_dir: Path):
+    algorithm = build_algorithm(args)
+    if args.resume:
+        checkpoint_file = checkpoint_dir / "rllib_checkpoint.json"
+        if not checkpoint_file.exists():
+            raise FileNotFoundError(
+                f"{checkpoint_file} does not exist. Remove --resume or train once first."
+            )
+        try:
+            algorithm.restore(str(checkpoint_dir))
+        except RuntimeError as error:
+            if not is_incompatible_checkpoint_error(error):
+                raise
+            algorithm.stop()
+            archive_dir = archive_incompatible_checkpoint(checkpoint_dir)
+            print(
+                "checkpoint_resume_incompatible=1 "
+                f"archived={archive_dir} "
+                f"fresh_checkpoint_dir={checkpoint_dir}",
+                flush=True,
+            )
+            algorithm = build_algorithm(args)
+            if args.init_policy:
+                initialize_actor_from_exported_policy(
+                    algorithm,
+                    Path(args.init_policy).resolve(),
+                )
+            return algorithm
+        print(f"restored={checkpoint_dir}", flush=True)
+        if args.init_policy:
+            print("init_policy_ignored=resume_checkpoint_present", flush=True)
+    elif args.init_policy:
+        initialize_actor_from_exported_policy(
+            algorithm,
+            Path(args.init_policy).resolve(),
+        )
+    return algorithm
+
+
 def read_metric(result: Dict, *paths: Tuple[str, ...], default: float = float("nan")) -> float:
     for path in paths:
         value = result
@@ -841,12 +901,8 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         str(controlled_agents),
         "--field-size",
         str(field_size),
-        "--checkpoint-deadline-seconds",
-        str(args.checkpoint_deadline_seconds),
-        "--checkpoint-radius",
-        str(args.checkpoint_radius),
-        "--max-checkpoints",
-        str(args.max_checkpoints),
+        "--route-targets",
+        str(args.route_targets),
         "--seed",
         str(args.seed),
     ]
@@ -910,14 +966,14 @@ def maybe_promote_best_policy(
     result["evaluated"] = True
     result["score"] = score
     try:
-        avg_checkpoints = float(metrics.get("avg_checkpoints", "nan"))
+        avg_targets = float(metrics.get("avg_targets", "nan"))
     except (TypeError, ValueError):
-        avg_checkpoints = float("nan")
-    if avg_checkpoints < args.best_eval_min_checkpoints:
+        avg_targets = float("nan")
+    if avg_targets < args.best_eval_min_route_targets:
         print(
             f"best_policy_rejected score={score:.3f} "
-            f"avg_checkpoints={avg_checkpoints:.3f} "
-            f"min_checkpoints={args.best_eval_min_checkpoints:.3f}",
+            f"avg_targets={avg_targets:.3f} "
+            f"min_route_targets={args.best_eval_min_route_targets:.3f}",
             flush=True,
         )
         return result
@@ -993,30 +1049,23 @@ def parse_args() -> argparse.Namespace:
         "--field-size",
         type=int,
         default=None,
-        help="kept for compatibility; race training uses controlled learners only",
+        help="field size for the Java race environment",
     )
     parser.add_argument("--action-repeat", type=int, default=4)
     parser.add_argument("--max-action-steps", type=int, default=6400)
     parser.add_argument(
-        "--max-checkpoints",
+        "--route-targets",
         type=int,
         default=6,
-        help="episode checkpoint target; -1 means one current-map lap, 0 means the full live-race lap count",
-    )
-    parser.add_argument("--checkpoint-radius", type=float, default=3.0)
-    parser.add_argument(
-        "--checkpoint-deadline-seconds",
-        type=float,
-        default=0.0,
-        help="seconds a learner can go without crossing the next checkpoint; 0 derives from max steps/checkpoints",
+        help="episode route-target count; -1 means one current-map lap, 0 means the full live-race lap count",
     )
     parser.add_argument(
         "--random-race-spawns",
         action="store_true",
         default=None,
         help=(
-            "spawn learners at safe random road locations, facing the route to the next "
-            "checkpoint; valid for single-car checkpoint training"
+            "spawn learners at safe random road locations, facing the route tangent; "
+            "valid for single-car route-target training"
         ),
     )
     parser.add_argument(
@@ -1031,7 +1080,7 @@ def parse_args() -> argparse.Namespace:
         "--objective",
         choices=("race",),
         default="race",
-        help="race follows ordered map checkpoints",
+        help="race follows route progress around the circuit",
     )
     parser.add_argument(
         "--map-ids",
@@ -1041,7 +1090,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-step-penalty", type=float, default=0.006)
     parser.add_argument("--reward-progress", type=float, default=1.60)
     parser.add_argument("--reward-speed", type=float, default=0.020)
-    parser.add_argument("--reward-checkpoint", type=float, default=30.0)
+    parser.add_argument("--reward-route-target", type=float, default=30.0)
     parser.add_argument("--reward-steering-penalty", type=float, default=0.010)
     parser.add_argument("--reward-reverse-free-epsilon", type=float, default=0.20)
     parser.add_argument("--reward-reverse-penalty-per-unit", type=float, default=0.08)
@@ -1112,7 +1161,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--best-export-output",
         default="",
-        help="export and promote only checkpoints with the best evaluation score to this JSON file",
+        help="export and promote only policies with the best evaluation score to this JSON file",
     )
     parser.add_argument(
         "--best-export-objective",
@@ -1123,42 +1172,42 @@ def parse_args() -> argparse.Namespace:
         "--best-eval-episodes-per-map",
         type=int,
         default=0,
-        help="episodes per map for checkpoint evaluation; 1 is used when best export is enabled and no episode count is set",
+        help="episodes per map for route evaluation; 1 is used when best export is enabled and no episode count is set",
     )
     parser.add_argument(
         "--best-eval-episodes",
         type=int,
         default=0,
-        help="shuffled episodes for checkpoint evaluation when episodes-per-map is 0",
+        help="shuffled episodes for route evaluation when episodes-per-map is 0",
     )
     parser.add_argument(
-        "--best-eval-min-checkpoints",
+        "--best-eval-min-route-targets",
         type=float,
         default=1.0,
-        help="do not promote/export a policy unless evaluation reaches at least this many average checkpoints",
+        help="do not promote/export a policy unless evaluation reaches at least this many average route targets",
     )
     parser.add_argument(
         "--best-eval-controlled-agents",
         type=int,
         default=0,
-        help="controlled learner cars used by checkpoint evaluation; defaults to the training controlled-agent count",
+        help="controlled learner cars used by route evaluation; defaults to the training controlled-agent count",
     )
     parser.add_argument(
         "--best-eval-field-size",
         type=int,
         default=0,
-        help="field size used by checkpoint evaluation; defaults to the training field size",
+        help="field size used by route evaluation; defaults to the training field size",
     )
     parser.add_argument(
         "--best-eval-steps",
         type=int,
         default=0,
-        help="max action steps used by checkpoint evaluation; 0 uses evaluate_policy.py defaults",
+        help="max action steps used by route evaluation; 0 uses evaluate_policy.py defaults",
     )
     parser.add_argument(
         "--best-eval-map-ids",
         default="",
-        help="optional comma-separated map ids for checkpoint evaluation",
+        help="optional comma-separated map ids for route evaluation",
     )
     parser.add_argument(
         "--best-eval-state",
@@ -1188,17 +1237,17 @@ def apply_objective_defaults(args: argparse.Namespace) -> None:
 
 def validate_spawn_configuration(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if args.random_race_spawns is None:
-        args.random_race_spawns = args.max_checkpoints > 0
+        args.random_race_spawns = args.route_targets > 0
 
-    if args.max_checkpoints > 0:
+    if args.route_targets > 0:
         if args.controlled_agents > 1:
             parser.error(
-                "--controlled-agents must be 1 when --max-checkpoints is a checkpoint "
+                "--controlled-agents must be 1 when --route-targets is a route-target "
                 "stage; train multiple cars only with full-lap training"
             )
         if not args.random_race_spawns:
             parser.error(
-                "checkpoint-stage training requires --random-race-spawns so saved "
+                "route-target training requires --random-race-spawns so saved "
                 "random spawn seeds can be reused"
             )
         return
@@ -1213,22 +1262,7 @@ def main() -> None:
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     configure_ray_output(checkpoint_dir)
     configure_ray_runtime(args)
-    algorithm = build_algorithm(args)
-    if args.resume:
-        checkpoint_file = checkpoint_dir / "rllib_checkpoint.json"
-        if not checkpoint_file.exists():
-            raise FileNotFoundError(
-                f"{checkpoint_file} does not exist. Remove --resume or train once first."
-            )
-        algorithm.restore(str(checkpoint_dir))
-        print(f"restored={checkpoint_dir}", flush=True)
-        if args.init_policy:
-            print("init_policy_ignored=resume_checkpoint_present", flush=True)
-    elif args.init_policy:
-        initialize_actor_from_exported_policy(
-            algorithm,
-            Path(args.init_policy).resolve(),
-        )
+    algorithm = build_algorithm_with_restore(args, checkpoint_dir)
     if args.workers > 0 and not args.no_reward_summary:
         print(
             "reward_summary_warning=local_summary_only workers>0 may hide remote worker episodes",

@@ -8,8 +8,18 @@ if [[ ! -x "${python_bin}" ]]; then
   python_bin="python3"
 fi
 
+profiles="all"
+if [[ "$#" -gt 0 && "${1}" != -* ]]; then
+  profiles="$1"
+  shift
+  while [[ "$#" -gt 0 && "${1}" != -* ]]; do
+    profiles+=",${1}"
+    shift
+  done
+fi
+
 exec "${python_bin}" "${script_dir}/evaluate_lap_times.py" \
-  --profiles all \
+  --profiles "${profiles}" \
   --map-source all \
   --laps 5 \
   --steps 0 \

@@ -17,8 +17,7 @@ public final class RlSmokeMain {
         int controlledAgents = 1;
         int fieldSize = 1;
         int actionRepeat = 4;
-        int maxCheckpoints = 6;
-        float checkpointRadius = 3.0f;
+        int routeTargets = 6;
         boolean raceMode = true;
         long seed = 1L;
 
@@ -34,10 +33,8 @@ public final class RlSmokeMain {
                 fieldSize = Integer.parseInt(args[++i]);
             } else if ("--action-repeat".equals(arg) && i + 1 < args.length) {
                 actionRepeat = Integer.parseInt(args[++i]);
-            } else if ("--max-checkpoints".equals(arg) && i + 1 < args.length) {
-                maxCheckpoints = Integer.parseInt(args[++i]);
-            } else if ("--checkpoint-radius".equals(arg) && i + 1 < args.length) {
-                checkpointRadius = Float.parseFloat(args[++i]);
+            } else if ("--route-targets".equals(arg) && i + 1 < args.length) {
+                routeTargets = Integer.parseInt(args[++i]);
             } else if ("--objective".equals(arg) && i + 1 < args.length) {
                 String objective = args[++i];
                 if ("race".equals(objective)) {
@@ -60,8 +57,7 @@ public final class RlSmokeMain {
                         .withFieldSize(fieldSize)
                         .withActionRepeat(actionRepeat)
                         .withMaxActionSteps(maxSteps)
-                        .withMaxCheckpoints(maxCheckpoints)
-                        .withCheckpointRadius(checkpointRadius)
+                        .withRouteTargets(routeTargets)
                         .withRaceMode(raceMode)
                         .withSeed(seed);
         Random random = new Random(seed ^ 0xC0FFEE);
@@ -100,13 +96,13 @@ public final class RlSmokeMain {
 
                 System.out.printf(
                         Locale.US,
-                        "episode=%d steps=%d reward=%.3f checkpoints=%d progress=%.3f success=%s%n",
+                        "episode=%d steps=%d reward=%.3f targets=%d progress=%.3f success=%s%n",
                         episode + 1,
                         steps,
                         totalReward,
-                        result.checkpointsReached.length > 0 ? result.checkpointsReached[0] : 0,
-                        result.progressTowardCheckpoint.length > 0
-                                ? result.progressTowardCheckpoint[0]
+                        result.routeTargetsReached.length > 0 ? result.routeTargetsReached[0] : 0,
+                        result.routeProgressDeltas.length > 0
+                                ? result.routeProgressDeltas[0]
                                 : 0f,
                         result.winnerAgentIndex == 0 ? "true" : "false");
             }

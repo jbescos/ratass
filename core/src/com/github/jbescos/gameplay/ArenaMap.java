@@ -16,6 +16,10 @@ public final class ArenaMap {
     private static final float ROUTE_FIELD_BLIND_LOOKAHEAD_DISTANCE = 1.70f;
     private static final int ROUTE_FIELD_LOOKAHEAD_STEPS = 56;
     private static final int ROUTE_FIELD_NEAREST_SEARCH_RADIUS = 18;
+    private static final float ROUTE_DIRECTION_ALIGNMENT_PENALTY = 10f;
+    private static final float ROUTE_PROGRESS_CONTINUITY_PENALTY = 0.08f;
+    private static final float ROUTE_PROGRESS_BACKTRACK_PENALTY = 0.22f;
+    private static final float ROUTE_TANGENT_SAMPLE_DISTANCE = 1.80f;
 
     private final String id;
     private final String name;
@@ -25,12 +29,15 @@ public final class ArenaMap {
     private final Array<ArenaShape> holeZones = new Array<ArenaShape>();
     private final Array<SpawnPoint> spawnPoints = new Array<SpawnPoint>();
     private final Array<SpawnPoint> checkpoints = new Array<SpawnPoint>();
+    private final Array<Vector2> routePoints = new Array<Vector2>();
     private final Array<Vector2> recoveryPoints = new Array<Vector2>();
     private final Rectangle bounds = new Rectangle();
     private final Vector2 scratchCandidate = new Vector2();
     private final Vector2 scratchAdjusted = new Vector2();
     private final Vector2 scratchBest = new Vector2();
     private final Vector2 scratchGoal = new Vector2();
+    private final Vector2 scratchRouteTangentStart = new Vector2();
+    private final Vector2 scratchRouteTangentEnd = new Vector2();
     private final int approximateHazardWidth;
     private final int approximateHazardHeight;
     private final float approximateHazardCellWidth;
@@ -44,6 +51,8 @@ public final class ArenaMap {
     private int routeFieldHeapSize;
     private float cachedRouteFieldMargin = -1f;
     private int cachedRouteFieldGoalIndex = -1;
+    private final float[] routeCumulativeDistances;
+    private final float routeLength;
 
     private ArenaMap(
             String id,
@@ -54,6 +63,7 @@ public final class ArenaMap {
             Array<ArenaShape> holeZones,
             Array<SpawnPoint> spawnPoints,
             Array<SpawnPoint> checkpoints,
+            Array<Vector2> routePoints,
             Array<Vector2> recoveryPoints) {
         this.id = id;
         this.name = name;
@@ -64,6 +74,9 @@ public final class ArenaMap {
         this.holeZones.addAll(holeZones);
         this.spawnPoints.addAll(spawnPoints);
         this.checkpoints.addAll(checkpoints);
+        for (int i = 0; i < routePoints.size; i++) {
+            this.routePoints.add(new Vector2(routePoints.get(i)));
+        }
 
         for (int i = 0; i < recoveryPoints.size; i++) {
             this.recoveryPoints.add(new Vector2(recoveryPoints.get(i)));
@@ -106,6 +119,9 @@ public final class ArenaMap {
         routeFieldCosts = new float[routeFieldCellCount];
         routeFieldHeap = new int[routeFieldCellCount];
         routeFieldHeapPositions = new int[routeFieldCellCount];
+
+        routeCumulativeDistances = new float[this.routePoints.size];
+        routeLength = buildRouteDistanceCache();
     }
 
     public static Builder builder(String id, String name) {
@@ -158,6 +174,201 @@ public final class ArenaMap {
 
     public SpawnPoint getCheckpoint(int index) {
         return checkpoints.get(index);
+    }
+
+    public int getRoutePointCount() {
+        return routePoints.size;
+    }
+
+    public boolean hasRoute() {
+        return routePoints.size >= 2 && routeLength > 0.001f;
+    }
+
+    public float getRouteLength() {
+        return routeLength;
+    }
+
+    public float findRouteProgress(Vector2 position) {
+        return position == null ? 0f : findRouteProgress(position.x, position.y);
+    }
+
+    public float findRouteProgress(Vector2 position, Vector2 preferredDirection) {
+        return position == null
+                ? 0f
+                : findRouteProgress(
+                        position.x,
+                        position.y,
+                        preferredDirection == null ? 0f : preferredDirection.x,
+                        preferredDirection == null ? 0f : preferredDirection.y);
+    }
+
+    public float findRouteProgressNear(
+            Vector2 position,
+            Vector2 preferredDirection,
+            float referenceProgress) {
+        return position == null
+                ? wrapRouteProgress(referenceProgress)
+                : findRouteProgress(
+                        position.x,
+                        position.y,
+                        preferredDirection == null ? 0f : preferredDirection.x,
+                        preferredDirection == null ? 0f : preferredDirection.y,
+                        true,
+                        referenceProgress);
+    }
+
+    public float findRouteProgress(float x, float y) {
+        return findRouteProgress(x, y, 0f, 0f);
+    }
+
+    public float findRouteProgress(float x, float y, float preferredDirectionX, float preferredDirectionY) {
+        return findRouteProgress(x, y, preferredDirectionX, preferredDirectionY, false, 0f);
+    }
+
+    private float findRouteProgress(
+            float x,
+            float y,
+            float preferredDirectionX,
+            float preferredDirectionY,
+            boolean useReferenceProgress,
+            float referenceProgress) {
+        if (!hasRoute()) {
+            return 0f;
+        }
+
+        float preferredLength =
+                (float)
+                        Math.sqrt(
+                                preferredDirectionX * preferredDirectionX
+                                        + preferredDirectionY * preferredDirectionY);
+        boolean usePreferredDirection = preferredLength > 0.0001f;
+        if (usePreferredDirection) {
+            preferredDirectionX /= preferredLength;
+            preferredDirectionY /= preferredLength;
+        }
+
+        float bestScore = Float.MAX_VALUE;
+        float bestProgress = 0f;
+        for (int i = 0; i < routePoints.size; i++) {
+            Vector2 start = routePoints.get(i);
+            Vector2 end = routePoints.get((i + 1) % routePoints.size);
+            float segmentX = end.x - start.x;
+            float segmentY = end.y - start.y;
+            float segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+            if (segmentLengthSquared <= 0.0001f) {
+                continue;
+            }
+
+            float segmentLength = (float) Math.sqrt(segmentLengthSquared);
+            float alpha =
+                    MathUtils.clamp(
+                            ((x - start.x) * segmentX + (y - start.y) * segmentY)
+                                    / segmentLengthSquared,
+                            0f,
+                            1f);
+            float projectedX = start.x + segmentX * alpha;
+            float projectedY = start.y + segmentY * alpha;
+            float distance = Vector2.dst2(x, y, projectedX, projectedY);
+            float score = distance;
+            if (usePreferredDirection) {
+                float alignment =
+                        (segmentX * preferredDirectionX + segmentY * preferredDirectionY)
+                                / segmentLength;
+                score += (1f - alignment) * ROUTE_DIRECTION_ALIGNMENT_PENALTY;
+            }
+            float candidateProgress =
+                    wrapRouteProgress(routeCumulativeDistances[i] + segmentLength * alpha);
+            if (useReferenceProgress) {
+                float routeDelta = routeProgressDelta(referenceProgress, candidateProgress);
+                score += Math.min(40f, Math.abs(routeDelta) * ROUTE_PROGRESS_CONTINUITY_PENALTY);
+                if (routeDelta < -1.25f) {
+                    score += Math.min(60f, -routeDelta * ROUTE_PROGRESS_BACKTRACK_PENALTY);
+                }
+            }
+            if (score < bestScore) {
+                bestScore = score;
+                bestProgress = candidateProgress;
+            }
+        }
+        return bestProgress;
+    }
+
+    public float findNormalizedRouteProgress(Vector2 position) {
+        return !hasRoute() ? 0f : findRouteProgress(position) / routeLength;
+    }
+
+    public float routeProgressDelta(float fromProgress, float toProgress) {
+        if (!hasRoute()) {
+            return 0f;
+        }
+        float delta = wrapRouteProgress(toProgress) - wrapRouteProgress(fromProgress);
+        float halfLength = routeLength * 0.5f;
+        if (delta < -halfLength) {
+            delta += routeLength;
+        } else if (delta > halfLength) {
+            delta -= routeLength;
+        }
+        return delta;
+    }
+
+    public void findRoutePoint(float progress, Vector2 out) {
+        if (out == null) {
+            return;
+        }
+        if (!hasRoute()) {
+            out.set(focusPoint);
+            return;
+        }
+
+        float wrappedProgress = wrapRouteProgress(progress);
+        int segmentIndex = findRouteSegmentIndex(wrappedProgress);
+        Vector2 start = routePoints.get(segmentIndex);
+        Vector2 end = routePoints.get((segmentIndex + 1) % routePoints.size);
+        float segmentLength =
+                Vector2.dst(start.x, start.y, end.x, end.y);
+        float alpha =
+                segmentLength <= 0.0001f
+                        ? 0f
+                        : MathUtils.clamp(
+                                (wrappedProgress - routeCumulativeDistances[segmentIndex])
+                                        / segmentLength,
+                                0f,
+                                1f);
+        out.set(start).lerp(end, alpha);
+    }
+
+    public void findRouteTangent(float progress, Vector2 out) {
+        if (out == null) {
+            return;
+        }
+        if (!hasRoute()) {
+            out.set(0f, 1f);
+            return;
+        }
+
+        float sampleDistance = Math.min(ROUTE_TANGENT_SAMPLE_DISTANCE, routeLength * 0.10f);
+        findRoutePoint(progress - sampleDistance, scratchRouteTangentStart);
+        findRoutePoint(progress + sampleDistance, scratchRouteTangentEnd);
+        out.set(scratchRouteTangentEnd).sub(scratchRouteTangentStart);
+        if (out.isZero(0.0001f)) {
+            int segmentIndex = findRouteSegmentIndex(wrapRouteProgress(progress));
+            Vector2 start = routePoints.get(segmentIndex);
+            Vector2 end = routePoints.get((segmentIndex + 1) % routePoints.size);
+            out.set(end).sub(start);
+            if (out.isZero(0.0001f)) {
+                out.set(0f, 1f);
+                return;
+            }
+        }
+        out.nor();
+    }
+
+    public void findRouteTangentAt(Vector2 position, Vector2 out) {
+        findRouteTangent(findRouteProgress(position), out);
+    }
+
+    public void findRouteTangentAt(Vector2 position, Vector2 preferredDirection, Vector2 out) {
+        findRouteTangent(findRouteProgress(position, preferredDirection), out);
     }
 
     public Rectangle getBounds(Rectangle out) {
@@ -942,6 +1153,54 @@ public final class ArenaMap {
                 approximateHazardHeight - 1);
     }
 
+    private float buildRouteDistanceCache() {
+        if (routePoints.size < 2) {
+            return 0f;
+        }
+
+        float cumulative = 0f;
+        for (int i = 0; i < routePoints.size; i++) {
+            routeCumulativeDistances[i] = cumulative;
+            Vector2 current = routePoints.get(i);
+            Vector2 next = routePoints.get((i + 1) % routePoints.size);
+            cumulative += Vector2.dst(current.x, current.y, next.x, next.y);
+        }
+        return cumulative;
+    }
+
+    private int findRouteSegmentIndex(float progress) {
+        if (routeCumulativeDistances.length <= 1) {
+            return 0;
+        }
+
+        int low = 0;
+        int high = routeCumulativeDistances.length - 1;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            float start = routeCumulativeDistances[mid];
+            float end =
+                    mid + 1 < routeCumulativeDistances.length
+                            ? routeCumulativeDistances[mid + 1]
+                            : routeLength;
+            if (progress < start) {
+                high = mid - 1;
+            } else if (progress >= end && mid + 1 < routeCumulativeDistances.length) {
+                low = mid + 1;
+            } else {
+                return mid;
+            }
+        }
+        return MathUtils.clamp(low, 0, routeCumulativeDistances.length - 1);
+    }
+
+    private float wrapRouteProgress(float progress) {
+        if (routeLength <= 0.001f) {
+            return 0f;
+        }
+        float wrapped = progress % routeLength;
+        return wrapped < 0f ? wrapped + routeLength : wrapped;
+    }
+
     public static final class Builder {
         private final String id;
         private final String name;
@@ -951,6 +1210,7 @@ public final class ArenaMap {
         private final Array<ArenaShape> holeZones = new Array<ArenaShape>();
         private final Array<SpawnPoint> spawnPoints = new Array<SpawnPoint>();
         private final Array<SpawnPoint> checkpoints = new Array<SpawnPoint>();
+        private final Array<Vector2> routePoints = new Array<Vector2>();
         private final Array<Vector2> recoveryPoints = new Array<Vector2>();
 
         private Builder(String id, String name) {
@@ -988,6 +1248,18 @@ public final class ArenaMap {
             return this;
         }
 
+        public Builder routePoint(float x, float y) {
+            routePoints.add(new Vector2(x, y));
+            return this;
+        }
+
+        public Builder routePoint(Vector2 point) {
+            if (point != null) {
+                routePoint(point.x, point.y);
+            }
+            return this;
+        }
+
         public Builder recoveryPoint(float x, float y) {
             recoveryPoints.add(new Vector2(x, y));
             return this;
@@ -1014,6 +1286,9 @@ public final class ArenaMap {
             }
             for (int i = 0; i < checkpoints.size; i++) {
                 checkpoints.set(i, checkpoints.get(i).scale(factor));
+            }
+            for (int i = 0; i < routePoints.size; i++) {
+                routePoints.get(i).scl(factor);
             }
             for (int i = 0; i < recoveryPoints.size; i++) {
                 recoveryPoints.get(i).scl(factor);
@@ -1046,6 +1321,7 @@ public final class ArenaMap {
                     holeZones,
                     spawnPoints,
                     checkpoints,
+                    routePoints,
                     recoveryPoints);
         }
     }

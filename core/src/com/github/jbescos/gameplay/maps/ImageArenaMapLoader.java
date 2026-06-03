@@ -28,7 +28,7 @@ final class ImageArenaMapLoader {
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
     private static final String CACHE_SUFFIX = ".ser";
-    private static final int CACHE_VERSION = 26;
+    private static final int CACHE_VERSION = 64;
     private static final float BASE_WORLD_HEIGHT = 22f;
     private static final int MAX_SEQUENTIAL_MAP_SCAN = 1000;
     private static final int MAX_SHAPE_MASK_LONG_SIDE = 512;
@@ -47,6 +47,90 @@ final class ImageArenaMapLoader {
     private static final int CHECKPOINT_ORDER_LABEL_COLOR = rgba8888(88, 88, 88);
     private static final int CHECKPOINT_ORDER_MARKER_MIN_PIXELS = 8;
     private static final int CHECKPOINT_ORDER_MANUAL_DISTANCE_PIXELS = 120;
+    private static final float ROUTE_CENTERLINE_STEP_WORLD = 2.0f;
+    private static final float ROUTE_CENTERLINE_MIN_CLEARANCE = 0.42f;
+    private static final float ROUTE_CENTERLINE_START_CLOSE_DISTANCE = 5.5f;
+    private static final int ROUTE_CENTERLINE_MAX_STEPS = 1400;
+    private static final int ROUTE_CENTERLINE_VISITED_IGNORE_STEPS = 14;
+    private static final float ROUTE_CENTERLINE_VISITED_DISTANCE_FACTOR = 1.30f;
+    private static final int ROUTE_CENTERLINE_SMOOTHING_PASSES = 2;
+    private static final float ROUTE_CENTERLINE_SMOOTHING_SAMPLE_STEP = 0.65f;
+    private static final float ROUTE_CENTERLINE_SMOOTHING_MIN_CLEARANCE = 0.32f;
+    private static final float ROUTE_CENTERLINE_EXACT_MIN_CLEARANCE = 0.04f;
+    private static final float ROUTE_CENTERLINE_EXACT_SAMPLE_STEP = 0.22f;
+    private static final float ROUTE_CENTERLINE_CLEARANCE_WEIGHT = 2.70f;
+    private static final float ROUTE_CENTERLINE_FORWARD_WEIGHT = 2.20f;
+    private static final float ROUTE_CENTERLINE_TURN_WEIGHT = 1.50f;
+    private static final float ROUTE_CENTERLINE_WAYPOINT_REACHED_DISTANCE = 0.65f;
+    private static final int ROUTE_CENTERLINE_WAYPOINT_MAX_STEPS = 180;
+    private static final float ROUTE_HINT_DIRECT_STEP_WORLD = 1.25f;
+    private static final float ROUTE_HINT_SEGMENT_MARGIN_WORLD = 1.75f;
+    private static final float ROUTE_HINT_MIN_RADIUS_PIXELS = 5f;
+    private static final float[][] MAP004_ROUTE_WAYPOINTS = {
+        {-93.611f, -66.397f},
+        {-97.352f, -54.240f},
+        {-91.741f, -46.759f},
+        {-62.750f, -43.018f},
+        {-59.010f, -30.861f},
+        {-34.695f, -31.796f},
+        {-29.084f, -17.768f},
+        {-5.705f, -17.768f},
+        {0.000f, 0.000f},
+        {56.017f, 7.481f},
+        {64.434f, 15.898f},
+        {47.600f, 28.055f},
+        {46.665f, 42.083f},
+        {59.758f, 49.564f},
+        {79.396f, 54.240f},
+        {76.591f, 76.684f},
+        {60.693f, 77.620f},
+        {45.730f, 62.657f},
+        {26.091f, 43.018f},
+        {8.323f, 30.861f},
+        {7.100f, 24.000f},
+        {6.200f, 18.000f},
+        {5.800f, 12.000f},
+        {5.518f, 7.481f},
+        {17.675f, -5.611f},
+        {27.027f, -16.833f},
+        {24.221f, -28.055f},
+        {35.443f, -28.990f},
+        {45.730f, -22.444f},
+        {51.341f, -29.926f},
+        {50.406f, -46.759f},
+        {41.989f, -55.175f},
+        {26.091f, -57.046f},
+        {2.712f, -59.851f},
+        {-25.343f, -62.657f},
+        {-55.269f, -65.462f},
+        {-77.713f, -68.268f},
+        {-93.611f, -66.397f}
+    };
+    private static final float[][] TRAIN007_ROUTE_WAYPOINTS = {
+        {40.119f, -62.657f},
+        {12.064f, -28.990f},
+        {110.257f, -43.953f},
+        {42.925f, -13.092f},
+        {122.414f, 7.481f},
+        {44.795f, 11.222f},
+        {84.072f, 64.527f},
+        {14.869f, 27.120f},
+        {-3.834f, 73.879f},
+        {-24.408f, 25.250f},
+        {-83.324f, 58.916f},
+        {-44.047f, 7.481f},
+        {-121.666f, 0.935f},
+        {-45.917f, -14.028f},
+        {-94.546f, -47.694f},
+        {-83.324f, -62.657f},
+        {40.119f, -62.657f}
+    };
+    private static final float[] ROUTE_CENTERLINE_ANGLES_DEG = {
+        -70f, -52f, -36f, -22f, -10f, 0f, 10f, 22f, 36f, 52f, 70f
+    };
+    private static final float[] ROUTE_CENTERLINE_FALLBACK_ANGLES_DEG = {
+        -145f, -120f, -95f, -70f, -48f, -28f, -12f, 0f, 12f, 28f, 48f, 70f, 95f, 120f, 145f
+    };
     private static final String[][] DIGIT_BITMAPS = {
         {"111", "101", "101", "101", "101", "101", "111"},
         {"010", "110", "010", "010", "010", "010", "111"},
@@ -210,7 +294,44 @@ final class ImageArenaMapLoader {
                 orderCheckpointPathByRoute(checkpoints, routeOrderingMap);
             }
             alignCheckpointPathWithSpawns(spawnPoints, checkpoints);
-            writeCheckpointOrderAnnotations(maskFile, mask, checkpoints, worldMinX, worldMinY, worldWidth, worldHeight);
+            Array<RouteHintCircle> routeHints =
+                    buildRouteHintCircles(
+                            parseResult,
+                            mask.getWidth(),
+                            mask.getHeight(),
+                            worldMinX,
+                            worldMinY,
+                            worldWidth,
+                            worldHeight);
+            Array<Vector2> routePoints =
+                    buildRouteCenterline(
+                            routeOrderingMap,
+                            spawnPoints,
+                            checkpoints,
+                            routeHints,
+                            checkpointOrderMarkers,
+                            mask.getWidth(),
+                            mask.getHeight(),
+                            worldMinX,
+                            worldMinY,
+                            worldWidth,
+                            worldHeight);
+            alignSpawnPointsWithRoute(spawnPoints, routePoints);
+            boolean preserveRouteOrderMarkers =
+                    checkpoints.size <= 1
+                            && checkpointOrderMarkers.size >= 4
+                            && (baseName.startsWith("route")
+                                    || baseName.startsWith("map")
+                                    || baseName.startsWith("train"));
+            writeCheckpointOrderAnnotations(
+                    maskFile,
+                    mask,
+                    checkpoints,
+                    worldMinX,
+                    worldMinY,
+                    worldWidth,
+                    worldHeight,
+                    preserveRouteOrderMarkers);
             for (int i = 0; i < spawnPoints.size; i++) {
                 SpawnPoint spawnPoint = spawnPoints.get(i);
                 builder.spawn(spawnPoint);
@@ -218,6 +339,9 @@ final class ImageArenaMapLoader {
             addRecoveryPoints(builder, recoveryPoints);
             for (int i = 0; i < checkpoints.size; i++) {
                 builder.checkpoint(checkpoints.get(i));
+            }
+            for (int i = 0; i < routePoints.size; i++) {
+                builder.routePoint(routePoints.get(i));
             }
 
             ArenaMap map = builder.build();
@@ -235,6 +359,7 @@ final class ImageArenaMapLoader {
                     shape,
                     spawnPoints,
                     checkpoints,
+                    routePoints,
                     recoveryPoints));
             return map;
         } finally {
@@ -293,6 +418,12 @@ final class ImageArenaMapLoader {
                         cached.checkpointX[i],
                         cached.checkpointY[i],
                         cached.checkpointAngle[i]));
+            }
+        }
+        if (cached.routeX != null && cached.routeY != null) {
+            int routeCount = Math.min(cached.routeX.length, cached.routeY.length);
+            for (int i = 0; i < routeCount; i++) {
+                builder.routePoint(cached.routeX[i], cached.routeY[i]);
             }
         }
         for (int i = 0; i < cached.recoveryX.length; i++) {
@@ -537,6 +668,7 @@ final class ImageArenaMapLoader {
                 || isRedMarker(pixel)
                 || isBlueMarker(pixel)
                 || isGreenMarker(pixel)
+                || isRouteHintMarker(pixel)
                 || isCheckpointOrderMarker(pixel)
                 || isCheckpointLabelPixel(pixel);
     }
@@ -571,12 +703,21 @@ final class ImageArenaMapLoader {
             float worldMinX,
             float worldMinY,
             float worldWidth,
-            float worldHeight) {
-        if (!canWriteMaskAnnotations(maskFile) || checkpoints.size == 0) {
+            float worldHeight,
+            boolean preserveExistingOrderAnnotations) {
+        if (!canWriteMaskAnnotations(maskFile)) {
+            return;
+        }
+
+        if (preserveExistingOrderAnnotations) {
             return;
         }
 
         removeCheckpointOrderAnnotations(mask);
+        if (checkpoints.size <= 1) {
+            PixmapIO.writePNG(maskFile, mask);
+            return;
+        }
         for (int i = 0; i < checkpoints.size; i++) {
             SpawnPoint checkpoint = checkpoints.get(i);
             int centerX = worldToImageX(checkpoint.x, mask.getWidth(), worldMinX, worldWidth);
@@ -898,6 +1039,7 @@ final class ImageArenaMapLoader {
             MaskArenaShape shape,
             Array<SpawnPoint> spawnPoints,
             Array<SpawnPoint> checkpoints,
+            Array<Vector2> routePoints,
             Array<Vector2> recoveryPoints) {
         CachedMapData cached = new CachedMapData();
         cached.version = CACHE_VERSION;
@@ -949,6 +1091,13 @@ final class ImageArenaMapLoader {
             cached.checkpointGateEndX[i] = checkpoint.gateEndX;
             cached.checkpointGateEndY[i] = checkpoint.gateEndY;
         }
+        cached.routeX = new float[routePoints.size];
+        cached.routeY = new float[routePoints.size];
+        for (int i = 0; i < routePoints.size; i++) {
+            Vector2 routePoint = routePoints.get(i);
+            cached.routeX[i] = routePoint.x;
+            cached.routeY[i] = routePoint.y;
+        }
         cached.recoveryX = new float[recoveryPoints.size];
         cached.recoveryY = new float[recoveryPoints.size];
         for (int i = 0; i < recoveryPoints.size; i++) {
@@ -967,19 +1116,22 @@ final class ImageArenaMapLoader {
         boolean[] redMarkers = new boolean[width * height];
         boolean[] blueMarkers = new boolean[width * height];
         boolean[] greenMarkers = new boolean[width * height];
+        boolean[] routeHintMarkers = new boolean[width * height];
         boolean[] basePlayable = new boolean[width * height];
         boolean[] pathPlayable = new boolean[width * height];
 
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int pixel = mask.getPixel(x, y);
+                boolean routeHint = isRouteHintMarker(pixel);
                 boolean red = isRedMarker(pixel);
-                boolean blue = isBlueMarker(pixel);
+                boolean blue = !routeHint && isBlueMarker(pixel);
                 boolean green = isGreenMarker(pixel);
                 int index = y * width + x;
                 redMarkers[index] = red;
                 blueMarkers[index] = blue;
                 greenMarkers[index] = green;
+                routeHintMarkers[index] = routeHint;
                 basePlayable[index] = isPlayable(pixel);
             }
         }
@@ -1015,6 +1167,7 @@ final class ImageArenaMapLoader {
         collectMarkerComponents(redMarkers, width, height, result.redMarkers);
         collectMarkerComponents(blueMarkers, width, height, result.blueMarkers);
         collectMarkerComponents(greenMarkers, width, height, result.greenMarkers);
+        collectMarkerComponents(routeHintMarkers, width, height, result.routeHintMarkers);
         return result;
     }
 
@@ -1048,10 +1201,11 @@ final class ImageArenaMapLoader {
         Array<SpawnPoint> spawns = new Array<SpawnPoint>();
         boolean[] blueUsed = new boolean[parseResult.blueMarkers.size];
         Array<MarkerComponent> orderedRedMarkers = orderSpawnMarkers(parseResult);
+        MarkerDirectionBasis basis = calculateMarkerDirectionBasis(parseResult);
 
         for (int i = 0; i < orderedRedMarkers.size; i++) {
             MarkerComponent red = orderedRedMarkers.get(i);
-            int blueIndex = findNearestUnusedMarker(red, parseResult.blueMarkers, blueUsed);
+            int blueIndex = findSpawnDirectionMarker(red, parseResult.blueMarkers, blueUsed, basis);
             Vector2 redWorld = imageToWorld(red.centerX, red.centerY, imageWidth, imageHeight,
                     worldMinX, worldMinY, worldWidth, worldHeight);
             if (blueIndex >= 0) {
@@ -1082,7 +1236,7 @@ final class ImageArenaMapLoader {
             MaskArenaShape shape) {
         Array<MarkerComponent> orderedMarkers = orderCheckpointMarkers(parseResult);
         if (orderedMarkers.size == 0) {
-            throw new IllegalStateException("Picture map mask requires green race checkpoint markers.");
+            return new Array<SpawnPoint>();
         }
 
         Array<CheckpointDefinition> definitions = new Array<CheckpointDefinition>();
@@ -1148,6 +1302,150 @@ final class ImageArenaMapLoader {
         return checkpoints;
     }
 
+    private static Array<RouteHintCircle> buildRouteHintCircles(
+            MaskParseResult parseResult,
+            int imageWidth,
+            int imageHeight,
+            float worldMinX,
+            float worldMinY,
+            float worldWidth,
+            float worldHeight) {
+        Array<RouteHintCircle> hints = new Array<RouteHintCircle>();
+        for (int i = 0; i < parseResult.routeHintMarkers.size; i++) {
+            MarkerComponent marker = parseResult.routeHintMarkers.get(i);
+            Vector2 center =
+                    imageToWorld(
+                            marker.centerX,
+                            marker.centerY,
+                            imageWidth,
+                            imageHeight,
+                            worldMinX,
+                            worldMinY,
+                            worldWidth,
+                            worldHeight);
+            Vector2 gateStart =
+                    imageToWorld(
+                            marker.gateStartX,
+                            marker.gateStartY,
+                            imageWidth,
+                            imageHeight,
+                            worldMinX,
+                            worldMinY,
+                            worldWidth,
+                            worldHeight);
+            Vector2 gateEnd =
+                    imageToWorld(
+                            marker.gateEndX,
+                            marker.gateEndY,
+                            imageWidth,
+                            imageHeight,
+                            worldMinX,
+                            worldMinY,
+                            worldWidth,
+                            worldHeight);
+            float radius = Math.max(center.dst(gateStart), center.dst(gateEnd));
+            if (radius > 2.0f) {
+                Array<Vector2> intersections =
+                        findRouteHintIntersections(
+                                parseResult,
+                                marker,
+                                imageWidth,
+                                imageHeight,
+                                worldMinX,
+                                worldMinY,
+                                worldWidth,
+                                worldHeight);
+                hints.add(new RouteHintCircle(center.x, center.y, radius, intersections));
+            }
+        }
+        return hints;
+    }
+
+    private static Array<Vector2> findRouteHintIntersections(
+            MaskParseResult parseResult,
+            MarkerComponent marker,
+            int imageWidth,
+            int imageHeight,
+            float worldMinX,
+            float worldMinY,
+            float worldWidth,
+            float worldHeight) {
+        Array<Vector2> intersections = new Array<Vector2>();
+        float radiusPixels =
+                Math.max(marker.maxX - marker.minX, marker.maxY - marker.minY) * 0.5f;
+        if (radiusPixels < ROUTE_HINT_MIN_RADIUS_PIXELS) {
+            return intersections;
+        }
+
+        int sampleCount = MathUtils.clamp(MathUtils.round(radiusPixels * 8f), 96, 360);
+        int searchRadius = MathUtils.clamp(MathUtils.round(radiusPixels * 0.10f), 3, 8);
+        boolean[] hits = new boolean[sampleCount];
+        float[] sampleX = new float[sampleCount];
+        float[] sampleY = new float[sampleCount];
+        for (int i = 0; i < sampleCount; i++) {
+            float angle = MathUtils.PI2 * i / sampleCount;
+            float x = marker.centerX + MathUtils.cos(angle) * radiusPixels;
+            float y = marker.centerY + MathUtils.sin(angle) * radiusPixels;
+            sampleX[i] = x;
+            sampleY[i] = y;
+            hits[i] =
+                    hasNearbyPlayablePixel(
+                            parseResult.pathPlayable,
+                            MathUtils.round(x),
+                            MathUtils.round(y),
+                            imageWidth,
+                            imageHeight,
+                            searchRadius);
+        }
+
+        int firstGap = -1;
+        for (int i = 0; i < sampleCount; i++) {
+            if (!hits[i]) {
+                firstGap = i;
+                break;
+            }
+        }
+        if (firstGap < 0) {
+            return intersections;
+        }
+
+        int minimumGroupSamples = Math.max(2, sampleCount / 120);
+        int index = firstGap + 1;
+        int end = firstGap + 1 + sampleCount;
+        while (index < end) {
+            int sample = index % sampleCount;
+            if (!hits[sample]) {
+                index++;
+                continue;
+            }
+
+            int count = 0;
+            float sumX = 0f;
+            float sumY = 0f;
+            while (index < end && hits[index % sampleCount]) {
+                int groupSample = index % sampleCount;
+                sumX += sampleX[groupSample];
+                sumY += sampleY[groupSample];
+                count++;
+                index++;
+            }
+
+            if (count >= minimumGroupSamples) {
+                intersections.add(
+                        imageToWorld(
+                                sumX / count,
+                                sumY / count,
+                                imageWidth,
+                                imageHeight,
+                                worldMinX,
+                                worldMinY,
+                                worldWidth,
+                                worldHeight));
+            }
+        }
+        return intersections;
+    }
+
     private static Vector2 chooseGateCheckpointCenter(
             Vector2 markerPosition,
             Vector2 gateStart,
@@ -1190,6 +1488,884 @@ final class ImageArenaMapLoader {
         }
         addRecoveryPoints(builder, recoveryPoints);
         return builder.build();
+    }
+
+    private static Array<Vector2> buildRouteCenterline(
+            ArenaMap routeMap,
+            Array<SpawnPoint> spawnPoints,
+            Array<SpawnPoint> checkpoints,
+            Array<RouteHintCircle> routeHints,
+            Array<CheckpointOrderMarker> routeOrderMarkers,
+            int imageWidth,
+            int imageHeight,
+            float worldMinX,
+            float worldMinY,
+            float worldWidth,
+            float worldHeight) {
+        Array<Vector2> manualRoute = buildManualRouteCenterline(routeMap, routeHints);
+        if (manualRoute.size >= 4) {
+            return manualRoute;
+        }
+
+        boolean routeOnlyOrderedMap =
+                routeMap.getId().startsWith("route")
+                        && (checkpoints == null || checkpoints.size <= 1)
+                        && routeOrderMarkers != null;
+        if (routeOnlyOrderedMap) {
+            Array<Vector2> orderedRoute =
+                    buildRouteFromOrderMarkers(
+                            routeMap,
+                            spawnPoints,
+                            routeOrderMarkers,
+                            routeHints,
+                            imageWidth,
+                            imageHeight,
+                            worldMinX,
+                            worldMinY,
+                            worldWidth,
+                            worldHeight);
+            if (orderedRoute.size >= 4) {
+                return orderedRoute;
+            }
+        }
+
+        if (checkpoints != null && checkpoints.size >= 4) {
+            return buildRouteFromCheckpoints(checkpoints);
+        }
+
+        Array<Vector2> route = new Array<Vector2>();
+        if (routeMap == null || spawnPoints.size == 0) {
+            return buildRouteFromCheckpoints(checkpoints);
+        }
+
+        Vector2 forward = averageSpawnForward(spawnPoints);
+        if (forward.isZero(0.0001f)) {
+            return buildRouteFromCheckpoints(checkpoints);
+        }
+
+        Vector2 start = averageSpawnPosition(spawnPoints);
+        routeMap.clampToPlayable(start, ROUTE_CENTERLINE_MIN_CLEARANCE);
+        Vector2 side = new Vector2(-forward.y, forward.x);
+        centerRoutePoint(routeMap, start, side);
+        route.add(new Vector2(start));
+
+        com.badlogic.gdx.math.Rectangle bounds = routeMap.getBounds(new com.badlogic.gdx.math.Rectangle());
+        float minimumLoopDistance = Math.max(32f, Math.min(bounds.width, bounds.height) * 0.92f);
+        float visitedDistanceSquared =
+                ROUTE_CENTERLINE_STEP_WORLD
+                        * ROUTE_CENTERLINE_STEP_WORLD
+                        * ROUTE_CENTERLINE_VISITED_DISTANCE_FACTOR
+                        * ROUTE_CENTERLINE_VISITED_DISTANCE_FACTOR;
+
+        Vector2 current = new Vector2(start);
+        Vector2 direction = new Vector2(forward);
+        Vector2 candidate = new Vector2();
+        float travelled = 0f;
+        for (int step = 0; step < ROUTE_CENTERLINE_MAX_STEPS; step++) {
+            RouteStep next =
+                    chooseRouteCenterlineStep(
+                            routeMap,
+                            route,
+                            current,
+                            direction,
+                            start,
+                            travelled,
+                            minimumLoopDistance,
+                            visitedDistanceSquared,
+                            ROUTE_CENTERLINE_ANGLES_DEG,
+                            candidate);
+            if (next == null) {
+                next =
+                        chooseRouteCenterlineStep(
+                                routeMap,
+                                route,
+                                current,
+                                direction,
+                                start,
+                                travelled,
+                                minimumLoopDistance,
+                                visitedDistanceSquared,
+                                ROUTE_CENTERLINE_FALLBACK_ANGLES_DEG,
+                                candidate);
+            }
+            if (next == null) {
+                break;
+            }
+            if (next.closesLoop) {
+                route.add(new Vector2(next.point));
+                return finishGeneratedRouteCenterline(routeMap, route, spawnPoints, forward, checkpoints);
+            }
+
+            travelled += current.dst(next.point);
+            direction.set(next.direction);
+            current.set(next.point);
+            route.add(new Vector2(current));
+        }
+
+        return finishGeneratedRouteCenterline(routeMap, route, spawnPoints, forward, checkpoints);
+    }
+
+    private static Array<Vector2> buildManualRouteCenterline(
+            ArenaMap routeMap,
+            Array<RouteHintCircle> routeHints) {
+        Array<Vector2> route = new Array<Vector2>();
+        if (routeMap == null) {
+            return route;
+        }
+        if (routeMap.getId().startsWith("map004-")) {
+            route = buildRouteFromWaypoints(routeMap, MAP004_ROUTE_WAYPOINTS, new Array<RouteHintCircle>());
+        } else if (routeMap.getId().startsWith("train007-")) {
+            route = buildRouteFromWaypoints(routeMap, TRAIN007_ROUTE_WAYPOINTS, routeHints);
+        }
+        return route.size < 4 ? route : smoothRouteCenterline(routeMap, route);
+    }
+
+    private static Array<Vector2> buildRouteFromOrderMarkers(
+            ArenaMap routeMap,
+            Array<SpawnPoint> spawnPoints,
+            Array<CheckpointOrderMarker> routeOrderMarkers,
+            Array<RouteHintCircle> routeHints,
+            int imageWidth,
+            int imageHeight,
+            float worldMinX,
+            float worldMinY,
+            float worldWidth,
+            float worldHeight) {
+        Array<Vector2> route = new Array<Vector2>();
+        if (routeMap == null || routeOrderMarkers == null || routeOrderMarkers.size < 4) {
+            return route;
+        }
+
+        Array<CheckpointOrderMarker> markers =
+                new Array<CheckpointOrderMarker>(routeOrderMarkers);
+        markers.sort(new Comparator<CheckpointOrderMarker>() {
+            @Override
+            public int compare(CheckpointOrderMarker left, CheckpointOrderMarker right) {
+                int orderCompare = Integer.compare(left.order, right.order);
+                if (orderCompare != 0) {
+                    return orderCompare;
+                }
+                int yCompare = Float.compare(left.centerY, right.centerY);
+                if (yCompare != 0) {
+                    return yCompare;
+                }
+                return Float.compare(left.centerX, right.centerX);
+            }
+        });
+
+        float[][] waypoints = new float[markers.size + 1][2];
+        for (int i = 0; i < markers.size; i++) {
+            CheckpointOrderMarker marker = markers.get(i);
+            Vector2 point =
+                    imageToWorld(
+                            marker.centerX,
+                            marker.centerY,
+                            imageWidth,
+                            imageHeight,
+                            worldMinX,
+                            worldMinY,
+                            worldWidth,
+                            worldHeight);
+            waypoints[i][0] = point.x;
+            waypoints[i][1] = point.y;
+        }
+        waypoints[markers.size][0] = waypoints[0][0];
+        waypoints[markers.size][1] = waypoints[0][1];
+
+        Array<Vector2> directRoute = buildDirectRouteFromWaypoints(routeMap, waypoints);
+        if (directRoute.size >= 4 && isRouteCenterlineSafe(routeMap, directRoute)) {
+            Vector2 forward = averageSpawnForward(spawnPoints);
+            alignRouteCenterlineWithSpawnDirection(directRoute, spawnPoints, forward);
+            return smoothRouteCenterline(routeMap, directRoute);
+        }
+
+        route = buildRouteFromWaypoints(routeMap, waypoints, routeHints);
+        if (route.size < 4) {
+            return route;
+        }
+        Vector2 forward = averageSpawnForward(spawnPoints);
+        alignRouteCenterlineWithSpawnDirection(route, spawnPoints, forward);
+        return smoothRouteCenterline(routeMap, route);
+    }
+
+    private static Array<Vector2> buildDirectRouteFromWaypoints(ArenaMap routeMap, float[][] waypoints) {
+        Array<Vector2> route = new Array<Vector2>();
+        if (routeMap == null || waypoints == null || waypoints.length < 4) {
+            return route;
+        }
+        int count = waypoints.length;
+        if (sameWaypoint(waypoints[0], waypoints[count - 1])) {
+            count--;
+        }
+        for (int i = 0; i < count; i++) {
+            Vector2 point = new Vector2(waypoints[i][0], waypoints[i][1]);
+            routeMap.clampToPlayable(point, ROUTE_CENTERLINE_MIN_CLEARANCE);
+            addRoutePoint(route, point);
+        }
+        return route;
+    }
+
+    private static boolean sameWaypoint(float[] first, float[] second) {
+        if (first == null || second == null || first.length < 2 || second.length < 2) {
+            return false;
+        }
+        float dx = first[0] - second[0];
+        float dy = first[1] - second[1];
+        return dx * dx + dy * dy <= 0.01f;
+    }
+
+    private static Array<Vector2> buildRouteFromWaypoints(
+            ArenaMap routeMap,
+            float[][] waypoints,
+            Array<RouteHintCircle> routeHints) {
+        Array<Vector2> route = new Array<Vector2>();
+        if (routeMap == null || waypoints == null || waypoints.length < 2) {
+            return route;
+        }
+
+        Vector2 current = new Vector2(waypoints[0][0], waypoints[0][1]);
+        routeMap.clampToPlayable(current, ROUTE_CENTERLINE_MIN_CLEARANCE);
+        route.add(new Vector2(current));
+
+        Vector2 goal = new Vector2();
+        Vector2 nextWaypoint = new Vector2();
+        Vector2 target = new Vector2();
+        Vector2 delta = new Vector2();
+        Vector2 previousDirection = new Vector2(1f, 0f);
+        int waypointIndex = 1;
+        while (waypointIndex < waypoints.length) {
+            int goalIndex = waypointIndex;
+            goal.set(waypoints[goalIndex][0], waypoints[goalIndex][1]);
+            RouteHintCircle waypointHint = findContainingRouteHint(routeHints, goal);
+            if (waypointHint == null && waypointIndex + 1 < waypoints.length) {
+                nextWaypoint.set(waypoints[waypointIndex + 1][0], waypoints[waypointIndex + 1][1]);
+                RouteHintCircle upcomingHint = findContainingRouteHint(routeHints, nextWaypoint);
+                if (upcomingHint != null && !upcomingHint.contains(current, ROUTE_HINT_SEGMENT_MARGIN_WORLD)) {
+                    int outsideIndex =
+                            findNextWaypointOutsideHint(waypoints, waypointIndex + 2, upcomingHint);
+                    if (outsideIndex > waypointIndex + 1) {
+                        nextWaypoint.set(waypoints[outsideIndex][0], waypoints[outsideIndex][1]);
+                        if (upcomingHint.findPass(current, nextWaypoint, ROUTE_HINT_SEGMENT_MARGIN_WORLD)
+                                != null) {
+                            waypointHint = upcomingHint;
+                            goalIndex = outsideIndex;
+                            goal.set(nextWaypoint);
+                        }
+                    }
+                }
+            }
+            if (waypointHint != null && !waypointHint.contains(current, ROUTE_HINT_SEGMENT_MARGIN_WORLD)) {
+                int outsideIndex = findNextWaypointOutsideHint(waypoints, waypointIndex + 1, waypointHint);
+                if (outsideIndex > waypointIndex) {
+                    goalIndex = outsideIndex;
+                    goal.set(waypoints[goalIndex][0], waypoints[goalIndex][1]);
+                }
+            }
+            routeMap.clampToPlayable(goal, ROUTE_CENTERLINE_MIN_CLEARANCE);
+            RouteHintPass routeHintPass = findRouteHintPass(routeHints, current, goal);
+            if (routeHintPass != null
+                    && isRouteSegmentExactSafe(routeMap, current, routeHintPass.entry)
+                    && isRouteSegmentExactSafe(routeMap, routeHintPass.entry, routeHintPass.exit)) {
+                addDirectRouteHintSegment(route, current, routeHintPass.entry);
+                addDirectRouteHintSegment(route, routeHintPass.entry, routeHintPass.exit);
+                delta.set(routeHintPass.exit).sub(current);
+                if (!delta.isZero(0.0001f)) {
+                    previousDirection.set(delta).nor();
+                }
+                current.set(routeHintPass.exit);
+                if (current.dst2(goal)
+                        <= ROUTE_CENTERLINE_WAYPOINT_REACHED_DISTANCE
+                                * ROUTE_CENTERLINE_WAYPOINT_REACHED_DISTANCE) {
+                    addRoutePoint(route, goal);
+                    delta.set(goal).sub(current);
+                    if (!delta.isZero(0.0001f)) {
+                        previousDirection.set(delta).nor();
+                    }
+                    current.set(goal);
+                    waypointIndex = goalIndex + 1;
+                    continue;
+                }
+            }
+            for (int step = 0; step < ROUTE_CENTERLINE_WAYPOINT_MAX_STEPS; step++) {
+                if (current.dst2(goal)
+                        <= ROUTE_CENTERLINE_WAYPOINT_REACHED_DISTANCE
+                                * ROUTE_CENTERLINE_WAYPOINT_REACHED_DISTANCE) {
+                    addRoutePoint(route, goal);
+                    current.set(goal);
+                    break;
+                }
+
+                routeMap.findDriveTarget(current, goal, ROUTE_CENTERLINE_MIN_CLEARANCE, target);
+                delta.set(target).sub(current);
+                float distance = delta.len();
+                if (distance <= 0.05f) {
+                    target.set(goal);
+                    delta.set(target).sub(current);
+                    distance = delta.len();
+                    if (distance <= 0.05f) {
+                        break;
+                    }
+                }
+                if (distance > ROUTE_CENTERLINE_STEP_WORLD) {
+                    target.set(current).mulAdd(delta, ROUTE_CENTERLINE_STEP_WORLD / distance);
+                    routeMap.clampToPlayable(target, ROUTE_CENTERLINE_MIN_CLEARANCE);
+                }
+                if (!isRouteSegmentExactSafe(routeMap, current, target)) {
+                    if (!findExactSafeWaypointStep(
+                            routeMap,
+                            current,
+                            goal,
+                            delta,
+                            previousDirection,
+                            target)) {
+                        break;
+                    }
+                    delta.set(target).sub(current);
+                    distance = delta.len();
+                    if (distance <= 0.05f) {
+                        break;
+                    }
+                }
+                if (!delta.isZero(0.0001f)) {
+                    previousDirection.set(delta).nor();
+                }
+                addRoutePoint(route, target);
+                current.set(target);
+            }
+            waypointIndex = goalIndex + 1;
+        }
+        return route;
+    }
+
+    private static boolean findExactSafeWaypointStep(
+            ArenaMap routeMap,
+            Vector2 current,
+            Vector2 goal,
+            Vector2 desiredDirection,
+            Vector2 previousDirection,
+            Vector2 out) {
+        if (routeMap == null || current == null || goal == null || out == null) {
+            return false;
+        }
+
+        Vector2 baseDirection = new Vector2(goal).sub(current);
+        if (baseDirection.isZero(0.0001f)) {
+            if (desiredDirection != null && !desiredDirection.isZero(0.0001f)) {
+                baseDirection.set(desiredDirection);
+            } else if (previousDirection != null && !previousDirection.isZero(0.0001f)) {
+                baseDirection.set(previousDirection);
+            } else {
+                return false;
+            }
+        }
+        baseDirection.nor();
+
+        Vector2 candidate = new Vector2();
+        float bestScore = -Float.MAX_VALUE;
+        boolean found = false;
+        float currentGoalDistance = current.dst(goal);
+        float[] stepScales = {1f, 0.65f, 0.35f};
+        for (int scaleIndex = 0; scaleIndex < stepScales.length; scaleIndex++) {
+            float stepDistance = ROUTE_CENTERLINE_STEP_WORLD * stepScales[scaleIndex];
+            for (int i = 0; i < ROUTE_CENTERLINE_FALLBACK_ANGLES_DEG.length; i++) {
+                float angle = ROUTE_CENTERLINE_FALLBACK_ANGLES_DEG[i] * MathUtils.degreesToRadians;
+                float cos = MathUtils.cos(angle);
+                float sin = MathUtils.sin(angle);
+                float dirX = baseDirection.x * cos - baseDirection.y * sin;
+                float dirY = baseDirection.x * sin + baseDirection.y * cos;
+                candidate.set(current.x + dirX * stepDistance, current.y + dirY * stepDistance);
+                if (!isRoutePointExactSafe(routeMap, candidate)
+                        || !isRouteSegmentExactSafe(routeMap, current, candidate)) {
+                    continue;
+                }
+
+                float distanceToGoal = candidate.dst(goal);
+                float progress = currentGoalDistance - distanceToGoal;
+                float estimatedDistance =
+                        routeMap.estimateDriveDistance(
+                                candidate,
+                                goal,
+                                ROUTE_CENTERLINE_MIN_CLEARANCE);
+                if (estimatedDistance < 0f) {
+                    estimatedDistance = distanceToGoal;
+                }
+                float previousAlignment = 0f;
+                if (previousDirection != null && !previousDirection.isZero(0.0001f)) {
+                    previousAlignment = dirX * previousDirection.x + dirY * previousDirection.y;
+                }
+                float clearance =
+                        Math.min(
+                                2.0f,
+                                routeMap.distanceToHazard(candidate.x, candidate.y));
+                float turnPenalty = Math.abs(ROUTE_CENTERLINE_FALLBACK_ANGLES_DEG[i]) / 145f;
+                float score =
+                        -estimatedDistance
+                                + progress * 1.75f
+                                + previousAlignment * 1.10f
+                                + clearance * 0.55f
+                                - turnPenalty * 0.45f
+                                - scaleIndex * 0.08f;
+                if (score > bestScore) {
+                    bestScore = score;
+                    out.set(candidate);
+                    found = true;
+                }
+            }
+            if (found) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isRouteSegmentExactSafe(ArenaMap routeMap, Vector2 start, Vector2 end) {
+        if (routeMap == null || start == null || end == null) {
+            return false;
+        }
+        if (!isRoutePointExactSafe(routeMap, start) || !isRoutePointExactSafe(routeMap, end)) {
+            return false;
+        }
+        float distance = start.dst(end);
+        int samples = Math.max(1, MathUtils.ceil(distance / ROUTE_CENTERLINE_EXACT_SAMPLE_STEP));
+        for (int i = 1; i < samples; i++) {
+            float alpha = i / (float) samples;
+            float x = start.x + (end.x - start.x) * alpha;
+            float y = start.y + (end.y - start.y) * alpha;
+            if (!isRoutePointExactSafe(routeMap, x, y)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isRoutePointExactSafe(ArenaMap routeMap, Vector2 point) {
+        return point != null && isRoutePointExactSafe(routeMap, point.x, point.y);
+    }
+
+    private static boolean isRoutePointExactSafe(ArenaMap routeMap, float x, float y) {
+        return routeMap != null
+                && routeMap.supports(x, y)
+                && routeMap.distanceToHazard(x, y) >= ROUTE_CENTERLINE_EXACT_MIN_CLEARANCE;
+    }
+
+    private static RouteHintCircle findContainingRouteHint(Array<RouteHintCircle> routeHints, Vector2 point) {
+        if (routeHints == null || routeHints.size == 0 || point == null) {
+            return null;
+        }
+        for (int i = 0; i < routeHints.size; i++) {
+            RouteHintCircle hint = routeHints.get(i);
+            if (hint.contains(point, ROUTE_HINT_SEGMENT_MARGIN_WORLD)) {
+                return hint;
+            }
+        }
+        return null;
+    }
+
+    private static int findNextWaypointOutsideHint(
+            float[][] waypoints,
+            int startIndex,
+            RouteHintCircle hint) {
+        if (waypoints == null || hint == null) {
+            return -1;
+        }
+        Vector2 waypoint = new Vector2();
+        for (int i = startIndex; i < waypoints.length; i++) {
+            waypoint.set(waypoints[i][0], waypoints[i][1]);
+            if (!hint.contains(waypoint, ROUTE_HINT_SEGMENT_MARGIN_WORLD)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static RouteHintPass findRouteHintPass(
+            Array<RouteHintCircle> routeHints,
+            Vector2 start,
+            Vector2 end) {
+        if (routeHints == null || routeHints.size == 0 || start == null || end == null) {
+            return null;
+        }
+        for (int i = 0; i < routeHints.size; i++) {
+            RouteHintCircle hint = routeHints.get(i);
+            RouteHintPass pass = hint.findPass(start, end, ROUTE_HINT_SEGMENT_MARGIN_WORLD);
+            if (pass != null) {
+                return pass;
+            }
+        }
+        return null;
+    }
+
+    private static void addDirectRouteHintSegment(Array<Vector2> route, Vector2 start, Vector2 end) {
+        float distance = start.dst(end);
+        int steps = Math.max(1, MathUtils.ceil(distance / ROUTE_HINT_DIRECT_STEP_WORLD));
+        Vector2 point = new Vector2();
+        for (int i = 1; i <= steps; i++) {
+            float alpha = i / (float) steps;
+            point.set(start).lerp(end, alpha);
+            addRoutePoint(route, point);
+        }
+    }
+
+    private static void addRoutePoint(Array<Vector2> route, Vector2 point) {
+        if (route.size == 0 || route.peek().dst2(point) > 0.04f) {
+            route.add(new Vector2(point));
+        }
+    }
+
+    private static Array<Vector2> finishGeneratedRouteCenterline(
+            ArenaMap routeMap,
+            Array<Vector2> route,
+            Array<SpawnPoint> spawnPoints,
+            Vector2 forward,
+            Array<SpawnPoint> checkpoints) {
+        if (route.size < 8) {
+            return buildRouteFromCheckpoints(checkpoints);
+        }
+        alignRouteCenterlineWithSpawnDirection(route, spawnPoints, forward);
+        return smoothRouteCenterline(routeMap, route);
+    }
+
+    private static Array<Vector2> smoothRouteCenterline(ArenaMap routeMap, Array<Vector2> route) {
+        if (routeMap == null || route == null || route.size < 4) {
+            return route;
+        }
+
+        Array<Vector2> smoothed = copyRoutePoints(route);
+        for (int pass = 0; pass < ROUTE_CENTERLINE_SMOOTHING_PASSES; pass++) {
+            Array<Vector2> candidate = new Array<Vector2>(smoothed.size * 2);
+            for (int i = 0; i < smoothed.size; i++) {
+                Vector2 current = smoothed.get(i);
+                Vector2 next = smoothed.get((i + 1) % smoothed.size);
+                candidate.add(routeLerp(current, next, 0.25f));
+                candidate.add(routeLerp(current, next, 0.75f));
+            }
+            if (!isRouteCenterlineSafe(routeMap, candidate)) {
+                break;
+            }
+            smoothed = candidate;
+        }
+        return smoothed;
+    }
+
+    private static Array<Vector2> copyRoutePoints(Array<Vector2> route) {
+        Array<Vector2> copy = new Array<Vector2>(route.size);
+        for (int i = 0; i < route.size; i++) {
+            copy.add(new Vector2(route.get(i)));
+        }
+        return copy;
+    }
+
+    private static Vector2 routeLerp(Vector2 first, Vector2 second, float alpha) {
+        return new Vector2(
+                first.x + (second.x - first.x) * alpha,
+                first.y + (second.y - first.y) * alpha);
+    }
+
+    private static boolean isRouteCenterlineSafe(ArenaMap routeMap, Array<Vector2> route) {
+        if (routeMap == null || route == null || route.size < 2) {
+            return false;
+        }
+        for (int i = 0; i < route.size; i++) {
+            Vector2 start = route.get(i);
+            Vector2 end = route.get((i + 1) % route.size);
+            if (!isRouteCenterlineSampleSafe(routeMap, start.x, start.y)) {
+                return false;
+            }
+            float distance = start.dst(end);
+            int samples =
+                    Math.max(1, MathUtils.ceil(distance / ROUTE_CENTERLINE_SMOOTHING_SAMPLE_STEP));
+            for (int sample = 1; sample <= samples; sample++) {
+                float alpha = sample / (float) samples;
+                float x = start.x + (end.x - start.x) * alpha;
+                float y = start.y + (end.y - start.y) * alpha;
+                if (!isRouteCenterlineSampleSafe(routeMap, x, y)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean isRouteCenterlineSampleSafe(ArenaMap routeMap, float x, float y) {
+        return routeMap.approximateSupports(x, y)
+                && routeMap.approximateDistanceToHazard(x, y)
+                        >= ROUTE_CENTERLINE_SMOOTHING_MIN_CLEARANCE;
+    }
+
+    private static void alignRouteCenterlineWithSpawnDirection(
+            Array<Vector2> route,
+            Array<SpawnPoint> spawnPoints,
+            Vector2 forward) {
+        if (route.size < 2 || forward == null || forward.isZero(0.0001f)) {
+            return;
+        }
+        SpawnPoint frontSpawn = findFrontSpawnPoint(spawnPoints, forward);
+        if (frontSpawn == null) {
+            return;
+        }
+        float alignment = routeTangentAlignmentNear(route, frontSpawn.x, frontSpawn.y, forward);
+        if (alignment < -0.05f) {
+            reverseRouteCenterline(route);
+        }
+    }
+
+    private static void alignSpawnPointsWithRoute(
+            Array<SpawnPoint> spawnPoints,
+            Array<Vector2> routePoints) {
+        if (spawnPoints == null || routePoints == null || routePoints.size < 2) {
+            return;
+        }
+
+        Vector2 tangent = new Vector2();
+        for (int i = 0; i < spawnPoints.size; i++) {
+            SpawnPoint spawnPoint = spawnPoints.get(i);
+            findRouteTangentForSpawn(routePoints, spawnPoint, tangent);
+            if (tangent.isZero(0.0001f)) {
+                continue;
+            }
+            spawnPoints.set(
+                    i,
+                    SpawnPoint.facingPoint(
+                            spawnPoint.x,
+                            spawnPoint.y,
+                            spawnPoint.x + tangent.x,
+                            spawnPoint.y + tangent.y));
+        }
+    }
+
+    private static void findRouteTangentForSpawn(
+            Array<Vector2> routePoints,
+            SpawnPoint spawnPoint,
+            Vector2 out) {
+        out.setZero();
+        if (routePoints == null || routePoints.size < 2 || spawnPoint == null) {
+            return;
+        }
+
+        float spawnForwardX = -MathUtils.sin(spawnPoint.angleRad);
+        float spawnForwardY = MathUtils.cos(spawnPoint.angleRad);
+        boolean hasSpawnForward = spawnForwardX * spawnForwardX + spawnForwardY * spawnForwardY > 0.0001f;
+        float bestScore = Float.MAX_VALUE;
+        for (int i = 0; i < routePoints.size; i++) {
+            Vector2 start = routePoints.get(i);
+            Vector2 end = routePoints.get((i + 1) % routePoints.size);
+            float segmentX = end.x - start.x;
+            float segmentY = end.y - start.y;
+            float segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+            if (segmentLengthSquared <= 0.0001f) {
+                continue;
+            }
+
+            float alpha =
+                    MathUtils.clamp(
+                            ((spawnPoint.x - start.x) * segmentX + (spawnPoint.y - start.y) * segmentY)
+                                    / segmentLengthSquared,
+                            0f,
+                            1f);
+            float projectedX = start.x + segmentX * alpha;
+            float projectedY = start.y + segmentY * alpha;
+            float dx = spawnPoint.x - projectedX;
+            float dy = spawnPoint.y - projectedY;
+            float distanceScore = dx * dx + dy * dy;
+            float segmentLength = (float) Math.sqrt(segmentLengthSquared);
+            float tangentX = segmentX / segmentLength;
+            float tangentY = segmentY / segmentLength;
+            float directionScore = 0f;
+            if (hasSpawnForward) {
+                float alignment = tangentX * spawnForwardX + tangentY * spawnForwardY;
+                directionScore = Math.max(0f, 1f - alignment) * 3f;
+            }
+            float score = distanceScore + directionScore;
+            if (score < bestScore) {
+                bestScore = score;
+                out.set(tangentX, tangentY);
+            }
+        }
+    }
+
+    private static float routeTangentAlignmentNear(
+            Array<Vector2> route,
+            float x,
+            float y,
+            Vector2 forward) {
+        float bestDistance = Float.MAX_VALUE;
+        float bestAlignment = 0f;
+        for (int i = 0; i < route.size; i++) {
+            Vector2 start = route.get(i);
+            Vector2 end = route.get((i + 1) % route.size);
+            float segmentX = end.x - start.x;
+            float segmentY = end.y - start.y;
+            float segmentLength = (float) Math.sqrt(segmentX * segmentX + segmentY * segmentY);
+            if (segmentLength <= 0.0001f) {
+                continue;
+            }
+            float distance =
+                    distanceToSegmentSquared(
+                            x,
+                            y,
+                            start.x,
+                            start.y,
+                            end.x,
+                            end.y);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestAlignment =
+                        (segmentX * forward.x + segmentY * forward.y) / segmentLength;
+            }
+        }
+        return bestAlignment;
+    }
+
+    private static void reverseRouteCenterline(Array<Vector2> route) {
+        for (int left = 0, right = route.size - 1; left < right; left++, right--) {
+            Vector2 temporary = route.get(left);
+            route.set(left, route.get(right));
+            route.set(right, temporary);
+        }
+    }
+
+    private static Vector2 averageSpawnPosition(Array<SpawnPoint> spawnPoints) {
+        Vector2 average = new Vector2();
+        for (int i = 0; i < spawnPoints.size; i++) {
+            SpawnPoint spawnPoint = spawnPoints.get(i);
+            average.x += spawnPoint.x;
+            average.y += spawnPoint.y;
+        }
+        if (spawnPoints.size > 0) {
+            average.scl(1f / spawnPoints.size);
+        }
+        return average;
+    }
+
+    private static void centerRoutePoint(ArenaMap routeMap, Vector2 point, Vector2 side) {
+        if (routeMap == null || point == null || side == null || side.isZero(0.0001f)) {
+            return;
+        }
+        Vector2 candidate = new Vector2();
+        Vector2 best = new Vector2(point);
+        float bestClearance = routeMap.approximateDistanceToHazard(point);
+        float searchDistance = ROUTE_CENTERLINE_STEP_WORLD * 2.5f;
+        for (int i = -8; i <= 8; i++) {
+            float offset = searchDistance * i / 8f;
+            candidate.set(point.x + side.x * offset, point.y + side.y * offset);
+            if (!routeMap.approximateSupports(candidate)) {
+                continue;
+            }
+            float clearance = routeMap.approximateDistanceToHazard(candidate);
+            if (clearance > bestClearance) {
+                bestClearance = clearance;
+                best.set(candidate);
+            }
+        }
+        point.set(best);
+    }
+
+    private static RouteStep chooseRouteCenterlineStep(
+            ArenaMap routeMap,
+            Array<Vector2> route,
+            Vector2 current,
+            Vector2 direction,
+            Vector2 start,
+            float travelled,
+            float minimumLoopDistance,
+            float visitedDistanceSquared,
+            float[] angleOffsetsDeg,
+            Vector2 scratch) {
+        RouteStep best = null;
+        float bestScore = -Float.MAX_VALUE;
+        for (int i = 0; i < angleOffsetsDeg.length; i++) {
+            float angle = angleOffsetsDeg[i] * MathUtils.degreesToRadians;
+            float cos = MathUtils.cos(angle);
+            float sin = MathUtils.sin(angle);
+            float dirX = direction.x * cos - direction.y * sin;
+            float dirY = direction.x * sin + direction.y * cos;
+            float length = (float) Math.sqrt(dirX * dirX + dirY * dirY);
+            if (length <= 0.0001f) {
+                continue;
+            }
+            dirX /= length;
+            dirY /= length;
+            scratch.set(
+                    current.x + dirX * ROUTE_CENTERLINE_STEP_WORLD,
+                    current.y + dirY * ROUTE_CENTERLINE_STEP_WORLD);
+            if (!routeMap.approximateSupports(scratch)) {
+                continue;
+            }
+            float clearance = routeMap.approximateDistanceToHazard(scratch);
+            if (clearance < ROUTE_CENTERLINE_MIN_CLEARANCE) {
+                continue;
+            }
+
+            boolean closesLoop =
+                    travelled > minimumLoopDistance
+                            && scratch.dst2(start)
+                                    <= ROUTE_CENTERLINE_START_CLOSE_DISTANCE
+                                            * ROUTE_CENTERLINE_START_CLOSE_DISTANCE;
+            float visitedPenalty =
+                    closesLoop
+                            ? 0f
+                            : routeVisitedPenalty(route, scratch, visitedDistanceSquared);
+            if (visitedPenalty >= 100f) {
+                continue;
+            }
+
+            float forwardAlignment = dirX * direction.x + dirY * direction.y;
+            float turnPenalty = Math.abs(angleOffsetsDeg[i]) / 90f;
+            float centerScore = Math.min(clearance, ROUTE_CENTERLINE_STEP_WORLD * 3f);
+            float score =
+                    centerScore * ROUTE_CENTERLINE_CLEARANCE_WEIGHT
+                            + forwardAlignment * ROUTE_CENTERLINE_FORWARD_WEIGHT
+                            - turnPenalty * ROUTE_CENTERLINE_TURN_WEIGHT
+                            - visitedPenalty;
+            if (closesLoop) {
+                score += 120f;
+            }
+            if (score > bestScore) {
+                if (best == null) {
+                    best = new RouteStep();
+                }
+                bestScore = score;
+                best.point.set(scratch);
+                best.direction.set(dirX, dirY);
+                best.closesLoop = closesLoop;
+            }
+        }
+        return best;
+    }
+
+    private static float routeVisitedPenalty(
+            Array<Vector2> route,
+            Vector2 candidate,
+            float visitedDistanceSquared) {
+        int lastIndexToCheck = route.size - ROUTE_CENTERLINE_VISITED_IGNORE_STEPS;
+        if (lastIndexToCheck <= 0) {
+            return 0f;
+        }
+        float penalty = 0f;
+        for (int i = 1; i < lastIndexToCheck; i++) {
+            float distanceSquared = candidate.dst2(route.get(i));
+            if (distanceSquared < visitedDistanceSquared * 0.36f) {
+                return 100f;
+            }
+            if (distanceSquared < visitedDistanceSquared) {
+                penalty = Math.max(
+                        penalty,
+                        12f * (1f - distanceSquared / visitedDistanceSquared));
+            }
+        }
+        return penalty;
+    }
+
+    private static Array<Vector2> buildRouteFromCheckpoints(Array<SpawnPoint> checkpoints) {
+        Array<Vector2> route = new Array<Vector2>();
+        if (checkpoints == null) {
+            return route;
+        }
+        for (int i = 0; i < checkpoints.size; i++) {
+            SpawnPoint checkpoint = checkpoints.get(i);
+            route.add(new Vector2(checkpoint.x, checkpoint.y));
+        }
+        return route;
     }
 
     private static void orderCheckpointPathByRoute(
@@ -2245,6 +3421,47 @@ final class ImageArenaMapLoader {
         return findNearestMarkerToPoint(source.centerX, source.centerY, candidates, used);
     }
 
+    private static int findSpawnDirectionMarker(
+            MarkerComponent red,
+            Array<MarkerComponent> blueMarkers,
+            boolean[] used,
+            MarkerDirectionBasis basis) {
+        if (red == null || blueMarkers == null || blueMarkers.size == 0) {
+            return -1;
+        }
+        if (basis == null || !basis.valid) {
+            return findNearestUnusedMarker(red, blueMarkers, used);
+        }
+
+        int bestIndex = -1;
+        float bestScore = Float.MAX_VALUE;
+        float expectedGap = Math.max(1f, basis.averageMarkerGap);
+        float minimumForward = Math.max(1f, expectedGap * 0.20f);
+        float maximumForward = expectedGap * 2.80f;
+        for (int i = 0; i < blueMarkers.size; i++) {
+            if (used != null && used[i]) {
+                continue;
+            }
+            MarkerComponent blue = blueMarkers.get(i);
+            float dx = blue.centerX - red.centerX;
+            float dy = blue.centerY - red.centerY;
+            float forward = dx * basis.tangentX + dy * basis.tangentY;
+            if (forward < minimumForward || forward > maximumForward) {
+                continue;
+            }
+
+            float side = dx * basis.sideX + dy * basis.sideY;
+            float gapError = forward - expectedGap;
+            float distance = dx * dx + dy * dy;
+            float score = side * side * 8f + gapError * gapError * 1.6f + distance * 0.02f;
+            if (score < bestScore) {
+                bestScore = score;
+                bestIndex = i;
+            }
+        }
+        return bestIndex >= 0 ? bestIndex : findNearestUnusedMarker(red, blueMarkers, used);
+    }
+
     private static int findNearestMarkerToPoint(
             float sourceX,
             float sourceY,
@@ -2429,7 +3646,26 @@ final class ImageArenaMapLoader {
     }
 
     private static boolean isCheckpointOrderMarker(int red, int green, int blue) {
-        return red >= 245 && blue >= 245 && green >= 1 && green <= 250;
+        return red >= 245
+                && blue >= 245
+                && green >= 1
+                && green <= 250
+                && red >= green + 3
+                && blue >= green + 3;
+    }
+
+    private static boolean isRouteHintMarker(int pixel) {
+        int red = (pixel >>> 24) & 0xff;
+        int green = (pixel >>> 16) & 0xff;
+        int blue = (pixel >>> 8) & 0xff;
+        int alpha = pixel & 0xff;
+        return alpha >= 96
+                && red <= 130
+                && green >= 35
+                && blue >= 35
+                && Math.abs(green - blue) <= 24
+                && green >= red + 28
+                && blue >= red + 28;
     }
 
     private static int checkpointOrderValue(int pixel) {
@@ -2459,14 +3695,30 @@ final class ImageArenaMapLoader {
             int y,
             int width,
             int height) {
-        int minX = Math.max(0, x - MARKER_PLAYABLE_CONTEXT_RADIUS);
-        int maxX = Math.min(width - 1, x + MARKER_PLAYABLE_CONTEXT_RADIUS);
-        int minY = Math.max(0, y - MARKER_PLAYABLE_CONTEXT_RADIUS);
-        int maxY = Math.min(height - 1, y + MARKER_PLAYABLE_CONTEXT_RADIUS);
+        return hasNearbyPlayablePixel(
+                basePlayable,
+                x,
+                y,
+                width,
+                height,
+                MARKER_PLAYABLE_CONTEXT_RADIUS);
+    }
+
+    private static boolean hasNearbyPlayablePixel(
+            boolean[] playable,
+            int x,
+            int y,
+            int width,
+            int height,
+            int radius) {
+        int minX = Math.max(0, x - radius);
+        int maxX = Math.min(width - 1, x + radius);
+        int minY = Math.max(0, y - radius);
+        int maxY = Math.min(height - 1, y + radius);
         for (int sampleY = minY; sampleY <= maxY; sampleY++) {
             int rowOffset = sampleY * width;
             for (int sampleX = minX; sampleX <= maxX; sampleX++) {
-                if (basePlayable[rowOffset + sampleX]) {
+                if (playable[rowOffset + sampleX]) {
                     return true;
                 }
             }
@@ -2537,6 +3789,7 @@ final class ImageArenaMapLoader {
         private final Array<MarkerComponent> redMarkers = new Array<MarkerComponent>();
         private final Array<MarkerComponent> blueMarkers = new Array<MarkerComponent>();
         private final Array<MarkerComponent> greenMarkers = new Array<MarkerComponent>();
+        private final Array<MarkerComponent> routeHintMarkers = new Array<MarkerComponent>();
         private final Array<CheckpointOrderMarker> checkpointOrderMarkers = new Array<CheckpointOrderMarker>();
         private boolean checkpointOrderByBorder;
 
@@ -2595,6 +3848,10 @@ final class ImageArenaMapLoader {
         private final float centerY;
         @SuppressWarnings("unused")
         private final int area;
+        private final int minX;
+        private final int minY;
+        private final int maxX;
+        private final int maxY;
         private final float gateStartX;
         private final float gateStartY;
         private final float gateEndX;
@@ -2614,6 +3871,10 @@ final class ImageArenaMapLoader {
             this.centerX = centerX;
             this.centerY = centerY;
             this.area = area;
+            this.minX = minX;
+            this.minY = minY;
+            this.maxX = maxX;
+            this.maxY = maxY;
 
             float axisAngle = 0.5f * MathUtils.atan2(2f * covarianceXY, covarianceXX - covarianceYY);
             float axisX = MathUtils.cos(axisAngle);
@@ -2709,6 +3970,99 @@ final class ImageArenaMapLoader {
         }
     }
 
+    private static final class RouteStep {
+        private final Vector2 point = new Vector2();
+        private final Vector2 direction = new Vector2();
+        private boolean closesLoop;
+    }
+
+    private static final class RouteHintCircle {
+        private final float centerX;
+        private final float centerY;
+        private final float radius;
+        private final Array<Vector2> intersections = new Array<Vector2>();
+
+        private RouteHintCircle(
+                float centerX,
+                float centerY,
+                float radius,
+                Array<Vector2> intersections) {
+            this.centerX = centerX;
+            this.centerY = centerY;
+            this.radius = radius;
+            if (intersections != null) {
+                for (int i = 0; i < intersections.size; i++) {
+                    this.intersections.add(new Vector2(intersections.get(i)));
+                }
+            }
+        }
+
+        private RouteHintPass findPass(Vector2 start, Vector2 end, float margin) {
+            if (intersections.size < 2 || !segmentIntersects(start, end, margin)) {
+                return null;
+            }
+            if (contains(start, margin) || contains(end, margin)) {
+                return null;
+            }
+            Vector2 entry = null;
+            float bestEntryDistance = Float.MAX_VALUE;
+            for (int i = 0; i < intersections.size; i++) {
+                Vector2 candidate = intersections.get(i);
+                float distance = candidate.dst2(start);
+                if (distance < bestEntryDistance) {
+                    bestEntryDistance = distance;
+                    entry = candidate;
+                }
+            }
+            if (entry == null) {
+                return null;
+            }
+
+            Vector2 exit = null;
+            float bestExitDistance = -1f;
+            for (int i = 0; i < intersections.size; i++) {
+                Vector2 candidate = intersections.get(i);
+                float distance = candidate.dst2(entry);
+                if (distance > bestExitDistance) {
+                    bestExitDistance = distance;
+                    exit = candidate;
+                }
+            }
+            if (exit == null || bestExitDistance <= 0.25f) {
+                return null;
+            }
+            if (exit.dst2(end) >= entry.dst2(end) - 0.25f) {
+                return null;
+            }
+            return new RouteHintPass(entry, exit);
+        }
+
+        private boolean contains(Vector2 point, float margin) {
+            if (point == null) {
+                return false;
+            }
+            float effectiveRadius = radius + margin;
+            return Vector2.dst2(point.x, point.y, centerX, centerY)
+                    <= effectiveRadius * effectiveRadius;
+        }
+
+        private boolean segmentIntersects(Vector2 start, Vector2 end, float margin) {
+            float effectiveRadius = radius + margin;
+            return distanceToSegmentSquared(centerX, centerY, start.x, start.y, end.x, end.y)
+                    <= effectiveRadius * effectiveRadius;
+        }
+    }
+
+    private static final class RouteHintPass {
+        private final Vector2 entry;
+        private final Vector2 exit;
+
+        private RouteHintPass(Vector2 entry, Vector2 exit) {
+            this.entry = new Vector2(entry);
+            this.exit = new Vector2(exit);
+        }
+    }
+
     private static final class AnnotationAnchor {
         private final int dotX;
         private final int dotY;
@@ -2783,6 +4137,8 @@ final class ImageArenaMapLoader {
         private float[] checkpointGateStartY;
         private float[] checkpointGateEndX;
         private float[] checkpointGateEndY;
+        private float[] routeX;
+        private float[] routeY;
         private float[] recoveryX;
         private float[] recoveryY;
     }

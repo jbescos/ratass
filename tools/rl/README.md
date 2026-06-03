@@ -1,6 +1,6 @@
 # Ratass RL Race Training
 
-The Java game owns the Box2D simulation and checkpoint-race environment. Python
+The Java game owns the Box2D simulation and route-progress race environment. Python
 uses JPype to step that environment and RLlib PPO to train a policy.
 
 The old scripted driving AI, behavior/evolution tuning, combat objective, and
@@ -28,30 +28,27 @@ still runs on CPU.
 
 ## Environment Contract
 
-- Observation size: `43` floats per learner.
+- Observation size: `34` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
-- Default PPO network: two fully-connected hidden layers of width `1024`
+- Default PPO network: two fully-connected hidden layers of width `256`
   with `tanh` activation.
-- Race observations include the relative next-checkpoint vector, a route waypoint
-  vector computed from the map hazard field, normalized route distance, route
-  alignment, edge clearance, off-road state, car-frame velocity, angular
-  velocity, near-checkpoint state, previous action, six opponent-car ray
-  clearances, nearest-car relative state, route/checkpoint clearance, route
-  active state, second-checkpoint alignment, and left/right road-clearance rays
-  that scan two car lengths laterally. The old constant `active` observation and
-  the broader experimental road-clearance ray set were removed.
-- Rewards are bucketed as `checkpoint`, `step_cost`, `off_road`, `steering`,
-  `reverse_speed`, and `car_push`. The `checkpoint` bucket includes both new
-  best progress along the ordered checkpoint route while the car is moving
-  forward and the larger reward for crossing the active checkpoint. Braking is
-  not penalized, but actual negative forward speed is. Car collisions are
-  treated as push/contact penalties, not as rewards.
-- Java exposes episode metrics for checkpoints reached and route progress toward
-  the checkpoint.
-- The shell training presets stage the episode target through `1`, `2`, and `3`
-  checkpoints before full-lap episodes (`RL_MAX_CHECKPOINTS=-1`). The live game
-  can still run longer races because the same checkpoint-following policy repeats
-  around the loop.
+- Race observations include normalized route progress, route tangent alignment,
+  route lookahead vector/alignment/clearance, speed and car-frame velocity,
+  edge/off-road state, angular velocity, previous action, six opponent-car ray
+  clearances, nearest-car relative state, and left/right/front/front-diagonal
+  road-clearance rays. The old checkpoint target observations and constant
+  `active` observation were removed.
+- Rewards are bucketed as `route_progress`, `step_cost`, `off_road`, `steering`,
+  `reverse_speed`, `car_push`, and `speed`. The route-progress bucket contains
+  signed progress along the circuit route plus the route-target completion
+  reward. Braking is not penalized, but actual negative forward speed is. Car
+  collisions are treated as push/contact penalties, not as rewards.
+- Java exposes episode metrics for route targets reached and route progress.
+- The shell training presets stage single-car learning through `25%`, `50%`,
+  and `75%` route targets, then `lap_easy` route-only full laps, then normal
+  full-lap episodes (`RL_ROUTE_TARGETS=-1`). The
+  live game can still run longer races because the same route-following policy
+  repeats around the loop.
 
 ## Train
 
@@ -64,8 +61,7 @@ Useful knobs:
 ```bash
 python tools/rl/train_rllib.py \
   --controlled-agents 1 \
-  --max-checkpoints -1 \
-  --checkpoint-radius 3.0 \
+  --route-targets -1 \
   --max-action-steps 6400
 ```
 
@@ -128,24 +124,25 @@ The current convenience curriculum trains the race objective on synthetic
 training-only masks from `tools/rl/trainingMaps` when they exist. Best-eval still
 uses the playable game masks from `assets/maps`, so the exported policy is
 selected by performance on the real circuits while most learning happens on
-circuits the player will not race on. Every car-count phase is split into
-checkpoint stages: reach `1` checkpoint, then `2`, then `3`, then a full lap.
+circuits the player will not race on. The single-car phase is split into route
+stages: progress through `25%`, `50%`, `75%`, an easy full lap on `route*`
+training maps, then a full normal lap.
 After that, the curriculum ramps
 learner cars through `1`, `2`, `4`, `8`, `16`, and finally `20` cars forever by
 default. The 400-iteration single-car wrapper splits its budget into `100`
-iterations for each checkpoint stage. Each phase keeps a separate
+iterations for each route stage. Each phase keeps a separate
 best-evaluation state so harder crowded phases are not compared against easier
 single-car scores. The playable policy at `assets/ai/rl_enemy_policy.json` tracks
 the best model from the latest trained stage, so stopping early still leaves a
-usable model from the most recent stage. Checkpoint output defaults to
+usable model from the most recent stage. RLlib checkpoint output defaults to
 `rl-checkpoints-curriculum-400-race-physics68-1024x2-v1` for the 400-iteration
 wrapper. Training scripts delete their checkpoint directory at startup by
 default, so a new run starts from scratch instead of resuming an older
-checkpoint. Set `RL_FRESH_START=0` only when you intentionally want to resume.
-Checkpoint curriculum stages use single-car route-aligned random road spawns
-from saved per-stage seed files under the checkpoint directory, so a resumed run
+RLlib checkpoint. Set `RL_FRESH_START=0` only when you intentionally want to resume.
+Route-target stages use single-car route-aligned random road spawns
+from saved per-stage seed files under the RLlib checkpoint directory, so a resumed run
 reuses the same training cases. Full-lap stages always use the fixed start grid.
-Multi-car training is valid only for full-lap stages; checkpoint stages fail
+Multi-car training is valid only for full-lap stages; route-target stages fail
 fast if configured with more than one learner car.
 
 Regenerate the synthetic training maps and prebuild their caches:

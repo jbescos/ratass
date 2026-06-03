@@ -160,6 +160,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RACE_CHECKPOINT_RADIUS = 3.0f;
     private static final float RACE_CHECKPOINT_GATE_MARGIN = 2.40f;
     private static final float RACE_CHECKPOINT_MIN_FORWARD_CROSS_SPEED = 0.30f;
+    private static final float RACE_ROUTE_MIN_DELTA = 0.001f;
+    private static final float RACE_ROUTE_MAX_DELTA_MIN = Car.HEIGHT * 2f;
+    private static final float RACE_ROUTE_MAX_DELTA_MAX = Car.HEIGHT * 6f;
     private static final float MIN_WORLD_CAMERA_ZOOM = 0.90f;
     private static final float PLAYER_CAMERA_ZOOM = 1.04f;
     private static final float PLAYER_CAMERA_SPEED_ZOOM_OUT = 0.46f;
@@ -185,10 +188,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_CROWDED_SAFE_MARGIN = 1.0f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
-    public static final int RL_OBSERVATION_SIZE = 46;
+    public static final int RL_OBSERVATION_SIZE = 34;
     public static final int RL_ACTION_SIZE = 2;
     public static final int RL_REWARD_BREAKDOWN_SIZE = 7;
-    private static final int RL_REWARD_CHECKPOINT = 0;
+    private static final int RL_REWARD_ROUTE_PROGRESS = 0;
     private static final int RL_REWARD_STEP_COST = 1;
     private static final int RL_REWARD_OFF_ROAD = 2;
     private static final int RL_REWARD_STEERING = 3;
@@ -196,7 +199,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final int RL_REWARD_CAR_PUSH = 5;
     private static final int RL_REWARD_SPEED = 6;
     private static final String[] RL_REWARD_BREAKDOWN_NAMES = {
-            "checkpoint",
+            "route_progress",
             "step_cost",
             "off_road",
             "steering",
@@ -204,7 +207,7 @@ public class RatassGame extends ApplicationAdapter {
             "car_push",
             "speed"
     };
-    private static final int RL_DEBUG_TRACE_SIZE = 40;
+    private static final int RL_DEBUG_TRACE_SIZE = 23;
     private static final String[] RL_DEBUG_TRACE_NAMES = {
             "active",
             "car_x",
@@ -213,56 +216,38 @@ public class RatassGame extends ApplicationAdapter {
             "speed",
             "forward_speed",
             "lateral_speed",
-            "target_checkpoint_index",
-            "target_checkpoint_sequence",
-            "target_x",
-            "target_y",
-            "target_has_gate",
-            "target_gate_start_x",
-            "target_gate_start_y",
-            "target_gate_end_x",
-            "target_gate_end_y",
-            "target_supported",
-            "target_edge_distance",
-            "target_route_distance",
-            "progress_toward_target",
-            "route_target_x",
-            "route_target_y",
-            "route_target_supported",
-            "route_target_edge_distance",
-            "route_clearance",
-            "second_checkpoint_index",
-            "second_checkpoint_x",
-            "second_checkpoint_y",
-            "second_checkpoint_supported",
+            "route_progress",
+            "route_progress_normalized",
+            "route_tangent_x",
+            "route_tangent_y",
+            "route_forward_speed",
+            "route_delta",
+            "route_distance_since_target",
+            "route_target_distance",
+            "route_targets_reached",
+            "route_targets_required",
             "off_road",
             "off_road_distance",
             "edge_distance",
             "effective_throttle",
             "effective_turn",
-            "checkpoint_deadline_remaining_seconds",
-            "checkpoint_deadline_duration_seconds",
-            "checkpoints_reached",
-            "max_checkpoints",
-            "checkpoint_timeout",
             "episode_done"
     };
     private static final int RL_DEFAULT_CONTROLLED_AGENTS = 1;
     private static final int RL_DEFAULT_FIELD_SIZE = 1;
     private static final int RL_DEFAULT_ACTION_REPEAT = 4;
     private static final int RL_DEFAULT_MAX_ACTION_STEPS = 6400;
-    private static final int RL_DEFAULT_MAX_CHECKPOINTS = 6;
+    private static final int RL_DEFAULT_ROUTE_TARGETS = 6;
     private static final float RL_LIVE_DECISION_INTERVAL = 0.08f;
     private static final float RL_INITIAL_DECISION_STAGGER = 0.24f;
     private static final float RL_POSITION_NORMALIZER_MIN = 1f;
     private static final float RL_ANGULAR_VELOCITY_NORMALIZER = 8f;
     private static final float RL_HAZARD_DISTANCE_NORMALIZER = 12f;
-    private static final float RL_DEFAULT_CHECKPOINT_RADIUS = RACE_CHECKPOINT_RADIUS;
-    private static final float RL_DEFAULT_CHECKPOINT_DEADLINE_SECONDS = 0f;
     private static final float RL_ROUTE_MARGIN = 0.50f;
     private static final float RL_RAYCAST_DISTANCE = 22f;
     private static final float RL_LATERAL_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 2f;
     private static final float RL_FRONT_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 7f;
+    private static final float RL_ROUTE_LOOKAHEAD_DISTANCE = Car.HEIGHT * 7f;
     private static final float RL_SHORT_RAYCAST_DISTANCE = 7.5f;
     private static final float RL_RAYCAST_STEP = 0.40f;
     private static final float RL_CAR_FRONT_REAR_SENSOR_DISTANCE = Car.HEIGHT * 7f;
@@ -291,7 +276,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_RANDOM_SPAWN_SEGMENT_ERROR_RATIO = 0.18f;
     private static final float RL_RANDOM_SPAWN_SEGMENT_ERROR_PENALTY = 4.5f;
     private static final float RL_RANDOM_SPAWN_ROUTE_TARGET_EPSILON = 0.35f;
-    private static final float RL_CHECKPOINT_REWARD = 30.0f;
+    private static final int RL_ROUTE_TRAINING_CHUNKS_PER_LAP = 4;
+    private static final float RL_ROUTE_COMPLETION_TIME_BONUS_MULTIPLIER = 0.50f;
+    private static final float RL_ROUTE_TARGET_REWARD = 30.0f;
     private static final float RL_CAR_PUSH_PENALTY = 3.0f;
     private static final float RL_CAR_PUSH_MAX_STEP_PENALTY = 8.0f;
     private static final float RL_OFF_ROAD_PENALTY = 0.80f;
@@ -577,6 +564,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector2 raceTargetPosition = new Vector2();
     private final Vector2 raceSecondTargetPosition = new Vector2();
     private final Vector2 racePreviousTargetPosition = new Vector2();
+    private final Vector2 raceRouteDirection = new Vector2();
     private final Vector2 pickupCandidate = new Vector2();
     private final Vector2 lastGrowthPickupPosition = new Vector2();
     private final Vector2 lastPointPickupPosition = new Vector2();
@@ -3524,6 +3512,8 @@ public class RatassGame extends ApplicationAdapter {
             template.roundPickupPoints = 0;
             template.roundRaceLap = 0;
             template.roundRaceCheckpointsCompleted = 0;
+            template.roundRaceLastRouteProgress = 0f;
+            template.roundRaceDistanceThisLap = 0f;
             template.roundRaceFinishTime = 0f;
             template.roundRaceCurrentLapStartTime = 0f;
             template.roundRaceBestLapTime = 0f;
@@ -3539,6 +3529,7 @@ public class RatassGame extends ApplicationAdapter {
             template.roundRaceNextCheckpointIndex = initialCheckpointIndex;
             Car car = createCar(template, spawnPoint);
             template.currentCar = car;
+            initializeRoundRaceRouteState(template, spawnPoint);
             if (template.playerControlled) {
                 playerCar = car;
             }
@@ -3548,9 +3539,19 @@ public class RatassGame extends ApplicationAdapter {
         updateWorldCamera();
         warmArenaSurfaceTextures();
         invalidateLeaderboard();
-        if (!rlTrainingMode && currentMap.getCheckpointCount() <= 1) {
-            throw new IllegalStateException("Race maps require at least two ordered checkpoints.");
+    }
+
+    private void initializeRoundRaceRouteState(CarTemplate template, SpawnPoint spawnPoint) {
+        if (template == null || currentMap == null || !currentMap.hasRoute()) {
+            return;
         }
+        float progress =
+                spawnPoint == null
+                        ? 0f
+                        : currentMap.findRouteProgress(spawnPoint.x, spawnPoint.y);
+        template.roundRaceLastRouteProgress = progress;
+        template.roundRaceDistanceThisLap = 0f;
+        template.roundRaceCurrentLapStartTime = roundTimer;
     }
 
     private boolean shouldUseFixedRaceStartCheckpoint() {
@@ -3665,11 +3666,27 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private boolean isLiveLapRaceMode() {
-        return !rlTrainingMode && currentMap != null && currentMap.getCheckpointCount() > 1;
+        return !rlTrainingMode && currentMap != null && currentMap.hasRoute();
     }
 
     private boolean setRaceTargetsForCar(Car car, Vector2 targetOut, Vector2 secondTargetOut) {
-        if (car == null || car.template == null || currentMap == null || currentMap.getCheckpointCount() <= 1) {
+        if (car == null || car.template == null || currentMap == null || targetOut == null) {
+            return false;
+        }
+        if (currentMap.hasRoute() && car.body != null) {
+            raceRouteDirection.set(car.body.getWorldVector(raceRouteDirection.set(0f, 1f)));
+            float routeProgress =
+                    currentMap.findRouteProgressNear(
+                            car.body.getPosition(),
+                            raceRouteDirection,
+                            car.template.roundRaceLastRouteProgress);
+            currentMap.findRoutePoint(routeProgress + RL_ROUTE_LOOKAHEAD_DISTANCE, targetOut);
+            if (secondTargetOut != null) {
+                currentMap.findRoutePoint(routeProgress + RL_ROUTE_LOOKAHEAD_DISTANCE * 2f, secondTargetOut);
+            }
+            return true;
+        }
+        if (currentMap.getCheckpointCount() <= 1) {
             return false;
         }
         int checkpointCount = currentMap.getCheckpointCount();
@@ -3679,8 +3696,10 @@ public class RatassGame extends ApplicationAdapter {
         targetOut.set(checkpoint.x, checkpoint.y);
 
         int secondCheckpointIndex = (checkpointIndex + 1) % checkpointCount;
-        SpawnPoint secondCheckpoint = currentMap.getCheckpoint(secondCheckpointIndex);
-        secondTargetOut.set(secondCheckpoint.x, secondCheckpoint.y);
+        if (secondTargetOut != null) {
+            SpawnPoint secondCheckpoint = currentMap.getCheckpoint(secondCheckpointIndex);
+            secondTargetOut.set(secondCheckpoint.x, secondCheckpoint.y);
+        }
         return true;
     }
 
@@ -3703,36 +3722,59 @@ public class RatassGame extends ApplicationAdapter {
                 || car.body == null
                 || car.template.roundRaceFinished
                 || currentMap == null
-                || currentMap.getCheckpointCount() <= 1) {
+                || !currentMap.hasRoute()) {
             return;
         }
 
-        int checkpointCount = currentMap.getCheckpointCount();
-        int checkpointIndex =
-                MathUtils.clamp(car.template.roundRaceNextCheckpointIndex, 0, checkpointCount - 1);
-        SpawnPoint checkpoint = currentMap.getCheckpoint(checkpointIndex);
-        if (!hasPassedRaceCheckpoint(car, checkpoint)) {
+        raceRouteDirection.set(car.body.getWorldVector(raceRouteDirection.set(0f, 1f)));
+        float previousRouteProgress = car.template.roundRaceLastRouteProgress;
+        float routeProgress =
+                currentMap.findRouteProgressNear(
+                        car.body.getPosition(),
+                        raceRouteDirection,
+                        previousRouteProgress);
+        float delta = currentMap.routeProgressDelta(previousRouteProgress, routeProgress);
+        car.template.roundRaceLastRouteProgress = routeProgress;
+        if (Math.abs(delta) <= RACE_ROUTE_MIN_DELTA) {
             return;
         }
 
-        int crossedCheckpointIndex = checkpointIndex;
-        car.template.roundRaceCheckpointsCompleted++;
-        checkpointIndex = (checkpointIndex + 1) % checkpointCount;
-        if (crossedCheckpointIndex == car.template.roundRaceStartCheckpointIndex) {
-            if (car.template.roundRaceLapCounterCrossed) {
-                recordCompletedRaceLap(car.template);
-                car.template.roundRaceLap++;
-            } else {
-                car.template.roundRaceLapCounterCrossed = true;
-                car.template.roundRaceCurrentLapStartTime = roundTimer;
-            }
+        float maxDelta = getMaxRaceRouteProgressDelta(car);
+        if (Math.abs(delta) > maxDelta) {
+            return;
         }
-        car.template.roundRaceNextCheckpointIndex = checkpointIndex;
+
+        float routeLength = currentMap.getRouteLength();
+        car.template.roundRaceDistanceThisLap =
+                MathUtils.clamp(car.template.roundRaceDistanceThisLap + delta, 0f, routeLength);
+        car.template.roundRaceCheckpointsCompleted =
+                MathUtils.floor(
+                        (car.template.roundRaceLap
+                                        + car.template.roundRaceDistanceThisLap
+                                                / Math.max(0.001f, routeLength))
+                                * 1000f);
         invalidateLeaderboard();
 
-        if (car.template.roundRaceLap >= getRaceLapsToWin()) {
-            markRaceFinished(car);
+        while (car.template.roundRaceDistanceThisLap >= routeLength && !car.template.roundRaceFinished) {
+            car.template.roundRaceDistanceThisLap -= routeLength;
+            recordCompletedRaceLap(car.template);
+            car.template.roundRaceLap++;
+            if (car.template.roundRaceLap >= getRaceLapsToWin()) {
+                markRaceFinished(car);
+                break;
+            }
         }
+    }
+
+    private float getMaxRaceRouteProgressDelta(Car car) {
+        if (car == null || car.body == null) {
+            return RACE_ROUTE_MAX_DELTA_MIN;
+        }
+        float speed = car.body.getLinearVelocity().len();
+        return MathUtils.clamp(
+                speed * PHYSICS_STEP * 3f + Car.HEIGHT,
+                RACE_ROUTE_MAX_DELTA_MIN,
+                RACE_ROUTE_MAX_DELTA_MAX);
     }
 
     private void recordCompletedRaceLap(CarTemplate template) {
@@ -3847,8 +3889,13 @@ public class RatassGame extends ApplicationAdapter {
             }
             return left.roundFinishPosition - right.roundFinishPosition;
         }
-        if (left.roundRaceCheckpointsCompleted != right.roundRaceCheckpointsCompleted) {
-            return right.roundRaceCheckpointsCompleted - left.roundRaceCheckpointsCompleted;
+        if (left.roundRaceLap != right.roundRaceLap) {
+            return right.roundRaceLap - left.roundRaceLap;
+        }
+        int routeProgressCompare =
+                Float.compare(right.roundRaceDistanceThisLap, left.roundRaceDistanceThisLap);
+        if (routeProgressCompare != 0) {
+            return routeProgressCompare;
         }
         boolean leftActive = left.currentCar != null && left.currentCar.active;
         boolean rightActive = right.currentCar != null && right.currentCar.active;
@@ -4188,7 +4235,9 @@ public class RatassGame extends ApplicationAdapter {
 
         Array<SpawnPoint> orderedSpawns = new Array<SpawnPoint>(currentMap.getSpawnCount());
         for (int i = 0; i < currentMap.getSpawnCount(); i++) {
-            orderedSpawns.add(currentMap.getSpawn(i));
+            SpawnPoint seed = currentMap.getSpawn(i);
+            SpawnPoint routeAlignedSpawn = raceRouteAlignedSpawnPoint(seed.x, seed.y, seed);
+            orderedSpawns.add(routeAlignedSpawn == null ? seed : routeAlignedSpawn);
         }
         sortRaceGridSpawnsFrontFirst(orderedSpawns);
 
@@ -4286,8 +4335,37 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private SpawnPoint randomRaceSpawnPoint(float x, float y) {
+        return raceRouteAlignedSpawnPoint(x, y, null);
+    }
+
+    private SpawnPoint raceRouteAlignedSpawnPoint(float x, float y, SpawnPoint fallback) {
+        if (currentMap != null && currentMap.hasRoute()) {
+            float progress;
+            if (fallback == null) {
+                progress = currentMap.findRouteProgress(x, y);
+            } else {
+                raceTargetPosition.set(
+                        -MathUtils.sin(fallback.angleRad),
+                        MathUtils.cos(fallback.angleRad));
+                progress =
+                        currentMap.findRouteProgress(
+                                x,
+                                y,
+                                raceTargetPosition.x,
+                                raceTargetPosition.y);
+            }
+            currentMap.findRouteTangent(progress, raceSecondTargetPosition);
+            if (!raceSecondTargetPosition.isZero(0.0001f)) {
+                return SpawnPoint.facingPoint(
+                        x,
+                        y,
+                        x + raceSecondTargetPosition.x,
+                        y + raceSecondTargetPosition.y);
+            }
+        }
+
         if (currentMap == null || currentMap.getCheckpointCount() <= 1) {
-            return randomSpawnPoint(x, y);
+            return fallback == null ? randomSpawnPoint(x, y) : fallback;
         }
 
         int checkpointIndex = findRandomRaceSpawnCheckpointIndex(x, y);
@@ -4339,7 +4417,7 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             raceTargetPosition.set(checkpoint.x, checkpoint.y);
-            // Random checkpoint stages start inside the route segment that ends at this target.
+            // Random route-target stages start inside the route segment that ends at this target.
             float segmentDistance =
                     currentMap.estimateDriveDistance(
                             racePreviousTargetPosition,
@@ -7025,16 +7103,16 @@ public class RatassGame extends ApplicationAdapter {
             return buildRaceProgressText(roster.first());
         }
 
-        return "No checkpoint route";
+        return "No route";
     }
 
     private String buildObjectiveText() {
         if (preRoundCountdownTimer > 0f) {
             return isLiveLapRaceMode()
-                    ? "Prepare for the horn. Follow the checkpoints and complete "
+                    ? "Prepare for the horn. Complete "
                             + getRaceLapsToWin()
                             + " laps."
-                    : "This map needs ordered checkpoints before it can be raced.";
+                    : "This map needs a generated route before it can be raced.";
         }
 
         if (roundOver) {
@@ -7050,7 +7128,7 @@ public class RatassGame extends ApplicationAdapter {
             return "";
         }
 
-        return "Checkpoint route missing.";
+        return "Route missing.";
     }
 
     private int getRaceFinishSecondsLeft() {
@@ -7066,13 +7144,18 @@ public class RatassGame extends ApplicationAdapter {
         }
         int raceLaps = getRaceLapsToWin();
         int lap = MathUtils.clamp(template.roundRaceLap + 1, 1, raceLaps);
-        int checkpointCount = currentMap == null ? 0 : currentMap.getCheckpointCount();
-        int checkpoint = checkpointCount <= 0 ? 0 : MathUtils.clamp(
-                template.roundRaceNextCheckpointIndex,
-                0,
-                checkpointCount - 1);
-        return "Lap " + lap + "/" + raceLaps
-                + (checkpointCount > 0 ? " CP " + (checkpoint + 1) + "/" + checkpointCount : "");
+        int progressPercent = MathUtils.round(getRaceLapProgressFraction(template) * 100f);
+        return "Lap " + lap + "/" + raceLaps + " " + progressPercent + "%";
+    }
+
+    private float getRaceLapProgressFraction(CarTemplate template) {
+        if (template == null || currentMap == null || !currentMap.hasRoute()) {
+            return 0f;
+        }
+        return MathUtils.clamp(
+                template.roundRaceDistanceThisLap / Math.max(0.001f, currentMap.getRouteLength()),
+                0f,
+                1f);
     }
 
     private String buildHeadline() {
@@ -7984,11 +8067,7 @@ public class RatassGame extends ApplicationAdapter {
                         0,
                         this,
                         arenaMap,
-                        checkpointTargetActive,
-                        checkpointTargetPosition,
-                        secondCheckpointPosition,
-                        checkpointTargetRadius,
-                        targetTimeRemaining,
+                        template == null ? 0f : template.roundRaceLastRouteProgress,
                         externalControlDecision.throttle,
                         externalControlDecision.turn,
                         positionNormalizer,
@@ -8622,11 +8701,7 @@ public class RatassGame extends ApplicationAdapter {
             int offset,
             Car car,
             ArenaMap arenaMap,
-            boolean checkpointTargetActive,
-            Vector2 checkpointTargetPosition,
-            Vector2 secondCheckpointPosition,
-            float checkpointTargetRadius,
-            float targetTimeRemaining,
+            float referenceRouteProgress,
             float previousThrottle,
             float previousTurn,
             float positionNormalizer,
@@ -8647,118 +8722,54 @@ public class RatassGame extends ApplicationAdapter {
         observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
         observationSide.set(-observationForward.y, observationForward.x);
 
-        float targetDx = 0f;
-        float targetDy = 0f;
-        float targetDistance = 0f;
-        float targetForwardAlignment = 0f;
-        float targetSideAlignment = 0f;
-        float targetClearance = 1f;
-        float routeDx = 0f;
-        float routeDy = 0f;
-        float routeDistance = 0f;
-        float routeDistanceToTarget = 0f;
-        float routeForwardAlignment = 0f;
-        float routeSideAlignment = 0f;
-        float routeClearance = 1f;
-        float secondCheckpointDx = 0f;
-        float secondCheckpointDy = 0f;
-        float secondCheckpointDistance = 0f;
-        float secondCheckpointForwardAlignment = 0f;
-        float secondCheckpointSideAlignment = 0f;
-        boolean nearCheckpointTarget = false;
-        boolean routeActive = false;
+        float routeProgress = arenaMap.findRouteProgressNear(
+                position,
+                observationForward,
+                referenceRouteProgress);
+        float normalizedRouteProgress =
+                arenaMap.hasRoute()
+                        ? MathUtils.clamp(routeProgress / arenaMap.getRouteLength(), 0f, 1f)
+                        : 0f;
+        observationRouteTarget.set(0f, 1f);
+        arenaMap.findRouteTangent(routeProgress, observationRouteTarget);
+        float routeTangentForward =
+                MathUtils.clamp(observationRouteTarget.dot(observationForward), -1f, 1f);
+        float routeTangentSide =
+                MathUtils.clamp(observationRouteTarget.dot(observationSide), -1f, 1f);
 
-        if (checkpointTargetActive && checkpointTargetPosition != null && checkpointTargetRadius > 0f) {
-            targetDx = checkpointTargetPosition.x - position.x;
-            targetDy = checkpointTargetPosition.y - position.y;
-            targetDistance = (float) Math.sqrt(targetDx * targetDx + targetDy * targetDy);
-            nearCheckpointTarget = targetDistance <= checkpointTargetRadius;
-            routeDistanceToTarget =
-                    Math.max(
-                            0f,
-                            arenaMap.estimateDriveDistance(
-                                            position,
-                                            checkpointTargetPosition,
-                                            RL_ROUTE_MARGIN)
-                                    - checkpointTargetRadius);
-
-            if (targetDistance > 0.0001f) {
-                float targetUnitX = targetDx / targetDistance;
-                float targetUnitY = targetDy / targetDistance;
-                targetForwardAlignment =
+        float lookaheadDx = 0f;
+        float lookaheadDy = 0f;
+        float lookaheadDistance = 0f;
+        float lookaheadForwardAlignment = routeTangentForward;
+        float lookaheadSideAlignment = routeTangentSide;
+        float lookaheadClearance = 1f;
+        if (arenaMap.hasRoute()) {
+            arenaMap.findRoutePoint(routeProgress + RL_ROUTE_LOOKAHEAD_DISTANCE, observationRouteTarget);
+            lookaheadDx = observationRouteTarget.x - position.x;
+            lookaheadDy = observationRouteTarget.y - position.y;
+            lookaheadDistance = (float) Math.sqrt(lookaheadDx * lookaheadDx + lookaheadDy * lookaheadDy);
+            if (lookaheadDistance > 0.0001f) {
+                float lookaheadUnitX = lookaheadDx / lookaheadDistance;
+                float lookaheadUnitY = lookaheadDy / lookaheadDistance;
+                lookaheadForwardAlignment =
                         MathUtils.clamp(
-                                targetUnitX * observationForward.x
-                                        + targetUnitY * observationForward.y,
+                                lookaheadUnitX * observationForward.x
+                                        + lookaheadUnitY * observationForward.y,
                                 -1f,
                                 1f);
-                targetSideAlignment =
+                lookaheadSideAlignment =
                         MathUtils.clamp(
-                                targetUnitX * observationSide.x + targetUnitY * observationSide.y,
+                                lookaheadUnitX * observationSide.x
+                                        + lookaheadUnitY * observationSide.y,
                                 -1f,
                                 1f);
-                targetClearance =
+                lookaheadClearance =
                         sampleRlRayClearance(
                                 arenaMap,
                                 position,
-                                targetUnitX,
-                                targetUnitY,
-                                Math.max(0f, targetDistance - checkpointTargetRadius));
-            }
-
-            arenaMap.findDriveTarget(
-                    position,
-                    checkpointTargetPosition,
-                    RL_ROUTE_MARGIN,
-                    observationRouteTarget);
-            routeDx = observationRouteTarget.x - position.x;
-            routeDy = observationRouteTarget.y - position.y;
-            routeDistance = (float) Math.sqrt(routeDx * routeDx + routeDy * routeDy);
-            if (routeDistance > 0.0001f) {
-                routeActive = true;
-                float routeUnitX = routeDx / routeDistance;
-                float routeUnitY = routeDy / routeDistance;
-                routeForwardAlignment =
-                        MathUtils.clamp(
-                                routeUnitX * observationForward.x
-                                        + routeUnitY * observationForward.y,
-                                -1f,
-                                1f);
-                routeSideAlignment =
-                        MathUtils.clamp(
-                                routeUnitX * observationSide.x + routeUnitY * observationSide.y,
-                                -1f,
-                                1f);
-                routeClearance =
-                        sampleRlRayClearance(
-                                arenaMap,
-                                position,
-                                routeUnitX,
-                                routeUnitY,
-                                routeDistance);
-            }
-        }
-
-        if (secondCheckpointPosition != null) {
-            secondCheckpointDx = secondCheckpointPosition.x - position.x;
-            secondCheckpointDy = secondCheckpointPosition.y - position.y;
-            secondCheckpointDistance =
-                    (float)
-                            Math.sqrt(
-                                    secondCheckpointDx * secondCheckpointDx
-                                            + secondCheckpointDy * secondCheckpointDy);
-            if (secondCheckpointDistance > 0.0001f) {
-                float unitX = secondCheckpointDx / secondCheckpointDistance;
-                float unitY = secondCheckpointDy / secondCheckpointDistance;
-                secondCheckpointForwardAlignment =
-                        MathUtils.clamp(
-                                unitX * observationForward.x + unitY * observationForward.y,
-                                -1f,
-                                1f);
-                secondCheckpointSideAlignment =
-                        MathUtils.clamp(
-                                unitX * observationSide.x + unitY * observationSide.y,
-                                -1f,
-                                1f);
+                                lookaheadUnitX,
+                                lookaheadUnitY,
+                                lookaheadDistance);
             }
         }
 
@@ -8872,51 +8883,38 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
-        observations[offset] = normalizedRlValue(targetDx, positionNormalizer);
-        observations[offset + 1] = normalizedRlValue(targetDy, positionNormalizer);
-        observations[offset + 2] = MathUtils.clamp(targetDistance / positionNormalizer, 0f, 1f);
-        observations[offset + 3] = normalizedRlValue(routeDx, positionNormalizer);
-        observations[offset + 4] = normalizedRlValue(routeDy, positionNormalizer);
-        observations[offset + 5] = MathUtils.clamp(routeDistance / positionNormalizer, 0f, 1f);
-        observations[offset + 6] = routeForwardAlignment;
-        observations[offset + 7] = routeSideAlignment;
-        observations[offset + 8] = MathUtils.clamp(routeDistanceToTarget / positionNormalizer, 0f, 1f);
-        observations[offset + 9] = targetForwardAlignment;
-        observations[offset + 10] = targetSideAlignment;
-        observations[offset + 11] = nearCheckpointTarget ? 1f : 0f;
-        observations[offset + 12] = MathUtils.clamp(targetTimeRemaining, 0f, 1f);
-        observations[offset + 13] = normalizedRlValue(secondCheckpointDx, positionNormalizer);
-        observations[offset + 14] = normalizedRlValue(secondCheckpointDy, positionNormalizer);
+        observations[offset] = normalizedRouteProgress;
+        observations[offset + 1] = routeTangentForward;
+        observations[offset + 2] = routeTangentSide;
+        observations[offset + 3] = normalizedRlValue(lookaheadDx, positionNormalizer);
+        observations[offset + 4] = normalizedRlValue(lookaheadDy, positionNormalizer);
+        observations[offset + 5] = MathUtils.clamp(lookaheadDistance / positionNormalizer, 0f, 1f);
+        observations[offset + 6] = lookaheadForwardAlignment;
+        observations[offset + 7] = lookaheadSideAlignment;
+        observations[offset + 8] = lookaheadClearance;
+        observations[offset + 9] = speedSignal;
+        observations[offset + 10] = edgeClearance;
+        observations[offset + 11] = offRoad ? 1f : 0f;
+        observations[offset + 12] = MathUtils.clamp(offRoadDistance / positionNormalizer, 0f, 1f);
+        observations[offset + 13] = normalizedRlValue(forwardSpeed, maxForwardSpeed);
+        observations[offset + 14] = normalizedRlValue(lateralSpeed, maxForwardSpeed);
         observations[offset + 15] =
-                MathUtils.clamp(secondCheckpointDistance / positionNormalizer, 0f, 1f);
-        observations[offset + 16] = speedSignal;
-        observations[offset + 17] = edgeClearance;
-        observations[offset + 18] = offRoad ? 1f : 0f;
-        observations[offset + 19] = MathUtils.clamp(offRoadDistance / positionNormalizer, 0f, 1f);
-        observations[offset + 20] = normalizedRlValue(forwardSpeed, maxForwardSpeed);
-        observations[offset + 21] = normalizedRlValue(lateralSpeed, maxForwardSpeed);
-        observations[offset + 22] =
                 normalizedRlValue(car.body.getAngularVelocity(), RL_ANGULAR_VELOCITY_NORMALIZER);
-        observations[offset + 23] = MathUtils.clamp(previousThrottle, -1f, 1f);
-        observations[offset + 24] = MathUtils.clamp(previousTurn, -1f, 1f);
+        observations[offset + 16] = MathUtils.clamp(previousThrottle, -1f, 1f);
+        observations[offset + 17] = MathUtils.clamp(previousTurn, -1f, 1f);
         for (int i = 0; i < 6; i++) {
-            observations[offset + 25 + i] = carRayScratch[i];
+            observations[offset + 18 + i] = carRayScratch[i];
         }
-        observations[offset + 31] = nearestCarForward;
-        observations[offset + 32] = nearestCarSide;
-        observations[offset + 33] = nearestCarDistance;
-        observations[offset + 34] = nearestCarApproach;
-        observations[offset + 35] = nearestCarRelativeForwardSpeed;
-        observations[offset + 36] = routeClearance;
-        observations[offset + 37] = targetClearance;
-        observations[offset + 38] = routeActive ? 1f : 0f;
-        observations[offset + 39] = secondCheckpointForwardAlignment;
-        observations[offset + 40] = secondCheckpointSideAlignment;
-        observations[offset + 41] = leftRoadClearance;
-        observations[offset + 42] = rightRoadClearance;
-        observations[offset + 43] = frontRoadClearance;
-        observations[offset + 44] = frontLeftRoadClearance;
-        observations[offset + 45] = frontRightRoadClearance;
+        observations[offset + 24] = nearestCarForward;
+        observations[offset + 25] = nearestCarSide;
+        observations[offset + 26] = nearestCarDistance;
+        observations[offset + 27] = nearestCarApproach;
+        observations[offset + 28] = nearestCarRelativeForwardSpeed;
+        observations[offset + 29] = leftRoadClearance;
+        observations[offset + 30] = rightRoadClearance;
+        observations[offset + 31] = frontRoadClearance;
+        observations[offset + 32] = frontLeftRoadClearance;
+        observations[offset + 33] = frontRightRoadClearance;
     }
 
     private static float sampleRlRayClearance(
@@ -9075,9 +9073,7 @@ public class RatassGame extends ApplicationAdapter {
         public int fieldSize = RL_DEFAULT_FIELD_SIZE;
         public int actionRepeat = RL_DEFAULT_ACTION_REPEAT;
         public int maxActionSteps = RL_DEFAULT_MAX_ACTION_STEPS;
-        public int maxCheckpoints = RL_DEFAULT_MAX_CHECKPOINTS;
-        public float checkpointRadius = RL_DEFAULT_CHECKPOINT_RADIUS;
-        public float checkpointDeadlineSeconds = RL_DEFAULT_CHECKPOINT_DEADLINE_SECONDS;
+        public int routeTargets = RL_DEFAULT_ROUTE_TARGETS;
         public long seed = 1L;
         public boolean skipCountdown = true;
         public boolean raceMode = true;
@@ -9088,7 +9084,7 @@ public class RatassGame extends ApplicationAdapter {
         public float stepPenalty = RL_STEP_PENALTY;
         public float progressReward = RL_PROGRESS_REWARD;
         public float speedReward = RL_SPEED_REWARD;
-        public float checkpointReward = RL_CHECKPOINT_REWARD;
+        public float routeTargetReward = RL_ROUTE_TARGET_REWARD;
         public float steeringPenalty = RL_STEERING_PENALTY;
         public float reverseSpeedFreeEpsilon = RL_REVERSE_SPEED_FREE_EPSILON;
         public float reverseSpeedPenaltyPerUnit = RL_REVERSE_SPEED_PENALTY_PER_UNIT;
@@ -9126,18 +9122,8 @@ public class RatassGame extends ApplicationAdapter {
             return this;
         }
 
-        public RlTrainingConfig withMaxCheckpoints(int maxCheckpoints) {
-            this.maxCheckpoints = maxCheckpoints;
-            return this;
-        }
-
-        public RlTrainingConfig withCheckpointRadius(float checkpointRadius) {
-            this.checkpointRadius = checkpointRadius;
-            return this;
-        }
-
-        public RlTrainingConfig withCheckpointDeadlineSeconds(float checkpointDeadlineSeconds) {
-            this.checkpointDeadlineSeconds = checkpointDeadlineSeconds;
+        public RlTrainingConfig withRouteTargets(int routeTargets) {
+            this.routeTargets = routeTargets;
             return this;
         }
 
@@ -9191,8 +9177,8 @@ public class RatassGame extends ApplicationAdapter {
             return this;
         }
 
-        public RlTrainingConfig withCheckpointReward(float checkpointReward) {
-            this.checkpointReward = checkpointReward;
+        public RlTrainingConfig withRouteTargetReward(float routeTargetReward) {
+            this.routeTargetReward = routeTargetReward;
             return this;
         }
 
@@ -9242,8 +9228,8 @@ public class RatassGame extends ApplicationAdapter {
         public final String winnerLabel;
         public final String currentMapId;
         public final String currentMapName;
-        public final int[] checkpointsReached;
-        public final float[] progressTowardCheckpoint;
+        public final int[] routeTargetsReached;
+        public final float[] routeProgressDeltas;
         public final float[] debugTrace;
         public final String[] debugTraceNames;
 
@@ -9260,8 +9246,8 @@ public class RatassGame extends ApplicationAdapter {
                 String winnerLabel,
                 String currentMapId,
                 String currentMapName,
-                int[] checkpointsReached,
-                float[] progressTowardCheckpoint,
+                int[] routeTargetsReached,
+                float[] routeProgressDeltas,
                 float[] debugTrace,
                 String[] debugTraceNames) {
             this.observations = observations;
@@ -9276,8 +9262,8 @@ public class RatassGame extends ApplicationAdapter {
             this.winnerLabel = winnerLabel;
             this.currentMapId = currentMapId;
             this.currentMapName = currentMapName;
-            this.checkpointsReached = checkpointsReached;
-            this.progressTowardCheckpoint = progressTowardCheckpoint;
+            this.routeTargetsReached = routeTargetsReached;
+            this.routeProgressDeltas = routeProgressDeltas;
             this.debugTrace = debugTrace;
             this.debugTraceNames = debugTraceNames;
         }
@@ -9311,15 +9297,18 @@ public class RatassGame extends ApplicationAdapter {
         private final float[] previousActionTurn;
         private final float[] checkpointDeadlineTimers;
         private final float[] checkpointDeadlineDurations;
-        private final float[] progressTowardCheckpoint;
+        private final float[] routeProgressDeltas;
         private final float[] bestRaceRouteProgress;
+        private final float[] routeDistanceSinceLastTarget;
+        private final float[] routeCompletionTimeBonus;
         private final int[] raceNextCheckpointIndices;
         private final int[] raceTargetSequences;
+        private final int[] routeTargetStartActionSteps;
         private final float[] observationCarRays = new float[6];
-        private final int[] checkpointsReached;
+        private final int[] routeTargetsReached;
         private final int[] checkpointCrossRewardSequences;
         private final boolean[] checkpointCrossRewardEvents;
-        private final boolean[] checkpointCompleteEvents;
+        private final boolean[] routeTargetCompleteEvents;
         private final boolean[] checkpointTimeoutEvents;
         private final boolean[] raceCheckpointCrossEvents;
         private final boolean[] dones;
@@ -9355,14 +9344,17 @@ public class RatassGame extends ApplicationAdapter {
             previousActionTurn = new float[controlledAgentCount];
             checkpointDeadlineTimers = new float[controlledAgentCount];
             checkpointDeadlineDurations = new float[controlledAgentCount];
-            progressTowardCheckpoint = new float[controlledAgentCount];
+            routeProgressDeltas = new float[controlledAgentCount];
             bestRaceRouteProgress = new float[controlledAgentCount];
+            routeDistanceSinceLastTarget = new float[controlledAgentCount];
+            routeCompletionTimeBonus = new float[controlledAgentCount];
             raceNextCheckpointIndices = new int[controlledAgentCount];
             raceTargetSequences = new int[controlledAgentCount];
-            checkpointsReached = new int[controlledAgentCount];
+            routeTargetStartActionSteps = new int[controlledAgentCount];
+            routeTargetsReached = new int[controlledAgentCount];
             checkpointCrossRewardSequences = new int[controlledAgentCount];
             checkpointCrossRewardEvents = new boolean[controlledAgentCount];
-            checkpointCompleteEvents = new boolean[controlledAgentCount];
+            routeTargetCompleteEvents = new boolean[controlledAgentCount];
             checkpointTimeoutEvents = new boolean[controlledAgentCount];
             raceCheckpointCrossEvents = new boolean[controlledAgentCount];
             dones = new boolean[controlledAgentCount];
@@ -9415,7 +9407,7 @@ public class RatassGame extends ApplicationAdapter {
             episodeDone = false;
             clearEpisodeMetrics();
             clearRewards();
-            activateRaceCheckpointTarget(0);
+            game.checkpointTargetActive = false;
             resetCheckpointDeadlines();
             captureSnapshots(afterSnapshots);
             buildObservations();
@@ -9446,8 +9438,7 @@ public class RatassGame extends ApplicationAdapter {
             boolean maxStepsReached = !game.roundOver && actionStep >= getMaxActionSteps();
 
             captureSnapshots(afterSnapshots);
-            updateCheckpointDeadlines(repeats * PHYSICS_STEP);
-            updateCheckpointProgress(repeats * PHYSICS_STEP);
+            updateRouteProgress();
             episodeDone = maxStepsReached || game.roundOver || hasCompletedTrainingRace();
             computeRewards();
             buildObservations();
@@ -9489,25 +9480,33 @@ public class RatassGame extends ApplicationAdapter {
                     : config.maxActionSteps;
         }
 
-        private int getMaxCheckpoints() {
-            if (config.raceMode && config.maxCheckpoints < 0 && game.currentMap != null) {
-                return Math.max(1, game.currentMap.getCheckpointCount());
+        private int getRequiredRouteTargets() {
+            if (config.raceMode && config.routeTargets < 0) {
+                return 1;
             }
-            if (config.raceMode && config.maxCheckpoints == 0 && game.currentMap != null) {
-                return Math.max(1, game.currentMap.getCheckpointCount() * game.getRaceLapsToWin());
+            if (config.raceMode && config.routeTargets == 0) {
+                return Math.max(1, game.getRaceLapsToWin());
             }
-            return config.maxCheckpoints <= 0 ? RL_DEFAULT_MAX_CHECKPOINTS : config.maxCheckpoints;
+            return config.routeTargets <= 0 ? RL_DEFAULT_ROUTE_TARGETS : config.routeTargets;
+        }
+
+        private float getRouteTargetDistance() {
+            if (game.currentMap == null || !game.currentMap.hasRoute()) {
+                return 0f;
+            }
+            float routeLength = game.currentMap.getRouteLength();
+            if (config.routeTargets > 0 && config.randomRaceSpawns) {
+                return routeLength / RL_ROUTE_TRAINING_CHUNKS_PER_LAP;
+            }
+            return routeLength;
         }
 
         private float getBaseCheckpointDeadlineSeconds() {
-            if (config.checkpointDeadlineSeconds > 0f) {
-                return Math.max(PHYSICS_STEP, config.checkpointDeadlineSeconds);
-            }
             float episodeSeconds =
                     getMaxActionSteps()
                             * Math.max(1, config.actionRepeat)
                             * PHYSICS_STEP;
-            float perCheckpointSeconds = episodeSeconds / Math.max(1, getMaxCheckpoints());
+            float perCheckpointSeconds = episodeSeconds / Math.max(1, getRequiredRouteTargets());
             return Math.max(RACE_CHECKPOINT_DEFAULT_DEADLINE, perCheckpointSeconds * 0.85f);
         }
 
@@ -9594,14 +9593,20 @@ public class RatassGame extends ApplicationAdapter {
 
         private void resetRaceRouteProgressBaseline(int agentIndex) {
             Car car = getControlledCar(agentIndex);
-            bestRaceRouteProgress[agentIndex] =
-                    car != null && car.active && car.body != null
-                            ? getOrderedRaceRouteProgress(agentIndex, car.body.getPosition())
-                            : 0f;
+            if (car != null && car.active && car.body != null && game.currentMap != null) {
+                observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
+                bestRaceRouteProgress[agentIndex] =
+                        game.currentMap.findRouteProgressNear(
+                                car.body.getPosition(),
+                                observationForward,
+                                bestRaceRouteProgress[agentIndex]);
+            } else {
+                bestRaceRouteProgress[agentIndex] = 0f;
+            }
         }
 
         private float getRaceTargetRadius() {
-            return Math.max(RACE_CHECKPOINT_MIN_RADIUS, config.checkpointRadius);
+            return Math.max(RACE_CHECKPOINT_MIN_RADIUS, RACE_CHECKPOINT_RADIUS);
         }
 
         private SpawnPoint getRaceCheckpoint(int agentIndex) {
@@ -9722,47 +9727,14 @@ public class RatassGame extends ApplicationAdapter {
             snapshot.wallContact = car.hasRecentArenaWallContact();
             snapshot.carHitCount = car.getCarHitCount();
             snapshot.angularSpeed = Math.abs(car.body.getAngularVelocity());
-            snapshot.effectiveThrottle = car.externalControlDecision.throttle;
-            boolean targetActive = game.checkpointTargetActive;
-            Vector2 targetPosition = game.checkpointTargetPosition;
-            float checkpointRadius = game.checkpointTargetRadius;
-            int targetSequence = game.checkpointTargetSequence;
-            if (config.raceMode && getRaceCheckpointTarget(agentIndex, snapshotTargetPosition)) {
-                targetActive = true;
-                targetPosition = snapshotTargetPosition;
-                checkpointRadius = getRaceTargetRadius();
-                targetSequence = raceTargetSequences[agentIndex];
-            }
-            if (targetActive) {
-                snapshot.checkpointTargetActive = true;
-                snapshot.checkpointTargetSequence = targetSequence;
-                snapshot.checkpointTargetRadius = checkpointRadius;
-                float checkpointTargetDistance = position.dst(targetPosition);
-                SpawnPoint raceCheckpoint = config.raceMode ? getRaceCheckpoint(agentIndex) : null;
-                snapshot.checkpointTargetInside =
-                        raceCheckpoint != null && raceCheckpoint.hasGate
-                                ? game.isNearRaceCheckpointGate(
-                                        position,
-                                        raceCheckpoint,
-                                        RACE_CHECKPOINT_GATE_MARGIN)
-                                : checkpointRadius - checkpointTargetDistance >= 0f;
-                if (checkpointTargetDistance > 0.0001f) {
-                    snapshot.checkpointRouteDistance =
-                            Math.max(
-                                    0f,
-                                    game.currentMap.estimateDriveDistance(
-                                                    position,
-                                                    targetPosition,
-                                            RL_ROUTE_MARGIN)
-                                            - checkpointRadius);
-                }
-                if (config.raceMode) {
-                    snapshot.raceRouteProgress = getOrderedRaceRouteProgress(agentIndex, position);
-                    snapshot.routeForwardSpeed =
-                            getRouteForwardSpeed(position, targetPosition, velocity);
-                }
-            }
             observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
+            snapshot.effectiveThrottle = car.externalControlDecision.throttle;
+            snapshot.raceRouteProgress =
+                    game.currentMap.findRouteProgressNear(
+                            position,
+                            observationForward,
+                            bestRaceRouteProgress[agentIndex]);
+            snapshot.routeForwardSpeed = getRouteForwardSpeed(position, velocity, observationForward);
             observationSide.set(-observationForward.y, observationForward.x);
             game.currentMap.findRecoveryPoint(position, observationRecovery);
             observationRecovery.sub(position);
@@ -9772,55 +9744,17 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
-        private float getOrderedRaceRouteProgress(int agentIndex, Vector2 position) {
+        private float getRouteForwardSpeed(
+                Vector2 position,
+                Vector2 velocity,
+                Vector2 preferredDirection) {
             if (game.currentMap == null
                     || position == null
-                    || game.currentMap.getCheckpointCount() <= 1) {
+                    || velocity == null
+                    || !game.currentMap.hasRoute()) {
                 return 0f;
             }
-
-            int checkpointIndex = getRaceCheckpointIndex(agentIndex);
-            if (checkpointIndex < 0) {
-                return 0f;
-            }
-
-            int checkpointCount = game.currentMap.getCheckpointCount();
-            SpawnPoint target = game.currentMap.getCheckpoint(checkpointIndex);
-            SpawnPoint previous =
-                    game.currentMap.getCheckpoint((checkpointIndex + checkpointCount - 1) % checkpointCount);
-            raceProgressPreviousPosition.set(previous.x, previous.y);
-            raceProgressTargetPosition.set(target.x, target.y);
-            float segmentDistance =
-                    game.currentMap.estimateDriveDistance(
-                            raceProgressPreviousPosition,
-                            raceProgressTargetPosition,
-                            RL_ROUTE_MARGIN);
-            float remainingDistance =
-                    game.currentMap.estimateDriveDistance(
-                            position,
-                            raceProgressTargetPosition,
-                            RL_ROUTE_MARGIN);
-            return segmentDistance - remainingDistance;
-        }
-
-        private float getRouteForwardSpeed(Vector2 position, Vector2 targetPosition, Vector2 velocity) {
-            if (game.currentMap == null
-                    || position == null
-                    || targetPosition == null
-                    || velocity == null) {
-                return 0f;
-            }
-            game.currentMap.findDriveTarget(
-                    position,
-                    targetPosition,
-                    RL_ROUTE_MARGIN,
-                    observationRouteTarget);
-            observationRouteTarget.sub(position);
-            float routeDistance = observationRouteTarget.len();
-            if (routeDistance <= 0.0001f) {
-                return 0f;
-            }
-            observationRouteTarget.scl(1f / routeDistance);
+            game.currentMap.findRouteTangentAt(position, preferredDirection, observationRouteTarget);
             return observationRouteTarget.dot(velocity);
         }
 
@@ -9838,9 +9772,10 @@ public class RatassGame extends ApplicationAdapter {
 
         private void clearStepEvents() {
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
-                progressTowardCheckpoint[agentIndex] = 0f;
+                routeProgressDeltas[agentIndex] = 0f;
+                routeCompletionTimeBonus[agentIndex] = 0f;
                 checkpointCrossRewardEvents[agentIndex] = false;
-                checkpointCompleteEvents[agentIndex] = false;
+                routeTargetCompleteEvents[agentIndex] = false;
                 checkpointTimeoutEvents[agentIndex] = false;
                 raceCheckpointCrossEvents[agentIndex] = false;
             }
@@ -9873,46 +9808,42 @@ public class RatassGame extends ApplicationAdapter {
             game.checkpointDeadlineTimer = maxRemaining;
         }
 
-        private void updateCheckpointProgress(float elapsedSeconds) {
-            boolean raceTargetAdvanced = false;
+        private void updateRouteProgress() {
+            if (game.currentMap == null || !game.currentMap.hasRoute()) {
+                return;
+            }
+            float routeTargetDistance = getRouteTargetDistance();
+            if (routeTargetDistance <= 0.001f) {
+                return;
+            }
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
                 RlAgentSnapshot before = beforeSnapshots[agentIndex];
                 RlAgentSnapshot after = afterSnapshots[agentIndex];
-                if (!before.active || !after.active || !after.checkpointTargetActive) {
+                if (!before.active || !after.active) {
                     continue;
                 }
-                boolean checkpointSatisfied = false;
 
-                if (before.checkpointTargetActive
-                        && before.checkpointTargetSequence == after.checkpointTargetSequence) {
-                    float newProgress =
-                            after.raceRouteProgress - bestRaceRouteProgress[agentIndex];
-                    if (newProgress > 0f) {
-                        progressTowardCheckpoint[agentIndex] = newProgress;
-                        bestRaceRouteProgress[agentIndex] = after.raceRouteProgress;
-                    }
+                if (after.offRoad) {
+                    routeProgressDeltas[agentIndex] = 0f;
+                    continue;
                 }
 
-                if (raceCheckpointCrossEvents[agentIndex]) {
-                    if (checkpointCrossRewardSequences[agentIndex] != after.checkpointTargetSequence) {
-                        checkpointCrossRewardSequences[agentIndex] = after.checkpointTargetSequence;
-                        checkpointCrossRewardEvents[agentIndex] = true;
-                    }
-                    checkpointSatisfied = true;
+                float delta =
+                        game.currentMap.routeProgressDelta(
+                                before.raceRouteProgress,
+                                after.raceRouteProgress);
+                routeProgressDeltas[agentIndex] = delta;
+                routeDistanceSinceLastTarget[agentIndex] =
+                        Math.max(0f, routeDistanceSinceLastTarget[agentIndex] + delta);
+                bestRaceRouteProgress[agentIndex] = after.raceRouteProgress;
+                while (routeDistanceSinceLastTarget[agentIndex] >= routeTargetDistance) {
+                    routeDistanceSinceLastTarget[agentIndex] -= routeTargetDistance;
+                    routeTargetsReached[agentIndex]++;
+                    routeTargetCompleteEvents[agentIndex] = true;
+                    raceTargetSequences[agentIndex]++;
+                    routeCompletionTimeBonus[agentIndex] += getRouteCompletionTimeBonus(agentIndex);
+                    routeTargetStartActionSteps[agentIndex] = actionStep;
                 }
-
-                if (checkpointSatisfied) {
-                    checkpointsReached[agentIndex]++;
-                    checkpointCompleteEvents[agentIndex] = true;
-                    advanceRaceCheckpoint(agentIndex);
-                    resetCheckpointDeadline(agentIndex);
-                    raceTargetAdvanced = true;
-                }
-            }
-
-            if (raceTargetAdvanced && !hasCompletedTrainingRace()) {
-                activateRaceCheckpointTarget(0);
-                updateGameCheckpointDeadlineTimer();
             }
         }
 
@@ -9937,7 +9868,7 @@ public class RatassGame extends ApplicationAdapter {
                     }
                     reward += recordReward(
                             agentIndex,
-                            RL_REWARD_CHECKPOINT,
+                            RL_REWARD_ROUTE_PROGRESS,
                             getProgressReward(agentIndex, after));
                     reward += recordReward(
                             agentIndex,
@@ -9951,11 +9882,11 @@ public class RatassGame extends ApplicationAdapter {
                             agentIndex,
                             RL_REWARD_CAR_PUSH,
                             -getCarPushPenalty(before, after));
-                    if (checkpointCompleteEvents[agentIndex]) {
+                    if (routeTargetCompleteEvents[agentIndex]) {
                         reward += recordReward(
                                 agentIndex,
-                                RL_REWARD_CHECKPOINT,
-                                config.checkpointReward);
+                                RL_REWARD_ROUTE_PROGRESS,
+                                config.routeTargetReward + routeCompletionTimeBonus[agentIndex]);
                     }
                 }
 
@@ -9989,14 +9920,35 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private float getProgressReward(int agentIndex, RlAgentSnapshot after) {
-            if (after.signedForwardSpeed < RACE_CHECKPOINT_MIN_FORWARD_CROSS_SPEED) {
+            if (after.offRoad) {
                 return 0f;
             }
-            float progress = MathUtils.clamp(progressTowardCheckpoint[agentIndex], 0f, 1.50f);
+            if (Math.abs(after.routeForwardSpeed) < RACE_CHECKPOINT_MIN_FORWARD_CROSS_SPEED) {
+                return 0f;
+            }
+            if (after.routeForwardSpeed > 0f
+                    && after.signedForwardSpeed < RACE_CHECKPOINT_MIN_FORWARD_CROSS_SPEED) {
+                return 0f;
+            }
+            float progress = MathUtils.clamp(routeProgressDeltas[agentIndex], -1.50f, 1.50f);
             return progress * config.progressReward;
         }
 
+        private float getRouteCompletionTimeBonus(int agentIndex) {
+            int elapsedActions = Math.max(1, actionStep - routeTargetStartActionSteps[agentIndex]);
+            float expectedActions = getMaxActionSteps() / (float) Math.max(1, getRequiredRouteTargets());
+            float efficiency =
+                    MathUtils.clamp(
+                            (expectedActions - elapsedActions) / Math.max(1f, expectedActions),
+                            0f,
+                            1f);
+            return config.routeTargetReward * RL_ROUTE_COMPLETION_TIME_BONUS_MULTIPLIER * efficiency;
+        }
+
         private float getSpeedReward(RlAgentSnapshot snapshot) {
+            if (snapshot.offRoad) {
+                return 0f;
+            }
             return MathUtils.clamp(snapshot.forwardSpeedSignal, 0f, 1f) * config.speedReward;
         }
 
@@ -10033,34 +9985,12 @@ public class RatassGame extends ApplicationAdapter {
                             observationFocus);
 
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
-                float targetTimeRemaining =
-                        MathUtils.clamp(
-                                checkpointDeadlineTimers[agentIndex]
-                                        / Math.max(0.001f, checkpointDeadlineDurations[agentIndex]),
-                                0f,
-                                1f);
-                boolean targetActive = game.checkpointTargetActive;
-                Vector2 targetPosition = game.checkpointTargetPosition;
-                float checkpointRadius = game.checkpointTargetRadius;
-                Vector2 secondCheckpoint = null;
-                if (config.raceMode && getRaceCheckpointTarget(agentIndex, observationTargetPosition)) {
-                    targetActive = true;
-                    targetPosition = observationTargetPosition;
-                    checkpointRadius = getRaceTargetRadius();
-                }
-                if (config.raceMode && getSecondRaceCheckpointTarget(agentIndex, observationSecondCheckpoint)) {
-                    secondCheckpoint = observationSecondCheckpoint;
-                }
                 fillRlObservation(
                         observations,
                         agentIndex * RL_OBSERVATION_SIZE,
                         getControlledCar(agentIndex),
                         game.currentMap,
-                        targetActive,
-                        targetPosition,
-                        secondCheckpoint,
-                        checkpointRadius,
-                        targetTimeRemaining,
+                        bestRaceRouteProgress[agentIndex],
                         currentActionThrottle[agentIndex],
                         currentActionTurn[agentIndex],
                         positionNormalizer,
@@ -10084,19 +10014,19 @@ public class RatassGame extends ApplicationAdapter {
 
         private int getWinnerAgentIndex() {
             int bestAgentIndex = -1;
-            int bestCheckpointsReached = 0;
+            int bestRouteTargetsReached = 0;
             for (int i = 0; i < getControlledAgentCount(); i++) {
-                if (checkpointsReached[i] > bestCheckpointsReached) {
-                    bestCheckpointsReached = checkpointsReached[i];
+                if (routeTargetsReached[i] > bestRouteTargetsReached) {
+                    bestRouteTargetsReached = routeTargetsReached[i];
                     bestAgentIndex = i;
                 }
             }
-            return bestCheckpointsReached >= getMaxCheckpoints() ? bestAgentIndex : -1;
+            return bestRouteTargetsReached >= getRequiredRouteTargets() ? bestAgentIndex : -1;
         }
 
         private boolean hasCompletedTrainingRace() {
             for (int i = 0; i < getControlledAgentCount(); i++) {
-                if (checkpointsReached[i] >= getMaxCheckpoints()) {
+                if (routeTargetsReached[i] >= getRequiredRouteTargets()) {
                     return true;
                 }
             }
@@ -10156,13 +10086,16 @@ public class RatassGame extends ApplicationAdapter {
                 float deadline = getCheckpointDeadlineSeconds(i);
                 checkpointDeadlineTimers[i] = deadline;
                 checkpointDeadlineDurations[i] = deadline;
-                progressTowardCheckpoint[i] = 0f;
+                routeProgressDeltas[i] = 0f;
+                routeDistanceSinceLastTarget[i] = 0f;
+                routeCompletionTimeBonus[i] = 0f;
+                routeTargetStartActionSteps[i] = 0;
                 raceTargetSequences[i] = 0;
                 resetRaceRouteProgressBaseline(i);
-                checkpointsReached[i] = 0;
+                routeTargetsReached[i] = 0;
                 checkpointCrossRewardSequences[i] = -1;
                 checkpointCrossRewardEvents[i] = false;
-                checkpointCompleteEvents[i] = false;
+                routeTargetCompleteEvents[i] = false;
                 checkpointTimeoutEvents[i] = false;
                 raceCheckpointCrossEvents[i] = false;
             }
@@ -10178,11 +10111,11 @@ public class RatassGame extends ApplicationAdapter {
             float[] effectiveActionCopy =
                     config.stepDetailsEnabled ? new float[effectiveActions.length] : new float[0];
             boolean[] doneCopy = config.stepDetailsEnabled ? new boolean[dones.length] : new boolean[0];
-            int[] checkpointsReachedCopy =
-                    config.stepDetailsEnabled ? new int[checkpointsReached.length] : new int[0];
-            float[] progressTowardCheckpointCopy =
+            int[] routeTargetsReachedCopy =
+                    config.stepDetailsEnabled ? new int[routeTargetsReached.length] : new int[0];
+            float[] routeProgressDeltasCopy =
                     config.stepDetailsEnabled
-                            ? new float[progressTowardCheckpoint.length]
+                            ? new float[routeProgressDeltas.length]
                             : new float[0];
             float[] debugTraceCopy =
                     config.debugTraceEnabled
@@ -10205,17 +10138,17 @@ public class RatassGame extends ApplicationAdapter {
                 System.arraycopy(effectiveActions, 0, effectiveActionCopy, 0, effectiveActions.length);
                 System.arraycopy(dones, 0, doneCopy, 0, dones.length);
                 System.arraycopy(
-                        checkpointsReached,
+                        routeTargetsReached,
                         0,
-                        checkpointsReachedCopy,
+                        routeTargetsReachedCopy,
                         0,
-                        checkpointsReached.length);
+                        routeTargetsReached.length);
                 System.arraycopy(
-                        progressTowardCheckpoint,
+                        routeProgressDeltas,
                         0,
-                        progressTowardCheckpointCopy,
+                        routeProgressDeltasCopy,
                         0,
-                        progressTowardCheckpoint.length);
+                        routeProgressDeltas.length);
             }
             if (config.debugTraceEnabled) {
                 buildDebugTrace(debugTraceCopy);
@@ -10233,8 +10166,8 @@ public class RatassGame extends ApplicationAdapter {
                     config.stepDetailsEnabled ? getWinnerLabel() : "",
                     config.stepDetailsEnabled ? getCurrentMapId() : "",
                     config.stepDetailsEnabled ? getCurrentMapName() : "",
-                    checkpointsReachedCopy,
-                    progressTowardCheckpointCopy,
+                    routeTargetsReachedCopy,
+                    routeProgressDeltasCopy,
                     debugTraceCopy,
                     config.debugTraceEnabled ? RL_DEBUG_TRACE_NAMES : new String[0]);
         }
@@ -10247,27 +10180,9 @@ public class RatassGame extends ApplicationAdapter {
 
             Vector2 forward = new Vector2();
             Vector2 side = new Vector2();
-            Vector2 routeTarget = new Vector2();
-            Vector2 checkpointPosition = new Vector2();
+            Vector2 routeTangent = new Vector2();
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
                 int offset = agentIndex * RL_DEBUG_TRACE_SIZE;
-                out[offset + 34] =
-                        agentIndex < checkpointDeadlineTimers.length
-                                ? checkpointDeadlineTimers[agentIndex]
-                                : 0f;
-                out[offset + 35] =
-                        agentIndex < checkpointDeadlineDurations.length
-                                ? checkpointDeadlineDurations[agentIndex]
-                                : 0f;
-                out[offset + 36] =
-                        agentIndex < checkpointsReached.length ? checkpointsReached[agentIndex] : 0f;
-                out[offset + 37] = getMaxCheckpoints();
-                out[offset + 38] =
-                        agentIndex < checkpointTimeoutEvents.length
-                                        && checkpointTimeoutEvents[agentIndex]
-                                ? 1f
-                                : 0f;
-                out[offset + 39] = episodeDone ? 1f : 0f;
                 Car car = getControlledCar(agentIndex);
                 if (car == null || !car.active || car.body == null) {
                     continue;
@@ -10277,48 +10192,12 @@ public class RatassGame extends ApplicationAdapter {
                 Vector2 velocity = car.body.getLinearVelocity();
                 forward.set(car.body.getWorldVector(forward.set(0f, 1f)));
                 side.set(-forward.y, forward.x);
-                SpawnPoint checkpoint = getRaceCheckpoint(agentIndex);
-                int checkpointIndex = getRaceCheckpointIndex(agentIndex);
-                int secondCheckpointIndex = getSecondRaceCheckpointIndex(agentIndex);
-                float targetRouteDistance = 0f;
-                float routeClearance = 1f;
-                if (checkpoint != null) {
-                    checkpointPosition.set(checkpoint.x, checkpoint.y);
-                    targetRouteDistance =
-                            Math.max(
-                                    0f,
-                                    game.currentMap.estimateDriveDistance(
-                                                    position,
-                                                    checkpointPosition,
-                                                    RL_ROUTE_MARGIN)
-                                            - getRaceTargetRadius());
-                    game.currentMap.findDriveTarget(
-                            position,
-                            checkpointPosition,
-                            RL_ROUTE_MARGIN,
-                            routeTarget);
-                    float routeDx = routeTarget.x - position.x;
-                    float routeDy = routeTarget.y - position.y;
-                    float routeDistance = (float) Math.sqrt(routeDx * routeDx + routeDy * routeDy);
-                    if (routeDistance > 0.0001f) {
-                        routeClearance =
-                                sampleRlRayClearance(
-                                        game.currentMap,
-                                        position,
-                                        routeDx / routeDistance,
-                                        routeDy / routeDistance,
-                                        routeDistance);
-                    }
-                } else {
-                    checkpointPosition.setZero();
-                    routeTarget.set(position);
-                }
-
-                SpawnPoint secondCheckpoint =
-                        secondCheckpointIndex >= 0
-                                && game.currentMap.getCheckpointCount() > 0
-                                ? game.currentMap.getCheckpoint(secondCheckpointIndex)
-                                : null;
+                float routeProgress =
+                        game.currentMap.findRouteProgressNear(
+                                position,
+                                forward,
+                                bestRaceRouteProgress[agentIndex]);
+                game.currentMap.findRouteTangent(routeProgress, routeTangent);
                 out[offset] = 1f;
                 out[offset + 1] = position.x;
                 out[offset + 2] = position.y;
@@ -10326,67 +10205,30 @@ public class RatassGame extends ApplicationAdapter {
                 out[offset + 4] = velocity.len();
                 out[offset + 5] = forward.dot(velocity);
                 out[offset + 6] = side.dot(velocity);
-                out[offset + 7] = checkpointIndex;
-                out[offset + 8] = raceTargetSequences[agentIndex];
-                out[offset + 9] = checkpoint == null ? 0f : checkpoint.x;
-                out[offset + 10] = checkpoint == null ? 0f : checkpoint.y;
-                out[offset + 11] = checkpoint != null && checkpoint.hasGate ? 1f : 0f;
-                out[offset + 12] = checkpoint == null ? 0f : checkpoint.gateStartX;
-                out[offset + 13] = checkpoint == null ? 0f : checkpoint.gateStartY;
-                out[offset + 14] = checkpoint == null ? 0f : checkpoint.gateEndX;
-                out[offset + 15] = checkpoint == null ? 0f : checkpoint.gateEndY;
-                out[offset + 16] =
-                        checkpoint != null && game.currentMap.supports(checkpoint.x, checkpoint.y)
-                                ? 1f
+                out[offset + 7] = routeProgress;
+                out[offset + 8] =
+                        game.currentMap.hasRoute()
+                                ? routeProgress / Math.max(0.001f, game.currentMap.getRouteLength())
                                 : 0f;
-                out[offset + 17] =
-                        checkpoint == null
-                                ? 0f
-                                : game.currentMap.approximateDistanceToHazard(checkpoint.x, checkpoint.y);
-                out[offset + 18] = targetRouteDistance;
-                out[offset + 19] = progressTowardCheckpoint[agentIndex];
-                out[offset + 20] = routeTarget.x;
-                out[offset + 21] = routeTarget.y;
-                out[offset + 22] = game.currentMap.supports(routeTarget) ? 1f : 0f;
-                out[offset + 23] = game.currentMap.approximateDistanceToHazard(routeTarget);
-                out[offset + 24] = routeClearance;
-                out[offset + 25] = secondCheckpointIndex;
-                out[offset + 26] = secondCheckpoint == null ? 0f : secondCheckpoint.x;
-                out[offset + 27] = secondCheckpoint == null ? 0f : secondCheckpoint.y;
-                out[offset + 28] =
-                        secondCheckpoint != null
-                                        && game.currentMap.supports(
-                                                secondCheckpoint.x,
-                                                secondCheckpoint.y)
-                                ? 1f
-                                : 0f;
-                out[offset + 29] = game.currentMap.supports(position) ? 0f : 1f;
-                out[offset + 30] = game.currentMap.distanceToSafety(position);
-                out[offset + 31] = game.currentMap.approximateDistanceToHazard(position);
+                out[offset + 9] = routeTangent.x;
+                out[offset + 10] = routeTangent.y;
+                out[offset + 11] = routeTangent.dot(velocity);
+                out[offset + 12] = routeProgressDeltas[agentIndex];
+                out[offset + 13] = routeDistanceSinceLastTarget[agentIndex];
+                out[offset + 14] = getRouteTargetDistance();
+                out[offset + 15] = routeTargetsReached[agentIndex];
+                out[offset + 16] = getRequiredRouteTargets();
+                out[offset + 17] = game.currentMap.supports(position) ? 0f : 1f;
+                out[offset + 18] = game.currentMap.distanceToSafety(position);
+                out[offset + 19] = game.currentMap.approximateDistanceToHazard(position);
                 int actionOffset = agentIndex * RL_ACTION_SIZE;
-                out[offset + 32] =
+                out[offset + 20] =
                         actionOffset < effectiveActions.length ? effectiveActions[actionOffset] : 0f;
-                out[offset + 33] =
+                out[offset + 21] =
                         actionOffset + 1 < effectiveActions.length
                                 ? effectiveActions[actionOffset + 1]
                                 : 0f;
-                out[offset + 34] =
-                        agentIndex < checkpointDeadlineTimers.length
-                                ? checkpointDeadlineTimers[agentIndex]
-                                : 0f;
-                out[offset + 35] =
-                        agentIndex < checkpointDeadlineDurations.length
-                                ? checkpointDeadlineDurations[agentIndex]
-                                : 0f;
-                out[offset + 36] =
-                        agentIndex < checkpointsReached.length ? checkpointsReached[agentIndex] : 0f;
-                out[offset + 37] = getMaxCheckpoints();
-                out[offset + 38] =
-                        agentIndex < checkpointTimeoutEvents.length
-                                        && checkpointTimeoutEvents[agentIndex]
-                                ? 1f
-                                : 0f;
-                out[offset + 39] = episodeDone ? 1f : 0f;
+                out[offset + 22] = episodeDone ? 1f : 0f;
             }
         }
 
@@ -10491,6 +10333,8 @@ public class RatassGame extends ApplicationAdapter {
         private int roundRaceStartCheckpointIndex;
         private int roundRaceNextCheckpointIndex;
         private int roundRaceCheckpointsCompleted;
+        private float roundRaceLastRouteProgress;
+        private float roundRaceDistanceThisLap;
         private float roundRaceFinishTime;
         private float roundRaceCurrentLapStartTime;
         private float roundRaceBestLapTime;

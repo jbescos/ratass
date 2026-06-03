@@ -11,24 +11,25 @@ Common properties:
 
 ```bash
 # Network body; input/output sizes are fixed by the game.
-RL_HIDDEN_SIZE=1024
+RL_HIDDEN_SIZE=256
 RL_HIDDEN_LAYERS=2
 RL_HIDDEN_ACTIVATION=tanh
 RL_LR=3e-4
 RL_GAMMA=0.995
 
-# Checkpoint curriculum for single-car learning.
-RL_STAGE_CHECKPOINTS=1,2,3,lap
+# Route curriculum for single-car learning. Percentages are fractions of a lap;
+# lap_easy is a full-lap stage on route-only easy masks.
+RL_STAGE_ROUTE_TARGETS=25%,50%,75%,lap_easy,lap
 
 # Optional multi-car curriculum. Stages above 1 car train lap-only with the
-# fixed grid; checkpoint stages are always single-car.
+# fixed grid; route-target stages are always single-car.
 RL_TRAINING_CAR_STAGES=1,2
-RL_TRAINING_CAR_ITERATIONS=430,150
+RL_TRAINING_CAR_ITERATIONS=530,150
 RL_TRAINING_CAR_MAX_CYCLES=1,1
 
 # Rewards.
 RL_REWARD_PROGRESS=1.60
-RL_REWARD_CHECKPOINT=30.0
+RL_REWARD_ROUTE_TARGET=30.0
 RL_REWARD_OFF_ROAD_PENALTY=0.80
 RL_REWARD_CAR_PUSH_PENALTY=3.0
 RL_REWARD_STEERING_PENALTY=0.010

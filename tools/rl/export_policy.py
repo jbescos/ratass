@@ -16,7 +16,7 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
 DEFAULT_OUTPUT = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
-OBSERVATION_SIZE = 46
+OBSERVATION_SIZE = 34
 ACTION_SIZE = 2
 
 ACTOR_LAYERS = (
@@ -107,7 +107,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint-dir", default=os.fspath(DEFAULT_CHECKPOINT))
     parser.add_argument("--output", default=os.fspath(DEFAULT_OUTPUT))
-    parser.add_argument("--objective", default="race-checkpoints-v1")
+    parser.add_argument("--objective", default="race-route-progress-v1")
     return parser.parse_args()
 
 
