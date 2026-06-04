@@ -22,4 +22,4 @@ echo "python=${PYTHON_BIN}"
 java -version
 mvn -version
 
-exec bash tools/rl/train.sh "$@"
+exec env RL_DETACH=0 bash tools/rl/train.sh "$@"

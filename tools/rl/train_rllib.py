@@ -38,7 +38,7 @@ from export_policy import export_policy as export_checkpoint_policy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
-OBSERVATION_SIZE = 34
+OBSERVATION_SIZE = 29
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
@@ -243,6 +243,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withActionRepeat(int(env_config.get("action_repeat", 4)))
         training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 6400)))
         training_config.withRouteTargets(int(env_config.get("route_targets", 6)))
+        training_config.withRouteTargetFraction(float(env_config.get("route_target_fraction", 0.0)))
         training_config.withRaceMode(True)
         training_config.withRandomRaceSpawns(bool(env_config.get("random_race_spawns", False)))
         base_seed = int(env_config.get("seed", 1))
@@ -250,8 +251,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         vector_index = int(getattr(env_config, "vector_index", 0) or 0)
         training_config.withSeed(base_seed + worker_index * 1_000_003 + vector_index * 10_007)
         training_config.withStepPenalty(float(env_config.get("reward_step_penalty", 0.006)))
-        training_config.withProgressReward(float(env_config.get("reward_progress", 1.60)))
-        training_config.withSpeedReward(float(env_config.get("reward_speed", 0.020)))
+        training_config.withProgressReward(float(env_config.get("reward_progress", 0.25)))
         training_config.withRouteTargetReward(float(env_config.get("reward_route_target", 30.0)))
         training_config.withSteeringPenalty(float(env_config.get("reward_steering_penalty", 0.010)))
         training_config.withReverseSpeedPenalty(
@@ -502,6 +502,7 @@ def build_algorithm(args):
         "action_repeat": args.action_repeat,
         "max_action_steps": args.max_action_steps,
         "route_targets": args.route_targets,
+        "route_target_fraction": args.route_target_fraction,
         "random_race_spawns": args.random_race_spawns,
         "seed": args.seed,
         "map_ids": args.map_ids,
@@ -509,7 +510,6 @@ def build_algorithm(args):
         "reward_summary": not args.no_reward_summary,
         "reward_step_penalty": args.reward_step_penalty,
         "reward_progress": args.reward_progress,
-        "reward_speed": args.reward_speed,
         "reward_route_target": args.reward_route_target,
         "reward_steering_penalty": args.reward_steering_penalty,
         "reward_reverse_free_epsilon": args.reward_reverse_free_epsilon,
@@ -538,6 +538,7 @@ def build_algorithm(args):
         config = config.training(
             gamma=args.gamma,
             lr=args.lr,
+            entropy_coeff=args.entropy_coeff,
             train_batch_size=args.train_batch_size,
             minibatch_size=args.minibatch_size,
         )
@@ -545,6 +546,7 @@ def build_algorithm(args):
         config = config.training(
             gamma=args.gamma,
             lr=args.lr,
+            entropy_coeff=args.entropy_coeff,
             train_batch_size=args.train_batch_size,
             sgd_minibatch_size=args.minibatch_size,
         )
@@ -710,6 +712,9 @@ def configure_ray_runtime(args: argparse.Namespace) -> None:
     }
     should_init = False
 
+    if args.ray_node_ip:
+        init_kwargs["_node_ip_address"] = args.ray_node_ip
+        should_init = True
     if args.ray_num_cpus > 0:
         init_kwargs["num_cpus"] = args.ray_num_cpus
         should_init = True
@@ -901,8 +906,12 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         str(controlled_agents),
         "--field-size",
         str(field_size),
+        "--action-repeat",
+        str(args.action_repeat),
         "--route-targets",
         str(args.route_targets),
+        "--route-target-fraction",
+        str(args.route_target_fraction),
         "--seed",
         str(args.seed),
     ]
@@ -1060,6 +1069,12 @@ def parse_args() -> argparse.Namespace:
         help="episode route-target count; -1 means one current-map lap, 0 means the full live-race lap count",
     )
     parser.add_argument(
+        "--route-target-fraction",
+        type=float,
+        default=0.0,
+        help="optional fraction of a lap for each random-spawn route target; 0 keeps the default quarter-lap target",
+    )
+    parser.add_argument(
         "--random-race-spawns",
         action="store_true",
         default=None,
@@ -1088,8 +1103,7 @@ def parse_args() -> argparse.Namespace:
         help="optional comma-separated map ids to train on; defaults to all discovered masks",
     )
     parser.add_argument("--reward-step-penalty", type=float, default=0.006)
-    parser.add_argument("--reward-progress", type=float, default=1.60)
-    parser.add_argument("--reward-speed", type=float, default=0.020)
+    parser.add_argument("--reward-progress", type=float, default=0.25)
     parser.add_argument("--reward-route-target", type=float, default=30.0)
     parser.add_argument("--reward-steering-penalty", type=float, default=0.010)
     parser.add_argument("--reward-reverse-free-epsilon", type=float, default=0.20)
@@ -1102,6 +1116,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-off-road-max-penalty", type=float, default=5.0)
     parser.add_argument("--gamma", type=float, default=0.995)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--entropy-coeff", type=float, default=0.005)
     parser.add_argument("--train-batch-size", type=int, default=8192)
     parser.add_argument("--minibatch-size", type=int, default=512)
     parser.add_argument(
@@ -1133,6 +1148,11 @@ def parse_args() -> argparse.Namespace:
         "--ray-temp-dir",
         default="",
         help="optional Ray temp directory, useful for keeping logs/checkpoints local",
+    )
+    parser.add_argument(
+        "--ray-node-ip",
+        default="127.0.0.1",
+        help="node IP used for local Ray worker RPC; 127.0.0.1 avoids network-interface disconnects",
     )
     parser.add_argument(
         "--sample-timeout-s",

@@ -28,27 +28,32 @@ still runs on CPU.
 
 ## Environment Contract
 
-- Observation size: `34` floats per learner.
+- Observation size: `29` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
 - Default PPO network: two fully-connected hidden layers of width `256`
   with `tanh` activation.
 - Race observations include normalized route progress, route tangent alignment,
   route lookahead vector/alignment/clearance, speed and car-frame velocity,
   edge/off-road state, angular velocity, previous action, six opponent-car ray
-  clearances, nearest-car relative state, and left/right/front/front-diagonal
-  road-clearance rays. The old checkpoint target observations and constant
-  `active` observation were removed.
+  clearances, and left/right/front/front-diagonal road-clearance rays. The old
+  checkpoint target observations, nearest-car aggregate observations, and
+  constant `active` observation were removed.
 - Rewards are bucketed as `route_progress`, `step_cost`, `off_road`, `steering`,
-  `reverse_speed`, `car_push`, and `speed`. The route-progress bucket contains
-  signed progress along the circuit route plus the route-target completion
-  reward. Braking is not penalized, but actual negative forward speed is. Car
-  collisions are treated as push/contact penalties, not as rewards.
+  `reverse_speed`, and `car_push`. The route-progress bucket contains signed
+  progress along the circuit route plus the route-target completion reward.
+  Braking is not penalized, but actual negative forward speed is. Car collisions
+  are treated as push/contact penalties, not as rewards.
 - Java exposes episode metrics for route targets reached and route progress.
-- The shell training presets stage single-car learning through `25%`, `50%`,
-  and `75%` route targets, then `lap_easy` route-only full laps, then normal
-  full-lap episodes (`RL_ROUTE_TARGETS=-1`). The
-  live game can still run longer races because the same route-following policy
-  repeats around the loop.
+- The shell training presets stage route learning through `5%`, `10%`, `25%`,
+  `50%`, and `75%` route targets, then `lap_easy` route-only full laps, then
+  normal full-lap episodes (`RL_ROUTE_TARGETS=-1`). `RL_STAGE_NUMBER_OF_CARS`
+  controls how many cars are used in each stage. Route-target stages must stay
+  single-car; lap stages can train with traffic.
+- Route-target stages use saved random spawn seeds. By default each
+  `tools/rl/train.sh` invocation creates a new spawn-seed session, so spawns
+  are stable during that run but different on the next run. Set
+  `RL_ROUTE_SPAWN_RUN_ID` or `RL_ROUTE_SPAWN_SEED_DIR` to reproduce an earlier
+  spawn session exactly.
 
 ## Train
 
@@ -77,6 +82,23 @@ python tools/rl/train_rllib.py --map-ids <map-id-a>,<map-id-b> --iterations 100
 ```bash
 tools/rl/train.sh
 ```
+
+`train.sh` starts a detached training process by default and tails its log in
+your terminal. `Ctrl+C` stops the detached training process. If the terminal or
+network connection disappears, training keeps running. Each new run clears its
+log before starting; if the pid file still points to a running process, the
+launcher refuses to overwrite that active log. Use `--detach` when you want to
+start it and return immediately:
+
+```bash
+tools/rl/train.sh --detach aggressive
+```
+
+Use `--foreground` only when debugging the trainer itself and you want it tied
+directly to the terminal.
+
+Local Ray workers bind to `RL_RAY_NODE_IP=127.0.0.1` by default so unplugging
+or changing Wi-Fi/VPN interfaces does not break local worker RPC.
 
 Train one specific profile:
 

@@ -79,6 +79,20 @@ generate_route_spawn_seed() {
   printf '%s\n' "${seed}"
 }
 
+ensure_route_spawn_seed_session() {
+  local checkpoint_dir="$1"
+  if [[ -n "${RL_ROUTE_SPAWN_SEED_FILE:-}" ]]; then
+    return
+  fi
+  if [[ -z "${RL_ROUTE_SPAWN_RUN_ID:-}" ]]; then
+    export RL_ROUTE_SPAWN_RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+  fi
+  if [[ -z "${RL_ROUTE_SPAWN_SEED_DIR:-}" ]]; then
+    export RL_ROUTE_SPAWN_SEED_DIR="${checkpoint_dir}/spawn-seeds/${RL_ROUTE_SPAWN_RUN_ID}"
+  fi
+  echo "route_spawn_seed_session run_id=${RL_ROUTE_SPAWN_RUN_ID} dir=${RL_ROUTE_SPAWN_SEED_DIR}"
+}
+
 route_spawn_seed_path() {
   local checkpoint_dir="$1"
   local phase="$2"
@@ -110,6 +124,7 @@ read_or_create_route_spawn_seed() {
   mkdir -p "$(dirname "${seed_file}")"
   {
     printf 'mode=route_random_spawns\n'
+    printf 'run_id=%s\n' "${RL_ROUTE_SPAWN_RUN_ID:-}"
     printf 'phase=%s\n' "${phase}"
     printf 'route_targets=%s\n' "${route_targets}"
     printf 'seed=%s\n' "${seed}"
@@ -130,6 +145,7 @@ record_route_spawn_seed_if_missing() {
   mkdir -p "$(dirname "${seed_file}")"
   {
     printf 'mode=route_random_spawns\n'
+    printf 'run_id=%s\n' "${RL_ROUTE_SPAWN_RUN_ID:-}"
     printf 'phase=%s\n' "${phase}"
     printf 'route_targets=%s\n' "${route_targets}"
     printf 'seed=%s\n' "${seed}"
@@ -170,7 +186,8 @@ presets:
   diagnostic        short staged race run: one, two, then four cars
   quick             alias for diagnostic
   fast              alias for diagnostic
-  curriculum        staged race run ending with 20 cars forever
+  curriculum        staged race run using RL_STAGE_ROUTE_TARGETS,
+                    RL_STAGE_ITERATIONS, and RL_STAGE_NUMBER_OF_CARS
 EOF
 }
 
@@ -194,12 +211,13 @@ run_curriculum_phase() {
   local checkpoint_dir="$5"
   local init_policy="$6"
   local route_targets="$7"
-  local stage_index="${8:-1}"
-  local stage_total="${9:-1}"
-  local profile_stage_index="${10:-${stage_index}}"
-  local profile_stage_total="${11:-${stage_total}}"
-  local overall_stage_index="${12:-${profile_stage_index}}"
-  local overall_stage_total="${13:-${profile_stage_total}}"
+  local route_target_fraction="${8:-0}"
+  local stage_index="${9:-1}"
+  local stage_total="${10:-1}"
+  local profile_stage_index="${11:-${stage_index}}"
+  local profile_stage_total="${12:-${stage_total}}"
+  local overall_stage_index="${13:-${profile_stage_index}}"
+  local overall_stage_total="${14:-${profile_stage_total}}"
   local best_eval_state="${checkpoint_dir}/best-eval/${phase}/best_policy.json"
   local best_eval_min_route_targets="${RL_BEST_EVAL_MIN_ROUTE_TARGETS:-}"
   local phase_best_output="${RL_BEST_OUTPUT:-assets/ai/rl_enemy_policy.json}"
@@ -209,15 +227,17 @@ run_curriculum_phase() {
   local phase_spawn_seed_file=""
   local phase_seed="${RL_SEED:-1}"
   local phase_route_targets="${route_targets}"
+  local phase_route_target_fraction="${route_target_fraction:-0}"
   local phase_map_ids="${RL_MAP_IDS:-}"
   local phase_best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS:-}"
   if [[ "${phase_route_targets}" == "-2" ]]; then
     phase_route_targets="-1"
+    phase_route_target_fraction="0"
     phase_map_ids="${RL_LAP_EASY_MAP_IDS:-auto-lap-easy}"
     phase_best_eval_map_ids="${RL_LAP_EASY_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
   fi
   if [[ "${iterations}" -le 0 ]]; then
-    echo "curriculum_phase_skip policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} iterations=${iterations} route_targets=${phase_route_targets}"
+    echo "curriculum_phase_skip policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} iterations=${iterations} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction}"
     return
   fi
   if [[ -z "${best_eval_min_route_targets}" ]]; then
@@ -257,10 +277,13 @@ run_curriculum_phase() {
       printf 'preset=%s\n' "${preset}"
       printf 'phase_iterations=%s\n' "${iterations}"
       printf 'route_targets=%s\n' "${phase_route_targets}"
+      printf 'route_target_fraction=%s\n' "${phase_route_target_fraction}"
       printf 'map_ids=%s\n' "${phase_map_ids:-}"
       printf 'spawn_mode=%s\n' "${phase_spawn_mode}"
       printf 'spawn_seed=%s\n' "${phase_seed}"
       printf 'spawn_seed_file=%s\n' "${phase_spawn_seed_file}"
+      printf 'spawn_seed_run_id=%s\n' "${RL_ROUTE_SPAWN_RUN_ID:-}"
+      printf 'spawn_seed_dir=%s\n' "${RL_ROUTE_SPAWN_SEED_DIR:-}"
       printf 'stage_index=%s\n' "${stage_index}"
       printf 'stage_total=%s\n' "${stage_total}"
       printf 'profile_stage_index=%s\n' "${profile_stage_index}"
@@ -282,10 +305,13 @@ run_curriculum_phase() {
     "phase_iterations=${iterations}" \
     "max_cycles=${max_cycles}" \
     "route_targets=${phase_route_targets}" \
+    "route_target_fraction=${phase_route_target_fraction}" \
     "map_ids=${phase_map_ids:-}" \
     "spawn_mode=${phase_spawn_mode}" \
     "spawn_seed=${phase_seed}" \
     "spawn_seed_file=${phase_spawn_seed_file}" \
+    "spawn_seed_run_id=${RL_ROUTE_SPAWN_RUN_ID:-}" \
+    "spawn_seed_dir=${RL_ROUTE_SPAWN_SEED_DIR:-}" \
     "stage_index=${stage_index}" \
     "stage_total=${stage_total}" \
     "profile_stage_index=${profile_stage_index}" \
@@ -300,18 +326,21 @@ run_curriculum_phase() {
   echo "CURRENT_TRAINING_STAGE=${phase} stage=${stage_index}/${stage_total} stage_progress=$(progress_percent "${stage_index}" "${stage_total}")"
   echo "CURRENT_TRAINING_PROFILE_PROGRESS=${profile_stage_index}/${profile_stage_total} $(progress_percent "${profile_stage_index}" "${profile_stage_total}")"
   echo "CURRENT_TRAINING_OVERALL_PROGRESS=${overall_stage_index}/${overall_stage_total} $(progress_percent "${overall_stage_index}" "${overall_stage_total}")"
-  echo "CURRENT_TRAINING_DETAILS preset=${preset} iterations=${iterations} cars=${phase_controlled_agents} route_targets=${phase_route_targets} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} seed_file=${phase_spawn_seed_file:-none}"
+  echo "CURRENT_TRAINING_DETAILS preset=${preset} iterations=${iterations} cars=${phase_controlled_agents} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} seed_file=${phase_spawn_seed_file:-none} seed_run=${RL_ROUTE_SPAWN_RUN_ID:-none}"
   echo "============================================================"
-  echo "curriculum_phase=${phase} policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} preset=${preset} iterations=${iterations} max_cycles=${max_cycles} route_targets=${phase_route_targets} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} checkpoint_dir=${checkpoint_dir} best_eval_state=${best_eval_state} best_output=${phase_best_output} init_policy=${init_policy:-none}"
+  echo "curriculum_phase=${phase} policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} preset=${preset} iterations=${iterations} max_cycles=${max_cycles} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} checkpoint_dir=${checkpoint_dir} best_eval_state=${best_eval_state} best_output=${phase_best_output} init_policy=${init_policy:-none}"
   env \
     RL_CHECKPOINT_DIR="${checkpoint_dir}" \
     RL_FOREVER_ITERATIONS="${iterations}" \
     RL_MAX_CYCLES="${max_cycles}" \
+    RL_CONTROLLED_AGENTS="${phase_controlled_agents}" \
+    RL_FIELD_SIZE="${phase_controlled_agents}" \
     RL_INIT_POLICY="${init_policy}" \
     RL_BEST_EVAL_STATE="${best_eval_state}" \
     RL_BEST_EVAL_MIN_ROUTE_TARGETS="${best_eval_min_route_targets}" \
     RL_BEST_OUTPUT="${phase_best_output}" \
     RL_ROUTE_TARGETS="${phase_route_targets}" \
+    RL_ROUTE_TARGET_FRACTION="${phase_route_target_fraction}" \
     RL_MAP_IDS="${phase_map_ids}" \
     RL_BEST_EVAL_MAP_IDS="${phase_best_eval_map_ids}" \
     RL_SEED="${phase_seed}" \
@@ -330,10 +359,27 @@ run_curriculum_phase() {
 }
 
 route_stage_label() {
-  case "$1" in
+  local targets="$1"
+  local target_fraction="${2:-0}"
+  case "${targets}" in
     -2) printf '%s\n' "lap_easy" ;;
     -1) printf '%s\n' "lap" ;;
-    *) printf 'route%s\n' "$1" ;;
+    *)
+      if [[ "${targets}" =~ ^[1-9][0-9]*$ && "${target_fraction}" != "0" && "${target_fraction}" != "0.0" ]]; then
+        local percent
+        percent="$(LC_ALL=C awk -v targets="${targets}" -v fraction="${target_fraction}" 'BEGIN {
+          if (targets <= 0 || fraction <= 0) exit 2;
+          printf "%.6g", targets * fraction * 100.0;
+        }')" || {
+          printf 'route%s\n' "${targets}"
+          return
+        }
+        percent="${percent//./p}"
+        printf 'route%spct\n' "${percent}"
+        return
+      fi
+      printf 'route%s\n' "${targets}"
+      ;;
   esac
 }
 
@@ -347,7 +393,7 @@ normalize_route_stage() {
       ;;
     *%)
       local percent="${1%\%}"
-      awk -v percent="${percent}" 'BEGIN {
+      LC_ALL=C awk -v percent="${percent}" 'BEGIN {
         if (percent <= 0) exit 2;
         chunks = int(percent * 4 / 100 + 0.999999);
         if (chunks < 1) chunks = 1;
@@ -358,7 +404,7 @@ normalize_route_stage() {
       }
       ;;
     0.*|1.0|1.00|1.000)
-      awk -v fraction="$1" 'BEGIN {
+      LC_ALL=C awk -v fraction="$1" 'BEGIN {
         if (fraction <= 0) exit 2;
         chunks = int(fraction * 4 + 0.999999);
         if (chunks < 1) chunks = 1;
@@ -375,6 +421,64 @@ normalize_route_stage() {
       fi
       echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_or_lap" >&2
       return 2
+      ;;
+  esac
+}
+
+route_stage_target_fraction() {
+  local spec="$1"
+  local chunks="$2"
+  case "${spec}" in
+    *%)
+      local percent="${spec%\%}"
+      LC_ALL=C awk -v percent="${percent}" -v chunks="${chunks}" 'BEGIN {
+        if (percent <= 0 || chunks <= 0) exit 2;
+        printf "%.8g\n", (percent / 100.0) / chunks;
+      }' || {
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_or_lap" >&2
+        return 2
+      }
+      ;;
+    0.*|1.0|1.00|1.000)
+      LC_ALL=C awk -v fraction="${spec}" -v chunks="${chunks}" 'BEGIN {
+        if (fraction <= 0 || chunks <= 0) exit 2;
+        printf "%.8g\n", fraction / chunks;
+      }' || {
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_or_lap" >&2
+        return 2
+      }
+      ;;
+    *)
+      printf '%s\n' "0"
+      ;;
+  esac
+}
+
+route_stage_label_from_spec() {
+  local spec="$1"
+  local normalized="$2"
+  case "${spec}" in
+    "lap_easy"|"easy_lap"|"easy-lap") printf '%s\n' "lap_easy" ;;
+    "lap"|"full"|"-1") printf '%s\n' "lap" ;;
+    *%)
+      local percent="${spec%\%}"
+      percent="${percent//./p}"
+      printf 'route%spct\n' "${percent}"
+      ;;
+    0.*|1.0|1.00|1.000)
+      local percent
+      percent="$(LC_ALL=C awk -v fraction="${spec}" 'BEGIN {
+        if (fraction <= 0) exit 2;
+        printf "%.6g", fraction * 100.0;
+      }')" || {
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_or_lap" >&2
+        return 2
+      }
+      percent="${percent//./p}"
+      printf 'route%spct\n' "${percent}"
+      ;;
+    *)
+      route_stage_label "${normalized}"
       ;;
   esac
 }
@@ -543,30 +647,6 @@ append_phase_state() {
   } >> "${RL_POLICY_TRAINING_STATE}"
 }
 
-default_iterations_for_agent_count() {
-  case "$1" in
-    1) printf '%s\n' "${RL_CURRICULUM_RACE_1_ITERATIONS:-400}" ;;
-    2) printf '%s\n' "${RL_CURRICULUM_RACE_2_ITERATIONS:-400}" ;;
-    4) printf '%s\n' "${RL_CURRICULUM_RACE_4_ITERATIONS:-400}" ;;
-    8) printf '%s\n' "${RL_CURRICULUM_RACE_8_ITERATIONS:-500}" ;;
-    16) printf '%s\n' "${RL_CURRICULUM_RACE_16_ITERATIONS:-600}" ;;
-    20) printf '%s\n' "${RL_CURRICULUM_RACE_20_ITERATIONS:-800}" ;;
-    *) printf '%s\n' "${RL_CURRICULUM_AGENT_ITERATIONS:-400}" ;;
-  esac
-}
-
-default_max_cycles_for_agent_count() {
-  case "$1" in
-    1) printf '%s\n' "${RL_CURRICULUM_RACE_1_MAX_CYCLES:-1}" ;;
-    2) printf '%s\n' "${RL_CURRICULUM_RACE_2_MAX_CYCLES:-1}" ;;
-    4) printf '%s\n' "${RL_CURRICULUM_RACE_4_MAX_CYCLES:-1}" ;;
-    8) printf '%s\n' "${RL_CURRICULUM_RACE_8_MAX_CYCLES:-1}" ;;
-    16) printf '%s\n' "${RL_CURRICULUM_RACE_16_MAX_CYCLES:-1}" ;;
-    20) printf '%s\n' "${RL_CURRICULUM_RACE_20_MAX_CYCLES:-0}" ;;
-    *) printf '%s\n' "${RL_CURRICULUM_AGENT_MAX_CYCLES:-1}" ;;
-  esac
-}
-
 preset_for_agent_count() {
   case "$1" in
     1) printf '%s\n' "race-single" ;;
@@ -586,10 +666,13 @@ run_route_curriculum_for_preset() {
   local init_policy="$5"
   local stage_specs=()
   local stage_iterations=()
+  local stage_cars=()
   local split_csv_result=()
   local index
+  local preset_agents
+  preset_agents="$(controlled_agents_for_preset "${preset}")"
 
-  split_csv_compact "${RL_STAGE_ROUTE_TARGETS:-25%,50%,75%,lap_easy,lap}"
+  split_csv_compact "${RL_STAGE_ROUTE_TARGETS:-5%,10%,25%,50%,75%,lap_easy,lap}"
   stage_specs=("${split_csv_result[@]}")
   if [[ "${#stage_specs[@]}" -eq 0 ]]; then
     echo "empty_stage_schedule=1" >&2
@@ -624,6 +707,19 @@ run_route_curriculum_for_preset() {
     done
   fi
 
+  if [[ -n "${RL_STAGE_NUMBER_OF_CARS:-}" ]]; then
+    split_csv_compact "${RL_STAGE_NUMBER_OF_CARS}"
+    stage_cars=("${split_csv_result[@]}")
+    if [[ "${#stage_cars[@]}" -ne "${#stage_specs[@]}" ]]; then
+      echo "stage_number_of_cars_count_mismatch=${#stage_cars[@]} expected=${#stage_specs[@]}" >&2
+      return 2
+    fi
+  else
+    for ((index = 0; index < ${#stage_specs[@]}; index++)); do
+      stage_cars+=("${preset_agents}")
+    done
+  fi
+
   local stage_group_index="${RL_STAGE_GROUP_INDEX:-1}"
   local stage_group_total="${RL_STAGE_GROUP_TOTAL:-1}"
   local policy_index="${RL_POLICY_INDEX:-1}"
@@ -645,7 +741,7 @@ run_route_curriculum_for_preset() {
   local profile_stage_total=$((stage_group_total * route_stage_total))
   local overall_stage_total=$((policy_total * profile_stage_total))
 
-  echo "route_curriculum_schedule preset=${preset} stages=${RL_STAGE_ROUTE_TARGETS:-25%,50%,75%,lap_easy,lap} stage_iterations=${stage_iterations[*]} total_iterations=${total_iterations} stage_group=${stage_group_index}/${stage_group_total}"
+  echo "route_curriculum_schedule preset=${preset} stages=${RL_STAGE_ROUTE_TARGETS:-5%,10%,25%,50%,75%,lap_easy,lap} stage_iterations=${stage_iterations[*]} stage_cars=${stage_cars[*]} total_iterations=${total_iterations} stage_group=${stage_group_index}/${stage_group_total}"
   for ((index = 0; index < ${#stage_specs[@]}; index++)); do
     local phase_iterations="${stage_iterations[index]}"
     local max_cycles=1
@@ -654,19 +750,33 @@ run_route_curriculum_for_preset() {
     fi
     local route_target
     route_target="$(normalize_route_stage "${stage_specs[index]}")"
+    local route_target_fraction
+    route_target_fraction="$(route_stage_target_fraction "${stage_specs[index]}" "${route_target}")"
     local route_label
-    route_label="$(route_stage_label "${route_target}")"
+    route_label="$(route_stage_label_from_spec "${stage_specs[index]}" "${route_target}")"
+    local stage_car_count="${stage_cars[index]}"
+    if [[ ! "${stage_car_count}" =~ ^[1-9][0-9]*$ ]]; then
+      echo "invalid_stage_number_of_cars=${stage_car_count} stage=${stage_specs[index]}" >&2
+      return 2
+    fi
+    if is_route_target_training_stage "${route_target}" && [[ "${stage_car_count}" -ne 1 ]]; then
+      echo "invalid_stage_number_of_cars=${stage_car_count} stage=${stage_specs[index]} route_targets=${route_target} required_cars=1 reason=route_target_training_uses_saved_random_single_car_spawns" >&2
+      return 2
+    fi
+    local stage_preset
+    stage_preset="$(preset_for_agent_count "${stage_car_count}")"
     local route_stage_index=$((index + 1))
     local profile_stage_index=$(((stage_group_index - 1) * route_stage_total + route_stage_index))
     local overall_stage_index=$(((policy_index - 1) * profile_stage_total + profile_stage_index))
     run_curriculum_phase \
-      "${preset}-${route_label}" \
-      "${preset}" \
+      "${stage_preset}-${route_label}" \
+      "${stage_preset}" \
       "${phase_iterations}" \
       "${max_cycles}" \
       "${checkpoint_dir}" \
       "${init_policy}" \
       "${route_target}" \
+      "${route_target_fraction}" \
       "${route_stage_index}" \
       "${route_stage_total}" \
       "${profile_stage_index}" \
@@ -679,80 +789,17 @@ run_route_curriculum_for_preset() {
 
 run_race_curriculum() {
   local checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-rl-checkpoints-curriculum-race-f1-1024x2-v1}"
-  local agent_stages=()
-  local agent_iterations=()
-  local agent_max_cycles=()
-  local split_csv_result=()
-  local index
+  local total_iterations="${RL_CURRICULUM_ITERATIONS:-${RL_FOREVER_ITERATIONS:-400}}"
+  local final_max_cycles="${RL_MAX_CYCLES:-1}"
 
   clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
-  split_csv_compact "${RL_TRAINING_CAR_STAGES:-${RL_CONTROLLED_AGENT_STAGES:-1,2,4,8,20}}"
-  agent_stages=("${split_csv_result[@]}")
-  if [[ "${#agent_stages[@]}" -eq 0 ]]; then
-    echo "empty_controlled_agent_stages=1" >&2
-    return 2
-  fi
-
-  local configured_agent_iterations="${RL_TRAINING_CAR_ITERATIONS:-${RL_CONTROLLED_AGENT_ITERATIONS:-}}"
-  if [[ -n "${configured_agent_iterations}" ]]; then
-    split_csv_compact "${configured_agent_iterations}"
-    agent_iterations=("${split_csv_result[@]}")
-    if [[ "${#agent_iterations[@]}" -ne "${#agent_stages[@]}" ]]; then
-      echo "controlled_agent_iterations_count_mismatch=${#agent_iterations[@]} expected=${#agent_stages[@]} action=use_stage_defaults" >&2
-      agent_iterations=()
-      for index in "${!agent_stages[@]}"; do
-        agent_iterations+=("$(default_iterations_for_agent_count "${agent_stages[index]}")")
-      done
-    fi
-  else
-    for index in "${!agent_stages[@]}"; do
-      agent_iterations+=("$(default_iterations_for_agent_count "${agent_stages[index]}")")
-    done
-  fi
-
-  local configured_agent_max_cycles="${RL_TRAINING_CAR_MAX_CYCLES:-${RL_CONTROLLED_AGENT_MAX_CYCLES:-}}"
-  if [[ -n "${configured_agent_max_cycles}" ]]; then
-    split_csv_compact "${configured_agent_max_cycles}"
-    agent_max_cycles=("${split_csv_result[@]}")
-    if [[ "${#agent_max_cycles[@]}" -ne "${#agent_stages[@]}" ]]; then
-      echo "controlled_agent_max_cycles_count_mismatch=${#agent_max_cycles[@]} expected=${#agent_stages[@]} action=use_stage_defaults" >&2
-      agent_max_cycles=()
-      for index in "${!agent_stages[@]}"; do
-        agent_max_cycles+=("$(default_max_cycles_for_agent_count "${agent_stages[index]}")")
-      done
-    fi
-  else
-    for index in "${!agent_stages[@]}"; do
-      agent_max_cycles+=("$(default_max_cycles_for_agent_count "${agent_stages[index]}")")
-    done
-  fi
-
-  echo "agent_curriculum_schedule policy=${RL_POLICY_ID:-legacy} agent_stages=${agent_stages[*]} agent_iterations=${agent_iterations[*]} agent_max_cycles=${agent_max_cycles[*]}"
-  for index in "${!agent_stages[@]}"; do
-    local preset_for_stage
-    preset_for_stage="$(preset_for_agent_count "${agent_stages[index]}")"
-    local stage_init_policy=""
-    local stage_route_schedule="${RL_STAGE_ROUTE_TARGETS:-}"
-    local stage_iteration_schedule="${RL_STAGE_ITERATIONS:-}"
-    if [[ "${index}" -eq 0 ]]; then
-      stage_init_policy="${RL_INIT_POLICY:-}"
-    fi
-    if [[ "${agent_stages[index]}" =~ ^[0-9]+$ && "${agent_stages[index]}" -gt 1 ]]; then
-      stage_route_schedule="lap"
-      stage_iteration_schedule="${agent_iterations[index]}"
-      echo "multi_car_curriculum_lap_only cars=${agent_stages[index]} preset=${preset_for_stage} iterations=${agent_iterations[index]}"
-    fi
-    RL_STAGE_GROUP_INDEX=$((index + 1)) \
-    RL_STAGE_GROUP_TOTAL="${#agent_stages[@]}" \
-    RL_STAGE_ROUTE_TARGETS="${stage_route_schedule}" \
-    RL_STAGE_ITERATIONS="${stage_iteration_schedule}" \
-      run_route_curriculum_for_preset \
-      "${preset_for_stage}" \
-      "${agent_iterations[index]}" \
-      "${agent_max_cycles[index]}" \
-      "${checkpoint_dir}" \
-      "${stage_init_policy}"
-  done
+  ensure_route_spawn_seed_session "${checkpoint_dir}"
+  run_route_curriculum_for_preset \
+    "race-single" \
+    "${total_iterations}" \
+    "${final_max_cycles}" \
+    "${checkpoint_dir}" \
+    "${RL_INIT_POLICY:-}"
 }
 
 run_curriculum() {
@@ -763,15 +810,19 @@ run_diagnostic() {
   local checkpoint_dir="${RL_DIAGNOSTIC_CHECKPOINT_DIR:-rl-checkpoints-diagnostic-race-f1-v1}"
 
   clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
+  ensure_route_spawn_seed_session "${checkpoint_dir}"
   RL_STAGE_GROUP_INDEX=1 RL_STAGE_GROUP_TOTAL=3 \
+  RL_STAGE_NUMBER_OF_CARS= \
     run_route_curriculum_for_preset "race-single" "${RL_DIAGNOSTIC_RACE_1_ITERATIONS:-40}" 1 "${checkpoint_dir}" "${RL_INIT_POLICY:-}"
   RL_STAGE_GROUP_INDEX=2 RL_STAGE_GROUP_TOTAL=3 \
   RL_STAGE_ROUTE_TARGETS=lap \
   RL_STAGE_ITERATIONS="${RL_DIAGNOSTIC_RACE_2_ITERATIONS:-40}" \
+  RL_STAGE_NUMBER_OF_CARS=2 \
     run_route_curriculum_for_preset "race-2" "${RL_DIAGNOSTIC_RACE_2_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
   RL_STAGE_GROUP_INDEX=3 RL_STAGE_GROUP_TOTAL=3 \
   RL_STAGE_ROUTE_TARGETS=lap \
   RL_STAGE_ITERATIONS="${RL_DIAGNOSTIC_RACE_4_ITERATIONS:-40}" \
+  RL_STAGE_NUMBER_OF_CARS=4 \
     run_route_curriculum_for_preset "race-4" "${RL_DIAGNOSTIC_RACE_4_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
 }
 
@@ -784,9 +835,11 @@ run_direct_race_route_curriculum() {
   preset_agents="$(controlled_agents_for_preset "${preset}")"
 
   clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
+  ensure_route_spawn_seed_session "${checkpoint_dir}"
   if [[ "${preset_agents}" -gt 1 ]]; then
     RL_STAGE_ROUTE_TARGETS=lap \
     RL_STAGE_ITERATIONS="${iterations}" \
+    RL_STAGE_NUMBER_OF_CARS="${preset_agents}" \
       run_route_curriculum_for_preset \
       "${preset}" \
       "${iterations}" \
@@ -898,10 +951,12 @@ field_size="${RL_FIELD_SIZE:-${default_field_size}}"
 action_repeat="${RL_ACTION_REPEAT:-4}"
 max_action_steps="${RL_MAX_ACTION_STEPS:-${default_max_action_steps}}"
 route_targets="${RL_ROUTE_TARGETS:-6}"
+route_target_fraction="${RL_ROUTE_TARGET_FRACTION:-0}"
 train_batch_size="${RL_TRAIN_BATCH_SIZE:-4096}"
 minibatch_size="${RL_MINIBATCH_SIZE:-512}"
 lr="${RL_LR:-3e-4}"
 gamma="${RL_GAMMA:-0.995}"
+entropy_coeff="${RL_ENTROPY_COEFF:-0.005}"
 hidden_size="${RL_HIDDEN_SIZE:-1024}"
 hidden_layers="${RL_HIDDEN_LAYERS:-2}"
 hidden_activation="${RL_HIDDEN_ACTIVATION:-tanh}"
@@ -915,6 +970,7 @@ num_gpus="${RL_NUM_GPUS:-0}"
 map_ids="${RL_MAP_IDS:-}"
 ray_num_cpus="${RL_RAY_NUM_CPUS:-0}"
 ray_temp_dir="${RL_RAY_TEMP_DIR:-}"
+ray_node_ip="${RL_RAY_NODE_IP:-127.0.0.1}"
 sample_timeout_s="${RL_SAMPLE_TIMEOUT_S:-600}"
 build_before_training="${RL_BUILD_BEFORE_TRAINING:-1}"
 desktop_jar="${RL_JAR:-desktop/target/ratass-desktop-1.0.jar}"
@@ -931,8 +987,7 @@ best_eval_state="${RL_BEST_EVAL_STATE:-}"
 best_eval_ignore_installed="${RL_BEST_EVAL_IGNORE_INSTALLED:-1}"
 seed="${RL_SEED:-}"
 reward_step_penalty="${RL_REWARD_STEP_PENALTY:-0.006}"
-reward_progress="${RL_REWARD_PROGRESS:-1.60}"
-reward_speed="${RL_REWARD_SPEED:-0.020}"
+reward_progress="${RL_REWARD_PROGRESS:-0.25}"
 reward_route_target="${RL_REWARD_ROUTE_TARGET:-30.0}"
 reward_steering_penalty="${RL_REWARD_STEERING_PENALTY:-0.010}"
 reward_reverse_free_epsilon="${RL_REWARD_REVERSE_FREE_EPSILON:-0.20}"
@@ -952,8 +1007,9 @@ clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
 race_spawn_mode="fixed-grid"
 random_race_spawns=0
 route_spawn_seed_file="${RL_ROUTE_SPAWN_SEED_FILE:-}"
-route_phase_name="${RL_ROUTE_PHASE_NAME:-${preset:-race}-$(route_stage_label "${route_targets}")}"
+route_phase_name="${RL_ROUTE_PHASE_NAME:-${preset:-race}-$(route_stage_label "${route_targets}" "${route_target_fraction}")}"
 if is_route_target_training_stage "${route_targets}"; then
+  ensure_route_spawn_seed_session "${checkpoint_dir}"
   if [[ "${controlled_agents}" -ne 1 ]]; then
     echo "invalid_route_target_training_cars=${controlled_agents} preset=${preset:-race} route_targets=${route_targets} required_cars=1 reason=route_target_training_uses_saved_random_single_car_spawns" >&2
     exit 2
@@ -993,7 +1049,7 @@ fi
 
 checkpoint_file="${checkpoint_dir}/rllib_checkpoint.json"
 
-echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} spawn_mode=${race_spawn_mode} random_race_spawns=${random_race_spawns} seed=${seed} spawn_seed_file=${route_spawn_seed_file:-none} route_targets=${route_targets} max_action_steps=${max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all}"
+echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} spawn_mode=${race_spawn_mode} random_race_spawns=${random_race_spawns} seed=${seed} spawn_seed_file=${route_spawn_seed_file:-none} route_targets=${route_targets} route_target_fraction=${route_target_fraction} max_action_steps=${max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all}"
 
 common_args=(
   --checkpoint-dir "${checkpoint_dir}"
@@ -1003,11 +1059,13 @@ common_args=(
   --action-repeat "${action_repeat}"
   --max-action-steps "${max_action_steps}"
   --route-targets "${route_targets}"
+  --route-target-fraction "${route_target_fraction}"
   --seed "${seed}"
   --train-batch-size "${train_batch_size}"
   --minibatch-size "${minibatch_size}"
   --lr "${lr}"
   --gamma "${gamma}"
+  --entropy-coeff "${entropy_coeff}"
   --hidden-size "${hidden_size}"
   --hidden-layers "${hidden_layers}"
   --hidden-activation "${hidden_activation}"
@@ -1017,7 +1075,6 @@ common_args=(
   --sample-timeout-s "${sample_timeout_s}"
   --reward-step-penalty "${reward_step_penalty}"
   --reward-progress "${reward_progress}"
-  --reward-speed "${reward_speed}"
   --reward-route-target "${reward_route_target}"
   --reward-steering-penalty "${reward_steering_penalty}"
   --reward-reverse-free-epsilon "${reward_reverse_free_epsilon}"
@@ -1046,6 +1103,9 @@ if [[ "${ray_num_cpus}" != "0" ]]; then
 fi
 if [[ -n "${ray_temp_dir}" ]]; then
   common_args+=(--ray-temp-dir "${ray_temp_dir}")
+fi
+if [[ -n "${ray_node_ip}" ]]; then
+  common_args+=(--ray-node-ip "${ray_node_ip}")
 fi
 if [[ "${best_export}" == "1" || "${best_export}" == "true" ]]; then
   common_args+=(

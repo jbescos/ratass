@@ -15,20 +15,20 @@ RL_HIDDEN_SIZE=256
 RL_HIDDEN_LAYERS=2
 RL_HIDDEN_ACTIVATION=tanh
 RL_LR=3e-4
+RL_ENTROPY_COEFF=0.005
 RL_GAMMA=0.995
 
-# Route curriculum for single-car learning. Percentages are fractions of a lap;
-# lap_easy is a full-lap stage on route-only easy masks.
-RL_STAGE_ROUTE_TARGETS=25%,50%,75%,lap_easy,lap
+# Route/lap curriculum. Percentages are fractions of a lap; lap_easy is a
+# full-lap stage on route-only easy masks.
+RL_STAGE_ROUTE_TARGETS=5%,10%,25%,50%,75%,lap_easy,lap
+RL_STAGE_ITERATIONS=100,100,300,100,100,200,200
 
-# Optional multi-car curriculum. Stages above 1 car train lap-only with the
-# fixed grid; route-target stages are always single-car.
-RL_TRAINING_CAR_STAGES=1,2
-RL_TRAINING_CAR_ITERATIONS=530,150
-RL_TRAINING_CAR_MAX_CYCLES=1,1
+# Number of cars for each stage. Route-target stages must use 1 car; lap stages
+# can use more cars with fixed grid spawns.
+RL_STAGE_NUMBER_OF_CARS=1,1,1,1,1,1,4
 
 # Rewards.
-RL_REWARD_PROGRESS=1.60
+RL_REWARD_PROGRESS=0.25
 RL_REWARD_ROUTE_TARGET=30.0
 RL_REWARD_OFF_ROAD_PENALTY=0.80
 RL_REWARD_CAR_PUSH_PENALTY=3.0
@@ -40,6 +40,7 @@ Recommended commands:
 ```bash
 bash tools/rl/train.sh
 bash tools/rl/train.sh aggressive
+bash tools/rl/train.sh --detach aggressive
 bash tools/rl/train_docker.sh
 bash tools/rl/train_docker.sh aggressive
 ```

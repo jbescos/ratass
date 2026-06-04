@@ -15,8 +15,10 @@ import jpype
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_POLICY = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
+DEFAULT_ACTION_REPEAT = 4
+PHYSICS_STEP_SECONDS = 1.0 / 60.0
 OBS_CLOSE_CAR_THRESHOLD = 0.18
-OBS_TRACE_SIZE = 36
+OBS_TRACE_SIZE = 29
 REWARD_BUCKETS = (
     "route_progress",
     "step_cost",
@@ -24,7 +26,6 @@ REWARD_BUCKETS = (
     "steering",
     "reverse_speed",
     "car_push",
-    "speed",
 )
 
 
@@ -63,6 +64,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--field-size", type=int, default=None)
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument(
+        "--action-repeat",
+        type=int,
+        default=DEFAULT_ACTION_REPEAT,
+        help="physics steps per RL action; used for elapsed goal timing",
+    )
+    parser.add_argument(
         "--random-race-spawns",
         action="store_true",
         default=True,
@@ -79,6 +86,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=6,
         help="episode route-target count; -1 means one current-map lap, 0 means the full live-race lap count",
+    )
+    parser.add_argument(
+        "--route-target-fraction",
+        type=float,
+        default=0.0,
+        help="optional fraction of a lap for each random-spawn route target",
     )
     parser.add_argument("--seed", type=int, default=20260506)
     parser.add_argument("--flip-deadzone", type=float, default=0.18)
@@ -141,6 +154,8 @@ def make_stats():
         "successes": 0,
         "steps": 0,
         "reward": 0.0,
+        "goal_time_seconds": 0.0,
+        "goal_time_count": 0,
         "actions": 0,
         "raw_flips": 0,
         "raw_nonzero_pairs": 0,
@@ -182,9 +197,6 @@ def make_stats():
         "observation_samples": 0,
         "near_car_steps": 0,
         "close_car_steps": 0,
-        "avg_nearest_car_distance": 0.0,
-        "avg_nearest_car_approach": 0.0,
-        "avg_nearest_car_relative_forward_speed": 0.0,
     }
 
 
@@ -207,8 +219,10 @@ def build_config(
         ratass_game.RlTrainingConfig()
         .withControlledAgentCount(controlled_agents)
         .withFieldSize(field_size)
+        .withActionRepeat(max(1, args.action_repeat))
         .withMaxActionSteps(steps_limit)
         .withRouteTargets(args.route_targets)
+        .withRouteTargetFraction(float(args.route_target_fraction))
         .withRaceMode(True)
         .withRandomRaceSpawns(args.random_race_spawns)
         .withDebugTraceEnabled(bool(args.trace_dir))
@@ -241,7 +255,6 @@ def open_trace(trace_dir: str, map_id: str, episode: int, debug_trace_names):
             "steering",
             "reverse_speed",
             "car_push",
-            "speed",
             "throttle",
             "turn",
             "effective_throttle",
@@ -270,11 +283,6 @@ def open_trace(trace_dir: str, map_id: str, episode: int, debug_trace_names):
             "car_ray_left",
             "car_ray_right",
             "car_ray_rear",
-            "nearest_car_forward",
-            "nearest_car_side",
-            "nearest_car_distance",
-            "nearest_car_approach",
-            "nearest_car_relative_forward_speed",
             "left_road_clearance",
             "right_road_clearance",
             "front_road_clearance",
@@ -305,7 +313,6 @@ def trace_step(writer, step, result, reward, throttle, turn):
             f"{breakdown[3]:.6f}" if len(breakdown) > 3 else "0.000000",
             f"{breakdown[4]:.6f}" if len(breakdown) > 4 else "0.000000",
             f"{breakdown[5]:.6f}" if len(breakdown) > 5 else "0.000000",
-            f"{breakdown[6]:.6f}" if len(breakdown) > 6 else "0.000000",
             f"{throttle:.6f}",
             f"{turn:.6f}",
             f"{effective_throttle:.6f}",
@@ -337,14 +344,12 @@ def update_observation_stats(stats, result, controlled_agents: int, observation_
         stats["avg_track_slowdown"] += observations[offset + 12]
         stats["avg_lateral_slip"] += abs(observations[offset + 14])
         stats["avg_braking_risk"] += max(0.0, 1.0 - observations[offset + 8])
-        stats["avg_nearest_car_distance"] += observations[offset + 26]
-        stats["avg_nearest_car_approach"] += observations[offset + 27]
-        stats["avg_nearest_car_relative_forward_speed"] += observations[offset + 28]
-        stats["avg_left_road_clearance"] += observations[offset + 29]
-        stats["avg_right_road_clearance"] += observations[offset + 30]
-        stats["avg_front_road_clearance"] += observations[offset + 31]
-        stats["avg_front_left_road_clearance"] += observations[offset + 32]
-        stats["avg_front_right_road_clearance"] += observations[offset + 33]
+        car_ray_distance = min(observations[offset + 18:offset + 24])
+        stats["avg_left_road_clearance"] += observations[offset + 24]
+        stats["avg_right_road_clearance"] += observations[offset + 25]
+        stats["avg_front_road_clearance"] += observations[offset + 26]
+        stats["avg_front_left_road_clearance"] += observations[offset + 27]
+        stats["avg_front_right_road_clearance"] += observations[offset + 28]
         if observations[offset + 8] < 0.18:
             stats["lookahead_blocked_steps"] += 1
         if observations[offset + 11] > 0.5:
@@ -355,9 +360,9 @@ def update_observation_stats(stats, result, controlled_agents: int, observation_
             stats["near_edge_fast_steps"] += 1
         if observations[offset + 8] < 0.82:
             stats["braking_risk_steps"] += 1
-        if observations[offset + 26] < 1.0:
+        if car_ray_distance < 1.0:
             stats["near_car_steps"] += 1
-        if observations[offset + 26] < OBS_CLOSE_CAR_THRESHOLD:
+        if car_ray_distance < OBS_CLOSE_CAR_THRESHOLD:
             stats["close_car_steps"] += 1
     for agent_index in range(min(controlled_agents, len(result.routeProgressDeltas))):
         stats["progress_total"] += float(result.routeProgressDeltas[agent_index])
@@ -466,6 +471,11 @@ def run_episode(
     stats["successes"] = 1 if int(result.winnerAgentIndex) >= 0 else 0
     stats["steps"] = steps
     stats["reward"] = reward
+    if stats["successes"] > 0:
+        stats["goal_time_seconds"] = (
+            int(result.actionStep) * max(1, args.action_repeat) * PHYSICS_STEP_SECONDS
+        )
+        stats["goal_time_count"] = 1
     stats["actions"] = steps
     stats["raw_flips"] = raw_flips
     stats["raw_nonzero_pairs"] = raw_nonzero_pairs
@@ -511,10 +521,16 @@ def summary_metrics(stats, episodes_override: int = None):
     episodes = episodes_override if episodes_override is not None else max(1, stats["episodes"])
     actions = max(1, stats["actions"])
     observation_samples = max(1, stats["observation_samples"])
+    goal_time_count = int(stats.get("goal_time_count", 0))
     return {
         "success_rate": stats["successes"] / episodes,
         "avg_steps": stats["steps"] / episodes,
         "avg_reward": stats["reward"] / episodes,
+        "avg_goal_time_s": (
+            stats["goal_time_seconds"] / goal_time_count
+            if goal_time_count > 0
+            else None
+        ),
         "avg_targets": stats["targets"] / episodes,
         "progress_avg": stats["progress_total"] / episodes,
         "raw_flips_per_step": stats["raw_flips"] / actions,
@@ -547,10 +563,6 @@ def summary_metrics(stats, episodes_override: int = None):
             stats["avg_front_right_road_clearance"] / observation_samples,
         "near_car_fraction": stats["near_car_steps"] / observation_samples,
         "close_car_fraction": stats["close_car_steps"] / observation_samples,
-        "avg_nearest_car_distance": stats["avg_nearest_car_distance"] / observation_samples,
-        "avg_nearest_car_approach": stats["avg_nearest_car_approach"] / observation_samples,
-        "avg_nearest_car_relative_forward_speed":
-            stats["avg_nearest_car_relative_forward_speed"] / observation_samples,
     }
 
 
@@ -578,6 +590,7 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"successes={stats['successes']}/{stats['episodes']} "
         f"avg_steps={metrics['avg_steps']:.1f} "
         f"avg_reward={metrics['avg_reward']:.3f} "
+        f"avg_goal_time_s={format_optional_number(metrics['avg_goal_time_s'])} "
         f"avg_targets={metrics['avg_targets']:.3f} "
         f"progress_avg={metrics['progress_avg']:.3f} "
         f"raw_flips_per_step={metrics['raw_flips_per_step']:.3f} "
@@ -607,9 +620,6 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"avg_front_right_road_clearance={metrics['avg_front_right_road_clearance']:.3f} "
         f"near_car_fraction={metrics['near_car_fraction']:.3f} "
         f"close_car_fraction={metrics['close_car_fraction']:.3f} "
-        f"avg_nearest_car_distance={metrics['avg_nearest_car_distance']:.3f} "
-        f"avg_nearest_car_approach={metrics['avg_nearest_car_approach']:.3f} "
-        f"avg_nearest_car_relative_forward_speed={metrics['avg_nearest_car_relative_forward_speed']:.3f} "
         + " ".join(
             f"{name}={stats[name] / episodes:.3f}"
             for name in (
@@ -630,6 +640,12 @@ def format_table_number(value: float, digits: int = 3) -> str:
     return f"{value:.{digits}f}"
 
 
+def format_optional_number(value, digits: int = 3) -> str:
+    if value is None:
+        return "-"
+    return f"{value:.{digits}f}"
+
+
 def success_count(stats) -> str:
     return f"{int(stats['successes'])}/{int(stats['episodes'])}"
 
@@ -640,12 +656,36 @@ def stats_scope_rows(total_stats, per_map):
     return rows
 
 
-def print_table(title: str, headers, rows) -> None:
+def print_table(title: str, headers, rows, right_aligned=None) -> None:
+    right_aligned = set() if right_aligned is None else set(right_aligned)
+    widths = [len(str(header)) for header in headers]
+    string_rows = [[str(value) for value in row] for row in rows]
+    for row in string_rows:
+        for index, cell in enumerate(row):
+            widths[index] = max(widths[index], len(cell))
+
+    def format_row(cells) -> str:
+        formatted = []
+        for index, cell in enumerate(cells):
+            if index in right_aligned:
+                formatted.append(str(cell).rjust(widths[index]))
+            else:
+                formatted.append(str(cell).ljust(widths[index]))
+        return "| " + " | ".join(formatted) + " |"
+
+    separators = []
+    for index, width in enumerate(widths):
+        marker_width = max(3, width)
+        if index in right_aligned:
+            separators.append("-" * (marker_width - 1) + ":")
+        else:
+            separators.append("-" * marker_width)
+
     print(title, flush=True)
-    print("| " + " | ".join(headers) + " |", flush=True)
-    print("| " + " | ".join("---" for _ in headers) + " |", flush=True)
-    for row in rows:
-        print("| " + " | ".join(str(value) for value in row) + " |", flush=True)
+    print(format_row([str(header) for header in headers]), flush=True)
+    print("| " + " | ".join(separators) + " |", flush=True)
+    for row in string_rows:
+        print(format_row(row), flush=True)
 
 
 def print_evaluation_tables(total_stats, per_map) -> None:
@@ -662,6 +702,7 @@ def print_evaluation_tables(total_stats, per_map) -> None:
                 format_table_number(metrics["avg_steps"], 1),
                 format_table_number(metrics["avg_reward"]),
                 format_table_number(score),
+                format_optional_number(metrics["avg_goal_time_s"], 2),
                 format_table_number(metrics["avg_targets"]),
                 format_table_number(metrics["off_road_fraction"]),
                 format_table_number(metrics["effective_reverse_fraction"]),
@@ -704,12 +745,14 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "steps",
             "reward",
             "score",
+            "goal_s",
             "targets",
             "off_road",
             "reverse",
             "near_car",
         ],
         overview_rows,
+        right_aligned=set(range(1, 10)),
     )
     print_table(
         "evaluation_driving",
@@ -729,6 +772,7 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "lat_slip",
         ],
         driving_rows,
+        right_aligned=set(range(1, 13)),
     )
     print_table(
         "evaluation_rewards",
@@ -740,9 +784,9 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "steering",
             "reverse",
             "car_push",
-            "speed",
         ],
         reward_rows,
+        right_aligned=set(range(1, 7)),
     )
 
 
@@ -753,6 +797,7 @@ def print_evaluation_score(stats):
         f"evaluation_score={score:.3f} "
         f"avg_reward={metrics['avg_reward']:.3f} "
         f"avg_steps={metrics['avg_steps']:.1f} "
+        f"avg_goal_time_s={format_optional_number(metrics['avg_goal_time_s'])} "
         f"success_rate={metrics['success_rate']:.3f} "
         f"avg_targets={metrics['avg_targets']:.3f} "
         f"lookahead_blocked_fraction={metrics['lookahead_blocked_fraction']:.3f} "
