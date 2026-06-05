@@ -4,6 +4,7 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
+import java.util.Arrays;
 
 public final class ArenaMap {
     private static final float APPROXIMATE_SAMPLES_PER_WORLD_UNIT = 12f;
@@ -20,6 +21,8 @@ public final class ArenaMap {
     private static final float ROUTE_PROGRESS_CONTINUITY_PENALTY = 0.08f;
     private static final float ROUTE_PROGRESS_BACKTRACK_PENALTY = 0.22f;
     private static final float ROUTE_TANGENT_SAMPLE_DISTANCE = 1.80f;
+    private static final int ROUTE_SAMPLE_LOOKUP_SEARCH_RADIUS = 28;
+    private static final int ROUTE_SAMPLE_REFERENCE_SEARCH_RADIUS = 40;
 
     private final String id;
     private final String name;
@@ -44,6 +47,7 @@ public final class ArenaMap {
     private final float approximateHazardCellHeight;
     private final float[] approximateHazardSamples;
     private final short[] approximateRecoverySamples;
+    private final RouteMetadata routeMetadata;
     private final boolean[] routeFieldSafe;
     private final float[] routeFieldCosts;
     private final int[] routeFieldHeap;
@@ -53,6 +57,9 @@ public final class ArenaMap {
     private int cachedRouteFieldGoalIndex = -1;
     private final float[] routeCumulativeDistances;
     private final float routeLength;
+    private float scratchRouteSearchBestScore;
+    private float scratchRouteSearchBestProgress;
+    private boolean scratchRouteSearchScored;
 
     private ArenaMap(
             String id,
@@ -64,7 +71,8 @@ public final class ArenaMap {
             Array<SpawnPoint> spawnPoints,
             Array<SpawnPoint> checkpoints,
             Array<Vector2> routePoints,
-            Array<Vector2> recoveryPoints) {
+            Array<Vector2> recoveryPoints,
+            RouteMetadata routeMetadata) {
         this.id = id;
         this.name = name;
         this.surfaceImagePath = surfaceImagePath;
@@ -122,6 +130,10 @@ public final class ArenaMap {
 
         routeCumulativeDistances = new float[this.routePoints.size];
         routeLength = buildRouteDistanceCache();
+        this.routeMetadata =
+                routeMetadata != null && routeMetadata.isUsable(routeLength)
+                        ? new RouteMetadata(routeMetadata)
+                        : null;
     }
 
     public static Builder builder(String id, String name) {
@@ -247,6 +259,17 @@ public final class ArenaMap {
             preferredDirectionY /= preferredLength;
         }
 
+        if (routeMetadata != null && routeMetadata.hasSamples()) {
+            return findRouteProgressFromMetadata(
+                    x,
+                    y,
+                    preferredDirectionX,
+                    preferredDirectionY,
+                    usePreferredDirection,
+                    useReferenceProgress,
+                    referenceProgress);
+        }
+
         float bestScore = Float.MAX_VALUE;
         float bestProgress = 0f;
         for (int i = 0; i < routePoints.size; i++) {
@@ -293,6 +316,145 @@ public final class ArenaMap {
         return bestProgress;
     }
 
+    private float findRouteProgressFromMetadata(
+            float x,
+            float y,
+            float preferredDirectionX,
+            float preferredDirectionY,
+            boolean usePreferredDirection,
+            boolean useReferenceProgress,
+            float referenceProgress) {
+        scratchRouteSearchBestScore = Float.MAX_VALUE;
+        scratchRouteSearchBestProgress = wrapRouteProgress(referenceProgress);
+        scratchRouteSearchScored = false;
+
+        if (useReferenceProgress) {
+            scanRouteSampleWindow(
+                    routeMetadata.sampleIndexForProgress(referenceProgress),
+                    ROUTE_SAMPLE_REFERENCE_SEARCH_RADIUS,
+                    x,
+                    y,
+                    preferredDirectionX,
+                    preferredDirectionY,
+                    usePreferredDirection,
+                    true,
+                    referenceProgress);
+        }
+
+        int lookupIndex = routeMetadata.lookupSampleIndex(x, y);
+        if (lookupIndex >= 0) {
+            scanRouteSampleWindow(
+                    lookupIndex,
+                    ROUTE_SAMPLE_LOOKUP_SEARCH_RADIUS,
+                    x,
+                    y,
+                    preferredDirectionX,
+                    preferredDirectionY,
+                    usePreferredDirection,
+                    useReferenceProgress,
+                    referenceProgress);
+        }
+
+        if (!scratchRouteSearchScored) {
+            for (int i = 0; i < routeMetadata.sampleCount(); i++) {
+                considerRouteSampleSegment(
+                        i,
+                        x,
+                        y,
+                        preferredDirectionX,
+                        preferredDirectionY,
+                        usePreferredDirection,
+                        useReferenceProgress,
+                        referenceProgress);
+            }
+        }
+
+        return scratchRouteSearchBestProgress;
+    }
+
+    private void scanRouteSampleWindow(
+            int centerIndex,
+            int radius,
+            float x,
+            float y,
+            float preferredDirectionX,
+            float preferredDirectionY,
+            boolean usePreferredDirection,
+            boolean useReferenceProgress,
+            float referenceProgress) {
+        if (routeMetadata == null || !routeMetadata.hasSamples() || centerIndex < 0) {
+            return;
+        }
+        int sampleCount = routeMetadata.sampleCount();
+        int effectiveRadius = Math.min(Math.max(0, radius), Math.max(0, sampleCount - 1));
+        for (int offset = -effectiveRadius; offset <= effectiveRadius; offset++) {
+            int index = routeMetadata.wrapSampleIndex(centerIndex + offset);
+            considerRouteSampleSegment(
+                    index,
+                    x,
+                    y,
+                    preferredDirectionX,
+                    preferredDirectionY,
+                    usePreferredDirection,
+                    useReferenceProgress,
+                    referenceProgress);
+        }
+    }
+
+    private void considerRouteSampleSegment(
+            int segmentIndex,
+            float x,
+            float y,
+            float preferredDirectionX,
+            float preferredDirectionY,
+            boolean usePreferredDirection,
+            boolean useReferenceProgress,
+            float referenceProgress) {
+        int nextIndex = routeMetadata.wrapSampleIndex(segmentIndex + 1);
+        float startX = routeMetadata.sampleX[segmentIndex];
+        float startY = routeMetadata.sampleY[segmentIndex];
+        float endX = routeMetadata.sampleX[nextIndex];
+        float endY = routeMetadata.sampleY[nextIndex];
+        float segmentX = endX - startX;
+        float segmentY = endY - startY;
+        float segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+        if (segmentLengthSquared <= 0.0001f) {
+            return;
+        }
+
+        float segmentLength = (float) Math.sqrt(segmentLengthSquared);
+        float alpha =
+                MathUtils.clamp(
+                        ((x - startX) * segmentX + (y - startY) * segmentY)
+                                / segmentLengthSquared,
+                        0f,
+                        1f);
+        float projectedX = startX + segmentX * alpha;
+        float projectedY = startY + segmentY * alpha;
+        float distance = Vector2.dst2(x, y, projectedX, projectedY);
+        float score = distance;
+        if (usePreferredDirection) {
+            float alignment =
+                    (segmentX * preferredDirectionX + segmentY * preferredDirectionY)
+                            / segmentLength;
+            score += (1f - alignment) * ROUTE_DIRECTION_ALIGNMENT_PENALTY;
+        }
+        float candidateProgress =
+                wrapRouteProgress(routeMetadata.sampleProgress(segmentIndex) + routeMetadata.sampleStep * alpha);
+        if (useReferenceProgress) {
+            float routeDelta = routeProgressDelta(referenceProgress, candidateProgress);
+            score += Math.min(40f, Math.abs(routeDelta) * ROUTE_PROGRESS_CONTINUITY_PENALTY);
+            if (routeDelta < -1.25f) {
+                score += Math.min(60f, -routeDelta * ROUTE_PROGRESS_BACKTRACK_PENALTY);
+            }
+        }
+        if (score < scratchRouteSearchBestScore) {
+            scratchRouteSearchBestScore = score;
+            scratchRouteSearchBestProgress = candidateProgress;
+            scratchRouteSearchScored = true;
+        }
+    }
+
     public float findNormalizedRouteProgress(Vector2 position) {
         return !hasRoute() ? 0f : findRouteProgress(position) / routeLength;
     }
@@ -321,6 +483,10 @@ public final class ArenaMap {
         }
 
         float wrappedProgress = wrapRouteProgress(progress);
+        if (routeMetadata != null && routeMetadata.hasSamples()) {
+            routeMetadata.findPoint(wrappedProgress, out);
+            return;
+        }
         int segmentIndex = findRouteSegmentIndex(wrappedProgress);
         Vector2 start = routePoints.get(segmentIndex);
         Vector2 end = routePoints.get((segmentIndex + 1) % routePoints.size);
@@ -343,6 +509,11 @@ public final class ArenaMap {
         }
         if (!hasRoute()) {
             out.set(0f, 1f);
+            return;
+        }
+
+        if (routeMetadata != null && routeMetadata.hasSamples()) {
+            routeMetadata.findTangent(wrapRouteProgress(progress), out);
             return;
         }
 
@@ -369,6 +540,46 @@ public final class ArenaMap {
 
     public void findRouteTangentAt(Vector2 position, Vector2 preferredDirection, Vector2 out) {
         findRouteTangent(findRouteProgress(position, preferredDirection), out);
+    }
+
+    public float getRouteCurvature(float progress) {
+        return routeMetadata == null ? 0f : routeMetadata.sampleValue(progress, routeMetadata.curvature, 0f);
+    }
+
+    public float getRouteNextCornerDistance(float progress) {
+        return routeMetadata == null
+                ? 1f
+                : routeMetadata.sampleValue(progress, routeMetadata.nextCornerDistance, 1f);
+    }
+
+    public float getRouteNextCornerDirection(float progress) {
+        return routeMetadata == null
+                ? 0f
+                : routeMetadata.sampleValue(progress, routeMetadata.nextCornerDirection, 0f);
+    }
+
+    public float getRouteNextCornerSeverity(float progress) {
+        return routeMetadata == null
+                ? 0f
+                : routeMetadata.sampleValue(progress, routeMetadata.nextCornerSeverity, 0f);
+    }
+
+    public float getRouteLeftClearance(float progress) {
+        return routeMetadata == null
+                ? 0f
+                : routeMetadata.sampleValue(progress, routeMetadata.leftClearance, 0f);
+    }
+
+    public float getRouteRightClearance(float progress) {
+        return routeMetadata == null
+                ? 0f
+                : routeMetadata.sampleValue(progress, routeMetadata.rightClearance, 0f);
+    }
+
+    public float getRouteRoadWidth(float progress) {
+        return routeMetadata == null
+                ? 0f
+                : routeMetadata.sampleValue(progress, routeMetadata.roadWidth, 0f);
     }
 
     public Rectangle getBounds(Rectangle out) {
@@ -1212,6 +1423,7 @@ public final class ArenaMap {
         private final Array<SpawnPoint> checkpoints = new Array<SpawnPoint>();
         private final Array<Vector2> routePoints = new Array<Vector2>();
         private final Array<Vector2> recoveryPoints = new Array<Vector2>();
+        private RouteMetadata routeMetadata;
 
         private Builder(String id, String name) {
             this.id = id;
@@ -1260,6 +1472,11 @@ public final class ArenaMap {
             return this;
         }
 
+        public Builder routeMetadata(RouteMetadata routeMetadata) {
+            this.routeMetadata = routeMetadata == null ? null : new RouteMetadata(routeMetadata);
+            return this;
+        }
+
         public Builder recoveryPoint(float x, float y) {
             recoveryPoints.add(new Vector2(x, y));
             return this;
@@ -1289,6 +1506,9 @@ public final class ArenaMap {
             }
             for (int i = 0; i < routePoints.size; i++) {
                 routePoints.get(i).scl(factor);
+            }
+            if (routeMetadata != null) {
+                routeMetadata = routeMetadata.scale(factor);
             }
             for (int i = 0; i < recoveryPoints.size; i++) {
                 recoveryPoints.get(i).scl(factor);
@@ -1322,7 +1542,251 @@ public final class ArenaMap {
                     spawnPoints,
                     checkpoints,
                     routePoints,
-                    recoveryPoints);
+                    recoveryPoints,
+                    routeMetadata);
+        }
+    }
+
+    public static final class RouteMetadata {
+        public final float sampleStep;
+        public final float routeLength;
+        public final float[] sampleX;
+        public final float[] sampleY;
+        public final float[] tangentX;
+        public final float[] tangentY;
+        public final float[] curvature;
+        public final float[] nextCornerDistance;
+        public final float[] nextCornerDirection;
+        public final float[] nextCornerSeverity;
+        public final float[] leftClearance;
+        public final float[] rightClearance;
+        public final float[] roadWidth;
+        public final int lookupWidth;
+        public final int lookupHeight;
+        public final float lookupMinX;
+        public final float lookupMinY;
+        public final float lookupCellWidth;
+        public final float lookupCellHeight;
+        public final int[] lookupSampleIndex;
+
+        public RouteMetadata(
+                float sampleStep,
+                float routeLength,
+                float[] sampleX,
+                float[] sampleY,
+                float[] tangentX,
+                float[] tangentY,
+                float[] curvature,
+                float[] nextCornerDistance,
+                float[] nextCornerDirection,
+                float[] nextCornerSeverity,
+                float[] leftClearance,
+                float[] rightClearance,
+                float[] roadWidth,
+                int lookupWidth,
+                int lookupHeight,
+                float lookupMinX,
+                float lookupMinY,
+                float lookupCellWidth,
+                float lookupCellHeight,
+                int[] lookupSampleIndex) {
+            this.sampleStep = sampleStep;
+            this.routeLength = routeLength;
+            this.sampleX = copy(sampleX);
+            this.sampleY = copy(sampleY);
+            this.tangentX = copy(tangentX);
+            this.tangentY = copy(tangentY);
+            this.curvature = copy(curvature);
+            this.nextCornerDistance = copy(nextCornerDistance);
+            this.nextCornerDirection = copy(nextCornerDirection);
+            this.nextCornerSeverity = copy(nextCornerSeverity);
+            this.leftClearance = copy(leftClearance);
+            this.rightClearance = copy(rightClearance);
+            this.roadWidth = copy(roadWidth);
+            this.lookupWidth = lookupWidth;
+            this.lookupHeight = lookupHeight;
+            this.lookupMinX = lookupMinX;
+            this.lookupMinY = lookupMinY;
+            this.lookupCellWidth = lookupCellWidth;
+            this.lookupCellHeight = lookupCellHeight;
+            this.lookupSampleIndex = copy(lookupSampleIndex);
+        }
+
+        private RouteMetadata(RouteMetadata other) {
+            this(
+                    other.sampleStep,
+                    other.routeLength,
+                    other.sampleX,
+                    other.sampleY,
+                    other.tangentX,
+                    other.tangentY,
+                    other.curvature,
+                    other.nextCornerDistance,
+                    other.nextCornerDirection,
+                    other.nextCornerSeverity,
+                    other.leftClearance,
+                    other.rightClearance,
+                    other.roadWidth,
+                    other.lookupWidth,
+                    other.lookupHeight,
+                    other.lookupMinX,
+                    other.lookupMinY,
+                    other.lookupCellWidth,
+                    other.lookupCellHeight,
+                    other.lookupSampleIndex);
+        }
+
+        private boolean isUsable(float expectedRouteLength) {
+            int count = sampleCount();
+            return count >= 2
+                    && sampleStep > 0.0001f
+                    && routeLength > 0.001f
+                    && Math.abs(routeLength - expectedRouteLength) <= Math.max(0.25f, expectedRouteLength * 0.03f)
+                    && tangentX.length == count
+                    && tangentY.length == count
+                    && curvature.length == count
+                    && nextCornerDistance.length == count
+                    && nextCornerDirection.length == count
+                    && nextCornerSeverity.length == count
+                    && leftClearance.length == count
+                    && rightClearance.length == count
+                    && roadWidth.length == count;
+        }
+
+        private boolean hasSamples() {
+            return sampleCount() >= 2;
+        }
+
+        private int sampleCount() {
+            return Math.min(sampleX.length, sampleY.length);
+        }
+
+        private float sampleProgress(int index) {
+            return wrapProgress(index * sampleStep);
+        }
+
+        private int sampleIndexForProgress(float progress) {
+            if (!hasSamples()) {
+                return 0;
+            }
+            return wrapSampleIndex(MathUtils.floor(wrapProgress(progress) / sampleStep));
+        }
+
+        private int wrapSampleIndex(int index) {
+            int count = sampleCount();
+            if (count <= 0) {
+                return 0;
+            }
+            int wrapped = index % count;
+            return wrapped < 0 ? wrapped + count : wrapped;
+        }
+
+        private int lookupSampleIndex(float x, float y) {
+            if (lookupSampleIndex == null
+                    || lookupWidth <= 0
+                    || lookupHeight <= 0
+                    || lookupCellWidth <= 0f
+                    || lookupCellHeight <= 0f
+                    || lookupSampleIndex.length != lookupWidth * lookupHeight) {
+                return -1;
+            }
+            int cellX = MathUtils.clamp((int) ((x - lookupMinX) / lookupCellWidth), 0, lookupWidth - 1);
+            int cellY = MathUtils.clamp((int) ((y - lookupMinY) / lookupCellHeight), 0, lookupHeight - 1);
+            return lookupSampleIndex[cellY * lookupWidth + cellX];
+        }
+
+        private void findPoint(float progress, Vector2 out) {
+            int index = sampleIndexForProgress(progress);
+            int nextIndex = wrapSampleIndex(index + 1);
+            float alpha = sampleAlpha(progress, index);
+            out.set(
+                    MathUtils.lerp(sampleX[index], sampleX[nextIndex], alpha),
+                    MathUtils.lerp(sampleY[index], sampleY[nextIndex], alpha));
+        }
+
+        private void findTangent(float progress, Vector2 out) {
+            int index = sampleIndexForProgress(progress);
+            int nextIndex = wrapSampleIndex(index + 1);
+            float alpha = sampleAlpha(progress, index);
+            out.set(
+                    MathUtils.lerp(tangentX[index], tangentX[nextIndex], alpha),
+                    MathUtils.lerp(tangentY[index], tangentY[nextIndex], alpha));
+            if (out.isZero(0.0001f)) {
+                out.set(tangentX[index], tangentY[index]);
+            }
+            if (out.isZero(0.0001f)) {
+                out.set(0f, 1f);
+            } else {
+                out.nor();
+            }
+        }
+
+        private float sampleValue(float progress, float[] values, float fallback) {
+            int count = sampleCount();
+            if (values == null || values.length < count || count < 2) {
+                return fallback;
+            }
+            int index = sampleIndexForProgress(progress);
+            int nextIndex = wrapSampleIndex(index + 1);
+            return MathUtils.lerp(values[index], values[nextIndex], sampleAlpha(progress, index));
+        }
+
+        private float sampleAlpha(float progress, int index) {
+            return MathUtils.clamp((wrapProgress(progress) - sampleProgress(index)) / sampleStep, 0f, 1f);
+        }
+
+        private float wrapProgress(float progress) {
+            if (routeLength <= 0.001f) {
+                return 0f;
+            }
+            float wrapped = progress % routeLength;
+            return wrapped < 0f ? wrapped + routeLength : wrapped;
+        }
+
+        private RouteMetadata scale(float factor) {
+            float[] scaledSampleX = copy(sampleX);
+            float[] scaledSampleY = copy(sampleY);
+            float[] scaledLeftClearance = copy(leftClearance);
+            float[] scaledRightClearance = copy(rightClearance);
+            float[] scaledRoadWidth = copy(roadWidth);
+            for (int i = 0; i < scaledSampleX.length; i++) {
+                scaledSampleX[i] *= factor;
+                scaledSampleY[i] *= factor;
+            }
+            for (int i = 0; i < scaledLeftClearance.length; i++) {
+                scaledLeftClearance[i] *= factor;
+                scaledRightClearance[i] *= factor;
+                scaledRoadWidth[i] *= factor;
+            }
+            return new RouteMetadata(
+                    sampleStep * factor,
+                    routeLength * factor,
+                    scaledSampleX,
+                    scaledSampleY,
+                    tangentX,
+                    tangentY,
+                    curvature,
+                    nextCornerDistance,
+                    nextCornerDirection,
+                    nextCornerSeverity,
+                    scaledLeftClearance,
+                    scaledRightClearance,
+                    scaledRoadWidth,
+                    lookupWidth,
+                    lookupHeight,
+                    lookupMinX * factor,
+                    lookupMinY * factor,
+                    lookupCellWidth * factor,
+                    lookupCellHeight * factor,
+                    lookupSampleIndex);
+        }
+
+        private static float[] copy(float[] values) {
+            return values == null ? new float[0] : Arrays.copyOf(values, values.length);
+        }
+
+        private static int[] copy(int[] values) {
+            return values == null ? new int[0] : Arrays.copyOf(values, values.length);
         }
     }
 }

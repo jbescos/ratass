@@ -80,9 +80,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final String RL_ENEMY_POLICY_PATH = "ai/rl_enemy_policy.json";
     private static final String RL_POLICY_DIRECTORY = "ai/policies";
     private static final String RL_POLICY_FILE_NAME = "rl_enemy_policy.json";
-    private static final String RL_DEFAULT_POLICY_ID = "default";
+    private static final String RL_LEGACY_POLICY_ID = "legacy";
     private static final DriverPolicyChoice[] DRIVER_POLICY_CHOICES = new DriverPolicyChoice[] {
-            new DriverPolicyChoice(RL_DEFAULT_POLICY_ID, "Default"),
             new DriverPolicyChoice("rookie", "Rookie"),
             new DriverPolicyChoice("expert", "Expert"),
             new DriverPolicyChoice("aggressive", "Aggressive"),
@@ -196,22 +195,24 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_CROWDED_SAFE_MARGIN = 1.0f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
-    public static final int RL_OBSERVATION_SIZE = 29;
+    public static final int RL_OBSERVATION_SIZE = 33;
     public static final int RL_ACTION_SIZE = 2;
-    public static final int RL_REWARD_BREAKDOWN_SIZE = 6;
+    public static final int RL_REWARD_BREAKDOWN_SIZE = 7;
     private static final int RL_REWARD_ROUTE_PROGRESS = 0;
     private static final int RL_REWARD_STEP_COST = 1;
     private static final int RL_REWARD_OFF_ROAD = 2;
     private static final int RL_REWARD_STEERING = 3;
     private static final int RL_REWARD_REVERSE_SPEED = 4;
     private static final int RL_REWARD_CAR_PUSH = 5;
+    private static final int RL_REWARD_ROUTE_ALIGNMENT = 6;
     private static final String[] RL_REWARD_BREAKDOWN_NAMES = {
             "route_progress",
             "step_cost",
             "off_road",
             "steering",
             "reverse_speed",
-            "car_push"
+            "car_push",
+            "route_alignment"
     };
     private static final int RL_DEBUG_TRACE_SIZE = 23;
     private static final String[] RL_DEBUG_TRACE_NAMES = {
@@ -249,11 +250,14 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_POSITION_NORMALIZER_MIN = 1f;
     private static final float RL_ANGULAR_VELOCITY_NORMALIZER = 8f;
     private static final float RL_HAZARD_DISTANCE_NORMALIZER = 12f;
+    private static final float RL_ROUTE_CLEARANCE_NORMALIZER = 24f;
     private static final float RL_ROUTE_MARGIN = 0.50f;
     private static final float RL_RAYCAST_DISTANCE = 22f;
     private static final float RL_LATERAL_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 2f;
     private static final float RL_FRONT_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 7f;
     private static final float RL_ROUTE_LOOKAHEAD_DISTANCE = Car.HEIGHT * 7f;
+    private static final float RL_ROUTE_NEAR_TANGENT_LOOKAHEAD_DISTANCE = Car.HEIGHT * 4f;
+    private static final float RL_ROUTE_FAR_TANGENT_LOOKAHEAD_DISTANCE = Car.HEIGHT * 12f;
     private static final float RL_SHORT_RAYCAST_DISTANCE = 7.5f;
     private static final float RL_RAYCAST_STEP = 0.40f;
     private static final float RL_CAR_FRONT_REAR_SENSOR_DISTANCE = Car.HEIGHT * 7f;
@@ -264,6 +268,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_ACTION_FLIP_DEADZONE = 0.18f;
     private static final float RL_STEP_PENALTY = 0.006f;
     private static final float RL_PROGRESS_REWARD = 0.25f;
+    private static final float RL_ROUTE_ALIGNMENT_REWARD = 0f;
     private static final float RL_STEERING_PENALTY = 0.010f;
     private static final float RL_REVERSE_SPEED_FREE_EPSILON = 0.20f;
     private static final float RL_REVERSE_SPEED_PENALTY_PER_UNIT = 0.08f;
@@ -935,29 +940,20 @@ public class RatassGame extends ApplicationAdapter {
 
     private RlPolicy loadRlEnemyPolicy() {
         rlPolicies.clear();
-        RlPolicy legacyPolicy = loadRlPolicy(RL_ENEMY_POLICY_PATH, "legacy");
-        RlPolicy defaultPolicy =
-                loadRlPolicy(
-                        buildRlPolicyPath(RL_DEFAULT_POLICY_ID),
-                        RL_DEFAULT_POLICY_ID);
-        if (defaultPolicy == null) {
-            defaultPolicy = legacyPolicy;
-        }
-        if (defaultPolicy != null) {
-            rlPolicies.put(RL_DEFAULT_POLICY_ID, defaultPolicy);
-        }
+        RlPolicy legacyPolicy = loadRlPolicy(RL_ENEMY_POLICY_PATH, RL_LEGACY_POLICY_ID);
+        RlPolicy firstProfilePolicy = null;
 
         for (int i = 0; i < DRIVER_POLICY_CHOICES.length; i++) {
             String policyId = DRIVER_POLICY_CHOICES[i].id;
-            if (RL_DEFAULT_POLICY_ID.equals(policyId)) {
-                continue;
-            }
             RlPolicy policy = loadRlPolicy(buildRlPolicyPath(policyId), policyId);
             if (policy != null) {
                 rlPolicies.put(policyId, policy);
+                if (firstProfilePolicy == null) {
+                    firstProfilePolicy = policy;
+                }
             }
         }
-        return defaultPolicy;
+        return legacyPolicy == null ? firstProfilePolicy : legacyPolicy;
     }
 
     private String buildRlPolicyPath(String policyId) {
@@ -1008,7 +1004,7 @@ public class RatassGame extends ApplicationAdapter {
                 return null;
             }
             RlPolicy policy = RlPolicy.fromJson(policyFile.readString("UTF-8"));
-            if (policy.getObservationSize() > RL_OBSERVATION_SIZE
+            if (policy.getObservationSize() != RL_OBSERVATION_SIZE
                     || policy.getActionSize() != RL_ACTION_SIZE) {
                 Gdx.app.log(
                         "RatassGame",
@@ -1024,15 +1020,6 @@ public class RatassGame extends ApplicationAdapter {
                                 + RL_ACTION_SIZE
                                 + ". Retrain the policy for the current observation contract.");
                 return null;
-            }
-            if (policy.getObservationSize() < RL_OBSERVATION_SIZE) {
-                Gdx.app.log(
-                        "RatassGame",
-                        "Using older RL policy "
-                                + policyId
-                                + " with "
-                                + policy.getObservationSize()
-                                + " observations; retrain for the current car and road sensor contract.");
             }
             return policy;
         } catch (RuntimeException exception) {
@@ -1382,10 +1369,6 @@ public class RatassGame extends ApplicationAdapter {
                 sessionEnemyPolicyPool.add(policyId);
             }
         }
-        if (sessionEnemyPolicyPool.size == 0 && rlEnemyPolicy != null) {
-            sessionEnemyPolicyPool.add(RL_DEFAULT_POLICY_ID);
-        }
-
         for (int i = sessionEnemyPolicyPool.size - 1; i > 0; i--) {
             sessionEnemyPolicyPool.swap(i, sessionEnemyPolicyRandom.nextInt(i + 1));
         }
@@ -7141,7 +7124,7 @@ public class RatassGame extends ApplicationAdapter {
                 return choice.id;
             }
         }
-        return policy == rlEnemyPolicy ? RL_DEFAULT_POLICY_ID : "";
+        return policy == rlEnemyPolicy ? RL_LEGACY_POLICY_ID : "";
     }
 
     private String buildBestLapText(CarTemplate template) {
@@ -8959,6 +8942,21 @@ public class RatassGame extends ApplicationAdapter {
                 MathUtils.clamp(observationRouteTarget.dot(observationForward), -1f, 1f);
         float routeTangentSide =
                 MathUtils.clamp(observationRouteTarget.dot(observationSide), -1f, 1f);
+        float routeLeftClearance =
+                MathUtils.clamp(
+                        arenaMap.getRouteLeftClearance(routeProgress) / RL_ROUTE_CLEARANCE_NORMALIZER,
+                        0f,
+                        1f);
+        float routeRightClearance =
+                MathUtils.clamp(
+                        arenaMap.getRouteRightClearance(routeProgress) / RL_ROUTE_CLEARANCE_NORMALIZER,
+                        0f,
+                        1f);
+        float routeCurvature = arenaMap.getRouteCurvature(routeProgress);
+        float nearLookaheadTangentForward = routeTangentForward;
+        float nearLookaheadTangentSide = routeTangentSide;
+        float farLookaheadTangentForward = routeTangentForward;
+        float farLookaheadTangentSide = routeTangentSide;
 
         float lookaheadDx = 0f;
         float lookaheadDy = 0f;
@@ -8967,6 +8965,21 @@ public class RatassGame extends ApplicationAdapter {
         float lookaheadSideAlignment = routeTangentSide;
         float lookaheadClearance = 1f;
         if (arenaMap.hasRoute()) {
+            arenaMap.findRouteTangent(
+                    routeProgress + RL_ROUTE_NEAR_TANGENT_LOOKAHEAD_DISTANCE,
+                    observationRouteTarget);
+            nearLookaheadTangentForward =
+                    MathUtils.clamp(observationRouteTarget.dot(observationForward), -1f, 1f);
+            nearLookaheadTangentSide =
+                    MathUtils.clamp(observationRouteTarget.dot(observationSide), -1f, 1f);
+            arenaMap.findRouteTangent(
+                    routeProgress + RL_ROUTE_FAR_TANGENT_LOOKAHEAD_DISTANCE,
+                    observationRouteTarget);
+            farLookaheadTangentForward =
+                    MathUtils.clamp(observationRouteTarget.dot(observationForward), -1f, 1f);
+            farLookaheadTangentSide =
+                    MathUtils.clamp(observationRouteTarget.dot(observationSide), -1f, 1f);
+
             arenaMap.findRoutePoint(routeProgress + RL_ROUTE_LOOKAHEAD_DISTANCE, observationRouteTarget);
             lookaheadDx = observationRouteTarget.x - position.x;
             lookaheadDy = observationRouteTarget.y - position.y;
@@ -9047,30 +9060,34 @@ public class RatassGame extends ApplicationAdapter {
         observations[offset] = normalizedRouteProgress;
         observations[offset + 1] = routeTangentForward;
         observations[offset + 2] = routeTangentSide;
-        observations[offset + 3] = normalizedRlValue(lookaheadDx, positionNormalizer);
-        observations[offset + 4] = normalizedRlValue(lookaheadDy, positionNormalizer);
-        observations[offset + 5] = MathUtils.clamp(lookaheadDistance / positionNormalizer, 0f, 1f);
-        observations[offset + 6] = lookaheadForwardAlignment;
-        observations[offset + 7] = lookaheadSideAlignment;
-        observations[offset + 8] = lookaheadClearance;
-        observations[offset + 9] = speedSignal;
-        observations[offset + 10] = edgeClearance;
-        observations[offset + 11] = offRoad ? 1f : 0f;
-        observations[offset + 12] = MathUtils.clamp(offRoadDistance / positionNormalizer, 0f, 1f);
-        observations[offset + 13] = normalizedRlValue(forwardSpeed, maxForwardSpeed);
-        observations[offset + 14] = normalizedRlValue(lateralSpeed, maxForwardSpeed);
-        observations[offset + 15] =
+        observations[offset + 3] = lookaheadForwardAlignment;
+        observations[offset + 4] = lookaheadSideAlignment;
+        observations[offset + 5] = lookaheadClearance;
+        observations[offset + 6] = nearLookaheadTangentForward;
+        observations[offset + 7] = nearLookaheadTangentSide;
+        observations[offset + 8] = farLookaheadTangentForward;
+        observations[offset + 9] = farLookaheadTangentSide;
+        observations[offset + 10] = routeCurvature;
+        observations[offset + 11] = routeLeftClearance;
+        observations[offset + 12] = routeRightClearance;
+        observations[offset + 13] = speedSignal;
+        observations[offset + 14] = normalizedRlValue(forwardSpeed, maxForwardSpeed);
+        observations[offset + 15] = normalizedRlValue(lateralSpeed, maxForwardSpeed);
+        observations[offset + 16] =
                 normalizedRlValue(car.body.getAngularVelocity(), RL_ANGULAR_VELOCITY_NORMALIZER);
-        observations[offset + 16] = MathUtils.clamp(previousThrottle, -1f, 1f);
-        observations[offset + 17] = MathUtils.clamp(previousTurn, -1f, 1f);
+        observations[offset + 17] = MathUtils.clamp(previousThrottle, -1f, 1f);
+        observations[offset + 18] = MathUtils.clamp(previousTurn, -1f, 1f);
+        observations[offset + 19] = offRoad ? 1f : 0f;
+        observations[offset + 20] = MathUtils.clamp(offRoadDistance / positionNormalizer, 0f, 1f);
+        observations[offset + 21] = edgeClearance;
+        observations[offset + 22] = leftRoadClearance;
+        observations[offset + 23] = rightRoadClearance;
+        observations[offset + 24] = frontRoadClearance;
+        observations[offset + 25] = frontLeftRoadClearance;
+        observations[offset + 26] = frontRightRoadClearance;
         for (int i = 0; i < 6; i++) {
-            observations[offset + 18 + i] = carRayScratch[i];
+            observations[offset + 27 + i] = carRayScratch[i];
         }
-        observations[offset + 24] = leftRoadClearance;
-        observations[offset + 25] = rightRoadClearance;
-        observations[offset + 26] = frontRoadClearance;
-        observations[offset + 27] = frontLeftRoadClearance;
-        observations[offset + 28] = frontRightRoadClearance;
     }
 
     private static float sampleRlRayClearance(
@@ -9230,6 +9247,7 @@ public class RatassGame extends ApplicationAdapter {
         public boolean stepDetailsEnabled = true;
         public float stepPenalty = RL_STEP_PENALTY;
         public float progressReward = RL_PROGRESS_REWARD;
+        public float routeAlignmentReward = RL_ROUTE_ALIGNMENT_REWARD;
         public float routeTargetReward = RL_ROUTE_TARGET_REWARD;
         public float steeringPenalty = RL_STEERING_PENALTY;
         public float reverseSpeedFreeEpsilon = RL_REVERSE_SPEED_FREE_EPSILON;
@@ -9320,6 +9338,11 @@ public class RatassGame extends ApplicationAdapter {
 
         public RlTrainingConfig withProgressReward(float progressReward) {
             this.progressReward = progressReward;
+            return this;
+        }
+
+        public RlTrainingConfig withRouteAlignmentReward(float routeAlignmentReward) {
+            this.routeAlignmentReward = routeAlignmentReward;
             return this;
         }
 
@@ -9877,7 +9900,10 @@ public class RatassGame extends ApplicationAdapter {
                             position,
                             observationForward,
                             bestRaceRouteProgress[agentIndex]);
-            snapshot.routeForwardSpeed = getRouteForwardSpeed(position, velocity, observationForward);
+            game.currentMap.findRouteTangentAt(position, observationForward, observationRouteTarget);
+            snapshot.routeForwardAlignment =
+                    MathUtils.clamp(observationRouteTarget.dot(observationForward), -1f, 1f);
+            snapshot.routeForwardSpeed = observationRouteTarget.dot(velocity);
             observationSide.set(-observationForward.y, observationForward.x);
             game.currentMap.findRecoveryPoint(position, observationRecovery);
             observationRecovery.sub(position);
@@ -10003,6 +10029,10 @@ public class RatassGame extends ApplicationAdapter {
                             getProgressReward(agentIndex, after));
                     reward += recordReward(
                             agentIndex,
+                            RL_REWARD_ROUTE_ALIGNMENT,
+                            getRouteAlignmentReward(after));
+                    reward += recordReward(
+                            agentIndex,
                             RL_REWARD_REVERSE_SPEED,
                             -getReverseSpeedPenalty(after));
                     reward += recordReward(
@@ -10059,6 +10089,16 @@ public class RatassGame extends ApplicationAdapter {
             }
             float progress = MathUtils.clamp(routeProgressDeltas[agentIndex], -1.50f, 12.00f);
             return progress * config.progressReward;
+        }
+
+        private float getRouteAlignmentReward(RlAgentSnapshot snapshot) {
+            if (snapshot.offRoad || config.routeAlignmentReward <= 0f) {
+                return 0f;
+            }
+            if (snapshot.signedForwardSpeed < RACE_CHECKPOINT_MIN_FORWARD_CROSS_SPEED) {
+                return 0f;
+            }
+            return Math.max(0f, snapshot.routeForwardAlignment) * config.routeAlignmentReward;
         }
 
         private float getRouteCompletionTimeBonus(int agentIndex) {
@@ -10394,6 +10434,7 @@ public class RatassGame extends ApplicationAdapter {
         private float checkpointRouteDistance;
         private float checkpointTargetRadius;
         private float raceRouteProgress;
+        private float routeForwardAlignment;
         private float routeForwardSpeed;
         private float speed;
         private float signedForwardSpeed;
@@ -10414,6 +10455,7 @@ public class RatassGame extends ApplicationAdapter {
             checkpointRouteDistance = 0f;
             checkpointTargetRadius = 0f;
             raceRouteProgress = 0f;
+            routeForwardAlignment = 0f;
             routeForwardSpeed = 0f;
             speed = 0f;
             signedForwardSpeed = 0f;

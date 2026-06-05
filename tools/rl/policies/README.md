@@ -1,11 +1,12 @@
 # RL Driver Profiles
 
 Each subdirectory is one trainable driving personality. The game loads models from
-`assets/ai/policies/<id>/rl_enemy_policy.json`; if a specific id is missing it falls back to
-`assets/ai/policies/default/rl_enemy_policy.json`.
+`assets/ai/policies/<id>/rl_enemy_policy.json`. Only profiles with an available
+model are used for random enemy assignment.
 
-Use `profile.properties` to configure a personality. Named profiles inherit
-`tools/rl/policies/default/profile.properties` and can override any `RL_*` value.
+Use `profile.properties` to configure a personality. Profiles inherit
+`tools/rl/policies/default.properties` and can override any `RL_*` value.
+`default.properties` is a shared baseline config, not a trainable profile.
 
 Common properties:
 

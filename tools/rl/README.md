@@ -28,21 +28,22 @@ still runs on CPU.
 
 ## Environment Contract
 
-- Observation size: `29` floats per learner.
+- Observation size: `33` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
 - Default PPO network: two fully-connected hidden layers of width `256`
   with `tanh` activation.
-- Race observations include normalized route progress, route tangent alignment,
-  route lookahead vector/alignment/clearance, speed and car-frame velocity,
-  edge/off-road state, angular velocity, previous action, six opponent-car ray
-  clearances, and left/right/front/front-diagonal road-clearance rays. The old
-  checkpoint target observations, nearest-car aggregate observations, and
-  constant `active` observation were removed.
+- Race observations include normalized route progress, current/near/far route
+  tangent alignment, route lookahead alignment/clearance, route curvature,
+  route-side clearances, speed and car-frame velocity, edge/off-road state,
+  angular velocity, previous action, six opponent-car ray clearances, and
+  left/right/front/front-diagonal road-clearance rays. The old checkpoint target
+  observations, nearest-car aggregate observations, and constant `active`
+  observation were removed.
 - Rewards are bucketed as `route_progress`, `step_cost`, `off_road`, `steering`,
-  `reverse_speed`, and `car_push`. The route-progress bucket contains signed
-  progress along the circuit route plus the route-target completion reward.
-  Braking is not penalized, but actual negative forward speed is. Car collisions
-  are treated as push/contact penalties, not as rewards.
+  `reverse_speed`, `car_push`, and `route_alignment`. The route-progress bucket
+  contains signed progress along the circuit route plus the route-target
+  completion reward. Braking is not penalized, but actual negative forward speed
+  is. Car collisions are treated as push/contact penalties, not as rewards.
 - Java exposes episode metrics for route targets reached and route progress.
 - The shell training presets stage route learning through `5%`, `10%`, `25%`,
   `50%`, and `75%` route targets, then `lap_easy` route-only full laps, then

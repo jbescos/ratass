@@ -130,10 +130,7 @@ def ensure_jpype() -> None:
 def profile_ids(profile_root: Path, raw_profiles: str) -> list[str]:
     if raw_profiles.strip() and raw_profiles.strip().lower() != "all":
         return [value.strip() for value in raw_profiles.split(",") if value.strip()]
-    ids = sorted(path.name for path in profile_root.iterdir() if path.is_dir())
-    return [profile for profile in ids if profile != "default"] + (
-        ["default"] if "default" in ids else []
-    )
+    return sorted(path.name for path in profile_root.iterdir() if path.is_dir())
 
 
 def add_maps(target: list, source, seen: set[str]) -> None:
@@ -209,7 +206,7 @@ def run_lap_timing(args: argparse.Namespace, arena_map, profile: str, policy) ->
         env_observation_size = int(env.getObservationSize())
         policy_observation_size = int(policy.getObservationSize())
         scratch_size = int(policy.getScratchSize())
-        if policy_observation_size > env_observation_size:
+        if policy_observation_size != env_observation_size:
             return TimedRun(
                 map_id,
                 profile,
@@ -218,7 +215,7 @@ def run_lap_timing(args: argparse.Namespace, arena_map, profile: str, policy) ->
                 None,
                 0,
                 args.laps,
-                f"policy observation size {policy_observation_size} > env {env_observation_size}",
+                f"policy observation size {policy_observation_size} != env {env_observation_size}",
             )
 
         while not result.episodeDone and (args.steps <= 0 or int(result.actionStep) < args.steps):

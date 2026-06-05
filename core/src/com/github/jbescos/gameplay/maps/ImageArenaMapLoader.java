@@ -17,6 +17,7 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.zip.GZIPInputStream;
@@ -28,7 +29,7 @@ final class ImageArenaMapLoader {
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
     private static final String CACHE_SUFFIX = ".ser";
-    private static final int CACHE_VERSION = 64;
+    private static final int CACHE_VERSION = 65;
     private static final float BASE_WORLD_HEIGHT = 22f;
     private static final int MAX_SEQUENTIAL_MAP_SCAN = 1000;
     private static final int MAX_SHAPE_MASK_LONG_SIDE = 512;
@@ -66,6 +67,17 @@ final class ImageArenaMapLoader {
     private static final float ROUTE_HINT_DIRECT_STEP_WORLD = 1.25f;
     private static final float ROUTE_HINT_SEGMENT_MARGIN_WORLD = 1.75f;
     private static final float ROUTE_HINT_MIN_RADIUS_PIXELS = 5f;
+    private static final float ROUTE_METADATA_SAMPLE_STEP_WORLD = 0.75f;
+    private static final float ROUTE_METADATA_TANGENT_SAMPLE_DISTANCE = 1.50f;
+    private static final float ROUTE_METADATA_CURVATURE_SAMPLE_DISTANCE = 3.20f;
+    private static final float ROUTE_METADATA_CLEARANCE_DISTANCE = 24f;
+    private static final float ROUTE_METADATA_CLEARANCE_STEP = 0.35f;
+    private static final float ROUTE_METADATA_CLEARANCE_EDGE_MARGIN = 0.10f;
+    private static final float ROUTE_METADATA_CORNER_THRESHOLD = 0.14f;
+    private static final float ROUTE_METADATA_CORNER_DISTANCE_NORMALIZER = 44f;
+    private static final float ROUTE_METADATA_LOOKUP_CELLS_PER_WORLD_UNIT = 3.0f;
+    private static final int ROUTE_METADATA_LOOKUP_MIN_SIZE = 64;
+    private static final int ROUTE_METADATA_LOOKUP_MAX_SIZE = 256;
     private static final float[][] MAP004_ROUTE_WAYPOINTS = {
         {-93.611f, -66.397f},
         {-97.352f, -54.240f},
@@ -316,6 +328,14 @@ final class ImageArenaMapLoader {
                             worldMinY,
                             worldWidth,
                             worldHeight);
+            ArenaMap.RouteMetadata routeMetadata =
+                    buildRouteMetadata(
+                            routePoints,
+                            shape,
+                            worldMinX,
+                            worldMinY,
+                            worldWidth,
+                            worldHeight);
             alignSpawnPointsWithRoute(spawnPoints, routePoints);
             boolean preserveRouteOrderMarkers =
                     checkpoints.size <= 1
@@ -343,6 +363,7 @@ final class ImageArenaMapLoader {
             for (int i = 0; i < routePoints.size; i++) {
                 builder.routePoint(routePoints.get(i));
             }
+            builder.routeMetadata(routeMetadata);
 
             ArenaMap map = builder.build();
             writeCachedMap(maskFile, buildCachedMapData(
@@ -360,6 +381,7 @@ final class ImageArenaMapLoader {
                     spawnPoints,
                     checkpoints,
                     routePoints,
+                    routeMetadata,
                     recoveryPoints));
             return map;
         } finally {
@@ -425,6 +447,30 @@ final class ImageArenaMapLoader {
             for (int i = 0; i < routeCount; i++) {
                 builder.routePoint(cached.routeX[i], cached.routeY[i]);
             }
+        }
+        if (cached.routeSampleX != null && cached.routeSampleY != null) {
+            builder.routeMetadata(
+                    new ArenaMap.RouteMetadata(
+                            cached.routeSampleStep,
+                            cached.routeLength,
+                            cached.routeSampleX,
+                            cached.routeSampleY,
+                            cached.routeTangentX,
+                            cached.routeTangentY,
+                            cached.routeCurvature,
+                            cached.routeNextCornerDistance,
+                            cached.routeNextCornerDirection,
+                            cached.routeNextCornerSeverity,
+                            cached.routeLeftClearance,
+                            cached.routeRightClearance,
+                            cached.routeRoadWidth,
+                            cached.routeLookupWidth,
+                            cached.routeLookupHeight,
+                            cached.routeLookupMinX,
+                            cached.routeLookupMinY,
+                            cached.routeLookupCellWidth,
+                            cached.routeLookupCellHeight,
+                            cached.routeLookupSampleIndex));
         }
         for (int i = 0; i < cached.recoveryX.length; i++) {
             builder.recoveryPoint(cached.recoveryX[i], cached.recoveryY[i]);
@@ -1040,6 +1086,7 @@ final class ImageArenaMapLoader {
             Array<SpawnPoint> spawnPoints,
             Array<SpawnPoint> checkpoints,
             Array<Vector2> routePoints,
+            ArenaMap.RouteMetadata routeMetadata,
             Array<Vector2> recoveryPoints) {
         CachedMapData cached = new CachedMapData();
         cached.version = CACHE_VERSION;
@@ -1098,6 +1145,28 @@ final class ImageArenaMapLoader {
             cached.routeX[i] = routePoint.x;
             cached.routeY[i] = routePoint.y;
         }
+        if (routeMetadata != null) {
+            cached.routeSampleStep = routeMetadata.sampleStep;
+            cached.routeLength = routeMetadata.routeLength;
+            cached.routeSampleX = copy(routeMetadata.sampleX);
+            cached.routeSampleY = copy(routeMetadata.sampleY);
+            cached.routeTangentX = copy(routeMetadata.tangentX);
+            cached.routeTangentY = copy(routeMetadata.tangentY);
+            cached.routeCurvature = copy(routeMetadata.curvature);
+            cached.routeNextCornerDistance = copy(routeMetadata.nextCornerDistance);
+            cached.routeNextCornerDirection = copy(routeMetadata.nextCornerDirection);
+            cached.routeNextCornerSeverity = copy(routeMetadata.nextCornerSeverity);
+            cached.routeLeftClearance = copy(routeMetadata.leftClearance);
+            cached.routeRightClearance = copy(routeMetadata.rightClearance);
+            cached.routeRoadWidth = copy(routeMetadata.roadWidth);
+            cached.routeLookupWidth = routeMetadata.lookupWidth;
+            cached.routeLookupHeight = routeMetadata.lookupHeight;
+            cached.routeLookupMinX = routeMetadata.lookupMinX;
+            cached.routeLookupMinY = routeMetadata.lookupMinY;
+            cached.routeLookupCellWidth = routeMetadata.lookupCellWidth;
+            cached.routeLookupCellHeight = routeMetadata.lookupCellHeight;
+            cached.routeLookupSampleIndex = copy(routeMetadata.lookupSampleIndex);
+        }
         cached.recoveryX = new float[recoveryPoints.size];
         cached.recoveryY = new float[recoveryPoints.size];
         for (int i = 0; i < recoveryPoints.size; i++) {
@@ -1106,6 +1175,292 @@ final class ImageArenaMapLoader {
             cached.recoveryY[i] = recoveryPoint.y;
         }
         return cached;
+    }
+
+    private static ArenaMap.RouteMetadata buildRouteMetadata(
+            Array<Vector2> routePoints,
+            MaskArenaShape shape,
+            float worldMinX,
+            float worldMinY,
+            float worldWidth,
+            float worldHeight) {
+        if (routePoints == null || routePoints.size < 2 || shape == null) {
+            return null;
+        }
+        float[] cumulative = buildRouteCumulativeDistances(routePoints);
+        float routeLength = cumulative.length == 0 ? 0f : cumulative[cumulative.length - 1];
+        if (routeLength <= 0.001f) {
+            return null;
+        }
+
+        int sampleCount = Math.max(2, MathUtils.ceil(routeLength / ROUTE_METADATA_SAMPLE_STEP_WORLD));
+        float sampleStep = routeLength / sampleCount;
+        float[] sampleX = new float[sampleCount];
+        float[] sampleY = new float[sampleCount];
+        float[] tangentX = new float[sampleCount];
+        float[] tangentY = new float[sampleCount];
+        float[] curvature = new float[sampleCount];
+        float[] nextCornerDistance = new float[sampleCount];
+        float[] nextCornerDirection = new float[sampleCount];
+        float[] nextCornerSeverity = new float[sampleCount];
+        float[] leftClearance = new float[sampleCount];
+        float[] rightClearance = new float[sampleCount];
+        float[] roadWidth = new float[sampleCount];
+
+        Vector2 point = new Vector2();
+        Vector2 tangent = new Vector2();
+        Vector2 leftNormal = new Vector2();
+        Vector2 beforeTangent = new Vector2();
+        Vector2 afterTangent = new Vector2();
+        for (int i = 0; i < sampleCount; i++) {
+            float progress = i * sampleStep;
+            sampleRoutePoint(routePoints, cumulative, routeLength, progress, point);
+            sampleRouteTangent(routePoints, cumulative, routeLength, progress, tangent);
+            sampleX[i] = point.x;
+            sampleY[i] = point.y;
+            tangentX[i] = tangent.x;
+            tangentY[i] = tangent.y;
+
+            leftNormal.set(-tangent.y, tangent.x);
+            leftClearance[i] =
+                    sampleShapeRayClearance(
+                            shape,
+                            point.x,
+                            point.y,
+                            leftNormal.x,
+                            leftNormal.y,
+                            ROUTE_METADATA_CLEARANCE_DISTANCE);
+            rightClearance[i] =
+                    sampleShapeRayClearance(
+                            shape,
+                            point.x,
+                            point.y,
+                            -leftNormal.x,
+                            -leftNormal.y,
+                            ROUTE_METADATA_CLEARANCE_DISTANCE);
+            roadWidth[i] = leftClearance[i] + rightClearance[i];
+
+            sampleRouteTangent(
+                    routePoints,
+                    cumulative,
+                    routeLength,
+                    progress - ROUTE_METADATA_CURVATURE_SAMPLE_DISTANCE,
+                    beforeTangent);
+            sampleRouteTangent(
+                    routePoints,
+                    cumulative,
+                    routeLength,
+                    progress + ROUTE_METADATA_CURVATURE_SAMPLE_DISTANCE,
+                    afterTangent);
+            float cross = beforeTangent.x * afterTangent.y - beforeTangent.y * afterTangent.x;
+            float dot = beforeTangent.x * afterTangent.x + beforeTangent.y * afterTangent.y;
+            float signedAngle = (float) Math.atan2(cross, dot);
+            curvature[i] = MathUtils.clamp(signedAngle / 1.35f, -1f, 1f);
+        }
+
+        for (int i = 0; i < sampleCount; i++) {
+            float bestSeverity = 0f;
+            float bestDirection = 0f;
+            float distance = routeLength;
+            for (int offset = 0; offset < sampleCount; offset++) {
+                int index = (i + offset) % sampleCount;
+                float severity = Math.abs(curvature[index]);
+                if (severity >= ROUTE_METADATA_CORNER_THRESHOLD) {
+                    bestSeverity = severity;
+                    bestDirection = Math.signum(curvature[index]);
+                    distance = offset * sampleStep;
+                    break;
+                }
+            }
+            nextCornerDistance[i] =
+                    MathUtils.clamp(distance / ROUTE_METADATA_CORNER_DISTANCE_NORMALIZER, 0f, 1f);
+            nextCornerDirection[i] = bestDirection;
+            nextCornerSeverity[i] = MathUtils.clamp(bestSeverity, 0f, 1f);
+        }
+
+        int lookupWidth =
+                MathUtils.clamp(
+                        MathUtils.ceil(worldWidth * ROUTE_METADATA_LOOKUP_CELLS_PER_WORLD_UNIT),
+                        ROUTE_METADATA_LOOKUP_MIN_SIZE,
+                        ROUTE_METADATA_LOOKUP_MAX_SIZE);
+        int lookupHeight =
+                MathUtils.clamp(
+                        MathUtils.ceil(worldHeight * ROUTE_METADATA_LOOKUP_CELLS_PER_WORLD_UNIT),
+                        ROUTE_METADATA_LOOKUP_MIN_SIZE,
+                        ROUTE_METADATA_LOOKUP_MAX_SIZE);
+        float lookupCellWidth = worldWidth / lookupWidth;
+        float lookupCellHeight = worldHeight / lookupHeight;
+        int[] lookupSampleIndex = new int[lookupWidth * lookupHeight];
+        for (int y = 0; y < lookupHeight; y++) {
+            float cellY = worldMinY + (y + 0.5f) * lookupCellHeight;
+            for (int x = 0; x < lookupWidth; x++) {
+                float cellX = worldMinX + (x + 0.5f) * lookupCellWidth;
+                lookupSampleIndex[y * lookupWidth + x] =
+                        findNearestRouteSampleIndex(cellX, cellY, sampleX, sampleY);
+            }
+        }
+
+        return new ArenaMap.RouteMetadata(
+                sampleStep,
+                routeLength,
+                sampleX,
+                sampleY,
+                tangentX,
+                tangentY,
+                curvature,
+                nextCornerDistance,
+                nextCornerDirection,
+                nextCornerSeverity,
+                leftClearance,
+                rightClearance,
+                roadWidth,
+                lookupWidth,
+                lookupHeight,
+                worldMinX,
+                worldMinY,
+                lookupCellWidth,
+                lookupCellHeight,
+                lookupSampleIndex);
+    }
+
+    private static float[] buildRouteCumulativeDistances(Array<Vector2> routePoints) {
+        if (routePoints == null || routePoints.size < 2) {
+            return new float[0];
+        }
+        float[] cumulative = new float[routePoints.size + 1];
+        for (int i = 0; i < routePoints.size; i++) {
+            Vector2 current = routePoints.get(i);
+            Vector2 next = routePoints.get((i + 1) % routePoints.size);
+            cumulative[i + 1] = cumulative[i] + current.dst(next);
+        }
+        return cumulative;
+    }
+
+    private static void sampleRoutePoint(
+            Array<Vector2> routePoints,
+            float[] cumulative,
+            float routeLength,
+            float progress,
+            Vector2 out) {
+        if (routePoints == null || routePoints.size == 0 || routeLength <= 0.001f) {
+            out.setZero();
+            return;
+        }
+        float wrapped = wrapRouteProgress(progress, routeLength);
+        int segmentIndex = findRouteSegmentIndex(cumulative, routeLength, wrapped);
+        Vector2 start = routePoints.get(segmentIndex);
+        Vector2 end = routePoints.get((segmentIndex + 1) % routePoints.size);
+        float segmentLength = Math.max(0.0001f, cumulative[segmentIndex + 1] - cumulative[segmentIndex]);
+        float alpha = MathUtils.clamp((wrapped - cumulative[segmentIndex]) / segmentLength, 0f, 1f);
+        out.set(start).lerp(end, alpha);
+    }
+
+    private static void sampleRouteTangent(
+            Array<Vector2> routePoints,
+            float[] cumulative,
+            float routeLength,
+            float progress,
+            Vector2 out) {
+        Vector2 before = new Vector2();
+        Vector2 after = new Vector2();
+        float distance = Math.min(ROUTE_METADATA_TANGENT_SAMPLE_DISTANCE, routeLength * 0.10f);
+        sampleRoutePoint(routePoints, cumulative, routeLength, progress - distance, before);
+        sampleRoutePoint(routePoints, cumulative, routeLength, progress + distance, after);
+        out.set(after).sub(before);
+        if (out.isZero(0.0001f)) {
+            int segmentIndex = findRouteSegmentIndex(cumulative, routeLength, wrapRouteProgress(progress, routeLength));
+            Vector2 start = routePoints.get(segmentIndex);
+            Vector2 end = routePoints.get((segmentIndex + 1) % routePoints.size);
+            out.set(end).sub(start);
+        }
+        if (out.isZero(0.0001f)) {
+            out.set(0f, 1f);
+        } else {
+            out.nor();
+        }
+    }
+
+    private static int findRouteSegmentIndex(float[] cumulative, float routeLength, float progress) {
+        if (cumulative == null || cumulative.length <= 2) {
+            return 0;
+        }
+        int low = 0;
+        int high = cumulative.length - 2;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            float start = cumulative[mid];
+            float end = mid + 1 < cumulative.length ? cumulative[mid + 1] : routeLength;
+            if (progress < start) {
+                high = mid - 1;
+            } else if (progress >= end && mid + 1 < cumulative.length - 1) {
+                low = mid + 1;
+            } else {
+                return MathUtils.clamp(mid, 0, cumulative.length - 2);
+            }
+        }
+        return MathUtils.clamp(low, 0, cumulative.length - 2);
+    }
+
+    private static float wrapRouteProgress(float progress, float routeLength) {
+        if (routeLength <= 0.001f) {
+            return 0f;
+        }
+        float wrapped = progress % routeLength;
+        return wrapped < 0f ? wrapped + routeLength : wrapped;
+    }
+
+    private static float sampleShapeRayClearance(
+            MaskArenaShape shape,
+            float startX,
+            float startY,
+            float directionX,
+            float directionY,
+            float maxDistance) {
+        float length = (float) Math.sqrt(directionX * directionX + directionY * directionY);
+        if (shape == null || length <= 0.0001f || maxDistance <= 0f) {
+            return 0f;
+        }
+        float unitX = directionX / length;
+        float unitY = directionY / length;
+        for (float distance = 0f;
+                distance <= maxDistance;
+                distance += ROUTE_METADATA_CLEARANCE_STEP) {
+            float x = startX + unitX * distance;
+            float y = startY + unitY * distance;
+            if (!shape.contains(x, y)
+                    || shape.depthInside(x, y) < ROUTE_METADATA_CLEARANCE_EDGE_MARGIN) {
+                return MathUtils.clamp(distance, 0f, maxDistance);
+            }
+        }
+        return maxDistance;
+    }
+
+    private static int findNearestRouteSampleIndex(
+            float x,
+            float y,
+            float[] sampleX,
+            float[] sampleY) {
+        int bestIndex = 0;
+        float bestDistance = Float.MAX_VALUE;
+        int count = Math.min(sampleX.length, sampleY.length);
+        for (int i = 0; i < count; i++) {
+            float dx = sampleX[i] - x;
+            float dy = sampleY[i] - y;
+            float distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
+    private static float[] copy(float[] values) {
+        return values == null ? null : Arrays.copyOf(values, values.length);
+    }
+
+    private static int[] copy(int[] values) {
+        return values == null ? null : Arrays.copyOf(values, values.length);
     }
 
     private static MaskParseResult parseMask(Pixmap mask) {
@@ -4139,6 +4494,26 @@ final class ImageArenaMapLoader {
         private float[] checkpointGateEndY;
         private float[] routeX;
         private float[] routeY;
+        private float routeSampleStep;
+        private float routeLength;
+        private float[] routeSampleX;
+        private float[] routeSampleY;
+        private float[] routeTangentX;
+        private float[] routeTangentY;
+        private float[] routeCurvature;
+        private float[] routeNextCornerDistance;
+        private float[] routeNextCornerDirection;
+        private float[] routeNextCornerSeverity;
+        private float[] routeLeftClearance;
+        private float[] routeRightClearance;
+        private float[] routeRoadWidth;
+        private int routeLookupWidth;
+        private int routeLookupHeight;
+        private float routeLookupMinX;
+        private float routeLookupMinY;
+        private float routeLookupCellWidth;
+        private float routeLookupCellHeight;
+        private int[] routeLookupSampleIndex;
         private float[] recoveryX;
         private float[] recoveryY;
     }

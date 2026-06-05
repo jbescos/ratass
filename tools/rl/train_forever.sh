@@ -347,6 +347,7 @@ run_curriculum_phase() {
     RL_ROUTE_SPAWN_SEED_FILE="${phase_spawn_seed_file}" \
     RL_ROUTE_PHASE_NAME="${phase}" \
     RL_ROUTE_STAGE_ACTIVE=1 \
+    RL_FORCE_FRESH_START=0 \
     RL_FRESH_START=0 \
     bash "${script_dir}/train_forever.sh" "${preset}"
   local phase_key
@@ -988,6 +989,7 @@ best_eval_ignore_installed="${RL_BEST_EVAL_IGNORE_INSTALLED:-1}"
 seed="${RL_SEED:-}"
 reward_step_penalty="${RL_REWARD_STEP_PENALTY:-0.006}"
 reward_progress="${RL_REWARD_PROGRESS:-0.25}"
+reward_route_alignment="${RL_REWARD_ROUTE_ALIGNMENT:-0.0}"
 reward_route_target="${RL_REWARD_ROUTE_TARGET:-30.0}"
 reward_steering_penalty="${RL_REWARD_STEERING_PENALTY:-0.010}"
 reward_reverse_free_epsilon="${RL_REWARD_REVERSE_FREE_EPSILON:-0.20}"
@@ -1075,6 +1077,7 @@ common_args=(
   --sample-timeout-s "${sample_timeout_s}"
   --reward-step-penalty "${reward_step_penalty}"
   --reward-progress "${reward_progress}"
+  --reward-route-alignment "${reward_route_alignment}"
   --reward-route-target "${reward_route_target}"
   --reward-steering-penalty "${reward_steering_penalty}"
   --reward-reverse-free-epsilon "${reward_reverse_free_epsilon}"

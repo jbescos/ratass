@@ -38,7 +38,7 @@ from export_policy import export_policy as export_checkpoint_policy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
-OBSERVATION_SIZE = 29
+OBSERVATION_SIZE = 33
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
@@ -252,6 +252,9 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withSeed(base_seed + worker_index * 1_000_003 + vector_index * 10_007)
         training_config.withStepPenalty(float(env_config.get("reward_step_penalty", 0.006)))
         training_config.withProgressReward(float(env_config.get("reward_progress", 0.25)))
+        training_config.withRouteAlignmentReward(
+            float(env_config.get("reward_route_alignment", 0.0))
+        )
         training_config.withRouteTargetReward(float(env_config.get("reward_route_target", 30.0)))
         training_config.withSteeringPenalty(float(env_config.get("reward_steering_penalty", 0.010)))
         training_config.withReverseSpeedPenalty(
@@ -510,6 +513,7 @@ def build_algorithm(args):
         "reward_summary": not args.no_reward_summary,
         "reward_step_penalty": args.reward_step_penalty,
         "reward_progress": args.reward_progress,
+        "reward_route_alignment": args.reward_route_alignment,
         "reward_route_target": args.reward_route_target,
         "reward_steering_penalty": args.reward_steering_penalty,
         "reward_reverse_free_epsilon": args.reward_reverse_free_epsilon,
@@ -1104,6 +1108,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--reward-step-penalty", type=float, default=0.006)
     parser.add_argument("--reward-progress", type=float, default=0.25)
+    parser.add_argument("--reward-route-alignment", type=float, default=0.0)
     parser.add_argument("--reward-route-target", type=float, default=30.0)
     parser.add_argument("--reward-steering-penalty", type=float, default=0.010)
     parser.add_argument("--reward-reverse-free-epsilon", type=float, default=0.20)
