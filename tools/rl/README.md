@@ -49,10 +49,11 @@ still runs on CPU.
   is. Car collisions are treated as push/contact penalties, not as rewards.
 - Java exposes episode metrics for route targets reached and route progress.
 - The shell training presets stage route learning through `5%`, `10%`, `25%`,
-  `50%`, and `75%` route targets, then `lap_easy` route-only full laps, then
-  normal full-lap episodes (`RL_ROUTE_TARGETS=-1`). `RL_STAGE_NUMBER_OF_CARS`
-  controls how many cars are used in each stage. Route-target stages must stay
-  single-car; lap stages can train with traffic.
+  `50%`, and `75%` route targets, then `lap_easy` route-only full laps,
+  `lap_training` full laps on `tools/rl/trainingMaps`, and `lap_real` full laps
+  on `assets/maps`. `RL_STAGE_NUMBER_OF_CARS` controls how many cars are used in
+  each stage. Route-target stages must stay single-car; lap stages can train
+  with traffic.
 - Route-target stages use saved random spawn seeds. By default each
   `tools/rl/train.sh` invocation creates a new spawn-seed session, so spawns
   are stable during that run but different on the next run. Set

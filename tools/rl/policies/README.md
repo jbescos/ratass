@@ -20,13 +20,14 @@ RL_ENTROPY_COEFF=0.005
 RL_GAMMA=0.995
 
 # Route/lap curriculum. Percentages are fractions of a lap; lap_easy is a
-# full-lap stage on route-only easy masks.
-RL_STAGE_ROUTE_TARGETS=5%,10%,25%,50%,75%,lap_easy,lap
-RL_STAGE_ITERATIONS=100,100,300,100,100,200,200
+# full-lap stage on route-only easy masks, lap_training uses training maps, and
+# lap_real uses real game maps.
+RL_STAGE_ROUTE_TARGETS=5%,10%,25%,50%,75%,lap_easy,lap_training,lap_real
+RL_STAGE_ITERATIONS=100,100,300,100,100,200,200,200
 
 # Number of cars for each stage. Route-target stages must use 1 car; lap stages
 # can use more cars with fixed grid spawns.
-RL_STAGE_NUMBER_OF_CARS=1,1,1,1,1,1,4
+RL_STAGE_NUMBER_OF_CARS=1,1,1,1,1,1,1,4
 
 # Rewards.
 RL_REWARD_PROGRESS=0.25

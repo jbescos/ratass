@@ -228,6 +228,7 @@ run_curriculum_phase() {
   local phase_seed="${RL_SEED:-1}"
   local phase_route_targets="${route_targets}"
   local phase_route_target_fraction="${route_target_fraction:-0}"
+  local phase_fixed_full_laps=0
   local phase_map_ids="${RL_MAP_IDS:-}"
   local phase_best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS:-}"
   if [[ "${phase_route_targets}" == "-2" ]]; then
@@ -235,6 +236,22 @@ run_curriculum_phase() {
     phase_route_target_fraction="0"
     phase_map_ids="${RL_LAP_EASY_MAP_IDS:-auto-lap-easy}"
     phase_best_eval_map_ids="${RL_LAP_EASY_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
+  elif [[ "${phase_route_targets}" == "-3" ]]; then
+    phase_route_targets="-1"
+    phase_route_target_fraction="0"
+    phase_map_ids="${RL_LAP_TRAINING_MAP_IDS:-auto-training}"
+    phase_best_eval_map_ids="${RL_LAP_TRAINING_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
+  elif [[ "${phase_route_targets}" == "-4" ]]; then
+    phase_route_targets="-1"
+    phase_route_target_fraction="0"
+    phase_map_ids="${RL_LAP_REAL_MAP_IDS:-auto-game}"
+    phase_best_eval_map_ids="${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
+  elif [[ "${phase_route_targets}" == "-5" ]]; then
+    phase_route_targets="${RL_LAP_REAL_TARGETS:-5}"
+    phase_route_target_fraction="0"
+    phase_fixed_full_laps=1
+    phase_map_ids="${RL_LAP_REAL_MAP_IDS:-auto-game}"
+    phase_best_eval_map_ids="${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
   fi
   if [[ "${iterations}" -le 0 ]]; then
     echo "curriculum_phase_skip policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} iterations=${iterations} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction}"
@@ -251,7 +268,13 @@ run_curriculum_phase() {
     echo "curriculum_phase_skip_completed policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} state=${RL_POLICY_TRAINING_STATE}"
     return
   fi
-  if is_route_target_training_stage "${phase_route_targets}"; then
+  if [[ "${phase_fixed_full_laps}" == "1" ]]; then
+    if [[ ! "${phase_route_targets}" =~ ^[1-9][0-9]*$ ]]; then
+      echo "invalid_lap_real_targets=${phase_route_targets} phase=${phase} expected=positive_integer" >&2
+      exit 2
+    fi
+    phase_spawn_mode="fixed-grid"
+  elif is_route_target_training_stage "${phase_route_targets}"; then
     if [[ "${phase_controlled_agents}" -ne 1 ]]; then
       echo "invalid_route_target_training_cars=${phase_controlled_agents} phase=${phase} route_targets=${phase_route_targets} required_cars=1 reason=route_target_training_uses_saved_random_single_car_spawns" >&2
       exit 2
@@ -347,6 +370,7 @@ run_curriculum_phase() {
     RL_ROUTE_SPAWN_SEED_FILE="${phase_spawn_seed_file}" \
     RL_ROUTE_PHASE_NAME="${phase}" \
     RL_ROUTE_STAGE_ACTIVE=1 \
+    RL_FIXED_FULL_LAPS="${phase_fixed_full_laps}" \
     RL_FORCE_FRESH_START=0 \
     RL_FRESH_START=0 \
     bash "${script_dir}/train_forever.sh" "${preset}"
@@ -364,6 +388,9 @@ route_stage_label() {
   local target_fraction="${2:-0}"
   case "${targets}" in
     -2) printf '%s\n' "lap_easy" ;;
+    -3) printf '%s\n' "lap_training" ;;
+    -4) printf '%s\n' "lap_real" ;;
+    -5) printf '%s\n' "lap_real5" ;;
     -1) printf '%s\n' "lap" ;;
     *)
       if [[ "${targets}" =~ ^[1-9][0-9]*$ && "${target_fraction}" != "0" && "${target_fraction}" != "0.0" ]]; then
@@ -387,6 +414,9 @@ route_stage_label() {
 normalize_route_stage() {
   case "$1" in
     "lap_easy"|"easy_lap"|"easy-lap") printf '%s\n' "-2" ;;
+    "lap_training"|"lap_train"|"training_lap"|"training-lap") printf '%s\n' "-3" ;;
+    "lap_real"|"real_lap"|"real-lap"|"game_lap"|"game-lap") printf '%s\n' "-4" ;;
+    "lap_real5"|"real_lap5"|"real-lap5"|"game_lap5"|"game-lap5"|"lap-real5") printf '%s\n' "-5" ;;
     "lap"|"full"|"-1") printf '%s\n' "-1" ;;
     "")
       echo "empty_route_stage=1" >&2
@@ -400,7 +430,7 @@ normalize_route_stage() {
         if (chunks < 1) chunks = 1;
         print chunks;
       }' || {
-        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_or_lap" >&2
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
         return 2
       }
       ;;
@@ -411,7 +441,7 @@ normalize_route_stage() {
         if (chunks < 1) chunks = 1;
         print chunks;
       }' || {
-        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_or_lap" >&2
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
         return 2
       }
       ;;
@@ -420,7 +450,7 @@ normalize_route_stage() {
         printf '%s\n' "$1"
         return 0
       fi
-      echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_or_lap" >&2
+      echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
       return 2
       ;;
   esac
@@ -436,7 +466,7 @@ route_stage_target_fraction() {
         if (percent <= 0 || chunks <= 0) exit 2;
         printf "%.8g\n", (percent / 100.0) / chunks;
       }' || {
-        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_or_lap" >&2
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
         return 2
       }
       ;;
@@ -445,7 +475,7 @@ route_stage_target_fraction() {
         if (fraction <= 0 || chunks <= 0) exit 2;
         printf "%.8g\n", fraction / chunks;
       }' || {
-        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_or_lap" >&2
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
         return 2
       }
       ;;
@@ -460,6 +490,9 @@ route_stage_label_from_spec() {
   local normalized="$2"
   case "${spec}" in
     "lap_easy"|"easy_lap"|"easy-lap") printf '%s\n' "lap_easy" ;;
+    "lap_training"|"lap_train"|"training_lap"|"training-lap") printf '%s\n' "lap_training" ;;
+    "lap_real"|"real_lap"|"real-lap"|"game_lap"|"game-lap") printf '%s\n' "lap_real" ;;
+    "lap_real5"|"real_lap5"|"real-lap5"|"game_lap5"|"game-lap5"|"lap-real5") printf '%s\n' "lap_real5" ;;
     "lap"|"full"|"-1") printf '%s\n' "lap" ;;
     *%)
       local percent="${spec%\%}"
@@ -472,7 +505,7 @@ route_stage_label_from_spec() {
         if (fraction <= 0) exit 2;
         printf "%.6g", fraction * 100.0;
       }')" || {
-        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_or_lap" >&2
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
         return 2
       }
       percent="${percent//./p}"
@@ -673,7 +706,7 @@ run_route_curriculum_for_preset() {
   local preset_agents
   preset_agents="$(controlled_agents_for_preset "${preset}")"
 
-  split_csv_compact "${RL_STAGE_ROUTE_TARGETS:-5%,10%,25%,50%,75%,lap_easy,lap}"
+  split_csv_compact "${RL_STAGE_ROUTE_TARGETS:-5%,10%,25%,50%,75%,lap_easy,lap_training,lap_real}"
   stage_specs=("${split_csv_result[@]}")
   if [[ "${#stage_specs[@]}" -eq 0 ]]; then
     echo "empty_stage_schedule=1" >&2
@@ -742,7 +775,7 @@ run_route_curriculum_for_preset() {
   local profile_stage_total=$((stage_group_total * route_stage_total))
   local overall_stage_total=$((policy_total * profile_stage_total))
 
-  echo "route_curriculum_schedule preset=${preset} stages=${RL_STAGE_ROUTE_TARGETS:-5%,10%,25%,50%,75%,lap_easy,lap} stage_iterations=${stage_iterations[*]} stage_cars=${stage_cars[*]} total_iterations=${total_iterations} stage_group=${stage_group_index}/${stage_group_total}"
+  echo "route_curriculum_schedule preset=${preset} stages=${RL_STAGE_ROUTE_TARGETS:-5%,10%,25%,50%,75%,lap_easy,lap_training,lap_real} stage_iterations=${stage_iterations[*]} stage_cars=${stage_cars[*]} total_iterations=${total_iterations} stage_group=${stage_group_index}/${stage_group_total}"
   for ((index = 0; index < ${#stage_specs[@]}; index++)); do
     local phase_iterations="${stage_iterations[index]}"
     local max_cycles=1
@@ -816,12 +849,12 @@ run_diagnostic() {
   RL_STAGE_NUMBER_OF_CARS= \
     run_route_curriculum_for_preset "race-single" "${RL_DIAGNOSTIC_RACE_1_ITERATIONS:-40}" 1 "${checkpoint_dir}" "${RL_INIT_POLICY:-}"
   RL_STAGE_GROUP_INDEX=2 RL_STAGE_GROUP_TOTAL=3 \
-  RL_STAGE_ROUTE_TARGETS=lap \
+  RL_STAGE_ROUTE_TARGETS=lap_real \
   RL_STAGE_ITERATIONS="${RL_DIAGNOSTIC_RACE_2_ITERATIONS:-40}" \
   RL_STAGE_NUMBER_OF_CARS=2 \
     run_route_curriculum_for_preset "race-2" "${RL_DIAGNOSTIC_RACE_2_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
   RL_STAGE_GROUP_INDEX=3 RL_STAGE_GROUP_TOTAL=3 \
-  RL_STAGE_ROUTE_TARGETS=lap \
+  RL_STAGE_ROUTE_TARGETS=lap_real \
   RL_STAGE_ITERATIONS="${RL_DIAGNOSTIC_RACE_4_ITERATIONS:-40}" \
   RL_STAGE_NUMBER_OF_CARS=4 \
     run_route_curriculum_for_preset "race-4" "${RL_DIAGNOSTIC_RACE_4_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
@@ -838,7 +871,7 @@ run_direct_race_route_curriculum() {
   clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
   ensure_route_spawn_seed_session "${checkpoint_dir}"
   if [[ "${preset_agents}" -gt 1 ]]; then
-    RL_STAGE_ROUTE_TARGETS=lap \
+    RL_STAGE_ROUTE_TARGETS=lap_real \
     RL_STAGE_ITERATIONS="${iterations}" \
     RL_STAGE_NUMBER_OF_CARS="${preset_agents}" \
       run_route_curriculum_for_preset \
@@ -1011,7 +1044,18 @@ race_spawn_mode="fixed-grid"
 random_race_spawns=0
 route_spawn_seed_file="${RL_ROUTE_SPAWN_SEED_FILE:-}"
 route_phase_name="${RL_ROUTE_PHASE_NAME:-${preset:-race}-$(route_stage_label "${route_targets}" "${route_target_fraction}")}"
-if is_route_target_training_stage "${route_targets}"; then
+if is_true "${RL_FIXED_FULL_LAPS:-0}"; then
+  if [[ ! "${route_targets}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "invalid_fixed_full_lap_targets=${route_targets} preset=${preset:-race} expected=positive_integer" >&2
+    exit 2
+  fi
+  if [[ "${route_target_fraction}" != "0" && "${route_target_fraction}" != "0.0" ]]; then
+    echo "invalid_fixed_full_lap_fraction=${route_target_fraction} preset=${preset:-race} expected=0" >&2
+    exit 2
+  fi
+  race_spawn_mode="fixed-grid"
+  random_race_spawns=0
+elif is_route_target_training_stage "${route_targets}"; then
   ensure_route_spawn_seed_session "${checkpoint_dir}"
   if [[ "${controlled_agents}" -ne 1 ]]; then
     echo "invalid_route_target_training_cars=${controlled_agents} preset=${preset:-race} route_targets=${route_targets} required_cars=1 reason=route_target_training_uses_saved_random_single_car_spawns" >&2
