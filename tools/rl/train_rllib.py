@@ -975,6 +975,11 @@ def maybe_promote_best_policy(
     output_file = Path(args.best_export_output).resolve()
     score, metrics = run_policy_evaluation(args, candidate_policy)
     if score is None:
+        print(
+            f"model_export_not_overwritten reason=evaluation_failed "
+            f"output={output_file} checkpoint={saved_checkpoint}",
+            flush=True,
+        )
         return result
     result["evaluated"] = True
     result["score"] = score
@@ -987,6 +992,14 @@ def maybe_promote_best_policy(
             f"best_policy_rejected score={score:.3f} "
             f"avg_targets={avg_targets:.3f} "
             f"min_route_targets={args.best_eval_min_route_targets:.3f}",
+            flush=True,
+        )
+        print(
+            f"model_export_not_overwritten reason=insufficient_route_goals "
+            f"output={output_file} score={score:.3f} "
+            f"avg_targets={avg_targets:.3f} "
+            f"min_route_targets={args.best_eval_min_route_targets:.3f} "
+            f"checkpoint={saved_checkpoint}",
             flush=True,
         )
         return result
@@ -1016,9 +1029,16 @@ def maybe_promote_best_policy(
             f"best_policy_unchanged score={score:.3f} best_score={previous_score:.3f}",
             flush=True,
         )
+        print(
+            f"model_export_not_overwritten reason=score_not_improved "
+            f"output={output_file} score={score:.3f} "
+            f"best_score={previous_score:.3f} checkpoint={saved_checkpoint}",
+            flush=True,
+        )
         return result
 
     archive_file = best_eval_archive_path(args, checkpoint_dir)
+    output_existed = output_file.exists()
     shutil.copyfile(candidate_policy, archive_file)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(candidate_policy, output_file)
@@ -1036,6 +1056,18 @@ def maybe_promote_best_policy(
         f"output={output_file} state={state_path}",
         flush=True,
     )
+    if output_existed:
+        print(
+            f"model_export_overwritten output={output_file} score={score:.3f} "
+            f"previous_score={previous_score:.3f} checkpoint={saved_checkpoint}",
+            flush=True,
+        )
+    else:
+        print(
+            f"model_export_created output={output_file} score={score:.3f} "
+            f"checkpoint={saved_checkpoint}",
+            flush=True,
+        )
     result["promoted"] = True
     return result
 

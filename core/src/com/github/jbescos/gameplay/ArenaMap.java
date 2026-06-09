@@ -33,6 +33,8 @@ public final class ArenaMap {
     private final Array<SpawnPoint> spawnPoints = new Array<SpawnPoint>();
     private final Array<SpawnPoint> checkpoints = new Array<SpawnPoint>();
     private final Array<Vector2> routePoints = new Array<Vector2>();
+    private final Array<Vector2> routeMarkerPoints = new Array<Vector2>();
+    private float[] routeMarkerProgresses = new float[0];
     private final Array<Vector2> recoveryPoints = new Array<Vector2>();
     private final Rectangle bounds = new Rectangle();
     private final Vector2 scratchCandidate = new Vector2();
@@ -71,6 +73,8 @@ public final class ArenaMap {
             Array<SpawnPoint> spawnPoints,
             Array<SpawnPoint> checkpoints,
             Array<Vector2> routePoints,
+            Array<Vector2> routeMarkerPoints,
+            float[] routeMarkerProgresses,
             Array<Vector2> recoveryPoints,
             RouteMetadata routeMetadata) {
         this.id = id;
@@ -84,6 +88,17 @@ public final class ArenaMap {
         this.checkpoints.addAll(checkpoints);
         for (int i = 0; i < routePoints.size; i++) {
             this.routePoints.add(new Vector2(routePoints.get(i)));
+        }
+        for (int i = 0; i < routeMarkerPoints.size; i++) {
+            this.routeMarkerPoints.add(new Vector2(routeMarkerPoints.get(i)));
+        }
+        this.routeMarkerProgresses = new float[this.routeMarkerPoints.size];
+        for (int i = 0; i < this.routeMarkerProgresses.length; i++) {
+            float progress =
+                    routeMarkerProgresses != null && i < routeMarkerProgresses.length
+                            ? routeMarkerProgresses[i]
+                            : 0f;
+            this.routeMarkerProgresses[i] = progress;
         }
 
         for (int i = 0; i < recoveryPoints.size; i++) {
@@ -190,6 +205,28 @@ public final class ArenaMap {
 
     public int getRoutePointCount() {
         return routePoints.size;
+    }
+
+    public int getRouteMarkerPointCount() {
+        return routeMarkerPoints.size;
+    }
+
+    public void getRouteMarkerPoint(int index, Vector2 out) {
+        if (out == null) {
+            return;
+        }
+        if (index < 0 || index >= routeMarkerPoints.size) {
+            out.setZero();
+            return;
+        }
+        out.set(routeMarkerPoints.get(index));
+    }
+
+    public float getRouteMarkerProgress(int index) {
+        if (index < 0 || index >= routeMarkerProgresses.length) {
+            return 0f;
+        }
+        return wrapRouteProgress(routeMarkerProgresses[index]);
     }
 
     public boolean hasRoute() {
@@ -1422,6 +1459,8 @@ public final class ArenaMap {
         private final Array<SpawnPoint> spawnPoints = new Array<SpawnPoint>();
         private final Array<SpawnPoint> checkpoints = new Array<SpawnPoint>();
         private final Array<Vector2> routePoints = new Array<Vector2>();
+        private final Array<Vector2> routeMarkerPoints = new Array<Vector2>();
+        private final Array<Float> routeMarkerProgresses = new Array<Float>();
         private final Array<Vector2> recoveryPoints = new Array<Vector2>();
         private RouteMetadata routeMetadata;
 
@@ -1472,6 +1511,30 @@ public final class ArenaMap {
             return this;
         }
 
+        public Builder routeMarkerPoint(float x, float y) {
+            return routeMarkerPoint(x, y, 0f);
+        }
+
+        public Builder routeMarkerPoint(float x, float y, float progress) {
+            routeMarkerPoints.add(new Vector2(x, y));
+            routeMarkerProgresses.add(progress);
+            return this;
+        }
+
+        public Builder routeMarkerPoint(Vector2 point) {
+            if (point != null) {
+                routeMarkerPoint(point.x, point.y);
+            }
+            return this;
+        }
+
+        public Builder routeMarkerPoint(Vector2 point, float progress) {
+            if (point != null) {
+                routeMarkerPoint(point.x, point.y, progress);
+            }
+            return this;
+        }
+
         public Builder routeMetadata(RouteMetadata routeMetadata) {
             this.routeMetadata = routeMetadata == null ? null : new RouteMetadata(routeMetadata);
             return this;
@@ -1506,6 +1569,10 @@ public final class ArenaMap {
             }
             for (int i = 0; i < routePoints.size; i++) {
                 routePoints.get(i).scl(factor);
+            }
+            for (int i = 0; i < routeMarkerPoints.size; i++) {
+                routeMarkerPoints.get(i).scl(factor);
+                routeMarkerProgresses.set(i, routeMarkerProgresses.get(i) * factor);
             }
             if (routeMetadata != null) {
                 routeMetadata = routeMetadata.scale(factor);
@@ -1542,8 +1609,18 @@ public final class ArenaMap {
                     spawnPoints,
                     checkpoints,
                     routePoints,
+                    routeMarkerPoints,
+                    toFloatArray(routeMarkerProgresses),
                     recoveryPoints,
                     routeMetadata);
+        }
+
+        private static float[] toFloatArray(Array<Float> values) {
+            float[] out = new float[values.size];
+            for (int i = 0; i < values.size; i++) {
+                out[i] = values.get(i);
+            }
+            return out;
         }
     }
 

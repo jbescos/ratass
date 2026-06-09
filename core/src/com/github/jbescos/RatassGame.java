@@ -58,7 +58,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final String SETTINGS_PREFS_NAME = "ratass-settings";
     private static final String THEME_PROPERTY = "theme";
     private static final String THEME_PREF_KEY = THEME_PROPERTY;
-    private static final String DEFAULT_THEME_NAME = "infernal";
+    private static final String DEFAULT_THEME_NAME = "gt3";
     private static final String CAMERA_FOLLOW_BEHIND_PROPERTY = "camera.follow.behind";
     private static final String CAMERA_FOLLOW_BEHIND_PREF_KEY = CAMERA_FOLLOW_BEHIND_PROPERTY;
     private static final String CAMERA_ZOOM_PROPERTY = "camera.zoom";
@@ -76,6 +76,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final String THEME_MANIFEST_PATH = "themes.txt";
     private static final String THEME_CAR_SHEET_PATH = "cars/cars.png";
     private static final String THEME_FLAT_CAR_SHEET_PATH = "cars.png";
+    private static final String THEME_CAR_DIRECTORY_PATH = "cars";
     private static final String THEME_ENEMY_NAMES_PATH = "enemy-names.txt";
     private static final String RL_ENEMY_POLICY_PATH = "ai/rl_enemy_policy.json";
     private static final String RL_POLICY_DIRECTORY = "ai/policies";
@@ -91,23 +92,21 @@ public class RatassGame extends ApplicationAdapter {
             new DriverPolicyChoice("reckless", "Reckless")
     };
     private static final ThemeChoice[] FALLBACK_THEME_CHOICES = new ThemeChoice[] {
-            new ThemeChoice("infernal", "Infernal"),
-            new ThemeChoice("sport", "Sport Cars"),
-            new ThemeChoice("classical", "Classical Cars"),
-            new ThemeChoice("circus", "Circus Cars"),
-            new ThemeChoice("animals", "Animal Cars"),
-            new ThemeChoice("monsters", "Monster Cars")
+            new ThemeChoice("gt3", "GT3")
     };
     private static final int THEME_CAR_COLUMNS = 10;
     private static final int THEME_CAR_SHEET_ROWS = 5;
-    private static final int MAX_CAR_VISUAL_COUNT = THEME_CAR_COLUMNS * THEME_CAR_SHEET_ROWS;
-    private static final int DEFAULT_CAR_COUNT = 20;
+    private static final int MAX_CAR_VISUAL_COUNT = 10;
+    private static final int STANDALONE_CAR_PREVIEW_COLUMNS = 5;
+    private static final int STANDALONE_CAR_PREVIEW_CELL_WIDTH = 150;
+    private static final int STANDALONE_CAR_PREVIEW_CELL_HEIGHT = 200;
+    private static final int DEFAULT_CAR_COUNT = 10;
     private static final int DEFAULT_PLAYER_CAR_INDEX = 0;
     private static final int DEFAULT_RACE_LAPS = 3;
     private static final int MIN_RACE_LAPS = 1;
     private static final int MAX_RACE_LAPS = 10;
     private static final int MIN_CAR_COUNT = 1;
-    private static final int MAX_CAR_COUNT = 20;
+    private static final int MAX_CAR_COUNT = 10;
     private static final int DEFAULT_DRIVER_POLICY_INDEX = 0;
     private static final int OPTIONS_THEME_SELECTION = 0;
     private static final int OPTIONS_CARS_SELECTION = 1;
@@ -119,8 +118,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final int OPTIONS_BACK_SELECTION = 7;
     private static final int MAIN_MENU_NEW_GAME_SELECTION = 0;
     private static final int MAIN_MENU_SANDBOX_SELECTION = 1;
-    private static final int MAIN_MENU_OPTIONS_SELECTION = 2;
-    private static final int MAIN_MENU_EXIT_SELECTION = 3;
+    private static final int MAIN_MENU_MAPS_SELECTION = 2;
+    private static final int MAIN_MENU_OPTIONS_SELECTION = 3;
+    private static final int MAIN_MENU_EXIT_SELECTION = 4;
     private static final int PAUSE_MENU_RESTART_SELECTION = 0;
     private static final int PAUSE_MENU_OPTIONS_SELECTION = 1;
     private static final int PAUSE_MENU_MAIN_MENU_SELECTION = 2;
@@ -214,6 +214,41 @@ public class RatassGame extends ApplicationAdapter {
             "car_push",
             "route_alignment"
     };
+    private static final String[] RL_OBSERVATION_NAMES = {
+            "route_progress",
+            "route_fwd",
+            "route_side",
+            "lookahead_fwd",
+            "lookahead_side",
+            "lookahead_clear",
+            "near_route_fwd",
+            "near_route_side",
+            "far_route_fwd",
+            "far_route_side",
+            "route_curve",
+            "route_left_clear",
+            "route_right_clear",
+            "speed",
+            "forward_speed",
+            "lateral_speed",
+            "angular_speed",
+            "prev_throttle",
+            "prev_turn",
+            "off_road",
+            "off_road_dist",
+            "edge_clear",
+            "left_road",
+            "right_road",
+            "front_road",
+            "front_left_road",
+            "front_right_road",
+            "car_front",
+            "car_front_left",
+            "car_front_right",
+            "car_left",
+            "car_right",
+            "car_rear"
+    };
     private static final int RL_DEBUG_TRACE_SIZE = 23;
     private static final String[] RL_DEBUG_TRACE_NAMES = {
             "active",
@@ -263,6 +298,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_CAR_FRONT_REAR_SENSOR_DISTANCE = Car.HEIGHT * 7f;
     private static final float RL_CAR_SIDE_SENSOR_DISTANCE = Car.HEIGHT * 3f;
     private static final float RL_CAR_SENSOR_RADIUS = 1.2f;
+    private static final float SANDBOX_ROUTE_LINE_SAMPLE_STEP = 0.70f;
+    private static final float SANDBOX_ROUTE_LINE_WIDTH = 0.08f;
+    private static final float SANDBOX_SENSOR_RAY_WIDTH = 0.04f;
+    private static final float SANDBOX_SENSOR_HIT_RADIUS = 0.13f;
+    private static final float SANDBOX_ROUTE_ARROW_LENGTH = 1.15f;
+    private static final float SANDBOX_ROUTE_ARROW_WIDTH = 0.11f;
+    private static final float SANDBOX_SENSOR_LABEL_DISTANCE = 0.95f;
+    private static final float SANDBOX_SENSOR_LABEL_STEP = 10f;
+    private static final float SANDBOX_SENSOR_WORLD_LABEL_OFFSET = 0.24f;
     private static final float RL_BRAKING_DISTANCE_NORMALIZER = 24f;
     private static final float RL_CONTROL_DEADZONE = 0.06f;
     private static final float RL_ACTION_FLIP_DEADZONE = 0.18f;
@@ -326,6 +370,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final float MENU_CAR_PREVIEW_MAX_WIDTH = 620f;
     private static final float MENU_CAR_PREVIEW_MIN_WIDTH = 240f;
     private static final float MENU_CAR_SHEET_ASPECT = 3f / 2f;
+    private static final float MENU_MAP_DEBUG_SAMPLE_STEP = 0.55f;
+    private static final float MENU_MAP_DEBUG_ARROW_STEP = 18f;
+    private static final float MENU_MAP_DEBUG_MIN_LINE_WIDTH = 3f;
+    private static final float MENU_MAP_DEBUG_MAX_LINE_WIDTH = 6f;
     private static final float CAR_SPRITE_WIDTH_SCALE = 1.16f;
     private static final float CAR_SPRITE_HEIGHT_SCALE = 1.14f;
     private static final float CAR_SPRITE_ROTATION_OFFSET_DEG = 180f;
@@ -560,6 +608,8 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<ArenaMap> sandboxMenuMaps = new Array<ArenaMap>();
     private final LinkedHashMap<String, Texture> arenaSurfaceTextureCache =
             new LinkedHashMap<String, Texture>();
+    private final LinkedHashMap<String, Texture> mapDebugMaskTextureCache =
+            new LinkedHashMap<String, Texture>();
     private final Random sessionEnemyVisualRandom = new Random();
     private final Random sessionEnemyPolicyRandom = new Random();
     private final GlyphLayout glyphLayout = new GlyphLayout();
@@ -575,6 +625,19 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector2 raceSecondTargetPosition = new Vector2();
     private final Vector2 racePreviousTargetPosition = new Vector2();
     private final Vector2 raceRouteDirection = new Vector2();
+    private final Vector2 sandboxSensorForward = new Vector2();
+    private final Vector2 sandboxSensorSide = new Vector2();
+    private final Vector2 sandboxSensorDirection = new Vector2();
+    private final Vector2 sandboxSensorPoint = new Vector2();
+    private final Vector2 sandboxSensorRoutePoint = new Vector2();
+    private final Vector3 sandboxSensorProjection = new Vector3();
+    private final Rectangle sandboxRlObservationBounds = new Rectangle();
+    private final Vector2 sandboxRlObservationFocus = new Vector2();
+    private final Vector2 sandboxRlObservationForward = new Vector2();
+    private final Vector2 sandboxRlObservationRouteTarget = new Vector2();
+    private final Vector2 sandboxRlObservationSide = new Vector2();
+    private final float[] sandboxRlObservation = new float[RL_OBSERVATION_SIZE];
+    private final float[] sandboxRlCarRays = new float[6];
     private final Vector2 pickupCandidate = new Vector2();
     private final Vector2 lastGrowthPickupPosition = new Vector2();
     private final Vector2 lastPointPickupPosition = new Vector2();
@@ -584,8 +647,14 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle menuSandboxBounds = new Rectangle();
     private final Rectangle menuSandboxPrevBounds = new Rectangle();
     private final Rectangle menuSandboxNextBounds = new Rectangle();
+    private final Rectangle menuMapsBounds = new Rectangle();
     private final Rectangle menuOptionsBounds = new Rectangle();
     private final Rectangle menuExitBounds = new Rectangle();
+    private final Rectangle mapDebugPreviewBounds = new Rectangle();
+    private final Rectangle mapDebugImageBounds = new Rectangle();
+    private final Rectangle mapDebugPrevBounds = new Rectangle();
+    private final Rectangle mapDebugNextBounds = new Rectangle();
+    private final Rectangle mapDebugBackBounds = new Rectangle();
     private final Rectangle pauseRestartBounds = new Rectangle();
     private final Rectangle pauseOptionsBounds = new Rectangle();
     private final Rectangle pauseMainMenuBounds = new Rectangle();
@@ -630,6 +699,9 @@ public class RatassGame extends ApplicationAdapter {
     private final Color eventCalloutColor = new Color();
     private final Vector3 hudTouchPoint = new Vector3();
     private final Vector3 carLabelProjection = new Vector3();
+    private final Vector2 mapDebugPoint = new Vector2();
+    private final Vector2 mapDebugTangent = new Vector2();
+    private final Rectangle mapDebugMapBounds = new Rectangle();
     private final ImpactContactListener impactContactListener = new ImpactContactListener();
     private final Comparator<CarTemplate> leaderboardComparator = new Comparator<CarTemplate>() {
         @Override
@@ -1121,7 +1193,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void addThemeChoiceIfUsable(ThemeChoice choice) {
-        if (choice == null || !themeHasCarSheet(choice.name)) {
+        if (choice == null || !themeHasCars(choice.name)) {
             return;
         }
         addThemeChoiceIfMissing(choice);
@@ -1137,9 +1209,19 @@ public class RatassGame extends ApplicationAdapter {
         themeChoices.add(choice);
     }
 
-    private boolean themeHasCarSheet(String themeName) {
+    private boolean themeHasCars(String themeName) {
         return themeAssetExists(themeName, THEME_CAR_SHEET_PATH)
-                || themeAssetExists(themeName, THEME_FLAT_CAR_SHEET_PATH);
+                || themeAssetExists(themeName, THEME_FLAT_CAR_SHEET_PATH)
+                || themeHasStandaloneCars(themeName);
+    }
+
+    private boolean themeHasStandaloneCars(String themeName) {
+        for (int i = 0; i < MAX_CAR_VISUAL_COUNT; i++) {
+            if (themeAssetExists(themeName, buildThemeCarFilePath(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean themeAssetExists(String themeName, String relativePath) {
@@ -1605,6 +1687,10 @@ public class RatassGame extends ApplicationAdapter {
         themeCarsTexture = null;
         themeCarVisuals.clear();
 
+        if (loadStandaloneThemeCarVisuals()) {
+            return;
+        }
+
         FileHandle carSheetHandle = resolveThemeCarSheetHandle();
         if (carSheetHandle == null || !carSheetHandle.exists()) {
             return;
@@ -1628,6 +1714,38 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private boolean loadStandaloneThemeCarVisuals() {
+        Array<FileHandle> carHandles = resolveStandaloneThemeCarHandles();
+        if (carHandles.size == 0) {
+            return false;
+        }
+
+        for (int i = 0; i < carHandles.size; i++) {
+            FileHandle handle = carHandles.get(i);
+            Pixmap source = null;
+            try {
+                source = new Pixmap(handle);
+                themeCarVisuals.add(
+                        new CarVisual(
+                                THEME_CAR_DIRECTORY_PATH + "/" + handle.name(),
+                                sampleSpriteColor(
+                                        source,
+                                        new Rectangle(
+                                                0f,
+                                                0f,
+                                                source.getWidth(),
+                                                source.getHeight()))));
+            } catch (RuntimeException exception) {
+                Gdx.app.error("RatassGame", "Could not load themed car " + handle.path(), exception);
+            } finally {
+                if (source != null) {
+                    source.dispose();
+                }
+            }
+        }
+        return themeCarVisuals.size > 0;
+    }
+
     private void ensureMenuCarPreviewLoaded() {
         if (configuredThemeName.equals(menuCarSheetThemeName)) {
             return;
@@ -1635,6 +1753,10 @@ public class RatassGame extends ApplicationAdapter {
 
         disposeMenuCarPreview();
         menuCarSheetThemeName = configuredThemeName;
+
+        if (loadStandaloneMenuCarPreview()) {
+            return;
+        }
 
         FileHandle carSheetHandle = resolveThemeCarSheetHandle();
         if (carSheetHandle == null || !carSheetHandle.exists()) {
@@ -1654,6 +1776,65 @@ public class RatassGame extends ApplicationAdapter {
             disposeTexture(menuCarSheetTexture);
             menuCarSheetTexture = null;
             menuCarSheetSourceBounds.clear();
+        }
+    }
+
+    private boolean loadStandaloneMenuCarPreview() {
+        Array<FileHandle> carHandles = resolveStandaloneThemeCarHandles();
+        if (carHandles.size == 0) {
+            return false;
+        }
+
+        int columnCount = Math.min(STANDALONE_CAR_PREVIEW_COLUMNS, carHandles.size);
+        int rowCount = MathUtils.ceil(carHandles.size / (float) columnCount);
+        Pixmap sheet = new Pixmap(
+                columnCount * STANDALONE_CAR_PREVIEW_CELL_WIDTH,
+                rowCount * STANDALONE_CAR_PREVIEW_CELL_HEIGHT,
+                Pixmap.Format.RGBA8888);
+        sheet.setColor(0f, 0f, 0f, 0f);
+        sheet.fill();
+
+        try {
+            for (int i = 0; i < carHandles.size; i++) {
+                FileHandle handle = carHandles.get(i);
+                Pixmap car = null;
+                try {
+                    car = new Pixmap(handle);
+                    int column = i % columnCount;
+                    int row = i / columnCount;
+                    sheet.drawPixmap(
+                            car,
+                            0,
+                            0,
+                            car.getWidth(),
+                            car.getHeight(),
+                            column * STANDALONE_CAR_PREVIEW_CELL_WIDTH,
+                            row * STANDALONE_CAR_PREVIEW_CELL_HEIGHT,
+                            STANDALONE_CAR_PREVIEW_CELL_WIDTH,
+                            STANDALONE_CAR_PREVIEW_CELL_HEIGHT);
+                    menuCarSheetSourceBounds.add(new Rectangle(
+                            column * STANDALONE_CAR_PREVIEW_CELL_WIDTH,
+                            row * STANDALONE_CAR_PREVIEW_CELL_HEIGHT,
+                            STANDALONE_CAR_PREVIEW_CELL_WIDTH,
+                            STANDALONE_CAR_PREVIEW_CELL_HEIGHT));
+                } catch (RuntimeException exception) {
+                    Gdx.app.error("RatassGame", "Could not load menu car " + handle.path(), exception);
+                } finally {
+                    if (car != null) {
+                        car.dispose();
+                    }
+                }
+            }
+
+            if (menuCarSheetSourceBounds.size == 0) {
+                return false;
+            }
+            menuCarSheetTexture = new Texture(sheet);
+            menuCarSheetTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            clampSelectedPlayerCarToMenuPreview();
+            return true;
+        } finally {
+            sheet.dispose();
         }
     }
 
@@ -1739,6 +1920,21 @@ public class RatassGame extends ApplicationAdapter {
 
     private String buildThemeAssetPath(String relativePath) {
         return THEME_DIRECTORY + "/" + configuredThemeName + "/" + relativePath;
+    }
+
+    private String buildThemeCarFilePath(int index) {
+        return THEME_CAR_DIRECTORY_PATH + "/" + String.format(Locale.ROOT, "%02d.png", index);
+    }
+
+    private Array<FileHandle> resolveStandaloneThemeCarHandles() {
+        Array<FileHandle> handles = new Array<FileHandle>();
+        for (int i = 0; i < MAX_CAR_VISUAL_COUNT; i++) {
+            FileHandle handle = resolveThemedAssetHandle(buildThemeCarFilePath(i));
+            if (handle != null && handle.exists()) {
+                handles.add(handle);
+            }
+        }
+        return handles;
     }
 
     private FileHandle resolveThemeCarSheetHandle() {
@@ -2049,6 +2245,11 @@ public class RatassGame extends ApplicationAdapter {
                 closeOptionsMenu();
                 return;
             }
+            if (gameMode == GameMode.MAPS_MENU) {
+                gameMode = GameMode.MAIN_MENU;
+                mainMenuSelection = MAIN_MENU_MAPS_SELECTION;
+                return;
+            }
             if (gameMode == GameMode.PAUSE_MENU) {
                 resumeGame();
                 return;
@@ -2059,6 +2260,8 @@ public class RatassGame extends ApplicationAdapter {
 
         if (gameMode == GameMode.MAIN_MENU) {
             handleMainMenuInput();
+        } else if (gameMode == GameMode.MAPS_MENU) {
+            handleMapsMenuInput();
         } else if (gameMode == GameMode.PAUSE_MENU) {
             handlePauseMenuInput();
         } else if (gameMode == GameMode.OPTIONS_MENU) {
@@ -2101,11 +2304,29 @@ public class RatassGame extends ApplicationAdapter {
                 startNewGame();
             } else if (mainMenuSelection == MAIN_MENU_SANDBOX_SELECTION) {
                 startSandboxGame();
+            } else if (mainMenuSelection == MAIN_MENU_MAPS_SELECTION) {
+                openMapsMenu();
             } else if (mainMenuSelection == MAIN_MENU_OPTIONS_SELECTION) {
                 openOptionsMenu(false);
             } else {
                 Gdx.app.exit();
             }
+        }
+    }
+
+    private void handleMapsMenuInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
+                || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
+            changeSandboxMapSelection(-1);
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)
+                || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
+            changeSandboxMapSelection(1);
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)
+                || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+            gameMode = GameMode.MAIN_MENU;
+            mainMenuSelection = MAIN_MENU_MAPS_SELECTION;
         }
     }
 
@@ -2267,6 +2488,12 @@ public class RatassGame extends ApplicationAdapter {
         ensureEnabledOptionsSelection();
     }
 
+    private void openMapsMenu() {
+        optionsOpenedFromPause = false;
+        mainMenuSelection = MAIN_MENU_MAPS_SELECTION;
+        gameMode = GameMode.MAPS_MENU;
+    }
+
     private void closeOptionsMenu() {
         if (optionsOpenedFromPause) {
             optionsOpenedFromPause = false;
@@ -2343,12 +2570,27 @@ public class RatassGame extends ApplicationAdapter {
             } else if (menuSandboxBounds.contains(x, y)) {
                 mainMenuSelection = MAIN_MENU_SANDBOX_SELECTION;
                 startSandboxGame();
+            } else if (menuMapsBounds.contains(x, y)) {
+                mainMenuSelection = MAIN_MENU_MAPS_SELECTION;
+                openMapsMenu();
             } else if (menuOptionsBounds.contains(x, y)) {
                 mainMenuSelection = MAIN_MENU_OPTIONS_SELECTION;
                 openOptionsMenu(false);
             } else if (menuExitBounds.contains(x, y)) {
                 mainMenuSelection = MAIN_MENU_EXIT_SELECTION;
                 Gdx.app.exit();
+            }
+            return;
+        }
+
+        if (gameMode == GameMode.MAPS_MENU) {
+            if (mapDebugPrevBounds.contains(x, y)) {
+                changeSandboxMapSelection(-1);
+            } else if (mapDebugNextBounds.contains(x, y)) {
+                changeSandboxMapSelection(1);
+            } else if (mapDebugBackBounds.contains(x, y)) {
+                gameMode = GameMode.MAIN_MENU;
+                mainMenuSelection = MAIN_MENU_MAPS_SELECTION;
             }
             return;
         }
@@ -2436,7 +2678,7 @@ public class RatassGame extends ApplicationAdapter {
         float firstButtonY =
                 Math.max(
                         height * 0.48f,
-                        MENU_MIN_SIDE_MARGIN + (menuButtonHeight + menuButtonGap) * 3f);
+                        MENU_MIN_SIDE_MARGIN + (menuButtonHeight + menuButtonGap) * 4f);
 
         menuNewGameBounds.set(buttonX, firstButtonY, buttonWidth, menuButtonHeight);
         menuSandboxBounds.set(
@@ -2462,16 +2704,46 @@ public class RatassGame extends ApplicationAdapter {
             menuSandboxPrevBounds.set(0f, 0f, 0f, 0f);
             menuSandboxNextBounds.set(0f, 0f, 0f, 0f);
         }
-        menuOptionsBounds.set(
+        menuMapsBounds.set(
                 buttonX,
                 firstButtonY - (menuButtonHeight + menuButtonGap) * 2f,
                 buttonWidth,
                 menuButtonHeight);
-        menuExitBounds.set(
+        menuOptionsBounds.set(
                 buttonX,
                 firstButtonY - (menuButtonHeight + menuButtonGap) * 3f,
                 buttonWidth,
                 menuButtonHeight);
+        menuExitBounds.set(
+                buttonX,
+                firstButtonY - (menuButtonHeight + menuButtonGap) * 4f,
+                buttonWidth,
+                menuButtonHeight);
+
+        float mapPanelMargin = Math.max(16f, Math.min(36f, width * 0.035f));
+        float mapControlsHeight = Math.min(MENU_BUTTON_HEIGHT, Math.max(42f, height * 0.08f));
+        float mapControlsGap = Math.min(MENU_BUTTON_GAP, Math.max(8f, height * 0.018f));
+        float mapTitleSpace = Math.max(76f, height * 0.12f);
+        float mapControlsSpace = mapControlsHeight + mapControlsGap + mapPanelMargin;
+        mapDebugPreviewBounds.set(
+                mapPanelMargin,
+                mapControlsSpace,
+                Math.max(1f, width - mapPanelMargin * 2f),
+                Math.max(1f, height - mapControlsSpace - mapTitleSpace));
+        float mapStepWidth = Math.min(86f, Math.max(48f, mapDebugPreviewBounds.width * 0.12f));
+        float backWidth = Math.min(180f, Math.max(110f, mapDebugPreviewBounds.width * 0.22f));
+        float controlsY = mapPanelMargin * 0.55f;
+        mapDebugPrevBounds.set(mapPanelMargin, controlsY, mapStepWidth, mapControlsHeight);
+        mapDebugNextBounds.set(
+                mapPanelMargin + mapStepWidth + mapControlsGap,
+                controlsY,
+                mapStepWidth,
+                mapControlsHeight);
+        mapDebugBackBounds.set(
+                width - mapPanelMargin - backWidth,
+                controlsY,
+                backWidth,
+                mapControlsHeight);
 
         float pauseFirstButtonY =
                 Math.max(
@@ -2790,6 +3062,8 @@ public class RatassGame extends ApplicationAdapter {
 
         if (gameMode == GameMode.MAIN_MENU) {
             drawMainMenu(hudWidth, hudHeight);
+        } else if (gameMode == GameMode.MAPS_MENU) {
+            drawMapsMenu(hudWidth, hudHeight);
         } else {
             drawOptionsMenu(hudWidth, hudHeight);
         }
@@ -2858,6 +3132,7 @@ public class RatassGame extends ApplicationAdapter {
             drawMenuStepButton(menuSandboxPrevBounds, "<", mainMenuSelection == MAIN_MENU_SANDBOX_SELECTION);
             drawMenuStepButton(menuSandboxNextBounds, ">", mainMenuSelection == MAIN_MENU_SANDBOX_SELECTION);
         }
+        drawMenuButton(menuMapsBounds, "Maps", mainMenuSelection == MAIN_MENU_MAPS_SELECTION);
         drawMenuButton(menuOptionsBounds, "Options", mainMenuSelection == MAIN_MENU_OPTIONS_SELECTION);
         drawMenuButton(menuExitBounds, "Exit", mainMenuSelection == MAIN_MENU_EXIT_SELECTION);
 
@@ -2874,6 +3149,464 @@ public class RatassGame extends ApplicationAdapter {
                 hudWidth * 0.5f,
                 menuSandboxBounds.y + menuSandboxBounds.height * 0.27f);
         spriteBatch.end();
+    }
+
+    private void drawMapsMenu(float hudWidth, float hudHeight) {
+        ArenaMap map = getSelectedSandboxMenuMap();
+        drawMapDebugPreview(map);
+        drawMenuStepButton(mapDebugPrevBounds, "<", true);
+        drawMenuStepButton(mapDebugNextBounds, ">", true);
+        drawMenuButton(mapDebugBackBounds, "Back", false);
+
+        spriteBatch.begin();
+        titleFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+        drawTextCentered(titleFont, "Maps", hudWidth * 0.5f, hudHeight - Math.max(30f, hudHeight * 0.045f));
+        hudFont.setColor(0.78f, 0.86f, 0.90f, 1f);
+        String mapText = map == null
+                ? "No maps"
+                : (selectedSandboxMapIndex + 1) + "/" + Math.max(1, sandboxMenuMaps.size)
+                        + "  " + map.getId() + "  " + map.getName();
+        drawTextCentered(
+                hudFont,
+                mapText,
+                hudWidth * 0.5f,
+                mapDebugPreviewBounds.y + mapDebugPreviewBounds.height + 20f);
+        labelFont.setColor(0.80f, 0.88f, 0.92f, 1f);
+        labelFont.draw(
+                spriteBatch,
+                "magenta route  red off-road segment  cyan direction  green spawns/goals  orange route-marker numbers",
+                mapDebugPreviewBounds.x,
+                Math.max(mapDebugPreviewBounds.y - 8f, mapDebugBackBounds.y + mapDebugBackBounds.height + 12f));
+        spriteBatch.end();
+    }
+
+    private void drawMapDebugPreview(ArenaMap map) {
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0.025f, 0.032f, 0.040f, 0.96f);
+        shapeRenderer.rect(
+                mapDebugPreviewBounds.x,
+                mapDebugPreviewBounds.y,
+                mapDebugPreviewBounds.width,
+                mapDebugPreviewBounds.height);
+        shapeRenderer.end();
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        shapeRenderer.setColor(0.62f, 0.70f, 0.75f, 0.45f);
+        shapeRenderer.rect(
+                mapDebugPreviewBounds.x,
+                mapDebugPreviewBounds.y,
+                mapDebugPreviewBounds.width,
+                mapDebugPreviewBounds.height);
+        shapeRenderer.end();
+
+        if (map == null) {
+            Gdx.gl.glDisable(GL20.GL_BLEND);
+            return;
+        }
+
+        Texture maskTexture = getOrCreateMapDebugMaskTexture(map);
+        calculateMapDebugImageBounds(maskTexture);
+        if (maskTexture != null) {
+            spriteBatch.begin();
+            spriteBatch.setColor(1f, 1f, 1f, 1f);
+            spriteBatch.draw(
+                    maskTexture,
+                    mapDebugImageBounds.x,
+                    mapDebugImageBounds.y,
+                    mapDebugImageBounds.width,
+                    mapDebugImageBounds.height);
+            spriteBatch.end();
+        }
+
+        map.getBounds(mapDebugMapBounds);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        drawMapDebugRoute(map);
+        drawMapDebugCheckpoints(map);
+        drawMapDebugSpawns(map);
+        shapeRenderer.end();
+
+        spriteBatch.begin();
+        drawMapDebugLabels(map);
+        spriteBatch.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void calculateMapDebugImageBounds(Texture texture) {
+        float padding = Math.max(8f, Math.min(mapDebugPreviewBounds.width, mapDebugPreviewBounds.height) * 0.025f);
+        float availableWidth = Math.max(1f, mapDebugPreviewBounds.width - padding * 2f);
+        float availableHeight = Math.max(1f, mapDebugPreviewBounds.height - padding * 2f);
+        float aspect = texture == null ? 1f : texture.getWidth() / (float) texture.getHeight();
+        float width = availableWidth;
+        float height = width / aspect;
+        if (height > availableHeight) {
+            height = availableHeight;
+            width = height * aspect;
+        }
+        mapDebugImageBounds.set(
+                mapDebugPreviewBounds.x + (mapDebugPreviewBounds.width - width) * 0.5f,
+                mapDebugPreviewBounds.y + (mapDebugPreviewBounds.height - height) * 0.5f,
+                width,
+                height);
+    }
+
+    private Texture getOrCreateMapDebugMaskTexture(ArenaMap map) {
+        if (map == null || Gdx.gl == null) {
+            return null;
+        }
+        String path = getMapDebugMaskPath(map);
+        if (path == null || path.length() == 0) {
+            return null;
+        }
+        Texture texture = mapDebugMaskTextureCache.get(path);
+        if (texture != null) {
+            return texture;
+        }
+        FileHandle handle = resolveMapDebugMaskHandle(path, map.getId());
+        if (handle == null || !handle.exists()) {
+            return null;
+        }
+        try {
+            texture = new Texture(handle);
+            texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+            mapDebugMaskTextureCache.put(path, texture);
+            return texture;
+        } catch (RuntimeException exception) {
+            Gdx.app.error("RatassGame", "Could not load map debug mask " + handle.path(), exception);
+            return null;
+        }
+    }
+
+    private String getMapDebugMaskPath(ArenaMap map) {
+        if (map == null) {
+            return "";
+        }
+        String surfacePath = map.getSurfaceImagePath();
+        if (surfacePath != null && surfacePath.length() > 0) {
+            return surfacePath;
+        }
+        String mapId = map.getId();
+        return mapId == null || mapId.length() == 0 ? "" : "assets/maps/" + mapId + "_mask.png";
+    }
+
+    private FileHandle resolveMapDebugMaskHandle(String path, String mapId) {
+        if (path != null && path.length() > 0) {
+            FileHandle handle = Gdx.files.internal(path);
+            if (handle != null && handle.exists()) {
+                return handle;
+            }
+            handle = Gdx.files.local(path);
+            if (handle != null && handle.exists()) {
+                return handle;
+            }
+        }
+        if (mapId != null && mapId.length() > 0) {
+            FileHandle handle = Gdx.files.local("assets/maps/" + mapId + "_mask.png");
+            if (handle.exists()) {
+                return handle;
+            }
+            handle = Gdx.files.local("tools/rl/trainingMaps/" + mapId + "_mask.png");
+            if (handle.exists()) {
+                return handle;
+            }
+            handle = Gdx.files.internal("maps/" + mapId + "_mask.png");
+            if (handle.exists()) {
+                return handle;
+            }
+        }
+        return null;
+    }
+
+    private void drawMapDebugRoute(ArenaMap map) {
+        if (map == null || !map.hasRoute()) {
+            return;
+        }
+        float routeLength = map.getRouteLength();
+        if (routeLength <= 0.001f) {
+            return;
+        }
+        float sampleStep = Math.max(0.10f, MENU_MAP_DEBUG_SAMPLE_STEP);
+        int sampleCount = MathUtils.clamp(MathUtils.ceil(routeLength / sampleStep), 12, 2200);
+        float lineWidth =
+                MathUtils.clamp(
+                        Math.min(mapDebugImageBounds.width, mapDebugImageBounds.height) * 0.0048f,
+                        MENU_MAP_DEBUG_MIN_LINE_WIDTH,
+                        MENU_MAP_DEBUG_MAX_LINE_WIDTH);
+
+        float previousX = 0f;
+        float previousY = 0f;
+        for (int i = 0; i <= sampleCount; i++) {
+            float progress = routeLength * i / sampleCount;
+            map.findRoutePoint(progress, mapDebugPoint);
+            float x = mapDebugWorldToHudX(mapDebugPoint.x);
+            float y = mapDebugWorldToHudY(mapDebugPoint.y);
+            if (i > 0) {
+                drawMapDebugSegment(previousX, previousY, x, y, lineWidth + 3.0f, 0.02f, 0.02f, 0.025f, 0.92f);
+                drawMapDebugSegment(previousX, previousY, x, y, lineWidth, 1.00f, 0.00f, 0.86f, 0.96f);
+            }
+            previousX = x;
+            previousY = y;
+        }
+        map.findRoutePoint(0f, mapDebugPoint);
+        float firstX = mapDebugWorldToHudX(mapDebugPoint.x);
+        float firstY = mapDebugWorldToHudY(mapDebugPoint.y);
+        drawMapDebugSegment(previousX, previousY, firstX, firstY, lineWidth + 3.0f, 0.02f, 0.02f, 0.025f, 0.92f);
+        drawMapDebugSegment(previousX, previousY, firstX, firstY, lineWidth, 1.00f, 0.00f, 0.86f, 0.96f);
+
+        float arrowStep = Math.max(3f, MENU_MAP_DEBUG_ARROW_STEP);
+        for (float progress = 0f; progress < routeLength; progress += arrowStep) {
+            map.findRoutePoint(progress, mapDebugPoint);
+            map.findRouteTangent(progress, mapDebugTangent);
+            drawMapDebugArrow(
+                    mapDebugWorldToHudX(mapDebugPoint.x),
+                    mapDebugWorldToHudY(mapDebugPoint.y),
+                    mapDebugTangent.x,
+                    mapDebugTangent.y,
+                    lineWidth * 2.8f);
+        }
+
+        drawMapDebugUnsafeRouteMarkerSegments(map, routeLength, sampleStep, lineWidth);
+    }
+
+    private void drawMapDebugUnsafeRouteMarkerSegments(
+            ArenaMap map,
+            float routeLength,
+            float sampleStep,
+            float lineWidth) {
+        int markerCount = map.getRouteMarkerPointCount();
+        if (markerCount < 2 || routeLength <= 0.001f) {
+            return;
+        }
+        for (int i = 0; i < markerCount; i++) {
+            float startProgress = map.getRouteMarkerProgress(i);
+            float endProgress = map.getRouteMarkerProgress((i + 1) % markerCount);
+            float delta = endProgress - startProgress;
+            if (i == markerCount - 1 || delta <= 0.001f) {
+                delta += routeLength;
+            }
+            if (delta <= 0.001f || delta > routeLength + 0.001f) {
+                continue;
+            }
+            if (!routeMarkerIntervalCutsOffRoad(map, startProgress, delta, sampleStep)) {
+                continue;
+            }
+            drawMapDebugRouteProgressSegment(
+                    map,
+                    startProgress,
+                    delta,
+                    Math.max(2f, sampleStep * 0.55f),
+                    lineWidth + 5.0f,
+                    0.02f,
+                    0.02f,
+                    0.025f,
+                    0.96f);
+            drawMapDebugRouteProgressSegment(
+                    map,
+                    startProgress,
+                    delta,
+                    Math.max(2f, sampleStep * 0.55f),
+                    lineWidth + 2.0f,
+                    1.00f,
+                    0.06f,
+                    0.03f,
+                    0.98f);
+        }
+    }
+
+    private boolean routeMarkerIntervalCutsOffRoad(
+            ArenaMap map,
+            float startProgress,
+            float delta,
+            float sampleStep) {
+        float detectionStep = Math.max(0.08f, Math.min(0.25f, sampleStep * 0.5f));
+        int sampleCount = MathUtils.clamp(MathUtils.ceil(delta / detectionStep), 2, 2400);
+        for (int sample = 0; sample <= sampleCount; sample++) {
+            float progress = startProgress + delta * sample / sampleCount;
+            map.findRoutePoint(progress, mapDebugPoint);
+            if (!map.approximateSupports(mapDebugPoint.x, mapDebugPoint.y)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void drawMapDebugRouteProgressSegment(
+            ArenaMap map,
+            float startProgress,
+            float delta,
+            float sampleStep,
+            float lineWidth,
+            float red,
+            float green,
+            float blue,
+            float alpha) {
+        int sampleCount = MathUtils.clamp(MathUtils.ceil(delta / Math.max(0.08f, sampleStep)), 2, 1800);
+        float previousX = 0f;
+        float previousY = 0f;
+        for (int sample = 0; sample <= sampleCount; sample++) {
+            float progress = startProgress + delta * sample / sampleCount;
+            map.findRoutePoint(progress, mapDebugPoint);
+            float x = mapDebugWorldToHudX(mapDebugPoint.x);
+            float y = mapDebugWorldToHudY(mapDebugPoint.y);
+            if (sample > 0) {
+                drawMapDebugSegment(previousX, previousY, x, y, lineWidth, red, green, blue, alpha);
+            }
+            previousX = x;
+            previousY = y;
+        }
+    }
+
+    private void drawMapDebugSegment(
+            float x1,
+            float y1,
+            float x2,
+            float y2,
+            float width,
+            float red,
+            float green,
+            float blue,
+            float alpha) {
+        float dx = x2 - x1;
+        float dy = y2 - y1;
+        float length = (float) Math.sqrt(dx * dx + dy * dy);
+        if (length <= 0.001f) {
+            return;
+        }
+        drawRotatedRect(
+                (x1 + x2) * 0.5f,
+                (y1 + y2) * 0.5f,
+                length,
+                width,
+                MathUtils.atan2(dy, dx) * MathUtils.radiansToDegrees,
+                red,
+                green,
+                blue,
+                alpha);
+    }
+
+    private void drawMapDebugArrow(float x, float y, float tangentX, float tangentY, float size) {
+        float length = (float) Math.sqrt(tangentX * tangentX + tangentY * tangentY);
+        if (length <= 0.0001f) {
+            return;
+        }
+        float tx = tangentX / length;
+        float ty = tangentY / length;
+        float nx = -ty;
+        float ny = tx;
+        shapeRenderer.setColor(0.00f, 0.86f, 1.00f, 0.92f);
+        shapeRenderer.triangle(
+                x + tx * size,
+                y + ty * size,
+                x - tx * size * 0.55f + nx * size * 0.42f,
+                y - ty * size * 0.55f + ny * size * 0.42f,
+                x - tx * size * 0.55f - nx * size * 0.42f,
+                y - ty * size * 0.55f - ny * size * 0.42f);
+    }
+
+    private void drawMapDebugSpawns(ArenaMap map) {
+        if (map == null) {
+            return;
+        }
+        for (int i = 0; i < map.getSpawnCount(); i++) {
+            SpawnPoint spawn = map.getSpawn(i);
+            float x = mapDebugWorldToHudX(spawn.x);
+            float y = mapDebugWorldToHudY(spawn.y);
+            float forwardX = -MathUtils.sin(spawn.angleRad);
+            float forwardY = MathUtils.cos(spawn.angleRad);
+            shapeRenderer.setColor(0.08f, 0.88f, 0.24f, 0.98f);
+            shapeRenderer.circle(x, y, 3.8f, 14);
+            drawMapDebugArrow(x, y, forwardX, forwardY, 8.5f);
+        }
+    }
+
+    private void drawMapDebugCheckpoints(ArenaMap map) {
+        if (map == null) {
+            return;
+        }
+        for (int i = 0; i < map.getCheckpointCount(); i++) {
+            SpawnPoint checkpoint = map.getCheckpoint(i);
+            float x = mapDebugWorldToHudX(checkpoint.x);
+            float y = mapDebugWorldToHudY(checkpoint.y);
+            shapeRenderer.setColor(0.12f, 0.82f, 0.34f, 0.96f);
+            if (checkpoint.hasGate) {
+                drawMapDebugSegment(
+                        mapDebugWorldToHudX(checkpoint.gateStartX),
+                        mapDebugWorldToHudY(checkpoint.gateStartY),
+                        mapDebugWorldToHudX(checkpoint.gateEndX),
+                        mapDebugWorldToHudY(checkpoint.gateEndY),
+                        3.2f,
+                        0.12f,
+                        0.82f,
+                        0.34f,
+                        0.96f);
+            }
+            shapeRenderer.circle(x, y, 4.4f, 18);
+        }
+    }
+
+    private void drawMapDebugLabels(ArenaMap map) {
+        if (map == null) {
+            return;
+        }
+        labelFont.setColor(1f, 1f, 1f, 1f);
+        for (int i = 0; i < map.getCheckpointCount(); i++) {
+            SpawnPoint checkpoint = map.getCheckpoint(i);
+            drawTextWithShadow(
+                    labelFont,
+                    String.valueOf(i + 1),
+                    mapDebugWorldToHudX(checkpoint.x) + 6f,
+                    mapDebugWorldToHudY(checkpoint.y) + 8f);
+        }
+        labelFont.setColor(1.00f, 0.66f, 0.08f, 1f);
+        for (int i = 0; i < map.getRouteMarkerPointCount(); i++) {
+            map.getRouteMarkerPoint(i, mapDebugPoint);
+            drawTextWithShadow(
+                    labelFont,
+                    String.valueOf(i + 1),
+                    mapDebugWorldToHudX(mapDebugPoint.x) + 5f,
+                    mapDebugWorldToHudY(mapDebugPoint.y) + 5f);
+        }
+        if (map.hasRoute()) {
+            labelFont.setColor(1f, 1f, 1f, 1f);
+            float routeLength = map.getRouteLength();
+            for (int i = 0; i < 10; i++) {
+                float progress = routeLength * i / 10f;
+                map.findRoutePoint(progress, mapDebugPoint);
+                drawTextWithShadow(
+                        labelFont,
+                        i == 0 ? "0%" : (i * 10) + "%",
+                        mapDebugWorldToHudX(mapDebugPoint.x) + 7f,
+                        mapDebugWorldToHudY(mapDebugPoint.y) - 7f);
+            }
+        }
+        hudFont.setColor(0.96f, 0.90f, 0.72f, 1f);
+        String info =
+                "spawns=" + map.getSpawnCount()
+                        + "  goals=" + map.getCheckpointCount()
+                        + "  markers=" + map.getRouteMarkerPointCount()
+                        + "  route=" + String.format(Locale.ROOT, "%.1f", map.getRouteLength());
+        drawTextWithShadow(
+                hudFont,
+                info,
+                mapDebugPreviewBounds.x + 12f,
+                mapDebugPreviewBounds.y + mapDebugPreviewBounds.height - 14f);
+    }
+
+    private float mapDebugWorldToHudX(float worldX) {
+        if (mapDebugMapBounds.width <= 0.0001f) {
+            return mapDebugImageBounds.x;
+        }
+        return mapDebugImageBounds.x
+                + (worldX - mapDebugMapBounds.x) * mapDebugImageBounds.width / mapDebugMapBounds.width;
+    }
+
+    private float mapDebugWorldToHudY(float worldY) {
+        if (mapDebugMapBounds.height <= 0.0001f) {
+            return mapDebugImageBounds.y;
+        }
+        return mapDebugImageBounds.y
+                + (worldY - mapDebugMapBounds.y) * mapDebugImageBounds.height / mapDebugMapBounds.height;
     }
 
     private void drawPauseMenu(float hudWidth, float hudHeight) {
@@ -4928,6 +5661,9 @@ public class RatassGame extends ApplicationAdapter {
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawArenaOverlay(theme);
+        if (sandboxMode) {
+            drawSandboxRouteLine();
+        }
         if (GROWTH_PICKUP_ENABLED) {
             drawGrowthPickup();
         }
@@ -4942,7 +5678,90 @@ public class RatassGame extends ApplicationAdapter {
         drawDestructionEffects();
         shapeRenderer.end();
 
+        if (sandboxMode) {
+            shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+            drawSandboxRlSensorRays();
+            shapeRenderer.end();
+        }
+
         Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawSandboxRouteLine() {
+        if (currentMap == null || !currentMap.hasRoute()) {
+            return;
+        }
+
+        float routeLength = currentMap.getRouteLength();
+        if (routeLength <= 0.001f) {
+            return;
+        }
+
+        int sampleCount =
+                MathUtils.clamp(
+                        MathUtils.ceil(routeLength / SANDBOX_ROUTE_LINE_SAMPLE_STEP),
+                        12,
+                        2200);
+        currentMap.findRoutePoint(0f, sandboxSensorRoutePoint);
+        float previousX = sandboxSensorRoutePoint.x;
+        float previousY = sandboxSensorRoutePoint.y;
+        for (int i = 1; i <= sampleCount; i++) {
+            float progress = routeLength * i / sampleCount;
+            currentMap.findRoutePoint(progress, sandboxSensorPoint);
+            drawSandboxRouteSegment(
+                    previousX,
+                    previousY,
+                    sandboxSensorPoint.x,
+                    sandboxSensorPoint.y,
+                    SANDBOX_ROUTE_LINE_WIDTH + 0.10f,
+                    0.02f,
+                    0.02f,
+                    0.03f,
+                    0.78f);
+            drawSandboxRouteSegment(
+                    previousX,
+                    previousY,
+                    sandboxSensorPoint.x,
+                    sandboxSensorPoint.y,
+                    SANDBOX_ROUTE_LINE_WIDTH,
+                    1.00f,
+                    0.00f,
+                    0.86f,
+                    0.92f);
+            previousX = sandboxSensorPoint.x;
+            previousY = sandboxSensorPoint.y;
+        }
+
+        shapeRenderer.setColor(0.20f, 1f, 0.30f, 0.90f);
+        shapeRenderer.circle(sandboxSensorRoutePoint.x, sandboxSensorRoutePoint.y, 0.18f, 16);
+    }
+
+    private void drawSandboxRouteSegment(
+            float x1,
+            float y1,
+            float x2,
+            float y2,
+            float width,
+            float red,
+            float green,
+            float blue,
+            float alpha) {
+        float dx = x2 - x1;
+        float dy = y2 - y1;
+        float length = (float) Math.sqrt(dx * dx + dy * dy);
+        if (length <= 0.001f) {
+            return;
+        }
+        drawRotatedRect(
+                (x1 + x2) * 0.5f,
+                (y1 + y2) * 0.5f,
+                length,
+                width,
+                MathUtils.atan2(dy, dx) * MathUtils.radiansToDegrees,
+                red,
+                green,
+                blue,
+                alpha);
     }
 
     private void drawBackdrop(MapTheme theme) {
@@ -6230,6 +7049,9 @@ public class RatassGame extends ApplicationAdapter {
         drawSidebarMinimapOverlay(sidebarX, sidebarWidth, hudHeight);
         drawSidebarFooter(sidebarX, sidebarWidth);
         drawCarLabels();
+        if (sandboxMode) {
+            drawSandboxRlSensorHudLabels(playfieldWidth, hudHeight);
+        }
 
         if (eventCalloutTimer > 0f && !roundOver && preRoundCountdownTimer <= 0f) {
             drawEventCallout(playfieldWidth * 0.5f, hudHeight * 0.80f);
@@ -6945,6 +7767,494 @@ public class RatassGame extends ApplicationAdapter {
                     carLabelProjection.x - glyphLayout.width * 0.5f,
                     carLabelProjection.y);
         }
+    }
+
+    private boolean shouldDrawSandboxRlSensors() {
+        return sandboxMode && currentMap != null && cars.size > 0;
+    }
+
+    private void fillSandboxRlObservation(Car car) {
+        float positionNormalizer =
+                getRlPositionNormalizer(
+                        currentMap,
+                        sandboxRlObservationBounds,
+                        sandboxRlObservationFocus);
+        fillRlObservation(
+                sandboxRlObservation,
+                0,
+                car,
+                currentMap,
+                car.template == null ? 0f : car.template.roundRaceLastRouteProgress,
+                car.lastThrottleCommand,
+                car.lastTurnCommand,
+                positionNormalizer,
+                sandboxRlObservationForward,
+                sandboxRlObservationRouteTarget,
+                sandboxRlObservationSide,
+                sandboxRlCarRays,
+                cars);
+    }
+
+    private void prepareSandboxSensorAxes(Car car) {
+        car.getRenderForwardDirection(sandboxSensorForward);
+        sandboxSensorSide.set(-sandboxSensorForward.y, sandboxSensorForward.x);
+    }
+
+    private void drawSandboxRlSensorRays() {
+        if (!shouldDrawSandboxRlSensors()) {
+            return;
+        }
+
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null) {
+                continue;
+            }
+            fillSandboxRlObservation(car);
+            prepareSandboxSensorAxes(car);
+            Vector2 origin = car.getRenderPosition();
+
+            drawSandboxRoadSensorRay(
+                    origin,
+                    sandboxSensorSide.x,
+                    sandboxSensorSide.y,
+                    22,
+                    RL_LATERAL_ROAD_CLEARANCE_DISTANCE);
+            drawSandboxRoadSensorRay(
+                    origin,
+                    -sandboxSensorSide.x,
+                    -sandboxSensorSide.y,
+                    23,
+                    RL_LATERAL_ROAD_CLEARANCE_DISTANCE);
+            drawSandboxRoadSensorRay(
+                    origin,
+                    sandboxSensorForward.x,
+                    sandboxSensorForward.y,
+                    24,
+                    RL_FRONT_ROAD_CLEARANCE_DISTANCE);
+            drawSandboxRoadSensorRay(
+                    origin,
+                    sandboxSensorForward.x + sandboxSensorSide.x,
+                    sandboxSensorForward.y + sandboxSensorSide.y,
+                    25,
+                    RL_FRONT_ROAD_CLEARANCE_DISTANCE);
+            drawSandboxRoadSensorRay(
+                    origin,
+                    sandboxSensorForward.x - sandboxSensorSide.x,
+                    sandboxSensorForward.y - sandboxSensorSide.y,
+                    26,
+                    RL_FRONT_ROAD_CLEARANCE_DISTANCE);
+
+            drawSandboxCarSensorRay(
+                    origin,
+                    sandboxSensorForward.x,
+                    sandboxSensorForward.y,
+                    27,
+                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+            drawSandboxCarSensorRay(
+                    origin,
+                    sandboxSensorForward.x + sandboxSensorSide.x,
+                    sandboxSensorForward.y + sandboxSensorSide.y,
+                    28,
+                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+            drawSandboxCarSensorRay(
+                    origin,
+                    sandboxSensorForward.x - sandboxSensorSide.x,
+                    sandboxSensorForward.y - sandboxSensorSide.y,
+                    29,
+                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+            drawSandboxCarSensorRay(
+                    origin,
+                    sandboxSensorSide.x,
+                    sandboxSensorSide.y,
+                    30,
+                    RL_CAR_SIDE_SENSOR_DISTANCE);
+            drawSandboxCarSensorRay(
+                    origin,
+                    -sandboxSensorSide.x,
+                    -sandboxSensorSide.y,
+                    31,
+                    RL_CAR_SIDE_SENSOR_DISTANCE);
+            drawSandboxCarSensorRay(
+                    origin,
+                    -sandboxSensorForward.x,
+                    -sandboxSensorForward.y,
+                    32,
+                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+
+            drawSandboxRouteGuidance(car, origin);
+        }
+    }
+
+    private void drawSandboxRoadSensorRay(
+            Vector2 origin,
+            float directionX,
+            float directionY,
+            int observationIndex,
+            float maxDistance) {
+        if (!isSandboxObservationIndexAvailable(observationIndex)) {
+            return;
+        }
+        float value = MathUtils.clamp(sandboxRlObservation[observationIndex], 0f, 1f);
+        float danger = 1f - value;
+        shapeRenderer.setColor(0.18f + danger * 0.82f, 0.92f - danger * 0.68f, 0.18f, 0.82f);
+        drawSandboxSensorRay(origin, directionX, directionY, value, maxDistance, value < 0.98f);
+    }
+
+    private void drawSandboxCarSensorRay(
+            Vector2 origin,
+            float directionX,
+            float directionY,
+            int observationIndex,
+            float maxDistance) {
+        if (!isSandboxObservationIndexAvailable(observationIndex)) {
+            return;
+        }
+        float value = MathUtils.clamp(sandboxRlObservation[observationIndex], 0f, 1f);
+        float danger = 1f - value;
+        shapeRenderer.setColor(
+                0.34f + danger * 0.66f,
+                0.38f - danger * 0.18f,
+                1.00f - danger * 0.90f,
+                value < 0.98f ? 0.90f : 0.36f);
+        drawSandboxSensorRay(origin, directionX, directionY, value, maxDistance, value < 0.98f);
+    }
+
+    private void drawSandboxSensorRay(
+            Vector2 origin,
+            float directionX,
+            float directionY,
+            float normalizedDistance,
+            float maxDistance,
+            boolean markEndpoint) {
+        float length = (float) Math.sqrt(directionX * directionX + directionY * directionY);
+        if (length <= 0.0001f) {
+            return;
+        }
+        float unitX = directionX / length;
+        float unitY = directionY / length;
+        float rayDistance =
+                Math.max(SANDBOX_SENSOR_RAY_WIDTH, MathUtils.clamp(normalizedDistance, 0f, 1f) * maxDistance);
+        float endX = origin.x + unitX * rayDistance;
+        float endY = origin.y + unitY * rayDistance;
+        shapeRenderer.line(origin.x, origin.y, endX, endY);
+        if (markEndpoint) {
+            shapeRenderer.circle(endX, endY, SANDBOX_SENSOR_HIT_RADIUS, 12);
+        }
+    }
+
+    private void drawSandboxRouteGuidance(Car car, Vector2 origin) {
+        if (currentMap == null || !currentMap.hasRoute() || car.body == null) {
+            return;
+        }
+
+        float routeProgress =
+                currentMap.findRouteProgressNear(
+                        car.body.getPosition(),
+                        sandboxSensorForward,
+                        car.template == null ? 0f : car.template.roundRaceLastRouteProgress);
+
+        currentMap.findRoutePoint(routeProgress, sandboxSensorRoutePoint);
+        shapeRenderer.setColor(1f, 0.58f, 0.08f, 0.82f);
+        shapeRenderer.line(origin.x, origin.y, sandboxSensorRoutePoint.x, sandboxSensorRoutePoint.y);
+        shapeRenderer.circle(sandboxSensorRoutePoint.x, sandboxSensorRoutePoint.y, 0.11f, 12);
+
+        currentMap.findRoutePoint(routeProgress + RL_ROUTE_LOOKAHEAD_DISTANCE, sandboxSensorPoint);
+        shapeRenderer.setColor(1f, 0.92f, 0.18f, 0.90f);
+        shapeRenderer.line(origin.x, origin.y, sandboxSensorPoint.x, sandboxSensorPoint.y);
+        shapeRenderer.circle(sandboxSensorPoint.x, sandboxSensorPoint.y, 0.12f, 12);
+
+        currentMap.findRouteTangent(routeProgress, sandboxSensorDirection);
+        drawSandboxRouteArrow(origin, sandboxSensorDirection, 0.10f, 0.78f, 1f, 0.88f);
+        currentMap.findRouteTangent(
+                routeProgress + RL_ROUTE_NEAR_TANGENT_LOOKAHEAD_DISTANCE,
+                sandboxSensorDirection);
+        drawSandboxRouteArrow(origin, sandboxSensorDirection, 0.28f, 1f, 0.74f, 0.78f);
+        currentMap.findRouteTangent(
+                routeProgress + RL_ROUTE_FAR_TANGENT_LOOKAHEAD_DISTANCE,
+                sandboxSensorDirection);
+        drawSandboxRouteArrow(origin, sandboxSensorDirection, 0.78f, 0.42f, 1f, 0.72f);
+    }
+
+    private void drawSandboxRouteArrow(
+            Vector2 origin,
+            Vector2 direction,
+            float red,
+            float green,
+            float blue,
+            float alpha) {
+        if (direction.isZero(0.0001f)) {
+            return;
+        }
+        sandboxSensorDirection.set(direction).nor().scl(SANDBOX_ROUTE_ARROW_LENGTH);
+        shapeRenderer.setColor(red, green, blue, alpha);
+        shapeRenderer.line(
+                origin.x,
+                origin.y,
+                origin.x + sandboxSensorDirection.x,
+                origin.y + sandboxSensorDirection.y);
+        shapeRenderer.circle(
+                origin.x + sandboxSensorDirection.x,
+                origin.y + sandboxSensorDirection.y,
+                SANDBOX_ROUTE_ARROW_WIDTH,
+                10);
+    }
+
+    private void drawSandboxRlSensorHudLabels(float playfieldWidth, float hudHeight) {
+        if (!shouldDrawSandboxRlSensors() || playfieldWidth <= 0f || hudHeight <= 0f) {
+            return;
+        }
+
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null) {
+                continue;
+            }
+            fillSandboxRlObservation(car);
+            prepareSandboxSensorAxes(car);
+            Vector2 origin = car.getRenderPosition();
+
+            labelFont.setColor(0.70f, 1f, 0.72f, 0.96f);
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    sandboxSensorSide.x,
+                    sandboxSensorSide.y,
+                    22,
+                    RL_LATERAL_ROAD_CLEARANCE_DISTANCE,
+                    "L");
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    -sandboxSensorSide.x,
+                    -sandboxSensorSide.y,
+                    23,
+                    RL_LATERAL_ROAD_CLEARANCE_DISTANCE,
+                    "R");
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    sandboxSensorForward.x,
+                    sandboxSensorForward.y,
+                    24,
+                    RL_FRONT_ROAD_CLEARANCE_DISTANCE,
+                    "F");
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    sandboxSensorForward.x + sandboxSensorSide.x,
+                    sandboxSensorForward.y + sandboxSensorSide.y,
+                    25,
+                    RL_FRONT_ROAD_CLEARANCE_DISTANCE,
+                    "FL");
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    sandboxSensorForward.x - sandboxSensorSide.x,
+                    sandboxSensorForward.y - sandboxSensorSide.y,
+                    26,
+                    RL_FRONT_ROAD_CLEARANCE_DISTANCE,
+                    "FR");
+
+            labelFont.setColor(0.90f, 0.78f, 1f, 0.94f);
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    sandboxSensorForward.x,
+                    sandboxSensorForward.y,
+                    27,
+                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE,
+                    "carF");
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    sandboxSensorForward.x + sandboxSensorSide.x,
+                    sandboxSensorForward.y + sandboxSensorSide.y,
+                    28,
+                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE,
+                    "carFL");
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    sandboxSensorForward.x - sandboxSensorSide.x,
+                    sandboxSensorForward.y - sandboxSensorSide.y,
+                    29,
+                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE,
+                    "carFR");
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    sandboxSensorSide.x,
+                    sandboxSensorSide.y,
+                    30,
+                    RL_CAR_SIDE_SENSOR_DISTANCE,
+                    "carL");
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    -sandboxSensorSide.x,
+                    -sandboxSensorSide.y,
+                    31,
+                    RL_CAR_SIDE_SENSOR_DISTANCE,
+                    "carR");
+            drawSandboxRayLabel(
+                    playfieldWidth,
+                    hudHeight,
+                    origin,
+                    -sandboxSensorForward.x,
+                    -sandboxSensorForward.y,
+                    32,
+                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE,
+                    "carB");
+
+            drawSandboxObservationSummary(car, playfieldWidth, hudHeight);
+        }
+    }
+
+    private void drawSandboxRayLabel(
+            float playfieldWidth,
+            float hudHeight,
+            Vector2 origin,
+            float directionX,
+            float directionY,
+            int observationIndex,
+            float maxDistance,
+            String shortName) {
+        if (!isSandboxObservationIndexAvailable(observationIndex)) {
+            return;
+        }
+        float length = (float) Math.sqrt(directionX * directionX + directionY * directionY);
+        if (length <= 0.0001f) {
+            return;
+        }
+        float unitX = directionX / length;
+        float unitY = directionY / length;
+        float value = MathUtils.clamp(sandboxRlObservation[observationIndex], 0f, 1f);
+        float rayDistance = Math.max(0.18f, value * maxDistance);
+        float worldX = origin.x + unitX * (rayDistance + SANDBOX_SENSOR_WORLD_LABEL_OFFSET);
+        float worldY = origin.y + unitY * (rayDistance + SANDBOX_SENSOR_WORLD_LABEL_OFFSET);
+        if (!projectSandboxWorldToHud(worldX, worldY, playfieldWidth, hudHeight)) {
+            return;
+        }
+        drawTextWithShadow(
+                labelFont,
+                observationIndex + " " + shortName + "=" + formatSandboxValue(value),
+                sandboxSensorProjection.x,
+                sandboxSensorProjection.y);
+    }
+
+    private void drawSandboxObservationSummary(Car car, float playfieldWidth, float hudHeight) {
+        Vector2 origin = car.getRenderPosition();
+        if (!projectSandboxWorldToHud(
+                origin.x,
+                origin.y + car.getHeight() * SANDBOX_SENSOR_LABEL_DISTANCE,
+                playfieldWidth,
+                hudHeight)) {
+            return;
+        }
+
+        float left = MathUtils.clamp(sandboxSensorProjection.x + 8f, 2f, Math.max(2f, playfieldWidth - 260f));
+        float top = MathUtils.clamp(sandboxSensorProjection.y + 54f, 48f, Math.max(48f, hudHeight - 6f));
+        String owner = car.playerControlled ? "YOU" : car.name;
+
+        labelFont.setColor(1f, 0.95f, 0.52f, 0.98f);
+        drawTextWithShadow(labelFont, owner + " RL sensors", left, top);
+        labelFont.setColor(0.90f, 0.96f, 1f, 0.96f);
+        drawSandboxObservationRow(
+                left,
+                top - SANDBOX_SENSOR_LABEL_STEP,
+                0,
+                13,
+                19,
+                21);
+        drawSandboxObservationRow(
+                left,
+                top - SANDBOX_SENSOR_LABEL_STEP * 2f,
+                1,
+                2,
+                3,
+                4);
+        drawSandboxObservationRow(
+                left,
+                top - SANDBOX_SENSOR_LABEL_STEP * 3f,
+                5,
+                6,
+                7,
+                10);
+        drawSandboxObservationRow(
+                left,
+                top - SANDBOX_SENSOR_LABEL_STEP * 4f,
+                8,
+                9,
+                17,
+                18);
+    }
+
+    private void drawSandboxObservationRow(float left, float top, int first, int second, int third, int fourth) {
+        String text =
+                sandboxObservationText(first)
+                        + "  "
+                        + sandboxObservationText(second)
+                        + "  "
+                        + sandboxObservationText(third)
+                        + "  "
+                        + sandboxObservationText(fourth);
+        drawTextWithShadow(labelFont, text, left, top);
+    }
+
+    private String sandboxObservationText(int index) {
+        if (!isSandboxObservationIndexAvailable(index)) {
+            return index + " n/a";
+        }
+        String name = index < RL_OBSERVATION_NAMES.length ? RL_OBSERVATION_NAMES[index] : "obs";
+        return index + " " + name + "=" + formatSandboxValue(sandboxRlObservation[index]);
+    }
+
+    private boolean projectSandboxWorldToHud(
+            float worldX,
+            float worldY,
+            float playfieldWidth,
+            float hudHeight) {
+        sandboxSensorProjection.set(worldX, worldY, 0f);
+        worldViewport.project(sandboxSensorProjection);
+        sandboxSensorProjection.y = Gdx.graphics.getHeight() - sandboxSensorProjection.y;
+        hudViewport.unproject(sandboxSensorProjection);
+        return sandboxSensorProjection.x >= -48f
+                && sandboxSensorProjection.x <= playfieldWidth + 48f
+                && sandboxSensorProjection.y >= -48f
+                && sandboxSensorProjection.y <= hudHeight + 48f;
+    }
+
+    private boolean isSandboxObservationIndexAvailable(int observationIndex) {
+        return observationIndex >= 0
+                && observationIndex < sandboxRlObservation.length
+                && observationIndex < RL_OBSERVATION_SIZE;
+    }
+
+    private void drawTextWithShadow(BitmapFont font, String text, float x, float y) {
+        Color original = font.getColor();
+        float red = original.r;
+        float green = original.g;
+        float blue = original.b;
+        float alpha = original.a;
+        font.setColor(0f, 0f, 0f, alpha * 0.70f);
+        font.draw(spriteBatch, text, x + 1f, y - 1f);
+        font.setColor(red, green, blue, alpha);
+        font.draw(spriteBatch, text, x, y);
+    }
+
+    private String formatSandboxValue(float value) {
+        return String.format(Locale.ROOT, "%.2f", value);
     }
 
     private float getSidebarSummaryCardHeight() {
@@ -7754,6 +9064,13 @@ public class RatassGame extends ApplicationAdapter {
         arenaSurfaceTexture = null;
     }
 
+    private void disposeMapDebugMaskTextures() {
+        for (Texture texture : mapDebugMaskTextureCache.values()) {
+            disposeTexture(texture);
+        }
+        mapDebugMaskTextureCache.clear();
+    }
+
     @Override
     public void dispose() {
         if (world != null) {
@@ -7761,6 +9078,7 @@ public class RatassGame extends ApplicationAdapter {
         }
         disposeRosterSpriteTextures();
         disposeArenaSurfaceTextures();
+        disposeMapDebugMaskTextures();
         disposeTexture(themeCarsTexture);
         disposeMenuCarPreview();
         if (shapeRenderer != null) {
@@ -10535,6 +11853,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private enum GameMode {
         MAIN_MENU,
+        MAPS_MENU,
         OPTIONS_MENU,
         PAUSE_MENU,
         PLAYING

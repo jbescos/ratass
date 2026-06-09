@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <properties>
-        <android.sdk.root>/home/jbescos/programs/android</android.sdk.root>
+        <android.sdk.root>${env.ANDROID_HOME}</android.sdk.root>
         <android.compile.sdk>35</android.compile.sdk>
         <android.target.sdk>35</android.target.sdk>
         <android.min.sdk>21</android.min.sdk>

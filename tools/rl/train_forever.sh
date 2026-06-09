@@ -974,6 +974,7 @@ ray_temp_dir="${RL_RAY_TEMP_DIR:-}"
 ray_node_ip="${RL_RAY_NODE_IP:-127.0.0.1}"
 sample_timeout_s="${RL_SAMPLE_TIMEOUT_S:-600}"
 build_before_training="${RL_BUILD_BEFORE_TRAINING:-1}"
+regenerate_map_caches="${RL_REGENERATE_MAP_CACHES:-0}"
 desktop_jar="${RL_JAR:-desktop/target/ratass-desktop-1.0.jar}"
 best_export="${RL_BEST_EXPORT:-1}"
 best_output="${RL_BEST_OUTPUT:-assets/ai/rl_enemy_policy.json}"
@@ -1172,6 +1173,15 @@ package_game() {
   mvn -pl desktop -am package
 }
 
+regenerate_map_caches() {
+  if [[ "${regenerate_map_caches}" == "0" || "${regenerate_map_caches}" == "false" ]]; then
+    echo "map_cache_regenerate_skipped=1"
+    return 0
+  fi
+  echo "map_cache_regenerate_start jar=${desktop_jar}"
+  "${python_bin}" tools/rl/regenerate_map_caches.py --jar "${desktop_jar}"
+}
+
 should_package_cycle() {
   local cycle="$1"
   [[ "${package_every_cycles}" != "0" && $((cycle % package_every_cycles)) -eq 0 ]]
@@ -1195,6 +1205,7 @@ trap on_interrupt INT TERM
 if [[ "${build_before_training}" == "1" || ! -f "${desktop_jar}" ]]; then
   package_game
 fi
+regenerate_map_caches
 
 cycle=0
 while true; do
