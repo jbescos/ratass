@@ -28,15 +28,18 @@ still runs on CPU.
 
 ## Environment Contract
 
-- Observation size: `33` floats per learner.
+- Observation size: `41` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
 - Default PPO network: two fully-connected hidden layers of width `256`
   with `tanh` activation.
 - Race observations include normalized route progress, current/near/far route
-  tangent alignment, route lookahead alignment/clearance, route curvature,
-  route-side clearances, speed and car-frame velocity, edge/off-road state,
-  angular velocity, previous action, six opponent-car ray clearances, and
-  left/right/front/front-diagonal road-clearance rays. The old checkpoint target
+  tangent alignment, route lookahead alignment/clearance/distance, route curvature,
+  route-side clearances, upcoming-corner distance/direction/severity, route width,
+  speed and car-frame velocity, edge/off-road state, angular velocity,
+  previous action, six opponent-car ray clearances, and
+  left/right/front/front-diagonal road-clearance rays. They also include
+  current route-point forward/side/distance offsets matching the sandbox route
+  guidance ray. The old checkpoint target
   observations, nearest-car aggregate observations, and constant `active`
   observation were removed.
 - Rewards are bucketed as `route_progress`, `step_cost`, `off_road`, `steering`,

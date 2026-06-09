@@ -1147,17 +1147,21 @@ export_policy() {
     echo "export_best_policy archive=${best_archive} output=${best_output}"
     return 0
   fi
-  if [[ "${best_export}" == "1" || "${best_export}" == "true" ]] \
-    && ! is_true "${RL_FORCE_EXPORT_ON_FINISH:-0}"; then
-    if [[ -f "${state_file}" && -f "${best_output}" ]]; then
-      echo "best_policy_kept state=${state_file} output=${best_output}"
-      return 0
-    fi
-    echo "best_export_managed_by_train_rllib=1"
-    return 0
-  fi
-
-  if [[ ! -f "${checkpoint_file}" ]]; then
+	  if [[ "${best_export}" == "1" || "${best_export}" == "true" ]] \
+	    && ! is_true "${RL_FORCE_EXPORT_ON_FINISH:-0}"; then
+	    if [[ -f "${state_file}" && -f "${best_output}" ]]; then
+	      echo "best_policy_kept state=${state_file} output=${best_output}"
+	      return 0
+	    fi
+	    echo "best_export_managed_by_train_rllib=1"
+	    return 0
+	  fi
+	  if [[ -n "${best_eval_state}" ]] && ! is_true "${RL_FORCE_EXPORT_ON_FINISH:-0}"; then
+	    echo "best_eval_latest_export_skipped state=${best_eval_state} output=${best_output}"
+	    return 0
+	  fi
+	
+	  if [[ ! -f "${checkpoint_file}" ]]; then
     echo "checkpoint_missing=${checkpoint_file}"
     return 0
   fi

@@ -16,7 +16,7 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
 DEFAULT_OUTPUT = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
-OBSERVATION_SIZE = 33
+OBSERVATION_SIZE = 41
 ACTION_SIZE = 2
 
 ACTOR_LAYERS = (

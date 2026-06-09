@@ -18,7 +18,7 @@ DEFAULT_POLICY = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
 DEFAULT_ACTION_REPEAT = 4
 PHYSICS_STEP_SECONDS = 1.0 / 60.0
 OBS_CLOSE_CAR_THRESHOLD = 0.18
-OBS_TRACE_SIZE = 33
+OBS_TRACE_SIZE = 41
 REWARD_BUCKETS = (
     "route_progress",
     "step_cost",
@@ -185,6 +185,14 @@ def make_stats():
         "avg_route_curvature": 0.0,
         "avg_route_left_clearance": 0.0,
         "avg_route_right_clearance": 0.0,
+        "avg_route_offset_forward": 0.0,
+        "avg_route_offset_side": 0.0,
+        "avg_route_offset_distance": 0.0,
+        "avg_route_lookahead_distance": 0.0,
+        "avg_next_corner_distance": 0.0,
+        "avg_next_corner_direction": 0.0,
+        "avg_next_corner_severity": 0.0,
+        "avg_route_width": 0.0,
         "avg_recovery_alignment": 0.0,
         "avg_track_slowdown": 0.0,
         "avg_steering_authority": 0.0,
@@ -297,6 +305,14 @@ def open_trace(trace_dir: str, map_id: str, episode: int, debug_trace_names):
             "car_ray_left",
             "car_ray_right",
             "car_ray_rear",
+            "route_offset_forward",
+            "route_offset_side",
+            "route_offset_distance",
+            "route_lookahead_distance",
+            "next_corner_distance",
+            "next_corner_direction",
+            "next_corner_severity",
+            "route_width",
         ]
         + debug_headers
     )
@@ -353,6 +369,16 @@ def update_observation_stats(stats, result, controlled_agents: int, observation_
         stats["avg_route_curvature"] += abs(observations[offset + 10])
         stats["avg_route_left_clearance"] += observations[offset + 11]
         stats["avg_route_right_clearance"] += observations[offset + 12]
+        if observation_size > 36:
+            stats["avg_route_offset_forward"] += observations[offset + 33]
+            stats["avg_route_offset_side"] += observations[offset + 34]
+            stats["avg_route_offset_distance"] += observations[offset + 35]
+            stats["avg_route_lookahead_distance"] += observations[offset + 36]
+        if observation_size > 40:
+            stats["avg_next_corner_distance"] += observations[offset + 37]
+            stats["avg_next_corner_direction"] += observations[offset + 38]
+            stats["avg_next_corner_severity"] += observations[offset + 39]
+            stats["avg_route_width"] += observations[offset + 40]
         stats["avg_track_slowdown"] += observations[offset + 20]
         stats["avg_lateral_slip"] += abs(observations[offset + 15])
         stats["avg_braking_risk"] += max(0.0, 1.0 - observations[offset + 5])
@@ -559,6 +585,14 @@ def summary_metrics(stats, episodes_override: int = None):
         "avg_route_curvature": stats["avg_route_curvature"] / observation_samples,
         "avg_route_left_clearance": stats["avg_route_left_clearance"] / observation_samples,
         "avg_route_right_clearance": stats["avg_route_right_clearance"] / observation_samples,
+        "avg_route_offset_forward": stats["avg_route_offset_forward"] / observation_samples,
+        "avg_route_offset_side": stats["avg_route_offset_side"] / observation_samples,
+        "avg_route_offset_distance": stats["avg_route_offset_distance"] / observation_samples,
+        "avg_route_lookahead_distance": stats["avg_route_lookahead_distance"] / observation_samples,
+        "avg_next_corner_distance": stats["avg_next_corner_distance"] / observation_samples,
+        "avg_next_corner_direction": stats["avg_next_corner_direction"] / observation_samples,
+        "avg_next_corner_severity": stats["avg_next_corner_severity"] / observation_samples,
+        "avg_route_width": stats["avg_route_width"] / observation_samples,
         "avg_recovery_alignment": stats["avg_recovery_alignment"] / observation_samples,
         "avg_track_slowdown": stats["avg_track_slowdown"] / observation_samples,
         "avg_steering_authority": stats["avg_steering_authority"] / observation_samples,
@@ -730,6 +764,11 @@ def print_evaluation_tables(total_stats, per_map) -> None:
                 format_table_number(metrics["avg_route_alignment"]),
                 format_table_number(metrics["avg_route_lookahead_alignment"]),
                 format_table_number(metrics["avg_route_curvature"]),
+                format_table_number(metrics["avg_route_offset_distance"]),
+                format_table_number(metrics["avg_route_lookahead_distance"]),
+                format_table_number(metrics["avg_next_corner_distance"]),
+                format_table_number(metrics["avg_next_corner_severity"]),
+                format_table_number(metrics["avg_route_width"]),
                 format_table_number(metrics["avg_speed_signal"]),
                 format_table_number(metrics["avg_edge_clearance"]),
                 format_table_number(metrics["avg_front_road_clearance"]),
@@ -777,6 +816,11 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "route_align",
             "lookahead",
             "curve",
+            "route_off",
+            "look_dist",
+            "corner_d",
+            "corner_s",
+            "route_w",
             "speed",
             "edge_clear",
             "road_front",
@@ -788,7 +832,7 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "lat_slip",
         ],
         driving_rows,
-        right_aligned=set(range(1, 14)),
+        right_aligned=set(range(1, 19)),
     )
     print_table(
         "evaluation_rewards",
@@ -823,6 +867,12 @@ def print_evaluation_score(stats):
         f"avg_right_road_clearance={metrics['avg_right_road_clearance']:.3f} "
         f"avg_front_road_clearance={metrics['avg_front_road_clearance']:.3f} "
         f"avg_route_curvature={metrics['avg_route_curvature']:.3f} "
+        f"avg_route_offset_distance={metrics['avg_route_offset_distance']:.3f} "
+        f"avg_route_lookahead_distance={metrics['avg_route_lookahead_distance']:.3f} "
+        f"avg_next_corner_distance={metrics['avg_next_corner_distance']:.3f} "
+        f"avg_next_corner_direction={metrics['avg_next_corner_direction']:.3f} "
+        f"avg_next_corner_severity={metrics['avg_next_corner_severity']:.3f} "
+        f"avg_route_width={metrics['avg_route_width']:.3f} "
         f"near_car_fraction={metrics['near_car_fraction']:.3f} "
         f"close_car_fraction={metrics['close_car_fraction']:.3f} "
         f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "

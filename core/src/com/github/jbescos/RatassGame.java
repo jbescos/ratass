@@ -195,7 +195,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_CROWDED_SAFE_MARGIN = 1.0f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
-    public static final int RL_OBSERVATION_SIZE = 33;
+    public static final int RL_OBSERVATION_SIZE = 41;
     public static final int RL_ACTION_SIZE = 2;
     public static final int RL_REWARD_BREAKDOWN_SIZE = 7;
     private static final int RL_REWARD_ROUTE_PROGRESS = 0;
@@ -247,7 +247,15 @@ public class RatassGame extends ApplicationAdapter {
             "car_front_right",
             "car_left",
             "car_right",
-            "car_rear"
+            "car_rear",
+            "route_offset_fwd",
+            "route_offset_side",
+            "route_offset_dist",
+            "lookahead_dist",
+            "corner_dist",
+            "corner_dir",
+            "corner_severity",
+            "route_width"
     };
     private static final int RL_DEBUG_TRACE_SIZE = 23;
     private static final String[] RL_DEBUG_TRACE_NAMES = {
@@ -8198,6 +8206,20 @@ public class RatassGame extends ApplicationAdapter {
                 9,
                 17,
                 18);
+        drawSandboxObservationRow(
+                left,
+                top - SANDBOX_SENSOR_LABEL_STEP * 5f,
+                33,
+                34,
+                35,
+                36);
+        drawSandboxObservationRow(
+                left,
+                top - SANDBOX_SENSOR_LABEL_STEP * 6f,
+                37,
+                38,
+                39,
+                40);
     }
 
     private void drawSandboxObservationRow(float left, float top, int first, int second, int third, int fourth) {
@@ -10260,6 +10282,28 @@ public class RatassGame extends ApplicationAdapter {
                 MathUtils.clamp(observationRouteTarget.dot(observationForward), -1f, 1f);
         float routeTangentSide =
                 MathUtils.clamp(observationRouteTarget.dot(observationSide), -1f, 1f);
+        float routeOffsetForward = 0f;
+        float routeOffsetSide = 0f;
+        float routeOffsetDistance = 0f;
+        if (arenaMap.hasRoute()) {
+            arenaMap.findRoutePoint(routeProgress, observationRouteTarget);
+            float routeOffsetX = observationRouteTarget.x - position.x;
+            float routeOffsetY = observationRouteTarget.y - position.y;
+            routeOffsetForward =
+                    normalizedRlValue(
+                            routeOffsetX * observationForward.x + routeOffsetY * observationForward.y,
+                            RL_RAYCAST_DISTANCE);
+            routeOffsetSide =
+                    normalizedRlValue(
+                            routeOffsetX * observationSide.x + routeOffsetY * observationSide.y,
+                            RL_RAYCAST_DISTANCE);
+            routeOffsetDistance =
+                    MathUtils.clamp(
+                            (float) Math.sqrt(routeOffsetX * routeOffsetX + routeOffsetY * routeOffsetY)
+                                    / RL_RAYCAST_DISTANCE,
+                            0f,
+                            1f);
+        }
         float routeLeftClearance =
                 MathUtils.clamp(
                         arenaMap.getRouteLeftClearance(routeProgress) / RL_ROUTE_CLEARANCE_NORMALIZER,
@@ -10271,6 +10315,14 @@ public class RatassGame extends ApplicationAdapter {
                         0f,
                         1f);
         float routeCurvature = arenaMap.getRouteCurvature(routeProgress);
+        float nextCornerDistance = arenaMap.getRouteNextCornerDistance(routeProgress);
+        float nextCornerDirection = MathUtils.clamp(arenaMap.getRouteNextCornerDirection(routeProgress), -1f, 1f);
+        float nextCornerSeverity = MathUtils.clamp(arenaMap.getRouteNextCornerSeverity(routeProgress), 0f, 1f);
+        float routeRoadWidth =
+                MathUtils.clamp(
+                        arenaMap.getRouteRoadWidth(routeProgress) / (RL_ROUTE_CLEARANCE_NORMALIZER * 2f),
+                        0f,
+                        1f);
         float nearLookaheadTangentForward = routeTangentForward;
         float nearLookaheadTangentSide = routeTangentSide;
         float farLookaheadTangentForward = routeTangentForward;
@@ -10406,6 +10458,15 @@ public class RatassGame extends ApplicationAdapter {
         for (int i = 0; i < 6; i++) {
             observations[offset + 27 + i] = carRayScratch[i];
         }
+        observations[offset + 33] = routeOffsetForward;
+        observations[offset + 34] = routeOffsetSide;
+        observations[offset + 35] = routeOffsetDistance;
+        observations[offset + 36] =
+                MathUtils.clamp(lookaheadDistance / RL_ROUTE_LOOKAHEAD_DISTANCE, 0f, 1f);
+        observations[offset + 37] = nextCornerDistance;
+        observations[offset + 38] = nextCornerDirection;
+        observations[offset + 39] = nextCornerSeverity;
+        observations[offset + 40] = routeRoadWidth;
     }
 
     private static float sampleRlRayClearance(

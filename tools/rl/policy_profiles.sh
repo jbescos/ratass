@@ -133,6 +133,20 @@ rl_policy_configure_resume() {
     return
   fi
 
+  if [[ -n "${RL_FORCE_FRESH_START+x}" ]]; then
+    if [[ -n "${model_path}" && -f "${model_path}" ]]; then
+      export RL_FRESH_START=1
+      if [[ -z "${RL_INIT_POLICY:-}" ]]; then
+        export RL_INIT_POLICY="${model_path}"
+      fi
+      echo "policy_resume_source=model_forced policy=${RL_POLICY_ID:-unknown} model=${model_path} init_policy=${RL_INIT_POLICY:-none}"
+      return
+    fi
+    export RL_FRESH_START=1
+    echo "policy_resume_source=scratch_forced policy=${RL_POLICY_ID:-unknown} checkpoint_dir=${checkpoint_dir:-none} model=${model_path:-none}"
+    return
+  fi
+
   if [[ -n "${checkpoint_dir}" && -f "${checkpoint_file}" ]]; then
     export RL_FRESH_START=0
     echo "policy_resume_source=checkpoint policy=${RL_POLICY_ID:-unknown} checkpoint_dir=${checkpoint_dir}"
