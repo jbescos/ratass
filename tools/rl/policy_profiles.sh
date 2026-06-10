@@ -8,6 +8,10 @@ rl_policy_is_true() {
   [[ "${1:-}" == "1" || "${1:-}" == "true" || "${1:-}" == "yes" ]]
 }
 
+rl_policy_is_false() {
+  [[ -z "${1:-}" || "${1:-}" == "0" || "${1:-}" == "false" || "${1:-}" == "no" ]]
+}
+
 rl_policy_batch_active() {
   rl_policy_is_true "${RL_POLICY_BATCH_ACTIVE:-0}"
 }
@@ -118,51 +122,45 @@ rl_policy_state_completed() {
     && awk -F= '$1 == "completed_profile" { value = $2 } END { exit !(value == "1") }' "${state_file}"
 }
 
+rl_policy_profile_model_path() {
+  local policy_id="${RL_POLICY_ID:-}"
+  if [[ -z "${policy_id}" ]]; then
+    printf '%s\n' "${RL_BEST_OUTPUT:-}"
+    return
+  fi
+  printf '%s/%s/%s\n' "${rl_policy_asset_root}" "${policy_id}" "${rl_policy_file_name}"
+}
+
 rl_policy_configure_resume() {
   local checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-${RL_CHECKPOINT_DIR:-}}"
-  local model_path="${RL_BEST_OUTPUT:-}"
-  local checkpoint_file="${checkpoint_dir}/rllib_checkpoint.json"
+  local model_path
+  model_path="$(rl_policy_profile_model_path)"
+  local force_fresh="${RL_FORCE_FRESH_START:-0}"
 
   if [[ -n "${checkpoint_dir}" ]]; then
     export RL_POLICY_TRAINING_STATE="${RL_POLICY_TRAINING_STATE:-${checkpoint_dir}/training-state.properties}"
   fi
 
-  if rl_policy_is_true "${RL_FORCE_FRESH_START:-0}"; then
+  if rl_policy_is_true "${force_fresh}"; then
     export RL_FRESH_START=1
-    echo "policy_resume_source=fresh_forced policy=${RL_POLICY_ID:-unknown} checkpoint_dir=${checkpoint_dir:-none} model=${model_path:-none}"
+    unset RL_INIT_POLICY
+    echo "policy_resume_source=scratch_forced policy=${RL_POLICY_ID:-unknown} checkpoint_dir=${checkpoint_dir:-none} model=${model_path:-none} action=start_from_scratch"
     return
   fi
 
-  if [[ -n "${RL_FORCE_FRESH_START+x}" ]]; then
-    if [[ -n "${model_path}" && -f "${model_path}" ]]; then
-      export RL_FRESH_START=1
-      if [[ -z "${RL_INIT_POLICY:-}" ]]; then
-        export RL_INIT_POLICY="${model_path}"
-      fi
-      echo "policy_resume_source=model_forced policy=${RL_POLICY_ID:-unknown} model=${model_path} init_policy=${RL_INIT_POLICY:-none}"
-      return
-    fi
-    export RL_FRESH_START=1
-    echo "policy_resume_source=scratch_forced policy=${RL_POLICY_ID:-unknown} checkpoint_dir=${checkpoint_dir:-none} model=${model_path:-none}"
-    return
+  if ! rl_policy_is_false "${force_fresh}"; then
+    echo "invalid_RL_FORCE_FRESH_START=${force_fresh} expected=0_or_1" >&2
+    return 2
   fi
 
-  if [[ -n "${checkpoint_dir}" && -f "${checkpoint_file}" ]]; then
-    export RL_FRESH_START=0
-    echo "policy_resume_source=checkpoint policy=${RL_POLICY_ID:-unknown} checkpoint_dir=${checkpoint_dir}"
-  elif [[ -n "${model_path}" && -f "${model_path}" ]]; then
-    export RL_FRESH_START=0
-    if [[ -z "${RL_INIT_POLICY:-}" ]]; then
-      export RL_INIT_POLICY="${model_path}"
-    fi
-    echo "policy_resume_source=model policy=${RL_POLICY_ID:-unknown} model=${model_path} init_policy=${RL_INIT_POLICY:-none}"
-  elif [[ -n "${RL_POLICY_TRAINING_STATE:-}" && -f "${RL_POLICY_TRAINING_STATE}" ]]; then
-    export RL_FRESH_START=0
-    echo "policy_resume_source=state policy=${RL_POLICY_ID:-unknown} state=${RL_POLICY_TRAINING_STATE}"
-  else
-    export RL_FRESH_START="${RL_FRESH_START:-1}"
-    echo "policy_resume_source=scratch policy=${RL_POLICY_ID:-unknown} checkpoint_dir=${checkpoint_dir:-none} model=${model_path:-none}"
+  if [[ -z "${model_path}" || ! -f "${model_path}" ]]; then
+    echo "policy_resume_source=missing_model policy=${RL_POLICY_ID:-unknown} model=${model_path:-none} action=set_RL_FORCE_FRESH_START_1_to_train_from_scratch" >&2
+    return 2
   fi
+
+  export RL_FRESH_START=1
+  export RL_INIT_POLICY="${model_path}"
+  echo "policy_resume_source=asset_model policy=${RL_POLICY_ID:-unknown} model=${model_path} checkpoint_dir=${checkpoint_dir:-none} action=restart_from_exported_policy"
 }
 
 rl_policy_run_batch() {

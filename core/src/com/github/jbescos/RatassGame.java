@@ -9369,7 +9369,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private static final class Car {
-        private static final float WIDTH = 1.36f;
+        private static final float WIDTH = 1.14f;
         private static final float HEIGHT = 1.58f;
         private static final float HALF_WIDTH = WIDTH * 0.5f;
         private static final float HALF_HEIGHT = HEIGHT * 0.5f;
