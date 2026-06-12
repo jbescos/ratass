@@ -8,15 +8,21 @@ import com.badlogic.gdx.graphics.PixmapIO;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.Json;
+import com.badlogic.gdx.utils.JsonWriter;
 import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MaskArenaShape;
 import com.github.jbescos.gameplay.SpawnPoint;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -29,8 +35,8 @@ final class ImageArenaMapLoader {
     private static final String TRAINING_MAPS_DIRECTORY = "tools/rl/trainingMaps";
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
-    private static final String CACHE_SUFFIX = ".ser";
-    private static final int CACHE_VERSION = 114;
+    private static final String CACHE_SUFFIX = ".json.gz";
+    private static final int CACHE_VERSION = 115;
     private static final boolean USE_ROUTE_LINE_MARKERS = false;
     private static final float BASE_WORLD_HEIGHT = 22f;
     private static final int MAX_SEQUENTIAL_MAP_SCAN = 1000;
@@ -483,30 +489,29 @@ final class ImageArenaMapLoader {
             String baseName,
             String surfacePath,
             float mapScale) {
+        String maskSha256 = calculateFileSha256(maskFile);
+        if (maskSha256 == null) {
+            return null;
+        }
         Array<FileHandle> cacheFiles = readableCacheFiles(maskFile, baseName);
         for (int i = 0; i < cacheFiles.size; i++) {
             FileHandle cacheFile = cacheFiles.get(i);
             if (!cacheFile.exists()) {
                 continue;
             }
-            ObjectInputStream input = null;
+            Reader reader = null;
             try {
-                input = openCachedMapInput(cacheFile);
-                Object value = input.readObject();
-                if (value instanceof CachedMapData) {
-                    CachedMapData cached = (CachedMapData) value;
-                    if (isCacheValid(cached, maskFile, baseName, surfacePath, mapScale)) {
-                        return cached;
-                    }
+                reader = openCachedMapReader(cacheFile);
+                CachedMapData cached = createCacheJson().fromJson(CachedMapData.class, reader);
+                if (isCacheValid(cached, maskFile, baseName, surfacePath, mapScale, maskSha256)) {
+                    return cached;
                 }
             } catch (RuntimeException ignored) {
                 // Bad caches are regenerated from the authoritative mask PNG.
             } catch (IOException ignored) {
                 // Bad caches are regenerated from the authoritative mask PNG.
-            } catch (ClassNotFoundException ignored) {
-                // Bad caches are regenerated from the authoritative mask PNG.
             } finally {
-                closeQuietly(input);
+                closeQuietly(reader);
             }
         }
         return null;
@@ -517,12 +522,16 @@ final class ImageArenaMapLoader {
             FileHandle maskFile,
             String baseName,
             String surfacePath,
-            float mapScale) {
-        if (cached.version != CACHE_VERSION
+            float mapScale,
+            String maskSha256) {
+        if (cached == null
+                || cached.version != CACHE_VERSION
                 || !baseName.equals(cached.baseName)
                 || !surfacePath.equals(cached.surfacePath)
                 || Math.abs(cached.mapScale - mapScale) > 0.0001f
-                || cached.maskLength != maskFile.length()) {
+                || cached.maskLength != maskFile.length()
+                || cached.maskSha256 == null
+                || !cached.maskSha256.equals(maskSha256)) {
             return false;
         }
 
@@ -536,18 +545,20 @@ final class ImageArenaMapLoader {
         Array<FileHandle> cacheFiles = writableCacheFiles(maskFile, cached.baseName);
         for (int i = 0; i < cacheFiles.size; i++) {
             FileHandle cacheFile = cacheFiles.get(i);
-            ObjectOutputStream output = null;
+            Writer writer = null;
             try {
                 cacheFile.parent().mkdirs();
-                output = new ObjectOutputStream(new GZIPOutputStream(cacheFile.write(false)));
-                output.writeObject(cached);
+                writer = new OutputStreamWriter(
+                        new GZIPOutputStream(cacheFile.write(false)),
+                        StandardCharsets.UTF_8);
+                createCacheJson().toJson(cached, CachedMapData.class, writer);
                 return;
             } catch (RuntimeException ignored) {
                 // Try the next writable cache location.
             } catch (IOException ignored) {
                 // Try the next writable cache location.
             } finally {
-                closeQuietly(output);
+                closeQuietly(writer);
             }
         }
     }
@@ -985,17 +996,51 @@ final class ImageArenaMapLoader {
                 imageHeight - 1);
     }
 
-    private static ObjectInputStream openCachedMapInput(FileHandle cacheFile) throws IOException {
-        BufferedInputStream bufferedInput = new BufferedInputStream(cacheFile.read());
-        bufferedInput.mark(2);
-        int firstByte = bufferedInput.read();
-        int secondByte = bufferedInput.read();
-        bufferedInput.reset();
-        InputStream input = bufferedInput;
-        if (firstByte == 0x1f && secondByte == 0x8b) {
-            input = new GZIPInputStream(bufferedInput);
+    private static Json createCacheJson() {
+        Json json = new Json();
+        json.setOutputType(JsonWriter.OutputType.json);
+        json.setUsePrototypes(false);
+        json.setIgnoreUnknownFields(true);
+        return json;
+    }
+
+    private static Reader openCachedMapReader(FileHandle cacheFile) throws IOException {
+        return new InputStreamReader(new GZIPInputStream(cacheFile.read()), StandardCharsets.UTF_8);
+    }
+
+    private static String calculateFileSha256(FileHandle file) {
+        InputStream input = null;
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            input = new BufferedInputStream(file.read());
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) >= 0) {
+                if (count > 0) {
+                    digest.update(buffer, 0, count);
+                }
+            }
+            return toHex(digest.digest());
+        } catch (RuntimeException ignored) {
+            return null;
+        } catch (IOException ignored) {
+            return null;
+        } catch (NoSuchAlgorithmException ignored) {
+            return null;
+        } finally {
+            closeQuietly(input);
         }
-        return new ObjectInputStream(input);
+    }
+
+    private static String toHex(byte[] bytes) {
+        char[] output = new char[bytes.length * 2];
+        char[] digits = "0123456789abcdef".toCharArray();
+        for (int i = 0; i < bytes.length; i++) {
+            int value = bytes[i] & 0xff;
+            output[i * 2] = digits[value >>> 4];
+            output[i * 2 + 1] = digits[value & 0x0f];
+        }
+        return new String(output);
     }
 
     private static Array<FileHandle> readableCacheFiles(FileHandle maskFile, String baseName) {
@@ -1059,22 +1104,32 @@ final class ImageArenaMapLoader {
         }
     }
 
-    private static void closeQuietly(ObjectInputStream stream) {
-        if (stream == null) {
+    private static void closeQuietly(InputStream input) {
+        if (input == null) {
             return;
         }
         try {
-            stream.close();
+            input.close();
         } catch (IOException ignored) {
         }
     }
 
-    private static void closeQuietly(ObjectOutputStream stream) {
-        if (stream == null) {
+    private static void closeQuietly(Reader reader) {
+        if (reader == null) {
             return;
         }
         try {
-            stream.close();
+            reader.close();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static void closeQuietly(Writer writer) {
+        if (writer == null) {
+            return;
+        }
+        try {
+            writer.close();
         } catch (IOException ignored) {
         }
     }
@@ -1104,6 +1159,7 @@ final class ImageArenaMapLoader {
         cached.mapScale = mapScale;
         cached.maskLastModified = maskFile.lastModified();
         cached.maskLength = maskFile.length();
+        cached.maskSha256 = calculateFileSha256(maskFile);
         cached.imageWidth = imageWidth;
         cached.imageHeight = imageHeight;
         cached.worldMinX = worldMinX;
@@ -7304,15 +7360,14 @@ final class ImageArenaMapLoader {
         }
     }
 
-    private static final class CachedMapData implements Serializable {
-        private static final long serialVersionUID = 1L;
-
+    private static final class CachedMapData {
         private int version;
         private String baseName;
         private String surfacePath;
         private float mapScale;
         private long maskLastModified;
         private long maskLength;
+        private String maskSha256;
         @SuppressWarnings("unused")
         private int imageWidth;
         @SuppressWarnings("unused")

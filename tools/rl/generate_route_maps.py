@@ -423,8 +423,9 @@ def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    for path in output_dir.glob("route*.ser"):
-        path.unlink()
+    for pattern in ("route*.json.gz", "route*.ser"):
+        for path in output_dir.glob(pattern):
+            path.unlink()
     for path in output_dir.glob("route*_mask.png"):
         path.unlink()
     for index, template in enumerate(ROUTE_TEMPLATES):

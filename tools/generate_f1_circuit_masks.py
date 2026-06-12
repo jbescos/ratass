@@ -342,8 +342,9 @@ def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    for path in output_dir.glob("map*.ser"):
-        path.unlink()
+    for pattern in ("map*.json.gz", "map*.ser"):
+        for path in output_dir.glob(pattern):
+            path.unlink()
     for spec in CIRCUITS:
         output = output_dir / f"map{spec.file_index:03d}_mask.png"
         if not args.all and not output.exists():

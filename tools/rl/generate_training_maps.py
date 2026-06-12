@@ -425,8 +425,9 @@ def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    for path in output_dir.glob("train*.ser"):
-        path.unlink()
+    for pattern in ("train*.json.gz", "train*.ser"):
+        for path in output_dir.glob(pattern):
+            path.unlink()
     for path in output_dir.glob("train*_mask.png"):
         path.unlink()
     for index in range(args.count):

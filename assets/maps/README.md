@@ -5,12 +5,12 @@ load a decorated image beside a mask when one exists, but for now the mask is
 also used as the visible surface.
 
 - `*_mask.png`: road mask, race checkpoints, car starts, and start directions
-- `*.ser`: compressed generated gameplay cache for the parsed mask
+- `*.json.gz`: compressed generated gameplay metadata for the parsed mask
 
-The `.ser` file is a compressed generated cache. It stores only gameplay data
+The `.json.gz` file is a compressed generated cache. It stores only gameplay data
 derived from the mask, not the decorated map image. If it is missing or stale,
 the loader rebuilds it from the matching `*_mask.png` and writes a fresh sidecar cache
-when the assets directory is writable. Keep the `.ser` next to the map pair
+when the assets directory is writable. Keep the `.json.gz` next to the map pair
 before packaging the game so normal startup does not have to parse the mask
 image and rebuild mask distance fields.
 

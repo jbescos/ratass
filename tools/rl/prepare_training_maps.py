@@ -432,8 +432,9 @@ def start_jvm(jar_path: Path) -> None:
 
 
 def remove_caches(map_dir: Path) -> None:
-    for path in map_dir.glob("*.ser"):
-        path.unlink()
+    for pattern in ("*.json.gz", "*.ser"):
+        for path in map_dir.glob(pattern):
+            path.unlink()
 
 
 def prepare_masks(map_dir: Path, normalize_names: bool) -> List[Path]:
@@ -554,7 +555,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--prebuild-cache",
         action="store_true",
-        help="Regenerate .ser files after writing the final annotated masks.",
+        help="Regenerate .json.gz metadata files after writing the final annotated masks.",
     )
     parser.add_argument(
         "--skip-labels",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load synthetic training maps once so their .ser caches are generated."""
+"""Load synthetic training maps once so their .json.gz metadata caches are generated."""
 
 from __future__ import annotations
 

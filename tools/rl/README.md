@@ -181,7 +181,7 @@ mvn -q -DskipTests package
 ```
 
 Training workers load the map set once when each Java environment starts. They
-do not reload PNGs every PPO iteration. The `.ser` files beside the masks keep
+do not reload PNGs every PPO iteration. The `.json.gz` files beside the masks keep
 startup fast by avoiding repeated mask parsing and distance-field generation.
 
 ## Docker

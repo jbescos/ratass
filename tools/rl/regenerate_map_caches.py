@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate map .ser caches from the current mask PNG files."""
+"""Regenerate map .json.gz metadata caches from the current mask PNG files."""
 
 from __future__ import annotations
 
@@ -28,11 +28,12 @@ def start_jvm(jar_path: Path) -> None:
         gdx.files = jpype.JClass("com.badlogic.gdx.backends.lwjgl3.Lwjgl3Files")()
 
 
-def remove_ser_files(map_dir: Path) -> int:
+def remove_cache_files(map_dir: Path) -> int:
     removed = 0
-    for path in sorted(map_dir.glob("*.ser")):
-        path.unlink()
-        removed += 1
+    for pattern in ("*.json.gz", "*.ser"):
+        for path in sorted(map_dir.glob(pattern)):
+            path.unlink()
+            removed += 1
     return removed
 
 
@@ -81,12 +82,12 @@ def main() -> None:
     game_map_dir = project_path(Path(args.game_map_dir)).resolve()
     training_map_dir = project_path(Path(args.training_map_dir)).resolve()
 
-    removed_game = remove_ser_files(game_map_dir)
-    removed_training = remove_ser_files(training_map_dir)
+    removed_game = remove_cache_files(game_map_dir)
+    removed_training = remove_cache_files(training_map_dir)
     print(
         "map_cache_regenerate_removed"
-        f" game_dir={repo_relative(game_map_dir)} game_ser={removed_game}"
-        f" training_dir={repo_relative(training_map_dir)} training_ser={removed_training}"
+        f" game_dir={repo_relative(game_map_dir)} game_cache={removed_game}"
+        f" training_dir={repo_relative(training_map_dir)} training_cache={removed_training}"
     )
 
     start_jvm(jar_path)
