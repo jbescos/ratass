@@ -297,13 +297,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_ROUTE_MARGIN = 0.50f;
     private static final float RL_RAYCAST_DISTANCE = 22f;
     private static final float RL_LATERAL_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 2f;
-    private static final float RL_FRONT_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 7f;
+    private static final float RL_FRONT_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 12f;
+    private static final float RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 7f;
     private static final float RL_ROUTE_LOOKAHEAD_DISTANCE = Car.HEIGHT * 7f;
     private static final float RL_ROUTE_NEAR_TANGENT_LOOKAHEAD_DISTANCE = Car.HEIGHT * 4f;
     private static final float RL_ROUTE_FAR_TANGENT_LOOKAHEAD_DISTANCE = Car.HEIGHT * 12f;
     private static final float RL_SHORT_RAYCAST_DISTANCE = 7.5f;
     private static final float RL_RAYCAST_STEP = 0.40f;
-    private static final float RL_CAR_FRONT_REAR_SENSOR_DISTANCE = Car.HEIGHT * 7f;
+    private static final float RL_CAR_FRONT_SENSOR_DISTANCE = Car.HEIGHT * 7f;
+    private static final float RL_CAR_REAR_SENSOR_DISTANCE = Car.HEIGHT * 7f;
     private static final float RL_CAR_SIDE_SENSOR_DISTANCE = Car.HEIGHT * 3f;
     private static final float RL_CAR_SENSOR_RADIUS = 1.2f;
     private static final float SANDBOX_ROUTE_LINE_SAMPLE_STEP = 0.70f;
@@ -7845,32 +7847,32 @@ public class RatassGame extends ApplicationAdapter {
                     sandboxSensorForward.x + sandboxSensorSide.x,
                     sandboxSensorForward.y + sandboxSensorSide.y,
                     25,
-                    RL_FRONT_ROAD_CLEARANCE_DISTANCE);
+                    RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE);
             drawSandboxRoadSensorRay(
                     origin,
                     sandboxSensorForward.x - sandboxSensorSide.x,
                     sandboxSensorForward.y - sandboxSensorSide.y,
                     26,
-                    RL_FRONT_ROAD_CLEARANCE_DISTANCE);
+                    RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE);
 
             drawSandboxCarSensorRay(
                     origin,
                     sandboxSensorForward.x,
                     sandboxSensorForward.y,
                     27,
-                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+                    RL_CAR_FRONT_SENSOR_DISTANCE);
             drawSandboxCarSensorRay(
                     origin,
                     sandboxSensorForward.x + sandboxSensorSide.x,
                     sandboxSensorForward.y + sandboxSensorSide.y,
                     28,
-                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+                    RL_CAR_FRONT_SENSOR_DISTANCE);
             drawSandboxCarSensorRay(
                     origin,
                     sandboxSensorForward.x - sandboxSensorSide.x,
                     sandboxSensorForward.y - sandboxSensorSide.y,
                     29,
-                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+                    RL_CAR_FRONT_SENSOR_DISTANCE);
             drawSandboxCarSensorRay(
                     origin,
                     sandboxSensorSide.x,
@@ -7888,7 +7890,7 @@ public class RatassGame extends ApplicationAdapter {
                     -sandboxSensorForward.x,
                     -sandboxSensorForward.y,
                     32,
-                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+                    RL_CAR_REAR_SENSOR_DISTANCE);
 
             drawSandboxRouteGuidance(car, origin);
         }
@@ -8057,7 +8059,7 @@ public class RatassGame extends ApplicationAdapter {
                     sandboxSensorForward.x + sandboxSensorSide.x,
                     sandboxSensorForward.y + sandboxSensorSide.y,
                     25,
-                    RL_FRONT_ROAD_CLEARANCE_DISTANCE,
+                    RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE,
                     "FL");
             drawSandboxRayLabel(
                     playfieldWidth,
@@ -8066,7 +8068,7 @@ public class RatassGame extends ApplicationAdapter {
                     sandboxSensorForward.x - sandboxSensorSide.x,
                     sandboxSensorForward.y - sandboxSensorSide.y,
                     26,
-                    RL_FRONT_ROAD_CLEARANCE_DISTANCE,
+                    RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE,
                     "FR");
 
             labelFont.setColor(0.90f, 0.78f, 1f, 0.94f);
@@ -8077,7 +8079,7 @@ public class RatassGame extends ApplicationAdapter {
                     sandboxSensorForward.x,
                     sandboxSensorForward.y,
                     27,
-                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE,
+                    RL_CAR_FRONT_SENSOR_DISTANCE,
                     "carF");
             drawSandboxRayLabel(
                     playfieldWidth,
@@ -8086,7 +8088,7 @@ public class RatassGame extends ApplicationAdapter {
                     sandboxSensorForward.x + sandboxSensorSide.x,
                     sandboxSensorForward.y + sandboxSensorSide.y,
                     28,
-                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE,
+                    RL_CAR_FRONT_SENSOR_DISTANCE,
                     "carFL");
             drawSandboxRayLabel(
                     playfieldWidth,
@@ -8095,7 +8097,7 @@ public class RatassGame extends ApplicationAdapter {
                     sandboxSensorForward.x - sandboxSensorSide.x,
                     sandboxSensorForward.y - sandboxSensorSide.y,
                     29,
-                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE,
+                    RL_CAR_FRONT_SENSOR_DISTANCE,
                     "carFR");
             drawSandboxRayLabel(
                     playfieldWidth,
@@ -8122,7 +8124,7 @@ public class RatassGame extends ApplicationAdapter {
                     -sandboxSensorForward.x,
                     -sandboxSensorForward.y,
                     32,
-                    RL_CAR_FRONT_REAR_SENSOR_DISTANCE,
+                    RL_CAR_REAR_SENSOR_DISTANCE,
                     "carB");
 
             drawSandboxObservationSummary(car, playfieldWidth, hudHeight);
@@ -10416,14 +10418,14 @@ public class RatassGame extends ApplicationAdapter {
                         position,
                         observationForward.x + observationSide.x,
                         observationForward.y + observationSide.y,
-                        RL_FRONT_ROAD_CLEARANCE_DISTANCE);
+                        RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE);
         float frontRightRoadClearance =
                 sampleRlRayClearance(
                         arenaMap,
                         position,
                         observationForward.x - observationSide.x,
                         observationForward.y - observationSide.y,
-                        RL_FRONT_ROAD_CLEARANCE_DISTANCE);
+                        RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE);
 
         fillRlCarRayObservations(carRayScratch, 0, cars, car, position, observationForward, observationSide);
 
@@ -10521,7 +10523,7 @@ public class RatassGame extends ApplicationAdapter {
                         carPosition,
                         forward.x,
                         forward.y,
-                        RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+                        RL_CAR_FRONT_SENSOR_DISTANCE);
         observations[offset + 1] =
                 sampleRlCarRayClearance(
                         cars,
@@ -10529,7 +10531,7 @@ public class RatassGame extends ApplicationAdapter {
                         carPosition,
                         forward.x + side.x,
                         forward.y + side.y,
-                        RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+                        RL_CAR_FRONT_SENSOR_DISTANCE);
         observations[offset + 2] =
                 sampleRlCarRayClearance(
                         cars,
@@ -10537,7 +10539,7 @@ public class RatassGame extends ApplicationAdapter {
                         carPosition,
                         forward.x - side.x,
                         forward.y - side.y,
-                        RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+                        RL_CAR_FRONT_SENSOR_DISTANCE);
         observations[offset + 3] =
                 sampleRlCarRayClearance(
                         cars,
@@ -10561,7 +10563,7 @@ public class RatassGame extends ApplicationAdapter {
                         carPosition,
                         -forward.x,
                         -forward.y,
-                        RL_CAR_FRONT_REAR_SENSOR_DISTANCE);
+                        RL_CAR_REAR_SENSOR_DISTANCE);
     }
 
     private static float sampleRlCarRayClearance(
