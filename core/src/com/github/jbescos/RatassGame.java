@@ -94,6 +94,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final ThemeChoice[] FALLBACK_THEME_CHOICES = new ThemeChoice[] {
             new ThemeChoice("gt3", "GT3")
     };
+
+    private static Rectangle[] createRectangleArray(int count) {
+        Rectangle[] rectangles = new Rectangle[count];
+        for (int i = 0; i < rectangles.length; i++) {
+            rectangles[i] = new Rectangle();
+        }
+        return rectangles;
+    }
+
     private static final int THEME_CAR_COLUMNS = 10;
     private static final int THEME_CAR_SHEET_ROWS = 5;
     private static final int MAX_CAR_VISUAL_COUNT = 10;
@@ -190,6 +199,44 @@ public class RatassGame extends ApplicationAdapter {
     private static final float CAR_TELEMETRY_LABEL_GAP = 4f;
     private static final float CAR_TELEMETRY_ROW_STEP = 9f;
     private static final int CAR_TELEMETRY_ROW_COUNT = 4;
+    private static final int SANDBOX_PHYSICS_HORSE_POWER = 0;
+    private static final int SANDBOX_PHYSICS_BRAKE_FORCE = 1;
+    private static final int SANDBOX_PHYSICS_STEERING_TORQUE = 2;
+    private static final int SANDBOX_PHYSICS_WHEEL_GRIP = 3;
+    private static final int SANDBOX_PHYSICS_MASS_MULTIPLIER = 4;
+    private static final int SANDBOX_PHYSICS_TUNER_COUNT = 5;
+    private static final String[] SANDBOX_PHYSICS_TUNER_LABELS = {
+            "horsepower",
+            "brake",
+            "steering",
+            "grip",
+            "mass"
+    };
+    private static final float[] SANDBOX_PHYSICS_TUNER_MIN = {
+            80f,
+            100f,
+            10f,
+            0.20f,
+            0.50f
+    };
+    private static final float[] SANDBOX_PHYSICS_TUNER_MAX = {
+            520f,
+            820f,
+            95f,
+            1.80f,
+            3.00f
+    };
+    private static final float[] SANDBOX_PHYSICS_TUNER_STEP = {
+            10f,
+            15f,
+            2.5f,
+            0.05f,
+            0.05f
+    };
+    private static final float SANDBOX_PHYSICS_TUNER_WIDTH = 330f;
+    private static final float SANDBOX_PHYSICS_TUNER_HEADER_HEIGHT = 30f;
+    private static final float SANDBOX_PHYSICS_TUNER_ROW_HEIGHT = 24f;
+    private static final float SANDBOX_PHYSICS_TUNER_MARGIN = 14f;
     private static final int ROUND_SPAWN_ATTEMPTS = 3200;
     private static final float ROUND_SPAWN_SAFE_MARGIN = 1.15f;
     private static final float ROUND_SPAWN_CROWDED_SAFE_MARGIN = 1.0f;
@@ -697,6 +744,12 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle sidebarMinimapBounds = new Rectangle();
     private final Rectangle sidebarTablesViewportBounds = new Rectangle();
     private final Rectangle sidebarTablesScrollbarBounds = new Rectangle();
+    private final Rectangle sandboxPhysicsTunerBounds = new Rectangle();
+    private final Rectangle sandboxPhysicsResetBounds = new Rectangle();
+    private final Rectangle[] sandboxPhysicsDecreaseBounds =
+            createRectangleArray(SANDBOX_PHYSICS_TUNER_COUNT);
+    private final Rectangle[] sandboxPhysicsIncreaseBounds =
+            createRectangleArray(SANDBOX_PHYSICS_TUNER_COUNT);
     private final Matrix4 minimapTransform = new Matrix4();
     private final Matrix4 hudTransform = new Matrix4();
     private final Vector2 cameraTargetPosition = new Vector2();
@@ -753,6 +806,7 @@ public class RatassGame extends ApplicationAdapter {
     private Texture themeCarsTexture;
     private Texture menuCarSheetTexture;
     private String preloadedNextArenaSurfaceKey;
+    private CarPhysics sandboxPhysicsOverride = CarPhysics.DEFAULT;
 
     private GameMode gameMode = GameMode.MAIN_MENU;
     private MapProgression mapProgression;
@@ -889,6 +943,9 @@ public class RatassGame extends ApplicationAdapter {
         loadSounds();
         rlEnemyPolicy = loadRlEnemyPolicy();
         createRoster();
+        if (sandboxMode) {
+            resetSandboxPhysicsTuning();
+        }
         loadCarSprites();
         mapProgression = new MapProgression(createGameplayMapSet(sandbox));
 
@@ -2167,6 +2224,7 @@ public class RatassGame extends ApplicationAdapter {
 
         updateTouchState();
         handleSidebarTablesPointerInput();
+        handleSandboxPhysicsTunerPointerInput();
         frameThrottleInput = readPlayerThrottle();
         frameTurnInput = readPlayerTurn();
 
@@ -2246,6 +2304,162 @@ public class RatassGame extends ApplicationAdapter {
                 sidebarX,
                 sidebarWidth,
                 hudHeight);
+    }
+
+    private void handleSandboxPhysicsTunerPointerInput() {
+        if (!sandboxMode || gameMode != GameMode.PLAYING || !Gdx.input.justTouched()) {
+            return;
+        }
+
+        float hudWidth = hudViewport.getWorldWidth();
+        float hudHeight = hudViewport.getWorldHeight();
+        float playfieldWidth = playfieldHudWidth > 0f ? playfieldHudWidth : hudWidth;
+        updateSandboxPhysicsTunerLayout(playfieldWidth, hudHeight);
+
+        hudTouchPoint.set(Gdx.input.getX(), Gdx.input.getY(), 0f);
+        hudViewport.unproject(hudTouchPoint);
+        if (!sandboxPhysicsTunerBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            return;
+        }
+
+        if (sandboxPhysicsResetBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            resetSandboxPhysicsTuning();
+            return;
+        }
+
+        for (int i = 0; i < SANDBOX_PHYSICS_TUNER_COUNT; i++) {
+            if (sandboxPhysicsDecreaseBounds[i].contains(hudTouchPoint.x, hudTouchPoint.y)) {
+                changeSandboxPhysicsTuning(i, -1);
+                return;
+            }
+            if (sandboxPhysicsIncreaseBounds[i].contains(hudTouchPoint.x, hudTouchPoint.y)) {
+                changeSandboxPhysicsTuning(i, 1);
+                return;
+            }
+        }
+    }
+
+    private void updateSandboxPhysicsTunerLayout(float playfieldWidth, float hudHeight) {
+        float width = Math.min(
+                SANDBOX_PHYSICS_TUNER_WIDTH,
+                Math.max(230f, playfieldWidth - SANDBOX_PHYSICS_TUNER_MARGIN * 2f));
+        float height =
+                SANDBOX_PHYSICS_TUNER_HEADER_HEIGHT
+                        + SANDBOX_PHYSICS_TUNER_ROW_HEIGHT * SANDBOX_PHYSICS_TUNER_COUNT
+                        + 12f;
+        float x = SANDBOX_PHYSICS_TUNER_MARGIN;
+        float y = Math.max(
+                SANDBOX_PHYSICS_TUNER_MARGIN,
+                hudHeight - height - 78f);
+        sandboxPhysicsTunerBounds.set(x, y, width, height);
+
+        float resetWidth = 58f;
+        sandboxPhysicsResetBounds.set(
+                x + width - resetWidth - 8f,
+                y + height - SANDBOX_PHYSICS_TUNER_HEADER_HEIGHT + 5f,
+                resetWidth,
+                SANDBOX_PHYSICS_TUNER_HEADER_HEIGHT - 10f);
+
+        float buttonSize = Math.min(24f, SANDBOX_PHYSICS_TUNER_ROW_HEIGHT - 5f);
+        float rowTop = y + height - SANDBOX_PHYSICS_TUNER_HEADER_HEIGHT;
+        for (int i = 0; i < SANDBOX_PHYSICS_TUNER_COUNT; i++) {
+            float rowY = rowTop - (i + 1) * SANDBOX_PHYSICS_TUNER_ROW_HEIGHT;
+            float buttonY = rowY + (SANDBOX_PHYSICS_TUNER_ROW_HEIGHT - buttonSize) * 0.5f;
+            sandboxPhysicsDecreaseBounds[i].set(
+                    x + width - buttonSize * 2f - 17f,
+                    buttonY,
+                    buttonSize,
+                    buttonSize);
+            sandboxPhysicsIncreaseBounds[i].set(
+                    x + width - buttonSize - 8f,
+                    buttonY,
+                    buttonSize,
+                    buttonSize);
+        }
+    }
+
+    private void resetSandboxPhysicsTuning() {
+        sandboxPhysicsOverride = CarPhysics.DEFAULT;
+        applySandboxPhysicsOverride();
+    }
+
+    private void changeSandboxPhysicsTuning(int index, int direction) {
+        float value =
+                MathUtils.clamp(
+                        getSandboxPhysicsTuningValue(index)
+                                + SANDBOX_PHYSICS_TUNER_STEP[index] * direction,
+                        SANDBOX_PHYSICS_TUNER_MIN[index],
+                        SANDBOX_PHYSICS_TUNER_MAX[index]);
+        setSandboxPhysicsTuningValue(index, value);
+    }
+
+    private float getSandboxPhysicsTuningValue(int index) {
+        switch (index) {
+            case SANDBOX_PHYSICS_HORSE_POWER:
+                return sandboxPhysicsOverride.horsePower;
+            case SANDBOX_PHYSICS_BRAKE_FORCE:
+                return sandboxPhysicsOverride.brakeForce;
+            case SANDBOX_PHYSICS_STEERING_TORQUE:
+                return sandboxPhysicsOverride.steeringTorque;
+            case SANDBOX_PHYSICS_WHEEL_GRIP:
+                return sandboxPhysicsOverride.wheelGrip;
+            case SANDBOX_PHYSICS_MASS_MULTIPLIER:
+                return sandboxPhysicsOverride.massMultiplier;
+            default:
+                return 0f;
+        }
+    }
+
+    private void setSandboxPhysicsTuningValue(int index, float value) {
+        float horsePower = sandboxPhysicsOverride.horsePower;
+        float brakeForce = sandboxPhysicsOverride.brakeForce;
+        float steeringTorque = sandboxPhysicsOverride.steeringTorque;
+        float wheelGrip = sandboxPhysicsOverride.wheelGrip;
+        float massMultiplier = sandboxPhysicsOverride.massMultiplier;
+
+        switch (index) {
+            case SANDBOX_PHYSICS_HORSE_POWER:
+                horsePower = value;
+                break;
+            case SANDBOX_PHYSICS_BRAKE_FORCE:
+                brakeForce = value;
+                break;
+            case SANDBOX_PHYSICS_STEERING_TORQUE:
+                steeringTorque = value;
+                break;
+            case SANDBOX_PHYSICS_WHEEL_GRIP:
+                wheelGrip = value;
+                break;
+            case SANDBOX_PHYSICS_MASS_MULTIPLIER:
+                massMultiplier = value;
+                break;
+            default:
+                return;
+        }
+
+        sandboxPhysicsOverride =
+                sandboxPhysicsOverride.withSandboxTuning(
+                        massMultiplier,
+                        horsePower,
+                        brakeForce,
+                        steeringTorque,
+                        wheelGrip);
+        applySandboxPhysicsOverride();
+    }
+
+    private void applySandboxPhysicsOverride() {
+        if (!sandboxMode) {
+            return;
+        }
+        for (int i = 0; i < roster.size; i++) {
+            roster.get(i).physics = sandboxPhysicsOverride;
+        }
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (car.active && car.body != null) {
+                car.rebuildCollisionFixture();
+            }
+        }
     }
 
     private void handleMenuInput() {
@@ -7092,9 +7306,134 @@ public class RatassGame extends ApplicationAdapter {
 
         spriteBatch.end();
 
+        if (sandboxMode) {
+            drawSandboxPhysicsTuner(playfieldWidth, hudHeight);
+        }
+
         if (touchControlsEnabled) {
             drawTouchControls();
         }
+    }
+
+    private void drawSandboxPhysicsTuner(float playfieldWidth, float hudHeight) {
+        updateSandboxPhysicsTunerLayout(playfieldWidth, hudHeight);
+        if (sandboxPhysicsTunerBounds.width <= 0f || sandboxPhysicsTunerBounds.height <= 0f) {
+            return;
+        }
+
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0.035f, 0.045f, 0.060f, 0.88f);
+        shapeRenderer.rect(
+                sandboxPhysicsTunerBounds.x,
+                sandboxPhysicsTunerBounds.y,
+                sandboxPhysicsTunerBounds.width,
+                sandboxPhysicsTunerBounds.height);
+        shapeRenderer.setColor(0.98f, 0.84f, 0.28f, 0.16f);
+        shapeRenderer.rect(
+                sandboxPhysicsTunerBounds.x,
+                sandboxPhysicsTunerBounds.y + sandboxPhysicsTunerBounds.height - 3f,
+                sandboxPhysicsTunerBounds.width,
+                3f);
+
+        for (int i = 0; i < SANDBOX_PHYSICS_TUNER_COUNT; i++) {
+            float rowY =
+                    sandboxPhysicsTunerBounds.y
+                            + sandboxPhysicsTunerBounds.height
+                            - SANDBOX_PHYSICS_TUNER_HEADER_HEIGHT
+                            - (i + 1) * SANDBOX_PHYSICS_TUNER_ROW_HEIGHT;
+            shapeRenderer.setColor(i % 2 == 0 ? 0.10f : 0.075f, 0.105f, 0.125f, 0.62f);
+            shapeRenderer.rect(
+                    sandboxPhysicsTunerBounds.x + 7f,
+                    rowY + 2f,
+                    sandboxPhysicsTunerBounds.width - 14f,
+                    SANDBOX_PHYSICS_TUNER_ROW_HEIGHT - 4f);
+            drawSandboxPhysicsTunerButtonShape(sandboxPhysicsDecreaseBounds[i], 0.12f, 0.16f, 0.20f);
+            drawSandboxPhysicsTunerButtonShape(sandboxPhysicsIncreaseBounds[i], 0.15f, 0.20f, 0.16f);
+        }
+        drawSandboxPhysicsTunerButtonShape(sandboxPhysicsResetBounds, 0.18f, 0.13f, 0.11f);
+        shapeRenderer.end();
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        shapeRenderer.setColor(0.80f, 0.88f, 0.94f, 0.34f);
+        shapeRenderer.rect(
+                sandboxPhysicsTunerBounds.x,
+                sandboxPhysicsTunerBounds.y,
+                sandboxPhysicsTunerBounds.width,
+                sandboxPhysicsTunerBounds.height);
+        shapeRenderer.end();
+
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        spriteBatch.begin();
+        hudFont.setColor(0.96f, 0.92f, 0.78f, 1f);
+        hudFont.draw(
+                spriteBatch,
+                "sandbox physics",
+                sandboxPhysicsTunerBounds.x + 10f,
+                sandboxPhysicsTunerBounds.y + sandboxPhysicsTunerBounds.height - 10f);
+        hudFont.setColor(1f, 0.86f, 0.62f, 1f);
+        drawTextCentered(
+                hudFont,
+                "reset",
+                sandboxPhysicsResetBounds.x + sandboxPhysicsResetBounds.width * 0.5f,
+                sandboxPhysicsResetBounds.y + sandboxPhysicsResetBounds.height * 0.68f);
+
+        for (int i = 0; i < SANDBOX_PHYSICS_TUNER_COUNT; i++) {
+            float rowY =
+                    sandboxPhysicsTunerBounds.y
+                            + sandboxPhysicsTunerBounds.height
+                            - SANDBOX_PHYSICS_TUNER_HEADER_HEIGHT
+                            - (i + 1) * SANDBOX_PHYSICS_TUNER_ROW_HEIGHT;
+            float textY = rowY + SANDBOX_PHYSICS_TUNER_ROW_HEIGHT * 0.68f;
+            hudFont.setColor(0.82f, 0.88f, 0.91f, 1f);
+            hudFont.draw(
+                    spriteBatch,
+                    SANDBOX_PHYSICS_TUNER_LABELS[i],
+                    sandboxPhysicsTunerBounds.x + 12f,
+                    textY);
+            hudFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+            drawTextCentered(
+                    hudFont,
+                    formatSandboxPhysicsTuningValue(i),
+                    sandboxPhysicsTunerBounds.x + sandboxPhysicsTunerBounds.width - 72f,
+                    textY);
+            hudFont.setColor(0.94f, 0.96f, 0.98f, 1f);
+            drawTextCentered(
+                    hudFont,
+                    "-",
+                    sandboxPhysicsDecreaseBounds[i].x + sandboxPhysicsDecreaseBounds[i].width * 0.5f,
+                    sandboxPhysicsDecreaseBounds[i].y + sandboxPhysicsDecreaseBounds[i].height * 0.70f);
+            drawTextCentered(
+                    hudFont,
+                    "+",
+                    sandboxPhysicsIncreaseBounds[i].x + sandboxPhysicsIncreaseBounds[i].width * 0.5f,
+                    sandboxPhysicsIncreaseBounds[i].y + sandboxPhysicsIncreaseBounds[i].height * 0.70f);
+        }
+        spriteBatch.end();
+    }
+
+    private void drawSandboxPhysicsTunerButtonShape(
+            Rectangle bounds,
+            float red,
+            float green,
+            float blue) {
+        shapeRenderer.setColor(red, green, blue, 0.88f);
+        shapeRenderer.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+    }
+
+    private String formatSandboxPhysicsTuningValue(int index) {
+        float value = getSandboxPhysicsTuningValue(index);
+        if (index == SANDBOX_PHYSICS_HORSE_POWER || index == SANDBOX_PHYSICS_BRAKE_FORCE) {
+            return String.valueOf(Math.round(value));
+        }
+        if (index == SANDBOX_PHYSICS_STEERING_TORQUE) {
+            return String.format(Locale.ROOT, "%.1f", value);
+        }
+        return String.format(Locale.ROOT, "%.2f", value);
     }
 
     private void drawCenteredOverlay(
@@ -9363,6 +9702,41 @@ public class RatassGame extends ApplicationAdapter {
             this.fixtureRestitution = fixtureRestitution;
             this.collisionImpulseFactor = collisionImpulseFactor;
             this.maxCollisionImpulse = maxCollisionImpulse;
+        }
+
+        private CarPhysics withSandboxTuning(
+                float massMultiplier,
+                float horsePower,
+                float brakeForce,
+                float steeringTorque,
+                float wheelGrip) {
+            return new CarPhysics(
+                    massMultiplier,
+                    horsePower,
+                    reversePowerMultiplier,
+                    brakeForce,
+                    reverseSpeedMultiplier,
+                    steeringTorque,
+                    lowSpeedSteeringAuthority,
+                    highSpeedSteeringAuthority,
+                    wheelGrip,
+                    lateralGripPerSecond,
+                    yawGripPerSecond,
+                    rollingResistance,
+                    aeroDrag,
+                    driftSpeedScrubPerSecond,
+                    maxForwardSpeed,
+                    steeringReferenceSpeed,
+                    trackLimitMaxSpeedMultiplier,
+                    trackLimitVelocityDamping,
+                    trackLimitAngularDamping,
+                    linearDamping,
+                    angularDamping,
+                    fixtureDensity,
+                    fixtureFriction,
+                    fixtureRestitution,
+                    collisionImpulseFactor,
+                    maxCollisionImpulse);
         }
 
         private float engineForce() {
