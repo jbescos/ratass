@@ -191,6 +191,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final float PLAYER_CAMERA_LOOK_AHEAD_TIME = 0.15f;
     private static final float PLAYER_CAMERA_MAX_LOOK_AHEAD = 2.35f;
     private static final float PLAYER_CAMERA_FOLLOW_LERP_SPEED = 7.5f;
+    private static final float CAMERA_TARGET_SWITCH_DURATION = 0.95f;
+    private static final float CAMERA_TARGET_SWITCH_LERP_SPEED = 2.4f;
+    private static final float CAMERA_TARGET_SWITCH_ZOOM_OUT = 0.28f;
     private static final float CAR_SPEED_BAR_WIDTH = 38f;
     private static final float CAR_SPEED_BAR_HEIGHT = 5f;
     private static final float CAR_SPEED_BAR_OFFSET_Y = 60f;
@@ -411,11 +414,12 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SIDEBAR_MINIMAP_MARKER_RADIUS = 3.2f;
     private static final float SIDEBAR_MINIMAP_PLAYER_RING_RADIUS = 6.2f;
     private static final float SIDEBAR_MINIMAP_BIG_CAR_RADIUS_BOOST = 1.4f;
-    private static final float SIDEBAR_LEADERBOARD_COMPACT_ROW_STEP = 11.5f;
+    private static final float SIDEBAR_LEADERBOARD_COMPACT_ROW_STEP = 15.5f;
+    private static final float SIDEBAR_CAMERA_TARGET_ICON_WIDTH = 18f;
     private static final float HUD_FONT_SCALE = 1.18f;
     private static final float TITLE_FONT_SCALE = 2.25f;
     private static final float LEADERBOARD_FONT_SCALE = 0.96f;
-    private static final float LABEL_FONT_SCALE = 0.86f;
+    private static final float LABEL_FONT_SCALE = 1.05f;
     private static final float MENU_BUTTON_WIDTH = 340f;
     private static final float MENU_BUTTON_HEIGHT = 56f;
     private static final float MENU_BUTTON_GAP = 18f;
@@ -769,7 +773,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Comparator<CarTemplate> leaderboardComparator = new Comparator<CarTemplate>() {
         @Override
         public int compare(CarTemplate left, CarTemplate right) {
-            if (isLiveLapRaceMode() && !roundOver) {
+            if (isLiveLapRaceMode()) {
                 return compareRaceStanding(left, right);
             }
             if (left.totalPoints != right.totalPoints) {
@@ -828,6 +832,7 @@ public class RatassGame extends ApplicationAdapter {
     private float impactSoundCooldown;
     private float destructionSoundCooldown;
     private float smoothedCameraZoom = 1f;
+    private float cameraTargetTransitionTimer;
     private float eventCalloutTimer;
     private float raceFinishTimer;
     private float sidebarTablesScrollOffset;
@@ -865,6 +870,7 @@ public class RatassGame extends ApplicationAdapter {
     private int mainMenuSelection;
     private int pauseMenuSelection;
     private int optionsMenuSelection;
+    private int cameraTargetRosterIndex = -1;
     private Car boostedCar;
     private Car playerCar;
     private Car winner;
@@ -2225,6 +2231,7 @@ public class RatassGame extends ApplicationAdapter {
         updateTouchState();
         handleSidebarTablesPointerInput();
         handleSandboxPhysicsTunerPointerInput();
+        handleCameraTargetInput();
         frameThrottleInput = readPlayerThrottle();
         frameTurnInput = readPlayerTurn();
 
@@ -2274,21 +2281,32 @@ public class RatassGame extends ApplicationAdapter {
         float sidebarWidth = Math.max(0f, hudWidth - playfieldWidth);
 
         updateSidebarTablesScrollbarBounds(sidebarX, sidebarWidth, hudHeight);
-        if (sidebarTablesScrollbarBounds.width <= 0f) {
-            sidebarTablesScrollbarDragging = false;
-            return;
-        }
+        boolean hasScrollbar = sidebarTablesScrollbarBounds.width > 0f;
 
         if (Gdx.input.justTouched()) {
             hudTouchPoint.set(Gdx.input.getX(), Gdx.input.getY(), 0f);
             hudViewport.unproject(hudTouchPoint);
-            if (sidebarTablesScrollbarBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            if (hasScrollbar && sidebarTablesScrollbarBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
                 sidebarTablesScrollbarDragging = true;
                 sidebarTablesScrollbarGrabOffsetY = hudTouchPoint.y - sidebarTablesScrollbarBounds.y;
+                return;
+            }
+            if (selectCameraTargetFromSidebarTables(
+                    hudTouchPoint.x,
+                    hudTouchPoint.y,
+                    sidebarX,
+                    sidebarWidth,
+                    hudHeight)) {
+                return;
             }
         }
 
         if (!Gdx.input.isTouched()) {
+            sidebarTablesScrollbarDragging = false;
+            return;
+        }
+
+        if (!hasScrollbar) {
             sidebarTablesScrollbarDragging = false;
             return;
         }
@@ -2304,6 +2322,52 @@ public class RatassGame extends ApplicationAdapter {
                 sidebarX,
                 sidebarWidth,
                 hudHeight);
+    }
+
+    private boolean selectCameraTargetFromSidebarTables(
+            float touchX,
+            float touchY,
+            float sidebarX,
+            float sidebarWidth,
+            float hudHeight) {
+        refreshLeaderboardEntries();
+        if (leaderboardEntries.size == 0
+                || !getSidebarTablesViewportBounds(sidebarX, sidebarWidth, hudHeight, sidebarTablesViewportBounds)
+                || !sidebarTablesViewportBounds.contains(touchX, touchY)) {
+            return false;
+        }
+
+        clampSidebarTablesScrollOffset(sidebarX, sidebarWidth, hudHeight);
+
+        float x = sidebarX + SIDEBAR_CONTENT_MARGIN;
+        float viewportTop = sidebarTablesViewportBounds.y + sidebarTablesViewportBounds.height - 2f;
+        float rowStep = getSidebarCompactLeaderboardRowStep();
+        float headerStep = Math.max(16f, rowStep + 1f);
+        boolean overflow = getSidebarTablesMaxScroll(sidebarX, sidebarWidth, hudHeight) > 0.5f;
+        float contentWidth =
+                Math.max(1f, sidebarWidth - SIDEBAR_CONTENT_MARGIN * 2f - (overflow ? 12f : 0f));
+        float pointsWidth = 34f;
+        float currentLapWidth = 62f;
+        float bestLapWidth = 54f;
+        float gap = 7f;
+        float pointsX = x + contentWidth;
+        float currentLapX = pointsX - pointsWidth - gap;
+        float bestLapX = currentLapX - currentLapWidth - gap;
+        float nameColumnRight = bestLapX - bestLapWidth - gap;
+        if (touchX < x || touchX > nameColumnRight) {
+            return false;
+        }
+
+        float contentY = headerStep;
+        for (int i = 0; i < leaderboardEntries.size; i++) {
+            CarTemplate template = leaderboardEntries.get(i);
+            float rowY = viewportTop - contentY - sidebarTablesScrollOffset;
+            if (touchY >= rowY - rowStep + 2f && touchY <= rowY + 4f) {
+                return setCameraTargetTemplate(template, true);
+            }
+            contentY += rowStep;
+        }
+        return false;
     }
 
     private void handleSandboxPhysicsTunerPointerInput() {
@@ -3178,6 +3242,172 @@ public class RatassGame extends ApplicationAdapter {
         saveMenuSettings();
         cameraInitialized = false;
         updateWorldCamera();
+    }
+
+    private void handleCameraTargetInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.HOME)) {
+            resetCameraTargetToPlayer(true);
+            return;
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.PAGE_DOWN)) {
+            changeCameraTarget(1);
+            return;
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.PAGE_UP)) {
+            changeCameraTarget(-1);
+            return;
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.TAB)) {
+            boolean reverse =
+                    Gdx.input.isKeyPressed(Input.Keys.SHIFT_LEFT)
+                            || Gdx.input.isKeyPressed(Input.Keys.SHIFT_RIGHT);
+            changeCameraTarget(reverse ? -1 : 1);
+        }
+    }
+
+    private void changeCameraTarget(int direction) {
+        if (direction == 0 || roster.size == 0) {
+            return;
+        }
+
+        refreshLeaderboardEntries();
+        if (leaderboardEntries.size == 0) {
+            return;
+        }
+
+        int startIndex = findCameraTargetLeaderboardIndex();
+        if (startIndex < 0) {
+            startIndex = findPlayerLeaderboardIndex();
+        }
+        if (startIndex < 0) {
+            startIndex = 0;
+        }
+
+        for (int step = 1; step <= leaderboardEntries.size; step++) {
+            int nextIndex = wrapLeaderboardIndex(startIndex + direction * step);
+            CarTemplate template = leaderboardEntries.get(nextIndex);
+            if (template != null && isCameraFollowable(template.currentCar)) {
+                int rosterIndex = findRosterIndex(template);
+                if (rosterIndex >= 0) {
+                    setCameraTargetRosterIndex(rosterIndex, true);
+                }
+                return;
+            }
+        }
+    }
+
+    private int wrapLeaderboardIndex(int index) {
+        int wrapped = index % leaderboardEntries.size;
+        return wrapped < 0 ? wrapped + leaderboardEntries.size : wrapped;
+    }
+
+    private void resetCameraTargetToPlayer(boolean animate) {
+        int playerIndex = findPlayerRosterIndex();
+        setCameraTargetRosterIndex(playerIndex >= 0 ? playerIndex : -1, animate);
+    }
+
+    private boolean setCameraTargetTemplate(CarTemplate template, boolean animate) {
+        if (template == null || !isCameraFollowable(template.currentCar)) {
+            return false;
+        }
+        int rosterIndex = findRosterIndex(template);
+        if (rosterIndex < 0) {
+            return false;
+        }
+        setCameraTargetRosterIndex(rosterIndex, animate);
+        return true;
+    }
+
+    private void setCameraTargetRosterIndex(int rosterIndex, boolean animate) {
+        if (cameraTargetRosterIndex == rosterIndex) {
+            return;
+        }
+        cameraTargetRosterIndex = rosterIndex;
+        if (animate && cameraInitialized) {
+            cameraTargetTransitionTimer = CAMERA_TARGET_SWITCH_DURATION;
+        } else {
+            cameraTargetTransitionTimer = 0f;
+        }
+    }
+
+    private int findPlayerRosterIndex() {
+        for (int i = 0; i < roster.size; i++) {
+            CarTemplate template = roster.get(i);
+            if (template.playerControlled) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int findRosterIndex(CarTemplate target) {
+        if (target == null) {
+            return -1;
+        }
+        for (int i = 0; i < roster.size; i++) {
+            if (roster.get(i) == target) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int findCameraTargetLeaderboardIndex() {
+        Car cameraTarget = getCameraTargetCar();
+        if (cameraTarget == null || cameraTarget.template == null) {
+            return -1;
+        }
+        return findLeaderboardIndex(cameraTarget.template);
+    }
+
+    private int findPlayerLeaderboardIndex() {
+        for (int i = 0; i < leaderboardEntries.size; i++) {
+            CarTemplate template = leaderboardEntries.get(i);
+            if (template.playerControlled) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int findLeaderboardIndex(CarTemplate target) {
+        if (target == null) {
+            return -1;
+        }
+        for (int i = 0; i < leaderboardEntries.size; i++) {
+            if (leaderboardEntries.get(i) == target) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private Car getCameraTargetCar() {
+        if (cameraTargetRosterIndex >= 0 && cameraTargetRosterIndex < roster.size) {
+            Car car = roster.get(cameraTargetRosterIndex).currentCar;
+            if (isCameraFollowable(car)) {
+                return car;
+            }
+        }
+        if (isCameraFollowable(playerCar)) {
+            return playerCar;
+        }
+        for (int i = 0; i < roster.size; i++) {
+            Car car = roster.get(i).currentCar;
+            if (isCameraFollowable(car)) {
+                return car;
+            }
+        }
+        return null;
+    }
+
+    private boolean isCameraFollowable(Car car) {
+        return car != null && car.active && car.body != null;
+    }
+
+    private boolean isCameraTargetTemplate(CarTemplate template) {
+        Car target = getCameraTargetCar();
+        return target != null && target.template == template;
     }
 
     private void changeCarCount(int delta) {
@@ -4440,6 +4670,7 @@ public class RatassGame extends ApplicationAdapter {
         roundOver = false;
         roundOverTimer = 0f;
         winner = null;
+        cameraTargetTransitionTimer = 0f;
         checkpointTargetSequence = 0;
         playerCar = null;
         finishPositionCounter = 0;
@@ -4459,6 +4690,7 @@ public class RatassGame extends ApplicationAdapter {
             template.roundRaceCheckpointsCompleted = 0;
             template.roundRaceLastRouteProgress = 0f;
             template.roundRaceDistanceThisLap = 0f;
+            template.roundRaceTotalRouteProgress = 0f;
             template.roundRaceFinishTime = 0f;
             template.roundRaceCurrentLapStartTime = 0f;
             template.roundRaceBestLapTime = 0f;
@@ -4481,6 +4713,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         cameraInitialized = false;
+        resetCameraTargetToPlayer(false);
         updateWorldCamera();
         warmArenaSurfaceTextures();
         invalidateLeaderboard();
@@ -4496,6 +4729,7 @@ public class RatassGame extends ApplicationAdapter {
                         : currentMap.findRouteProgress(spawnPoint.x, spawnPoint.y);
         template.roundRaceLastRouteProgress = progress;
         template.roundRaceDistanceThisLap = 0f;
+        template.roundRaceTotalRouteProgress = 0f;
         template.roundRaceCurrentLapStartTime = roundTimer;
     }
 
@@ -4692,13 +4926,6 @@ public class RatassGame extends ApplicationAdapter {
         float routeLength = currentMap.getRouteLength();
         car.template.roundRaceDistanceThisLap =
                 MathUtils.clamp(car.template.roundRaceDistanceThisLap + delta, 0f, routeLength);
-        car.template.roundRaceCheckpointsCompleted =
-                MathUtils.floor(
-                        (car.template.roundRaceLap
-                                        + car.template.roundRaceDistanceThisLap
-                                                / Math.max(0.001f, routeLength))
-                                * 1000f);
-        invalidateLeaderboard();
 
         while (car.template.roundRaceDistanceThisLap >= routeLength && !car.template.roundRaceFinished) {
             car.template.roundRaceDistanceThisLap -= routeLength;
@@ -4709,6 +4936,21 @@ public class RatassGame extends ApplicationAdapter {
                 break;
             }
         }
+        updateRaceTotalRouteProgress(car.template, routeLength);
+        invalidateLeaderboard();
+    }
+
+    private void updateRaceTotalRouteProgress(CarTemplate template, float routeLength) {
+        if (template == null) {
+            return;
+        }
+        float safeRouteLength = Math.max(0.001f, routeLength);
+        template.roundRaceTotalRouteProgress =
+                Math.max(
+                        0f,
+                        template.roundRaceLap * safeRouteLength + template.roundRaceDistanceThisLap);
+        template.roundRaceCheckpointsCompleted =
+                MathUtils.floor(template.roundRaceTotalRouteProgress / safeRouteLength * 1000f);
     }
 
     private float getMaxRaceRouteProgressDelta(Car car) {
@@ -4834,11 +5076,8 @@ public class RatassGame extends ApplicationAdapter {
             }
             return left.roundFinishPosition - right.roundFinishPosition;
         }
-        if (left.roundRaceLap != right.roundRaceLap) {
-            return right.roundRaceLap - left.roundRaceLap;
-        }
         int routeProgressCompare =
-                Float.compare(right.roundRaceDistanceThisLap, left.roundRaceDistanceThisLap);
+                Float.compare(right.roundRaceTotalRouteProgress, left.roundRaceTotalRouteProgress);
         if (routeProgressCompare != 0) {
             return routeProgressCompare;
         }
@@ -4937,6 +5176,7 @@ public class RatassGame extends ApplicationAdapter {
             cameraSmoothedPosition.set(cameraTargetPosition);
             cameraSmoothedForwardDirection.set(0f, 1f);
             smoothedCameraZoom = 1f;
+            cameraTargetTransitionTimer = 0f;
             cameraInitialized = true;
             applyWorldCamera(1f);
             return;
@@ -4956,23 +5196,25 @@ public class RatassGame extends ApplicationAdapter {
                 mapBounds.x + mapBounds.width * 0.5f,
                 mapBounds.y + mapBounds.height * 0.5f);
         float delta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
+        boolean cameraTargetTransitionActive = cameraTargetTransitionTimer > 0f && cameraInitialized;
 
-        boolean playerCameraActive = playerCar != null && playerCar.active && playerCar.body != null;
+        Car cameraTargetCar = getCameraTargetCar();
+        boolean carCameraActive = isCameraFollowable(cameraTargetCar);
 
-        if (playerCameraActive) {
-            Vector2 playerPosition = playerCar.getRenderPosition();
-            Vector2 playerVelocity = playerCar.body.getLinearVelocity();
-            float playerSpeed = playerVelocity.len();
-            float speedFactor = MathUtils.clamp(playerSpeed / playerCar.getForwardMaxSpeed(), 0f, 1f);
+        if (carCameraActive) {
+            Vector2 carPosition = cameraTargetCar.getRenderPosition();
+            Vector2 carVelocity = cameraTargetCar.body.getLinearVelocity();
+            float carSpeed = carVelocity.len();
+            float speedFactor = MathUtils.clamp(carSpeed / cameraTargetCar.getForwardMaxSpeed(), 0f, 1f);
             targetZoom = MathUtils.clamp(
                     PLAYER_CAMERA_ZOOM
                             + speedFactor * PLAYER_CAMERA_SPEED_ZOOM_OUT
-                            + MathUtils.clamp(playerCar.getSizeScale() - 1f, 0f, 1f)
+                            + MathUtils.clamp(cameraTargetCar.getSizeScale() - 1f, 0f, 1f)
                                     * PLAYER_CAMERA_GROWTH_ZOOM_OUT,
                     PLAYER_CAMERA_ZOOM,
                     PLAYER_CAMERA_MAX_ZOOM);
             if (followCameraBehind) {
-                playerCar.getRenderForwardDirection(cameraForwardDirection);
+                cameraTargetCar.getRenderForwardDirection(cameraForwardDirection);
                 if (!cameraForwardDirection.isZero(0.0001f)) {
                     cameraForwardDirection.nor();
                 } else {
@@ -4981,14 +5223,14 @@ public class RatassGame extends ApplicationAdapter {
 
                 if (!cameraInitialized || delta <= 0f) {
                     cameraSmoothedForwardDirection.set(cameraForwardDirection);
-                } else if (playerSpeed >= PLAYER_CAMERA_DIRECTION_MIN_SPEED) {
+                } else if (carSpeed >= PLAYER_CAMERA_DIRECTION_MIN_SPEED) {
                     float spinDamping =
                             1f
                                     / (1f
-                                            + Math.abs(playerCar.body.getAngularVelocity())
+                                            + Math.abs(cameraTargetCar.body.getAngularVelocity())
                                                     * PLAYER_CAMERA_DIRECTION_SPIN_DAMPING);
                     float impactDamping =
-                            playerCar.getRecentImpactTime() > 0f
+                            cameraTargetCar.getRecentImpactTime() > 0f
                                     ? PLAYER_CAMERA_DIRECTION_IMPACT_DAMPING
                                     : 1f;
                     float directionAlpha =
@@ -5019,23 +5261,29 @@ public class RatassGame extends ApplicationAdapter {
                         .set(cameraSmoothedForwardDirection)
                         .scl(PLAYER_CAMERA_FOLLOW_LEAD_DISTANCE
                                 + speedFactor * PLAYER_CAMERA_FOLLOW_LEAD_SPEED_BONUS);
-                cameraTargetPosition.set(playerPosition).add(cameraChaseOffset);
+                cameraTargetPosition.set(carPosition).add(cameraChaseOffset);
             } else {
-                cameraLookAhead.set(playerVelocity).scl(PLAYER_CAMERA_LOOK_AHEAD_TIME);
+                cameraLookAhead.set(carVelocity).scl(PLAYER_CAMERA_LOOK_AHEAD_TIME);
                 if (cameraLookAhead.len2() > PLAYER_CAMERA_MAX_LOOK_AHEAD * PLAYER_CAMERA_MAX_LOOK_AHEAD) {
                     cameraLookAhead.setLength(PLAYER_CAMERA_MAX_LOOK_AHEAD);
                 }
                 cameraSmoothedForwardDirection.set(0f, 1f);
-                cameraTargetPosition.set(playerPosition).add(cameraLookAhead);
+                cameraTargetPosition.set(carPosition).add(cameraLookAhead);
             }
         } else {
             cameraSmoothedForwardDirection.set(0f, 1f);
         }
 
-        if (playerCameraActive) {
+        if (carCameraActive) {
             targetZoom = applyConfiguredCameraZoom(targetZoom);
         }
-        if (!playerCameraActive || !followCameraBehind) {
+        if (cameraTargetTransitionActive) {
+            targetZoom =
+                    Math.min(
+                            PLAYER_CAMERA_MAX_ZOOM / MIN_CAMERA_ZOOM,
+                            targetZoom + CAMERA_TARGET_SWITCH_ZOOM_OUT);
+        }
+        if (!carCameraActive || !followCameraBehind) {
             clampCameraToArena(cameraTargetPosition, targetZoom);
         }
 
@@ -5044,15 +5292,22 @@ public class RatassGame extends ApplicationAdapter {
             smoothedCameraZoom = targetZoom;
             cameraInitialized = true;
         } else {
-            float alpha = 1f - (float) Math.exp(-PLAYER_CAMERA_FOLLOW_LERP_SPEED * delta);
+            float followSpeed =
+                    cameraTargetTransitionActive
+                            ? CAMERA_TARGET_SWITCH_LERP_SPEED
+                            : PLAYER_CAMERA_FOLLOW_LERP_SPEED;
+            float alpha = 1f - (float) Math.exp(-followSpeed * delta);
             cameraSmoothedPosition.lerp(cameraTargetPosition, alpha);
             smoothedCameraZoom += (targetZoom - smoothedCameraZoom) * alpha;
         }
 
-        if (!playerCameraActive || !followCameraBehind) {
+        if (!carCameraActive || !followCameraBehind) {
             clampCameraToArena(cameraSmoothedPosition, smoothedCameraZoom);
         }
         applyWorldCamera(smoothedCameraZoom);
+        if (cameraTargetTransitionTimer > 0f && delta > 0f) {
+            cameraTargetTransitionTimer = Math.max(0f, cameraTargetTransitionTimer - delta);
+        }
     }
 
     private float applyConfiguredCameraZoom(float targetZoom) {
@@ -7267,6 +7522,11 @@ public class RatassGame extends ApplicationAdapter {
                 "Circuit " + mapProgression.getCurrentMapNumber() + ": " + currentMap.getName(),
                 22f,
                 topHudLineY - topHudLineStep);
+        String cameraTargetText = buildCameraTargetText();
+        if (cameraTargetText.length() > 0) {
+            hudFont.setColor(0.68f, 0.88f, 1f, 1f);
+            hudFont.draw(spriteBatch, cameraTargetText, 22f, topHudLineY - topHudLineStep * 2f);
+        }
 
         drawSidebarSummary(sidebarX, sidebarWidth, hudHeight);
         drawSidebarTables(sidebarX, sidebarWidth, hudHeight);
@@ -7602,12 +7862,15 @@ public class RatassGame extends ApplicationAdapter {
         float pointsX = x + contentWidth;
         float currentLapX = pointsX - pointsWidth - gap;
         float bestLapX = currentLapX - currentLapWidth - gap;
-        float nameWidth = Math.max(36f, bestLapX - x - bestLapWidth - gap);
+        float nameX = x + SIDEBAR_CAMERA_TARGET_ICON_WIDTH;
+        float nameWidth = Math.max(36f, bestLapX - nameX - bestLapWidth - gap);
         float contentY = 0f;
+
+        drawSidebarCameraTargetIcons(x, viewportTop, viewportBottom, headerStep, rowStep);
 
         float y = viewportTop - contentY - sidebarTablesScrollOffset;
         font.setColor(0.98f, 0.95f, 0.84f, 1f);
-        drawSidebarTableText(font, "Player", x, y, viewportBottom, viewportTop);
+        drawSidebarTableText(font, "Player", nameX, y, viewportBottom, viewportTop);
         drawSidebarTableRightAlignedText(font, "Best", bestLapX, y, viewportBottom, viewportTop);
         drawSidebarTableRightAlignedText(font, "Current", currentLapX, y, viewportBottom, viewportTop);
         drawSidebarTableRightAlignedText(font, "Pts", pointsX, y, viewportBottom, viewportTop);
@@ -7616,9 +7879,10 @@ public class RatassGame extends ApplicationAdapter {
         for (int i = 0; i < leaderboardEntries.size; i++) {
             CarTemplate template = leaderboardEntries.get(i);
             boolean active = template.currentCar != null && template.currentCar.active;
+            boolean cameraTarget = isCameraTargetTemplate(template);
             y = viewportTop - contentY - sidebarTablesScrollOffset;
 
-            if (template.playerControlled) {
+            if (cameraTarget) {
                 font.setColor(1f, 0.94f, 0.54f, 1f);
             } else if (!active && !roundOver) {
                 font.setColor(0.66f, 0.72f, 0.78f, 1f);
@@ -7627,7 +7891,7 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             String player = truncateTextToWidth(font, buildLeaderboardPlayerLabel(template), nameWidth);
-            drawSidebarTableText(font, player, x, y, viewportBottom, viewportTop);
+            drawSidebarTableText(font, player, nameX, y, viewportBottom, viewportTop);
             drawSidebarTableRightAlignedText(font, buildBestLapText(template), bestLapX, y, viewportBottom, viewportTop);
             drawSidebarTableRightAlignedText(
                     font,
@@ -7684,6 +7948,86 @@ public class RatassGame extends ApplicationAdapter {
                     viewportTop);
             contentY += rowStep;
         }
+    }
+
+    private void drawSidebarCameraTargetIcons(
+            float x,
+            float viewportTop,
+            float viewportBottom,
+            float headerStep,
+            float rowStep) {
+        if (leaderboardEntries.size == 0) {
+            return;
+        }
+
+        spriteBatch.end();
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        float contentY = headerStep;
+        for (int i = 0; i < leaderboardEntries.size; i++) {
+            CarTemplate template = leaderboardEntries.get(i);
+            float rowY = viewportTop - contentY - sidebarTablesScrollOffset;
+            if (rowY + 4f >= viewportBottom && rowY - rowStep <= viewportTop) {
+                drawSidebarCameraIconFill(
+                        x + 1f,
+                        rowY - rowStep * 0.40f,
+                        isCameraTargetTemplate(template),
+                        template.currentCar != null && template.currentCar.active);
+            }
+            contentY += rowStep;
+        }
+        shapeRenderer.end();
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        contentY = headerStep;
+        for (int i = 0; i < leaderboardEntries.size; i++) {
+            CarTemplate template = leaderboardEntries.get(i);
+            float rowY = viewportTop - contentY - sidebarTablesScrollOffset;
+            if (rowY + 4f >= viewportBottom && rowY - rowStep <= viewportTop) {
+                drawSidebarCameraIconLine(
+                        x + 1f,
+                        rowY - rowStep * 0.40f,
+                        isCameraTargetTemplate(template),
+                        template.currentCar != null && template.currentCar.active);
+            }
+            contentY += rowStep;
+        }
+        shapeRenderer.end();
+
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+        spriteBatch.begin();
+    }
+
+    private void drawSidebarCameraIconFill(float x, float centerY, boolean selected, boolean active) {
+        float alpha = active ? 0.76f : 0.30f;
+        if (selected) {
+            shapeRenderer.setColor(1f, 0.82f, 0.28f, 0.90f);
+        } else {
+            shapeRenderer.setColor(0.40f, 0.52f, 0.60f, alpha);
+        }
+        shapeRenderer.rect(x + 1.5f, centerY - 3.3f, 10.5f, 6.6f);
+        shapeRenderer.rect(x + 4.0f, centerY + 2.6f, 4.2f, 2.2f);
+
+        if (selected) {
+            shapeRenderer.setColor(0.10f, 0.10f, 0.09f, 0.70f);
+        } else {
+            shapeRenderer.setColor(0.04f, 0.06f, 0.08f, active ? 0.72f : 0.42f);
+        }
+        shapeRenderer.circle(x + 6.7f, centerY, 1.8f, 14);
+    }
+
+    private void drawSidebarCameraIconLine(float x, float centerY, boolean selected, boolean active) {
+        if (selected) {
+            shapeRenderer.setColor(1f, 0.96f, 0.62f, 0.98f);
+        } else {
+            shapeRenderer.setColor(0.72f, 0.84f, 0.90f, active ? 0.66f : 0.34f);
+        }
+        shapeRenderer.rect(x + 1.5f, centerY - 3.3f, 10.5f, 6.6f);
+        shapeRenderer.rect(x + 4.0f, centerY + 2.6f, 4.2f, 2.2f);
+        shapeRenderer.circle(x + 6.7f, centerY, 1.9f, 14);
     }
 
     private void drawSidebarTableText(
@@ -8785,6 +9129,14 @@ public class RatassGame extends ApplicationAdapter {
         String baseLabel = template.playerControlled ? "YOU" : template.name;
         String policyLabel = buildLoadedDriverPolicyLabel(template.rlPolicy);
         return policyLabel.length() == 0 ? baseLabel : baseLabel + " (" + policyLabel + ")";
+    }
+
+    private String buildCameraTargetText() {
+        Car target = getCameraTargetCar();
+        if (target == null || target.template == null || target.playerControlled) {
+            return "";
+        }
+        return "Camera: " + buildLeaderboardPlayerLabel(target.template);
     }
 
     private String buildLoadedDriverPolicyLabel(RlPolicy policy) {
@@ -12248,6 +12600,7 @@ public class RatassGame extends ApplicationAdapter {
         private int roundRaceCheckpointsCompleted;
         private float roundRaceLastRouteProgress;
         private float roundRaceDistanceThisLap;
+        private float roundRaceTotalRouteProgress;
         private float roundRaceFinishTime;
         private float roundRaceCurrentLapStartTime;
         private float roundRaceBestLapTime;
