@@ -5,6 +5,9 @@ contract: every theme loads the fixed WAV filenames in `assets/theme/<theme>/aud
 All imported files were converted with `ffmpeg` to PCM WAV, 16-bit, mono,
 22050 Hz.
 
+The `halloween` theme audio was generated procedurally for this project using
+simple synthesized tones and noise. It does not use third-party source audio.
+
 ## Sound Effects
 
 All sound effects are from Kenney asset packs licensed under Creative Commons
@@ -26,11 +29,13 @@ Effect source files:
 | infernal | Digital Audio: lowRandom.ogg | Digital Audio: phaserDown3.ogg | Digital Audio: powerUp12.ogg | Digital Audio: spaceTrash5.ogg | Digital Audio: zapThreeToneDown.ogg | Digital Audio: phaserDown2.ogg | Interface Sounds: error_006.ogg |
 | monsters | Digital Audio: lowDown.ogg | Digital Audio: phaserUp6.ogg | Digital Audio: powerUp10.ogg | Digital Audio: spaceTrash4.ogg | Digital Audio: spaceTrash3.ogg | Digital Audio: zapThreeToneUp.ogg | Interface Sounds: question_001.ogg |
 | sport | Digital Audio: tone1.ogg | Digital Audio: powerUp1.ogg | Digital Audio: powerUp8.ogg | Digital Audio: spaceTrash2.ogg | Digital Audio: laser9.ogg | Digital Audio: threeTone1.ogg | Interface Sounds: error_003.ogg |
+| halloween | Procedural original | Procedural original | Procedural original | Procedural original | Procedural original | Procedural original | Procedural original |
 
 ## Music
 
 All music tracks are from OpenGameArt entries with `License(s): CC0` on the
-source page.
+source page, except the Halloween theme, which is procedural original audio
+created for this project.
 
 | Theme | Track | Author | Source page | Source file |
 | --- | --- | --- | --- | --- |
@@ -40,3 +45,4 @@ source page.
 | infernal | Spooky loop & bomba32 | glitchart, based on CC0 works by wipics and StumpyStrust | https://opengameart.org/content/spooky-loop-bomba32-wipicks-vs-stumpystrust | https://opengameart.org/sites/default/files/spookloopable.ogg |
 | monsters | Icy Heights | Ecrivain | https://opengameart.org/content/icy-heights | https://opengameart.org/sites/default/files/theme-loop.ogg |
 | sport | Space Battle | MintoDog | https://opengameart.org/content/space-battle | https://opengameart.org/sites/default/files/space_battle_bpm130_0.ogg |
+| halloween | Procedural Halloween Loop | Ratass project | Generated locally; no third-party source audio | assets/theme/halloween/audio/music.wav |

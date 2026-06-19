@@ -59,6 +59,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final String THEME_PROPERTY = "theme";
     private static final String THEME_PREF_KEY = THEME_PROPERTY;
     private static final String DEFAULT_THEME_NAME = "gt3";
+    private static final String HALLOWEEN_THEME_NAME = "halloween";
     private static final String CAMERA_FOLLOW_BEHIND_PROPERTY = "camera.follow.behind";
     private static final String CAMERA_FOLLOW_BEHIND_PREF_KEY = CAMERA_FOLLOW_BEHIND_PROPERTY;
     private static final String CAMERA_ZOOM_PROPERTY = "camera.zoom";
@@ -106,6 +107,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final int THEME_CAR_COLUMNS = 10;
     private static final int THEME_CAR_SHEET_ROWS = 5;
     private static final int MAX_CAR_VISUAL_COUNT = 10;
+    private static final float HALLOWEEN_CIRCUIT_TINT_R = 0.56f;
+    private static final float HALLOWEEN_CIRCUIT_TINT_G = 0.52f;
+    private static final float HALLOWEEN_CIRCUIT_TINT_B = 0.64f;
+    private static final float HALLOWEEN_WORLD_RAIN_ALPHA = 0.24f;
     private static final int STANDALONE_CAR_PREVIEW_COLUMNS = 5;
     private static final int STANDALONE_CAR_PREVIEW_CELL_WIDTH = 150;
     private static final int STANDALONE_CAR_PREVIEW_CELL_HEIGHT = 200;
@@ -4691,6 +4696,8 @@ public class RatassGame extends ApplicationAdapter {
             template.roundRaceLastRouteProgress = 0f;
             template.roundRaceDistanceThisLap = 0f;
             template.roundRaceTotalRouteProgress = 0f;
+            template.roundRaceStandingLastRouteProgress = 0f;
+            template.roundRaceStandingRouteProgress = 0f;
             template.roundRaceFinishTime = 0f;
             template.roundRaceCurrentLapStartTime = 0f;
             template.roundRaceBestLapTime = 0f;
@@ -4730,6 +4737,8 @@ public class RatassGame extends ApplicationAdapter {
         template.roundRaceLastRouteProgress = progress;
         template.roundRaceDistanceThisLap = 0f;
         template.roundRaceTotalRouteProgress = 0f;
+        template.roundRaceStandingLastRouteProgress = progress;
+        template.roundRaceStandingRouteProgress = 0f;
         template.roundRaceCurrentLapStartTime = roundTimer;
     }
 
@@ -4884,6 +4893,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private void updateLapRace(float delta) {
         for (int i = 0; i < cars.size; i++) {
+            updateCarLiveRaceStanding(cars.get(i));
             updateCarLapProgress(cars.get(i));
         }
 
@@ -4892,6 +4902,30 @@ public class RatassGame extends ApplicationAdapter {
             if (raceFinishTimer <= 0f || haveAllActiveCarsFinishedRace()) {
                 finishRound(winner != null ? winner : findRaceLeader());
             }
+        }
+    }
+
+    private void updateCarLiveRaceStanding(Car car) {
+        if (car == null
+                || !car.active
+                || car.body == null
+                || car.template.roundRaceFinished
+                || currentMap == null
+                || !currentMap.hasRoute()) {
+            return;
+        }
+
+        CarTemplate template = car.template;
+        float previousRouteProgress = template.roundRaceStandingLastRouteProgress;
+        float routeProgress =
+                currentMap.findRouteProgressNear(
+                        car.body.getPosition(),
+                        null,
+                        previousRouteProgress);
+        float delta = currentMap.routeProgressDelta(previousRouteProgress, routeProgress);
+        if (!Float.isNaN(delta) && !Float.isInfinite(delta)) {
+            template.roundRaceStandingRouteProgress += delta;
+            template.roundRaceStandingLastRouteProgress = routeProgress;
         }
     }
 
@@ -6155,6 +6189,7 @@ public class RatassGame extends ApplicationAdapter {
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawDestructionEffects();
+        drawHalloweenStormOverlay();
         shapeRenderer.end();
 
         if (sandboxMode) {
@@ -6241,6 +6276,44 @@ public class RatassGame extends ApplicationAdapter {
                 green,
                 blue,
                 alpha);
+    }
+
+    private void drawHalloweenStormOverlay() {
+        if (!isHalloweenTheme() || worldCamera == null) {
+            return;
+        }
+
+        float visibleWidth = worldCamera.viewportWidth * worldCamera.zoom;
+        float visibleHeight = worldCamera.viewportHeight * worldCamera.zoom;
+        float coverSize =
+                (float) Math.sqrt(visibleWidth * visibleWidth + visibleHeight * visibleHeight) * 1.18f;
+        float left = worldCamera.position.x - coverSize * 0.5f;
+        float bottom = worldCamera.position.y - coverSize * 0.5f;
+        float rainLength = Math.max(0.75f, coverSize * 0.030f);
+        float rainWidth = Math.max(0.018f, coverSize * 0.0010f);
+
+        for (int i = 0; i < 44; i++) {
+            float xPhase = wrap01(hash01(i * 17, i * 37, 113) + effectClock * 0.055f);
+            float yPhase = wrap01(hash01(i * 29, i * 11, 197) - effectClock * 0.34f);
+            float x = left + xPhase * coverSize;
+            float y = bottom + yPhase * coverSize;
+            float alpha = HALLOWEEN_WORLD_RAIN_ALPHA * (0.45f + hash01(i * 5, i * 19, 71) * 0.55f);
+            drawRotatedRect(
+                    x,
+                    y,
+                    rainLength,
+                    rainWidth,
+                    -66f,
+                    0.62f,
+                    0.58f,
+                    0.72f,
+                    alpha);
+        }
+
+    }
+
+    private float wrap01(float value) {
+        return value - MathUtils.floor(value);
     }
 
     private void drawBackdrop(MapTheme theme) {
@@ -6541,13 +6614,22 @@ public class RatassGame extends ApplicationAdapter {
             drawX += (mapBounds.width - drawWidth) * 0.5f;
         }
 
-        spriteBatch.setColor(1f, 1f, 1f, 1f);
+        if (isHalloweenTheme()) {
+            spriteBatch.setColor(
+                    HALLOWEEN_CIRCUIT_TINT_R,
+                    HALLOWEEN_CIRCUIT_TINT_G,
+                    HALLOWEEN_CIRCUIT_TINT_B,
+                    1f);
+        } else {
+            spriteBatch.setColor(1f, 1f, 1f, 1f);
+        }
         spriteBatch.draw(
                 arenaSurfaceTexture,
                 drawX,
                 drawY,
                 drawWidth,
                 drawHeight);
+        spriteBatch.setColor(1f, 1f, 1f, 1f);
     }
 
     private void ensureArenaSurfaceTexture() {
@@ -8062,7 +8144,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void refreshLeaderboardEntries() {
-        if (!leaderboardDirty) {
+        if (!leaderboardDirty && !isLiveLapRaceMode()) {
             return;
         }
 
@@ -9436,6 +9518,10 @@ public class RatassGame extends ApplicationAdapter {
 
     private MapTheme currentTheme() {
         return themeForMap(currentMap);
+    }
+
+    private boolean isHalloweenTheme() {
+        return HALLOWEEN_THEME_NAME.equals(toThemeLookupKey(configuredThemeName));
     }
 
     private MapTheme themeForMap(ArenaMap map) {
@@ -12601,6 +12687,8 @@ public class RatassGame extends ApplicationAdapter {
         private float roundRaceLastRouteProgress;
         private float roundRaceDistanceThisLap;
         private float roundRaceTotalRouteProgress;
+        private float roundRaceStandingLastRouteProgress;
+        private float roundRaceStandingRouteProgress;
         private float roundRaceFinishTime;
         private float roundRaceCurrentLapStartTime;
         private float roundRaceBestLapTime;
