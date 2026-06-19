@@ -709,6 +709,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector2 lastPointPickupPosition = new Vector2();
     private final Vector2 spawnCandidate = new Vector2();
     private final Array<SpawnPoint> roundSpawns = new Array<SpawnPoint>();
+    private final Array<CarTemplate> roundGridOrder = new Array<CarTemplate>();
     private final Rectangle menuNewGameBounds = new Rectangle();
     private final Rectangle menuSandboxBounds = new Rectangle();
     private final Rectangle menuSandboxPrevBounds = new Rectangle();
@@ -4553,7 +4554,8 @@ public class RatassGame extends ApplicationAdapter {
                     checkpointRadius,
                     targetTimeRemaining,
                     cars,
-                    car.template.rlPolicy);
+                    car.template.rlPolicy,
+                    rlTrainingMode);
         }
         if (!allowControl && !roundOver) {
             freezeCarsForCountdown();
@@ -4681,13 +4683,14 @@ public class RatassGame extends ApplicationAdapter {
         finishPositionCounter = 0;
         roundNumber++;
         buildRoundSpawns(roster.size, roundSpawns);
+        buildRoundGridOrder(roundGridOrder);
         int fixedRaceStartCheckpointIndex =
                 shouldUseFixedRaceStartCheckpoint()
                         ? findFixedRaceStartCheckpointIndex(roundSpawns)
                         : -1;
 
         for (int i = 0; i < roster.size; i++) {
-            CarTemplate template = roster.get(i);
+            CarTemplate template = roundGridOrder.get(i);
             template.roundFinishPosition = 0;
             template.lastRoundAwardedPoints = 0;
             template.roundPickupPoints = 0;
@@ -4724,6 +4727,41 @@ public class RatassGame extends ApplicationAdapter {
         updateWorldCamera();
         warmArenaSurfaceTextures();
         invalidateLeaderboard();
+    }
+
+    private void buildRoundGridOrder(Array<CarTemplate> out) {
+        out.clear();
+        out.addAll(roster);
+        if (!isLiveLapRaceMode()) {
+            return;
+        }
+        if (!hasPreviousRaceGridOrder()) {
+            out.shuffle();
+            return;
+        }
+        out.sort(new Comparator<CarTemplate>() {
+            @Override
+            public int compare(CarTemplate left, CarTemplate right) {
+                int positionCompare =
+                        compareFinishPosition(left.nextGridPosition, right.nextGridPosition);
+                if (positionCompare != 0) {
+                    return positionCompare;
+                }
+                if (left.playerControlled != right.playerControlled) {
+                    return left.playerControlled ? -1 : 1;
+                }
+                return left.name.compareTo(right.name);
+            }
+        });
+    }
+
+    private boolean hasPreviousRaceGridOrder() {
+        for (int i = 0; i < roster.size; i++) {
+            if (roster.get(i).nextGridPosition > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void initializeRoundRaceRouteState(CarTemplate template, SpawnPoint spawnPoint) {
@@ -5161,6 +5199,9 @@ public class RatassGame extends ApplicationAdapter {
             CarTemplate template = roster.get(i);
             if (template.roundFinishPosition == 0) {
                 template.roundFinishPosition = ++finishPositionCounter;
+            }
+            if (isLiveLapRaceMode()) {
+                template.nextGridPosition = template.roundFinishPosition;
             }
             template.lastRoundAwardedPoints = getRacePointsForPosition(template.roundFinishPosition);
             template.totalPoints += template.lastRoundAwardedPoints;
@@ -9935,10 +9976,24 @@ public class RatassGame extends ApplicationAdapter {
     private final class ImpactContactListener implements ContactListener {
         @Override
         public void beginContact(Contact contact) {
+            Car carA = contactCar(contact.getFixtureA());
+            Car carB = contactCar(contact.getFixtureB());
+            if (carA == null || carB == null) {
+                return;
+            }
+            carA.beginCarContact();
+            carB.beginCarContact();
         }
 
         @Override
         public void endContact(Contact contact) {
+            Car carA = contactCar(contact.getFixtureA());
+            Car carB = contactCar(contact.getFixtureB());
+            if (carA == null || carB == null) {
+                return;
+            }
+            carA.endCarContact();
+            carB.endCarContact();
         }
 
         @Override
@@ -10025,6 +10080,14 @@ public class RatassGame extends ApplicationAdapter {
                 announceRamImpact(carB, carA);
             }
 
+        }
+
+        private Car contactCar(Fixture fixture) {
+            if (fixture == null || fixture.getBody() == null) {
+                return null;
+            }
+            Object userData = fixture.getBody().getUserData();
+            return userData instanceof Car ? (Car) userData : null;
         }
     }
 
@@ -10213,6 +10276,16 @@ public class RatassGame extends ApplicationAdapter {
         private static final float EMPOWERED_EDGE_FINISH_MULTIPLIER = 1.35f;
         private static final float TRACK_LIMIT_SLOW_MARGIN = 0.82f;
         private static final float ARENA_WALL_CONTACT_DURATION = 0.28f;
+        private static final float AUTO_RECOVERY_TRIGGER_SECONDS = 3f;
+        private static final float CONTACT_AUTO_RECOVERY_RANGE_FACTOR = 0.58f;
+        private static final float CONTACT_AUTO_RECOVERY_DISTANCE = HEIGHT;
+        private static final float CONTACT_AUTO_RECOVERY_MAX_SECONDS = 2.4f;
+        private static final float CONTACT_AUTO_RECOVERY_THROTTLE = 0.92f;
+        private static final float CONTACT_AUTO_RECOVERY_FORWARD_SPEED_EPSILON = 0.35f;
+        private static final float CONTACT_AUTO_RECOVERY_FORWARD_ALIGNMENT_MIN = 0.60f;
+        private static final float OFF_ROAD_AUTO_RECOVERY_MAX_SECONDS = 5.0f;
+        private static final float OFF_ROAD_AUTO_RECOVERY_FORWARD_THROTTLE = 0.86f;
+        private static final float OFF_ROAD_AUTO_RECOVERY_REVERSE_THROTTLE = 0.62f;
 
         private final CarTemplate template;
         private final String name;
@@ -10222,6 +10295,7 @@ public class RatassGame extends ApplicationAdapter {
         private final Color color;
         private final AiControlDecision externalControlDecision = new AiControlDecision();
         private final AiControlDecision rawExternalControlDecision = new AiControlDecision();
+        private final AiControlDecision automaticRecoveryControlDecision = new AiControlDecision();
         private final float[] rlObservation = new float[RL_OBSERVATION_SIZE];
         private final Vector2 forwardAxis = new Vector2();
         private final Vector2 sidewaysAxis = new Vector2();
@@ -10229,6 +10303,10 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 pendingImpactImpulse = new Vector2();
         private final Vector2 impactRecoveryPoint = new Vector2();
         private final Vector2 impactOutward = new Vector2();
+        private final Vector2 autoRecoveryStartPosition = new Vector2();
+        private final Vector2 autoRecoveryDirection = new Vector2();
+        private final Vector2 autoRecoveryTarget = new Vector2();
+        private final Vector2 autoRecoveryToTarget = new Vector2();
         private final Vector2 arenaWallPosition = new Vector2();
         private final Vector2 arenaWallCorrection = new Vector2();
         private final Vector2 arenaWallVelocity = new Vector2();
@@ -10246,6 +10324,7 @@ public class RatassGame extends ApplicationAdapter {
         private boolean growthBoosted;
         private int lastAttackerId = -1;
         private int carHitCount;
+        private int carContactCount;
         private float sizeScale = 1f;
         private float impactSlideTimer;
         private float impactSlideStrength;
@@ -10254,6 +10333,13 @@ public class RatassGame extends ApplicationAdapter {
         private float arenaWallContactTimer;
         private float ramChargeTimer;
         private float rlDecisionTimer;
+        private float sustainedCarContactTimer;
+        private float sustainedOffRoadTimer;
+        private float contactAutoRecoveryTimer;
+        private float offRoadAutoRecoveryTimer;
+        private boolean contactAutoRecoveryActive;
+        private boolean offRoadAutoRecoveryActive;
+        private float contactAutoRecoveryThrottleSign = -1f;
         private float lastThrottleCommand;
         private float lastTurnCommand;
         private float previousRenderAngleRad;
@@ -10341,7 +10427,8 @@ public class RatassGame extends ApplicationAdapter {
                 float checkpointTargetRadius,
                 float targetTimeRemaining,
                 Array<Car> cars,
-                RlPolicy rlPolicy) {
+                RlPolicy rlPolicy,
+                boolean trainingMode) {
             if (!active || body == null) {
                 return;
             }
@@ -10376,6 +10463,14 @@ public class RatassGame extends ApplicationAdapter {
                     turn = externalControlDecision.turn;
                 }
             }
+            boolean automaticRecoveryAllowed =
+                    !trainingMode && allowControl && controlLockTimer <= 0f;
+            updateAutomaticRecoveryState(delta, arenaMap, cars, automaticRecoveryAllowed);
+            if (automaticRecoveryAllowed
+                    && applyAutomaticRecoveryControl(arenaMap, cars, delta, throttle, turn)) {
+                throttle = automaticRecoveryControlDecision.throttle;
+                turn = automaticRecoveryControlDecision.turn;
+            }
             lastThrottleCommand = allowControl && controlLockTimer <= 0f ? throttle : 0f;
             lastTurnCommand = allowControl && controlLockTimer <= 0f ? turn : 0f;
 
@@ -10386,6 +10481,208 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             drive(throttle, turn);
+        }
+
+        private void updateAutomaticRecoveryState(
+                float delta,
+                ArenaMap arenaMap,
+                Array<Car> cars,
+                boolean allowControl) {
+            if (!allowControl) {
+                sustainedCarContactTimer = 0f;
+                sustainedOffRoadTimer = 0f;
+                contactAutoRecoveryActive = false;
+                offRoadAutoRecoveryActive = false;
+                return;
+            }
+
+            boolean offRoad = arenaMap != null && !arenaMap.supports(body.getPosition());
+            if (offRoad) {
+                sustainedOffRoadTimer += delta;
+                if (sustainedOffRoadTimer >= AUTO_RECOVERY_TRIGGER_SECONDS) {
+                    offRoadAutoRecoveryActive = true;
+                }
+            } else {
+                sustainedOffRoadTimer = 0f;
+                offRoadAutoRecoveryActive = false;
+                offRoadAutoRecoveryTimer = 0f;
+            }
+
+            if (contactAutoRecoveryActive) {
+                return;
+            }
+
+            if (carContactCount > 0) {
+                if (hasForwardMovingContactCar(cars)) {
+                    sustainedCarContactTimer = 0f;
+                } else {
+                    sustainedCarContactTimer += delta;
+                    if (sustainedCarContactTimer >= AUTO_RECOVERY_TRIGGER_SECONDS) {
+                        startContactAutoRecovery(cars);
+                    }
+                }
+            } else {
+                sustainedCarContactTimer = 0f;
+            }
+        }
+
+        private boolean applyAutomaticRecoveryControl(
+                ArenaMap arenaMap,
+                Array<Car> cars,
+                float delta,
+                float modelThrottle,
+                float modelTurn) {
+            if (offRoadAutoRecoveryActive) {
+                return applyOffRoadAutoRecoveryControl(arenaMap, delta);
+            }
+            if (contactAutoRecoveryActive) {
+                return applyContactAutoRecoveryControl(delta);
+            }
+            automaticRecoveryControlDecision.set(modelThrottle, modelTurn);
+            return false;
+        }
+
+        private boolean applyContactAutoRecoveryControl(float delta) {
+            contactAutoRecoveryTimer += delta;
+            float moved =
+                    (body.getPosition().x - autoRecoveryStartPosition.x) * autoRecoveryDirection.x
+                            + (body.getPosition().y - autoRecoveryStartPosition.y)
+                                    * autoRecoveryDirection.y;
+            if (moved >= CONTACT_AUTO_RECOVERY_DISTANCE
+                    || contactAutoRecoveryTimer >= CONTACT_AUTO_RECOVERY_MAX_SECONDS) {
+                contactAutoRecoveryActive = false;
+                contactAutoRecoveryTimer = 0f;
+                sustainedCarContactTimer = 0f;
+                automaticRecoveryControlDecision.set(0f, 0f);
+                return false;
+            }
+
+            automaticRecoveryControlDecision.set(
+                    contactAutoRecoveryThrottleSign * CONTACT_AUTO_RECOVERY_THROTTLE,
+                    0f);
+            return true;
+        }
+
+        private boolean applyOffRoadAutoRecoveryControl(ArenaMap arenaMap, float delta) {
+            offRoadAutoRecoveryTimer += delta;
+            if (arenaMap == null
+                    || arenaMap.supports(body.getPosition())
+                    || offRoadAutoRecoveryTimer >= OFF_ROAD_AUTO_RECOVERY_MAX_SECONDS) {
+                offRoadAutoRecoveryActive = false;
+                offRoadAutoRecoveryTimer = 0f;
+                sustainedOffRoadTimer = 0f;
+                automaticRecoveryControlDecision.set(0f, 0f);
+                return false;
+            }
+
+            findOffRoadAutoRecoveryTarget(arenaMap, autoRecoveryTarget);
+            autoRecoveryToTarget.set(autoRecoveryTarget).sub(body.getPosition());
+            if (autoRecoveryToTarget.isZero(0.0001f)) {
+                automaticRecoveryControlDecision.set(0f, 0f);
+                return true;
+            }
+            autoRecoveryToTarget.nor();
+            updateAxes();
+            float forwardAlignment = autoRecoveryToTarget.dot(forwardAxis);
+            float sideAlignment = autoRecoveryToTarget.dot(sidewaysAxis);
+            boolean reverse = forwardAlignment < -0.25f;
+            float throttle =
+                    reverse
+                            ? -OFF_ROAD_AUTO_RECOVERY_REVERSE_THROTTLE
+                            : OFF_ROAD_AUTO_RECOVERY_FORWARD_THROTTLE;
+            float turn =
+                    MathUtils.clamp(
+                            (reverse ? sideAlignment : -sideAlignment) * 1.35f,
+                            -1f,
+                            1f);
+            automaticRecoveryControlDecision.set(throttle, turn);
+            return true;
+        }
+
+        private void findOffRoadAutoRecoveryTarget(ArenaMap arenaMap, Vector2 out) {
+            if (arenaMap.hasRoute()) {
+                updateAxes();
+                float referenceProgress = template == null ? 0f : template.roundRaceLastRouteProgress;
+                float routeProgress =
+                        arenaMap.findRouteProgressNear(
+                                body.getPosition(),
+                                forwardAxis,
+                                referenceProgress);
+                arenaMap.findRoutePoint(routeProgress, out);
+                return;
+            }
+            arenaMap.findRecoveryPoint(body.getPosition(), out);
+        }
+
+        private void startContactAutoRecovery(Array<Car> cars) {
+            updateAxes();
+            Car nearest = findNearestContactCar(cars);
+            float throttleSign = -1f;
+            if (nearest != null && nearest.body != null) {
+                Vector2 otherPosition = nearest.body.getPosition();
+                float dx = otherPosition.x - body.getPosition().x;
+                float dy = otherPosition.y - body.getPosition().y;
+                float longitudinal = dx * forwardAxis.x + dy * forwardAxis.y;
+                throttleSign = longitudinal >= 0f ? -1f : 1f;
+            }
+            contactAutoRecoveryThrottleSign = throttleSign;
+            autoRecoveryDirection.set(forwardAxis).scl(throttleSign);
+            if (autoRecoveryDirection.isZero(0.0001f)) {
+                autoRecoveryDirection.set(0f, -1f);
+            } else {
+                autoRecoveryDirection.nor();
+            }
+            autoRecoveryStartPosition.set(body.getPosition());
+            contactAutoRecoveryTimer = 0f;
+            contactAutoRecoveryActive = true;
+        }
+
+        private boolean hasForwardMovingContactCar(Array<Car> cars) {
+            if (body == null || carContactCount <= 0) {
+                return false;
+            }
+            Car nearest = findNearestContactCar(cars);
+            if (nearest == null || nearest.body == null) {
+                return false;
+            }
+            float forwardSpeed = getSignedForwardSpeed();
+            float nearestForwardSpeed = nearest.getSignedForwardSpeed();
+            if (forwardSpeed <= CONTACT_AUTO_RECOVERY_FORWARD_SPEED_EPSILON
+                    || nearestForwardSpeed <= CONTACT_AUTO_RECOVERY_FORWARD_SPEED_EPSILON) {
+                return false;
+            }
+            return forwardAxis.dot(nearest.forwardAxis)
+                    >= CONTACT_AUTO_RECOVERY_FORWARD_ALIGNMENT_MIN;
+        }
+
+        private Car findNearestContactCar(Array<Car> cars) {
+            if (cars == null) {
+                return null;
+            }
+            Vector2 position = body.getPosition();
+            Car nearest = null;
+            float nearestDistanceSquared = Float.MAX_VALUE;
+            for (int i = 0; i < cars.size; i++) {
+                Car other = cars.get(i);
+                if (other == null || other == this || !other.active || other.body == null) {
+                    continue;
+                }
+
+                Vector2 otherPosition = other.body.getPosition();
+                float dx = otherPosition.x - position.x;
+                float dy = otherPosition.y - position.y;
+                float distanceSquared = dx * dx + dy * dy;
+                float contactRange =
+                        (Math.max(getWidth(), getHeight())
+                                        + Math.max(other.getWidth(), other.getHeight()))
+                                * CONTACT_AUTO_RECOVERY_RANGE_FACTOR;
+                if (distanceSquared <= contactRange * contactRange
+                        && distanceSquared < nearestDistanceSquared) {
+                    nearest = other;
+                    nearestDistanceSquared = distanceSquared;
+                }
+            }
+            return nearest;
         }
 
         private AiControlDecision planWithRlPolicy(
@@ -10913,6 +11210,14 @@ public class RatassGame extends ApplicationAdapter {
             carHitCount++;
         }
 
+        private void beginCarContact() {
+            carContactCount++;
+        }
+
+        private void endCarContact() {
+            carContactCount = Math.max(0, carContactCount - 1);
+        }
+
         private float getRamChargeTimeLeft() {
             return ramChargeTimer;
         }
@@ -10932,10 +11237,19 @@ public class RatassGame extends ApplicationAdapter {
             controlLockTimer = 0f;
             recentImpactTimer = 0f;
             arenaWallContactTimer = 0f;
+            sustainedCarContactTimer = 0f;
+            sustainedOffRoadTimer = 0f;
+            contactAutoRecoveryTimer = 0f;
+            offRoadAutoRecoveryTimer = 0f;
+            contactAutoRecoveryActive = false;
+            offRoadAutoRecoveryActive = false;
+            contactAutoRecoveryThrottleSign = -1f;
+            carContactCount = 0;
             lastThrottleCommand = 0f;
             lastTurnCommand = 0f;
             externalControlDecision.set(0f, 0f);
             rawExternalControlDecision.set(0f, 0f);
+            automaticRecoveryControlDecision.set(0f, 0f);
             lastAttackerId = -1;
         }
 
@@ -12678,6 +12992,7 @@ public class RatassGame extends ApplicationAdapter {
         private int spriteSourceHeight;
         private int totalPoints;
         private int roundFinishPosition;
+        private int nextGridPosition;
         private int lastRoundAwardedPoints;
         private int roundPickupPoints;
         private int roundRaceLap;

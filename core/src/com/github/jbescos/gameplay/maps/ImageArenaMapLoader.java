@@ -36,7 +36,7 @@ final class ImageArenaMapLoader {
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
     private static final String CACHE_SUFFIX = ".json.gz";
-    private static final int CACHE_VERSION = 115;
+    private static final int CACHE_VERSION = 118;
     private static final boolean USE_ROUTE_LINE_MARKERS = false;
     private static final float BASE_WORLD_HEIGHT = 22f;
     private static final int MAX_SEQUENTIAL_MAP_SCAN = 1000;
@@ -58,7 +58,7 @@ final class ImageArenaMapLoader {
     private static final int MARKER_PLAYABLE_CONTEXT_RADIUS = 10;
     private static final int EXPANDED_SPAWN_GRID_COUNT = 20;
     private static final int EXPANDED_SPAWN_GRID_COLUMNS = 2;
-    private static final float EXPANDED_SPAWN_ROW_SPACING_WORLD = 2.0f;
+    private static final float EXPANDED_SPAWN_ROW_SPACING_WORLD = 6.32f;
     private static final float EXPANDED_SPAWN_MIN_ROW_SPACING_PIXELS = 8f;
     private static final int CHECKPOINT_CENTER_GATE_SAMPLES = 25;
     private static final int RECOVERY_COLUMNS = 18;
