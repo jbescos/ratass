@@ -237,6 +237,23 @@ public final class ArenaMap {
         return routeLength;
     }
 
+    public int getRouteProgressIndexCount() {
+        if (routeMetadata != null && routeMetadata.hasSamples()) {
+            return routeMetadata.sampleCount();
+        }
+        return Math.max(1, routePoints.size);
+    }
+
+    public int getRouteProgressIndex(float progress) {
+        if (!hasRoute()) {
+            return 0;
+        }
+        if (routeMetadata != null && routeMetadata.hasSamples()) {
+            return routeMetadata.sampleIndexForProgress(progress);
+        }
+        return findRouteSegmentIndex(wrapRouteProgress(progress));
+    }
+
     public float findRouteProgress(Vector2 position) {
         return position == null ? 0f : findRouteProgress(position.x, position.y);
     }

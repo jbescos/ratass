@@ -174,8 +174,6 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RACE_CHECKPOINT_GATE_MARGIN = 2.40f;
     private static final float RACE_CHECKPOINT_MIN_FORWARD_CROSS_SPEED = 0.30f;
     private static final float RACE_ROUTE_MIN_DELTA = 0.001f;
-    private static final float RACE_ROUTE_MAX_DELTA_MIN = Car.HEIGHT * 2f;
-    private static final float RACE_ROUTE_MAX_DELTA_MAX = Car.HEIGHT * 6f;
     private static final float MIN_WORLD_CAMERA_ZOOM = 0.90f;
     private static final float PLAYER_CAMERA_ZOOM = 1.04f;
     private static final float PLAYER_CAMERA_SPEED_ZOOM_OUT = 0.46f;
@@ -4691,16 +4689,18 @@ public class RatassGame extends ApplicationAdapter {
 
         for (int i = 0; i < roster.size; i++) {
             CarTemplate template = roundGridOrder.get(i);
+            template.roundGridPosition = i + 1;
             template.roundFinishPosition = 0;
             template.lastRoundAwardedPoints = 0;
             template.roundPickupPoints = 0;
             template.roundRaceLap = 0;
             template.roundRaceCheckpointsCompleted = 0;
             template.roundRaceLastRouteProgress = 0f;
+            template.roundRaceStartRouteProgress = 0f;
+            template.roundRaceStartRouteIndex = 0;
+            template.roundRaceRouteIndex = 0;
             template.roundRaceDistanceThisLap = 0f;
             template.roundRaceTotalRouteProgress = 0f;
-            template.roundRaceStandingLastRouteProgress = 0f;
-            template.roundRaceStandingRouteProgress = 0f;
             template.roundRaceFinishTime = 0f;
             template.roundRaceCurrentLapStartTime = 0f;
             template.roundRaceBestLapTime = 0f;
@@ -4772,11 +4772,22 @@ public class RatassGame extends ApplicationAdapter {
                 spawnPoint == null
                         ? 0f
                         : currentMap.findRouteProgress(spawnPoint.x, spawnPoint.y);
+        float startProgress = 0f;
+        if (currentMap.getCheckpointCount() > 0) {
+            int startCheckpointIndex =
+                    MathUtils.clamp(
+                            template.roundRaceStartCheckpointIndex,
+                            0,
+                            currentMap.getCheckpointCount() - 1);
+            SpawnPoint startCheckpoint = currentMap.getCheckpoint(startCheckpointIndex);
+            startProgress = currentMap.findRouteProgress(startCheckpoint.x, startCheckpoint.y);
+        }
         template.roundRaceLastRouteProgress = progress;
+        template.roundRaceStartRouteProgress = startProgress;
+        template.roundRaceStartRouteIndex = currentMap.getRouteProgressIndex(startProgress);
+        template.roundRaceRouteIndex = 0;
         template.roundRaceDistanceThisLap = 0f;
         template.roundRaceTotalRouteProgress = 0f;
-        template.roundRaceStandingLastRouteProgress = progress;
-        template.roundRaceStandingRouteProgress = 0f;
         template.roundRaceCurrentLapStartTime = roundTimer;
     }
 
@@ -4931,7 +4942,6 @@ public class RatassGame extends ApplicationAdapter {
 
     private void updateLapRace(float delta) {
         for (int i = 0; i < cars.size; i++) {
-            updateCarLiveRaceStanding(cars.get(i));
             updateCarLapProgress(cars.get(i));
         }
 
@@ -4940,30 +4950,6 @@ public class RatassGame extends ApplicationAdapter {
             if (raceFinishTimer <= 0f || haveAllActiveCarsFinishedRace()) {
                 finishRound(winner != null ? winner : findRaceLeader());
             }
-        }
-    }
-
-    private void updateCarLiveRaceStanding(Car car) {
-        if (car == null
-                || !car.active
-                || car.body == null
-                || car.template.roundRaceFinished
-                || currentMap == null
-                || !currentMap.hasRoute()) {
-            return;
-        }
-
-        CarTemplate template = car.template;
-        float previousRouteProgress = template.roundRaceStandingLastRouteProgress;
-        float routeProgress =
-                currentMap.findRouteProgressNear(
-                        car.body.getPosition(),
-                        null,
-                        previousRouteProgress);
-        float delta = currentMap.routeProgressDelta(previousRouteProgress, routeProgress);
-        if (!Float.isNaN(delta) && !Float.isInfinite(delta)) {
-            template.roundRaceStandingRouteProgress += delta;
-            template.roundRaceStandingLastRouteProgress = routeProgress;
         }
     }
 
@@ -4979,61 +4965,113 @@ public class RatassGame extends ApplicationAdapter {
 
         raceRouteDirection.set(car.body.getWorldVector(raceRouteDirection.set(0f, 1f)));
         float previousRouteProgress = car.template.roundRaceLastRouteProgress;
+        float routeLength = currentMap.getRouteLength();
+        int routeIndexCount = currentMap.getRouteProgressIndexCount();
         float routeProgress =
                 currentMap.findRouteProgressNear(
                         car.body.getPosition(),
                         raceRouteDirection,
                         previousRouteProgress);
         float delta = currentMap.routeProgressDelta(previousRouteProgress, routeProgress);
-        car.template.roundRaceLastRouteProgress = routeProgress;
+        if (Float.isNaN(delta) || Float.isInfinite(delta)) {
+            return;
+        }
         if (Math.abs(delta) <= RACE_ROUTE_MIN_DELTA) {
+            car.template.roundRaceLastRouteProgress = routeProgress;
             return;
         }
 
-        float maxDelta = getMaxRaceRouteProgressDelta(car);
-        if (Math.abs(delta) > maxDelta) {
+        int routeIndex = findRaceRouteIndex(car.template, routeProgress, routeIndexCount, delta);
+        if (!car.template.roundRaceLapCounterCrossed) {
+            car.template.roundRaceLastRouteProgress = routeProgress;
+            if (!hasCrossedRaceRouteStart(
+                    previousRouteProgress,
+                    routeProgress,
+                    car.template.roundRaceStartRouteProgress,
+                    delta)) {
+                return;
+            }
+
+            car.template.roundRaceLapCounterCrossed = true;
+            car.template.roundRaceRouteIndex = routeIndex;
+            car.template.roundRaceCurrentLapStartTime = roundTimer;
+            updateRaceTotalRouteProgress(car.template, routeLength, routeIndexCount);
+            invalidateLeaderboard();
             return;
         }
 
-        float routeLength = currentMap.getRouteLength();
-        car.template.roundRaceDistanceThisLap =
-                MathUtils.clamp(car.template.roundRaceDistanceThisLap + delta, 0f, routeLength);
-
-        while (car.template.roundRaceDistanceThisLap >= routeLength && !car.template.roundRaceFinished) {
-            car.template.roundRaceDistanceThisLap -= routeLength;
+        car.template.roundRaceLastRouteProgress = routeProgress;
+        if (hasCrossedRaceRouteStart(
+                previousRouteProgress,
+                routeProgress,
+                car.template.roundRaceStartRouteProgress,
+                delta)) {
             recordCompletedRaceLap(car.template);
             car.template.roundRaceLap++;
             if (car.template.roundRaceLap >= getRaceLapsToWin()) {
                 markRaceFinished(car);
-                break;
+                return;
             }
         }
-        updateRaceTotalRouteProgress(car.template, routeLength);
+        car.template.roundRaceRouteIndex = routeIndex;
+        updateRaceTotalRouteProgress(car.template, routeLength, routeIndexCount);
         invalidateLeaderboard();
     }
 
-    private void updateRaceTotalRouteProgress(CarTemplate template, float routeLength) {
+    private int findRaceRouteIndex(
+            CarTemplate template,
+            float routeProgress,
+            int routeIndexCount,
+            float routeDelta) {
+        if (template == null || currentMap == null || routeIndexCount <= 0) {
+            return 0;
+        }
+        int routeIndex = currentMap.getRouteProgressIndex(routeProgress);
+        int relativeIndex = routeIndex - template.roundRaceStartRouteIndex;
+        if (relativeIndex < 0) {
+            relativeIndex += routeIndexCount;
+        }
+        if (template.roundRaceLapCounterCrossed
+                && routeDelta < -RACE_ROUTE_MIN_DELTA
+                && template.roundRaceRouteIndex < routeIndexCount / 4
+                && relativeIndex > routeIndexCount * 3 / 4) {
+            return 0;
+        }
+        return MathUtils.clamp(relativeIndex, 0, Math.max(0, routeIndexCount - 1));
+    }
+
+    private boolean hasCrossedRaceRouteStart(
+            float previousRouteProgress,
+            float routeProgress,
+            float startRouteProgress,
+            float delta) {
+        if (currentMap == null || !currentMap.hasRoute() || delta <= RACE_ROUTE_MIN_DELTA) {
+            return false;
+        }
+        float distanceToStart =
+                currentMap.routeProgressDelta(previousRouteProgress, startRouteProgress);
+        float distanceToCurrent = currentMap.routeProgressDelta(previousRouteProgress, routeProgress);
+        return distanceToStart > RACE_ROUTE_MIN_DELTA
+                && distanceToCurrent > 0f
+                && distanceToStart <= distanceToCurrent + RACE_ROUTE_MIN_DELTA;
+    }
+
+    private void updateRaceTotalRouteProgress(
+            CarTemplate template,
+            float routeLength,
+            int routeIndexCount) {
         if (template == null) {
             return;
         }
+        int safeIndexCount = Math.max(1, routeIndexCount);
+        template.roundRaceRouteIndex =
+                MathUtils.clamp(template.roundRaceRouteIndex, 0, safeIndexCount - 1);
+        float routeFraction = template.roundRaceRouteIndex / (float) safeIndexCount;
         float safeRouteLength = Math.max(0.001f, routeLength);
+        template.roundRaceDistanceThisLap = routeFraction * safeRouteLength;
         template.roundRaceTotalRouteProgress =
-                Math.max(
-                        0f,
-                        template.roundRaceLap * safeRouteLength + template.roundRaceDistanceThisLap);
-        template.roundRaceCheckpointsCompleted =
-                MathUtils.floor(template.roundRaceTotalRouteProgress / safeRouteLength * 1000f);
-    }
-
-    private float getMaxRaceRouteProgressDelta(Car car) {
-        if (car == null || car.body == null) {
-            return RACE_ROUTE_MAX_DELTA_MIN;
-        }
-        float speed = car.body.getLinearVelocity().len();
-        return MathUtils.clamp(
-                speed * PHYSICS_STEP * 3f + Car.HEIGHT,
-                RACE_ROUTE_MAX_DELTA_MIN,
-                RACE_ROUTE_MAX_DELTA_MAX);
+                template.roundRaceLap * safeIndexCount + template.roundRaceRouteIndex;
+        template.roundRaceCheckpointsCompleted = MathUtils.floor(template.roundRaceTotalRouteProgress);
     }
 
     private void recordCompletedRaceLap(CarTemplate template) {
@@ -5148,10 +5186,21 @@ public class RatassGame extends ApplicationAdapter {
             }
             return left.roundFinishPosition - right.roundFinishPosition;
         }
-        int routeProgressCompare =
-                Float.compare(right.roundRaceTotalRouteProgress, left.roundRaceTotalRouteProgress);
-        if (routeProgressCompare != 0) {
-            return routeProgressCompare;
+        if (left.roundRaceLapCounterCrossed != right.roundRaceLapCounterCrossed) {
+            return left.roundRaceLapCounterCrossed ? -1 : 1;
+        }
+        int lapCompare = right.roundRaceLap - left.roundRaceLap;
+        if (lapCompare != 0) {
+            return lapCompare;
+        }
+        int routeIndexCompare = right.roundRaceRouteIndex - left.roundRaceRouteIndex;
+        if (routeIndexCompare != 0) {
+            return routeIndexCompare;
+        }
+        int gridPositionCompare =
+                compareFinishPosition(left.roundGridPosition, right.roundGridPosition);
+        if (gridPositionCompare != 0) {
+            return gridPositionCompare;
         }
         boolean leftActive = left.currentCar != null && left.currentCar.active;
         boolean rightActive = right.currentCar != null && right.currentCar.active;
@@ -12991,6 +13040,7 @@ public class RatassGame extends ApplicationAdapter {
         private int spriteSourceWidth;
         private int spriteSourceHeight;
         private int totalPoints;
+        private int roundGridPosition;
         private int roundFinishPosition;
         private int nextGridPosition;
         private int lastRoundAwardedPoints;
@@ -13000,10 +13050,11 @@ public class RatassGame extends ApplicationAdapter {
         private int roundRaceNextCheckpointIndex;
         private int roundRaceCheckpointsCompleted;
         private float roundRaceLastRouteProgress;
+        private float roundRaceStartRouteProgress;
+        private int roundRaceStartRouteIndex;
+        private int roundRaceRouteIndex;
         private float roundRaceDistanceThisLap;
         private float roundRaceTotalRouteProgress;
-        private float roundRaceStandingLastRouteProgress;
-        private float roundRaceStandingRouteProgress;
         private float roundRaceFinishTime;
         private float roundRaceCurrentLapStartTime;
         private float roundRaceBestLapTime;

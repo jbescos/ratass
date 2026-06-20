@@ -529,6 +529,7 @@ def build_algorithm(args):
         PPOConfig()
         .environment(RatassMultiAgentEnv, env_config=env_config)
         .framework("torch")
+        .debugging(seed=args.seed)
         .rl_module(
             model_config=DefaultModelConfig(
                 fcnet_hiddens=[args.hidden_size] * args.hidden_layers,
