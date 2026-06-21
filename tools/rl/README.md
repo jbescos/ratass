@@ -49,8 +49,9 @@ still runs on CPU.
   is. Car collisions are treated as push/contact penalties, not as rewards.
 - Java exposes episode metrics for route targets reached and route progress.
 - The shell training presets stage route learning through `5%`, `10%`, `25%`,
-  `50%`, and `75%` route targets, then `lap_easy` route-only full laps,
-  `lap_training` full laps on `tools/rl/trainingMaps`, and `lap_real` full laps
+  `50%`, and `75%` route targets. Add `_real`, for example `5%_real`, to run
+  that route-target stage on `assets/maps`. Full-lap stages are `lap_easy`
+  route-only masks, `lap_training` on `tools/rl/trainingMaps`, and `lap_real`
   on `assets/maps`. `RL_STAGE_NUMBER_OF_CARS` controls how many cars are used in
   each stage. Route-target stages must stay single-car; lap stages can train
   with traffic.

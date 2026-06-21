@@ -19,7 +19,8 @@ RL_LR=3e-4
 RL_ENTROPY_COEFF=0.005
 RL_GAMMA=0.995
 
-# Route/lap curriculum. Percentages are fractions of a lap; lap_easy is a
+# Route/lap curriculum. Percentages are fractions of a lap; use "%_real", for
+# example "5%_real", to train that chunk on real game maps. lap_easy is a
 # full-lap stage on route-only easy masks, lap_training uses training maps, and
 # lap_real uses real game maps.
 RL_STAGE_ROUTE_TARGETS=5%,10%,25%,50%,75%,lap_easy,lap_training,lap_real

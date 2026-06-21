@@ -218,6 +218,7 @@ run_curriculum_phase() {
   local profile_stage_total="${12:-${stage_total}}"
   local overall_stage_index="${13:-${profile_stage_index}}"
   local overall_stage_total="${14:-${profile_stage_total}}"
+  local stage_map_scope="${15:-}"
   local best_eval_state="${checkpoint_dir}/best-eval/${phase}/best_policy.json"
   local best_eval_min_route_targets="${RL_BEST_EVAL_MIN_ROUTE_TARGETS:-}"
   local phase_best_output="${RL_BEST_OUTPUT:-assets/ai/rl_enemy_policy.json}"
@@ -252,6 +253,10 @@ run_curriculum_phase() {
     phase_fixed_full_laps=1
     phase_map_ids="${RL_LAP_REAL_MAP_IDS:-auto-game}"
     phase_best_eval_map_ids="${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
+  fi
+  if [[ "${stage_map_scope}" == "real" ]]; then
+    phase_map_ids="${RL_ROUTE_REAL_MAP_IDS:-${RL_LAP_REAL_MAP_IDS:-auto-game}}"
+    phase_best_eval_map_ids="${RL_ROUTE_REAL_BEST_EVAL_MAP_IDS:-${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}}"
   fi
   if [[ "${iterations}" -le 0 ]]; then
     echo "curriculum_phase_skip policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} iterations=${iterations} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction}"
@@ -411,8 +416,44 @@ route_stage_label() {
   esac
 }
 
+is_real_route_chunk_stage() {
+  local spec="$1"
+  local base="${spec%_real}"
+  if [[ "${base}" == "${spec}" ]]; then
+    return 1
+  fi
+  case "${base}" in
+    *%|0.*|1.0|1.00|1.000)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+strip_real_route_chunk_suffix() {
+  local spec="$1"
+  if is_real_route_chunk_stage "${spec}"; then
+    printf '%s\n' "${spec%_real}"
+  else
+    printf '%s\n' "${spec}"
+  fi
+}
+
+route_stage_map_scope_from_spec() {
+  if is_real_route_chunk_stage "$1"; then
+    printf '%s\n' "real"
+  else
+    printf '%s\n' ""
+  fi
+}
+
 normalize_route_stage() {
-  case "$1" in
+  local spec="$1"
+  local normalized_spec
+  normalized_spec="$(strip_real_route_chunk_suffix "${spec}")"
+  case "${normalized_spec}" in
     "lap_easy"|"easy_lap"|"easy-lap") printf '%s\n' "-2" ;;
     "lap_training"|"lap_train"|"training_lap"|"training-lap") printf '%s\n' "-3" ;;
     "lap_real"|"real_lap"|"real-lap"|"game_lap"|"game-lap") printf '%s\n' "-4" ;;
@@ -423,34 +464,34 @@ normalize_route_stage() {
       return 2
       ;;
     *%)
-      local percent="${1%\%}"
+      local percent="${normalized_spec%\%}"
       LC_ALL=C awk -v percent="${percent}" 'BEGIN {
         if (percent <= 0) exit 2;
         chunks = int(percent * 4 / 100 + 0.999999);
         if (chunks < 1) chunks = 1;
         print chunks;
       }' || {
-        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
+        echo "invalid_route_stage=${spec} expected=positive_integer_chunk_count_percent_percent_real_decimal_decimal_real_lap_easy_lap_training_lap_real_or_lap" >&2
         return 2
       }
       ;;
     0.*|1.0|1.00|1.000)
-      LC_ALL=C awk -v fraction="$1" 'BEGIN {
+      LC_ALL=C awk -v fraction="${normalized_spec}" 'BEGIN {
         if (fraction <= 0) exit 2;
         chunks = int(fraction * 4 + 0.999999);
         if (chunks < 1) chunks = 1;
         print chunks;
       }' || {
-        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
+        echo "invalid_route_stage=${spec} expected=positive_integer_chunk_count_percent_percent_real_decimal_decimal_real_lap_easy_lap_training_lap_real_or_lap" >&2
         return 2
       }
       ;;
     *)
-      if [[ "$1" =~ ^[0-9]+$ ]]; then
-        printf '%s\n' "$1"
+      if [[ "${normalized_spec}" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "${normalized_spec}"
         return 0
       fi
-      echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
+      echo "invalid_route_stage=${spec} expected=positive_integer_chunk_count_percent_percent_real_decimal_decimal_real_lap_easy_lap_training_lap_real_or_lap" >&2
       return 2
       ;;
   esac
@@ -459,23 +500,25 @@ normalize_route_stage() {
 route_stage_target_fraction() {
   local spec="$1"
   local chunks="$2"
-  case "${spec}" in
+  local normalized_spec
+  normalized_spec="$(strip_real_route_chunk_suffix "${spec}")"
+  case "${normalized_spec}" in
     *%)
-      local percent="${spec%\%}"
+      local percent="${normalized_spec%\%}"
       LC_ALL=C awk -v percent="${percent}" -v chunks="${chunks}" 'BEGIN {
         if (percent <= 0 || chunks <= 0) exit 2;
         printf "%.8g\n", (percent / 100.0) / chunks;
       }' || {
-        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_percent_real_decimal_decimal_real_lap_easy_lap_training_lap_real_or_lap" >&2
         return 2
       }
       ;;
     0.*|1.0|1.00|1.000)
-      LC_ALL=C awk -v fraction="${spec}" -v chunks="${chunks}" 'BEGIN {
+      LC_ALL=C awk -v fraction="${normalized_spec}" -v chunks="${chunks}" 'BEGIN {
         if (fraction <= 0 || chunks <= 0) exit 2;
         printf "%.8g\n", fraction / chunks;
       }' || {
-        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_percent_real_decimal_decimal_real_lap_easy_lap_training_lap_real_or_lap" >&2
         return 2
       }
       ;;
@@ -488,6 +531,14 @@ route_stage_target_fraction() {
 route_stage_label_from_spec() {
   local spec="$1"
   local normalized="$2"
+  if is_real_route_chunk_stage "${spec}"; then
+    local base_spec
+    local base_label
+    base_spec="$(strip_real_route_chunk_suffix "${spec}")"
+    base_label="$(route_stage_label_from_spec "${base_spec}" "${normalized}")" || return 2
+    printf '%s_real\n' "${base_label}"
+    return
+  fi
   case "${spec}" in
     "lap_easy"|"easy_lap"|"easy-lap") printf '%s\n' "lap_easy" ;;
     "lap_training"|"lap_train"|"training_lap"|"training-lap") printf '%s\n' "lap_training" ;;
@@ -505,7 +556,7 @@ route_stage_label_from_spec() {
         if (fraction <= 0) exit 2;
         printf "%.6g", fraction * 100.0;
       }')" || {
-        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_decimal_lap_easy_lap_training_lap_real_or_lap" >&2
+        echo "invalid_route_stage=$1 expected=positive_integer_chunk_count_percent_percent_real_decimal_decimal_real_lap_easy_lap_training_lap_real_or_lap" >&2
         return 2
       }
       percent="${percent//./p}"
@@ -788,6 +839,8 @@ run_route_curriculum_for_preset() {
     route_target_fraction="$(route_stage_target_fraction "${stage_specs[index]}" "${route_target}")"
     local route_label
     route_label="$(route_stage_label_from_spec "${stage_specs[index]}" "${route_target}")"
+    local route_map_scope
+    route_map_scope="$(route_stage_map_scope_from_spec "${stage_specs[index]}")"
     local stage_car_count="${stage_cars[index]}"
     if [[ ! "${stage_car_count}" =~ ^[1-9][0-9]*$ ]]; then
       echo "invalid_stage_number_of_cars=${stage_car_count} stage=${stage_specs[index]}" >&2
@@ -816,7 +869,8 @@ run_route_curriculum_for_preset() {
       "${profile_stage_index}" \
       "${profile_stage_total}" \
       "${overall_stage_index}" \
-      "${overall_stage_total}"
+      "${overall_stage_total}" \
+      "${route_map_scope}"
     init_policy=""
   done
 }
