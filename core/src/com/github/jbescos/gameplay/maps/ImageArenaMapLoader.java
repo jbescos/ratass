@@ -39,6 +39,8 @@ final class ImageArenaMapLoader {
     private static final int CACHE_VERSION = 118;
     private static final boolean USE_ROUTE_LINE_MARKERS = false;
     private static final float BASE_WORLD_HEIGHT = 22f;
+    private static final String MAP005_ID = "map005";
+    private static final float MAP005_WORLD_SCALE = 1.25f;
     private static final int MAX_SEQUENTIAL_MAP_SCAN = 1000;
     private static final int MAX_SHAPE_MASK_LONG_SIDE = 512;
     private static final int MIN_MARKER_PIXELS = 24;
@@ -246,7 +248,7 @@ final class ImageArenaMapLoader {
         try {
             Array<CheckpointOrderMarker> checkpointOrderMarkers = collectCheckpointOrderMarkers(mask);
             removeCheckpointOrderAnnotations(mask);
-            WorldSize worldSize = calculateWorldSize(mask.getWidth(), mask.getHeight(), mapScale);
+            WorldSize worldSize = calculateWorldSize(baseName, mask.getWidth(), mask.getHeight(), mapScale);
             float worldWidth = worldSize.width;
             float worldHeight = worldSize.height;
             float worldMinX = -worldWidth * 0.5f;
@@ -478,10 +480,14 @@ final class ImageArenaMapLoader {
         return builder.build();
     }
 
-    private static WorldSize calculateWorldSize(int imageWidth, int imageHeight, float mapScale) {
-        float worldHeight = BASE_WORLD_HEIGHT * mapScale;
+    private static WorldSize calculateWorldSize(String baseName, int imageWidth, int imageHeight, float mapScale) {
+        float worldHeight = BASE_WORLD_HEIGHT * mapScale * worldScaleForMap(baseName);
         float worldWidth = worldHeight * imageWidth / (float) imageHeight;
         return new WorldSize(worldWidth, worldHeight);
+    }
+
+    private static float worldScaleForMap(String baseName) {
+        return MAP005_ID.equals(baseName) ? MAP005_WORLD_SCALE : 1f;
     }
 
     private static CachedMapData readCachedMap(
@@ -531,7 +537,15 @@ final class ImageArenaMapLoader {
                 || Math.abs(cached.mapScale - mapScale) > 0.0001f
                 || cached.maskLength != maskFile.length()
                 || cached.maskSha256 == null
-                || !cached.maskSha256.equals(maskSha256)) {
+                || !cached.maskSha256.equals(maskSha256)
+                || cached.imageWidth <= 0
+                || cached.imageHeight <= 0) {
+            return false;
+        }
+
+        WorldSize expectedWorldSize = calculateWorldSize(baseName, cached.imageWidth, cached.imageHeight, mapScale);
+        if (Math.abs(cached.worldWidth - expectedWorldSize.width) > 0.0001f
+                || Math.abs(cached.worldHeight - expectedWorldSize.height) > 0.0001f) {
             return false;
         }
 
