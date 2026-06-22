@@ -188,6 +188,7 @@ presets:
   fast              alias for diagnostic
   curriculum        staged race run using RL_STAGE_ROUTE_TARGETS,
                     RL_STAGE_ITERATIONS, and RL_STAGE_NUMBER_OF_CARS
+                    map-specific stages can be written as map005_5%,map005
 EOF
 }
 
@@ -219,6 +220,7 @@ run_curriculum_phase() {
   local overall_stage_index="${13:-${profile_stage_index}}"
   local overall_stage_total="${14:-${profile_stage_total}}"
   local stage_map_scope="${15:-}"
+  local stage_map_ids="${16:-}"
   local best_eval_state="${checkpoint_dir}/best-eval/${phase}/best_policy.json"
   local best_eval_min_route_targets="${RL_BEST_EVAL_MIN_ROUTE_TARGETS:-}"
   local phase_best_output="${RL_BEST_OUTPUT:-assets/ai/rl_enemy_policy.json}"
@@ -258,8 +260,12 @@ run_curriculum_phase() {
     phase_map_ids="${RL_ROUTE_REAL_MAP_IDS:-${RL_LAP_REAL_MAP_IDS:-auto-game}}"
     phase_best_eval_map_ids="${RL_ROUTE_REAL_BEST_EVAL_MAP_IDS:-${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}}"
   fi
+  if [[ -n "${stage_map_ids}" ]]; then
+    phase_map_ids="${stage_map_ids}"
+    phase_best_eval_map_ids="${stage_map_ids}"
+  fi
   if [[ "${iterations}" -le 0 ]]; then
-    echo "curriculum_phase_skip policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} iterations=${iterations} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction}"
+    echo "curriculum_phase_skip policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} iterations=${iterations} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all}"
     return
   fi
   if [[ -z "${best_eval_min_route_targets}" ]]; then
@@ -416,6 +422,28 @@ route_stage_label() {
   esac
 }
 
+route_stage_map_id_from_spec() {
+  local spec="$1"
+  if [[ "${spec}" =~ ^((map|train|route)[0-9][A-Za-z0-9-]*)_(.+)$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+  elif [[ "${spec}" =~ ^(map|train|route)[0-9][A-Za-z0-9-]*$ ]]; then
+    printf '%s\n' "${spec}"
+  else
+    printf '%s\n' ""
+  fi
+}
+
+route_stage_base_from_spec() {
+  local spec="$1"
+  if [[ "${spec}" =~ ^((map|train|route)[0-9][A-Za-z0-9-]*)_(.+)$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[3]}"
+  elif [[ "${spec}" =~ ^(map|train|route)[0-9][A-Za-z0-9-]*$ ]]; then
+    printf '%s\n' "lap"
+  else
+    printf '%s\n' "${spec}"
+  fi
+}
+
 is_real_route_chunk_stage() {
   local spec="$1"
   local base="${spec%_real}"
@@ -442,7 +470,9 @@ strip_real_route_chunk_suffix() {
 }
 
 route_stage_map_scope_from_spec() {
-  if is_real_route_chunk_stage "$1"; then
+  local normalized_spec
+  normalized_spec="$(route_stage_base_from_spec "$1")"
+  if is_real_route_chunk_stage "${normalized_spec}"; then
     printf '%s\n' "real"
   else
     printf '%s\n' ""
@@ -452,7 +482,8 @@ route_stage_map_scope_from_spec() {
 normalize_route_stage() {
   local spec="$1"
   local normalized_spec
-  normalized_spec="$(strip_real_route_chunk_suffix "${spec}")"
+  normalized_spec="$(route_stage_base_from_spec "${spec}")"
+  normalized_spec="$(strip_real_route_chunk_suffix "${normalized_spec}")"
   case "${normalized_spec}" in
     "lap_easy"|"easy_lap"|"easy-lap") printf '%s\n' "-2" ;;
     "lap_training"|"lap_train"|"training_lap"|"training-lap") printf '%s\n' "-3" ;;
@@ -501,7 +532,8 @@ route_stage_target_fraction() {
   local spec="$1"
   local chunks="$2"
   local normalized_spec
-  normalized_spec="$(strip_real_route_chunk_suffix "${spec}")"
+  normalized_spec="$(route_stage_base_from_spec "${spec}")"
+  normalized_spec="$(strip_real_route_chunk_suffix "${normalized_spec}")"
   case "${normalized_spec}" in
     *%)
       local percent="${normalized_spec%\%}"
@@ -531,6 +563,16 @@ route_stage_target_fraction() {
 route_stage_label_from_spec() {
   local spec="$1"
   local normalized="$2"
+  local map_id
+  map_id="$(route_stage_map_id_from_spec "${spec}")"
+  if [[ -n "${map_id}" ]]; then
+    local base_spec
+    local base_label
+    base_spec="$(route_stage_base_from_spec "${spec}")"
+    base_label="$(route_stage_label_from_spec "${base_spec}" "${normalized}")" || return 2
+    printf '%s-%s\n' "${map_id}" "${base_label}"
+    return
+  fi
   if is_real_route_chunk_stage "${spec}"; then
     local base_spec
     local base_label
@@ -841,6 +883,8 @@ run_route_curriculum_for_preset() {
     route_label="$(route_stage_label_from_spec "${stage_specs[index]}" "${route_target}")"
     local route_map_scope
     route_map_scope="$(route_stage_map_scope_from_spec "${stage_specs[index]}")"
+    local route_map_ids
+    route_map_ids="$(route_stage_map_id_from_spec "${stage_specs[index]}")"
     local stage_car_count="${stage_cars[index]}"
     if [[ ! "${stage_car_count}" =~ ^[1-9][0-9]*$ ]]; then
       echo "invalid_stage_number_of_cars=${stage_car_count} stage=${stage_specs[index]}" >&2
@@ -870,7 +914,8 @@ run_route_curriculum_for_preset() {
       "${profile_stage_total}" \
       "${overall_stage_index}" \
       "${overall_stage_total}" \
-      "${route_map_scope}"
+      "${route_map_scope}" \
+      "${route_map_ids}"
     init_policy=""
   done
 }
