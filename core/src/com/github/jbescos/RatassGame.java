@@ -83,7 +83,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final String RL_POLICY_DIRECTORY = "ai/policies";
     private static final String RL_POLICY_FILE_NAME = "rl_enemy_policy.json";
     private static final String RL_LEGACY_POLICY_ID = "legacy";
+    private static final String MANUAL_DRIVER_POLICY_ID = "manual";
     private static final DriverPolicyChoice[] DRIVER_POLICY_CHOICES = new DriverPolicyChoice[] {
+            new DriverPolicyChoice(MANUAL_DRIVER_POLICY_ID, "Manual"),
             new DriverPolicyChoice("rookie", "Rookie"),
             new DriverPolicyChoice("expert", "Expert"),
             new DriverPolicyChoice("aggressive", "Aggressive"),
@@ -121,7 +123,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final int MAX_RACE_LAPS = 10;
     private static final int MIN_CAR_COUNT = 1;
     private static final int MAX_CAR_COUNT = 10;
-    private static final int DEFAULT_DRIVER_POLICY_INDEX = 0;
+    private static final int DEFAULT_DRIVER_POLICY_INDEX = 1;
     private static final int OPTIONS_THEME_SELECTION = 0;
     private static final int OPTIONS_CARS_SELECTION = 1;
     private static final int OPTIONS_PLAYER_CAR_SELECTION = 2;
@@ -1094,6 +1096,9 @@ public class RatassGame extends ApplicationAdapter {
 
         for (int i = 0; i < DRIVER_POLICY_CHOICES.length; i++) {
             String policyId = DRIVER_POLICY_CHOICES[i].id;
+            if (isManualDriverPolicyId(policyId)) {
+                continue;
+            }
             RlPolicy policy = loadRlPolicy(buildRlPolicyPath(policyId), policyId);
             if (policy != null) {
                 rlPolicies.put(policyId, policy);
@@ -1110,8 +1115,16 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private RlPolicy getRlPolicyById(String policyId) {
+        if (isManualDriverPolicyId(policyId)) {
+            return null;
+        }
         RlPolicy policy = rlPolicies.get(policyId);
         return policy == null ? rlEnemyPolicy : policy;
+    }
+
+    private static boolean isManualDriverPolicyId(String policyId) {
+        return policyId != null
+                && MANUAL_DRIVER_POLICY_ID.equals(policyId.trim().toLowerCase(Locale.US));
     }
 
     private String getSelectedDriverPolicyId() {
@@ -12536,8 +12549,11 @@ public class RatassGame extends ApplicationAdapter {
                     continue;
                 }
 
-                if (after.offRoad) {
+                if (before.offRoad || after.offRoad) {
                     routeProgressDeltas[agentIndex] = 0f;
+                    if (!after.offRoad) {
+                        bestRaceRouteProgress[agentIndex] = after.raceRouteProgress;
+                    }
                     continue;
                 }
 
