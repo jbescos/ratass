@@ -6818,8 +6818,12 @@ final class ImageArenaMapLoader {
         if (!isRedMarker(pixel)
                 && !isBlueMarker(pixel)
                 && !isGreenMarker(pixel)
-                && !isRouteLineMarker(pixel)) {
+                && !isRouteLineMarker(pixel)
+                && !isRouteHintMarker(pixel)) {
             return false;
+        }
+        if (isRouteHintMarker(pixel)) {
+            return true;
         }
         return hasNearbyBasePlayablePixel(basePlayable, x, y, width, height);
     }
