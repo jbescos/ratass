@@ -28,25 +28,25 @@ still runs on CPU.
 
 ## Environment Contract
 
-- Observation size: `41` floats per learner.
+- Observation size: `31` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
 - Default PPO network: two fully-connected hidden layers of width `256`
   with `tanh` activation.
 - Race observations include normalized route progress, current/near/far route
-  tangent alignment, route lookahead alignment/clearance/distance, route curvature,
-  route-side clearances, upcoming-corner distance/direction/severity, route width,
-  speed and car-frame velocity, edge/off-road state, angular velocity,
-  previous action, six opponent-car ray clearances, and
-  left/right/front/front-diagonal road-clearance rays. They also include
-  current route-point forward/side/distance offsets matching the sandbox route
-  guidance ray. The old checkpoint target
-  observations, nearest-car aggregate observations, and constant `active`
-  observation were removed.
+  tangent alignment, route lookahead alignment, route-side clearances, speed and
+  car-frame velocity, angular velocity, edge/off-road state, left/right/front/
+  front-diagonal road-clearance rays, six opponent-car ray clearances, and
+  current route-point forward/side offsets matching the sandbox route
+  guidance ray. The final observation is signed slip angle, normalized so `0`
+  means velocity follows the car nose and `-1`/`1` means mostly sideways motion.
+  The old checkpoint target observations, nearest-car aggregate observations,
+  previous action, and constant `active` observation were removed.
 - Rewards are bucketed as `route_progress`, `step_cost`, `off_road`, `steering`,
   `reverse_speed`, `car_push`, and `route_alignment`. The route-progress bucket
-  contains signed progress along the circuit route plus the route-target
-  completion reward. Braking is not penalized, but actual negative forward speed
-  is. Car collisions are treated as push/contact penalties, not as rewards.
+  contains signed progress along the circuit route. Route targets are training
+  objectives, not direct reward bonuses. Braking is not penalized, but actual
+  negative forward speed is. Car collisions are treated as push/contact
+  penalties, not as rewards.
 - Java exposes episode metrics for route targets reached and route progress.
 - The shell training presets stage route learning through `5%`, `10%`, `25%`,
   `50%`, and `75%` route targets. Add `_real`, for example `5%_real`, to run
@@ -202,7 +202,6 @@ python tools/rl/evaluate_policy.py --episodes 20
 python tools/rl/evaluate_policy.py --episodes 5 --controlled-agents 4 --field-size 4
 ```
 
-Export writes `assets/ai/rl_enemy_policy.json`. If that JSON was produced for a
-smaller observation size, the game can still run it against the unchanged input
-prefix, but newly added sensors are ignored until a new policy is trained and
-exported.
+Export writes `assets/ai/rl_enemy_policy.json`. Policies are tied to the current
+observation contract; retrain and export after sensors are added, removed, or
+reordered.

@@ -25,10 +25,10 @@ public final class RlPolicySmokeMain {
         setObservation(observation, 7, 0.35f);
         setObservation(observation, 8, 0.75f);
         setObservation(observation, 9, 0.20f);
-        setObservation(observation, 17, 1f);
-        setObservation(observation, 18, 0.18f);
-        setObservation(observation, 41, 0.75f);
-        setObservation(observation, 42, 0.75f);
+        setObservation(observation, 11, 0.55f);
+        setObservation(observation, 16, 0.18f);
+        setObservation(observation, 22, 0.75f);
+        setObservation(observation, 23, 0.75f);
 
         float[] scratchA = new float[policy.getScratchSize()];
         float[] scratchB = new float[policy.getScratchSize()];

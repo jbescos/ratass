@@ -198,7 +198,7 @@ set_race_cars_defaults() {
   set_default RL_CONTROLLED_AGENTS "${car_count}"
   set_default RL_FIELD_SIZE "${car_count}"
   set_default RL_ROUTE_TARGETS "-1"
-  set_default RL_MAX_ACTION_STEPS "6400"
+  set_default RL_MAX_ACTION_STEPS "19200"
   set_default RL_CHECKPOINT_DIR "rl-checkpoints-race-physics-v1"
   set_default RL_BEST_EVAL_STEPS "auto"
   set_default RL_NO_REWARD_SUMMARY "1"
@@ -614,10 +614,10 @@ default_best_eval_steps_for_stage() {
   local route_target="$1"
   local max_steps="$2"
   if [[ ! "${max_steps}" =~ ^[0-9]+$ || "${max_steps}" -le 0 ]]; then
-    max_steps=6400
+    max_steps=19200
   fi
   if [[ "${route_target}" =~ ^[1-9][0-9]*$ ]]; then
-    local target_steps=$((800 + route_target * 800))
+    local target_steps=$((2400 + route_target * 2400))
     if [[ "${target_steps}" -gt "${max_steps}" ]]; then
       target_steps="${max_steps}"
     fi
@@ -1068,7 +1068,7 @@ esac
 objective="race"
 default_controlled_agents=1
 default_field_size=1
-default_max_action_steps=6400
+default_max_action_steps=19200
 default_checkpoint_dir="rl-checkpoints-race-physics-v1"
 export_objective="race-route-progress-v1"
 no_reward_summary="${RL_NO_REWARD_SUMMARY:-1}"
@@ -1120,10 +1120,10 @@ best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS:-}"
 best_eval_state="${RL_BEST_EVAL_STATE:-}"
 best_eval_ignore_installed="${RL_BEST_EVAL_IGNORE_INSTALLED:-1}"
 seed="${RL_SEED:-}"
+route_target_max_action_steps="${RL_ROUTE_TARGET_MAX_ACTION_STEPS:-auto}"
 reward_step_penalty="${RL_REWARD_STEP_PENALTY:-0.006}"
 reward_progress="${RL_REWARD_PROGRESS:-0.25}"
 reward_route_alignment="${RL_REWARD_ROUTE_ALIGNMENT:-0.0}"
-reward_route_target="${RL_REWARD_ROUTE_TARGET:-30.0}"
 reward_steering_penalty="${RL_REWARD_STEERING_PENALTY:-0.010}"
 reward_reverse_free_epsilon="${RL_REWARD_REVERSE_FREE_EPSILON:-0.20}"
 reward_reverse_penalty_per_unit="${RL_REWARD_REVERSE_PENALTY_PER_UNIT:-0.08}"
@@ -1174,6 +1174,14 @@ elif is_route_target_training_stage "${route_targets}"; then
   else
     record_route_spawn_seed_if_missing "${route_spawn_seed_file}" "${route_phase_name}" "${route_targets}" "${seed}"
   fi
+  if [[ "${route_target_max_action_steps}" == "auto" ]]; then
+    max_action_steps="$(default_best_eval_steps_for_stage "${route_targets}" "${max_action_steps}")"
+  elif [[ "${route_target_max_action_steps}" =~ ^[1-9][0-9]*$ ]]; then
+    max_action_steps="${route_target_max_action_steps}"
+  elif [[ "${route_target_max_action_steps}" != "0" ]]; then
+    echo "invalid_route_target_max_action_steps=${route_target_max_action_steps} expected=auto_positive_integer_or_0" >&2
+    exit 2
+  fi
 elif is_non_positive_integer "${route_targets}"; then
   race_spawn_mode="fixed-grid"
   random_race_spawns=0
@@ -1222,7 +1230,6 @@ common_args=(
   --reward-step-penalty "${reward_step_penalty}"
   --reward-progress "${reward_progress}"
   --reward-route-alignment "${reward_route_alignment}"
-  --reward-route-target "${reward_route_target}"
   --reward-steering-penalty "${reward_steering_penalty}"
   --reward-reverse-free-epsilon "${reward_reverse_free_epsilon}"
   --reward-reverse-penalty-per-unit "${reward_reverse_penalty_per_unit}"

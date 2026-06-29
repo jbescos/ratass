@@ -38,7 +38,7 @@ from export_policy import export_policy as export_checkpoint_policy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
-OBSERVATION_SIZE = 41
+OBSERVATION_SIZE = 31
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
@@ -241,7 +241,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         )
         training_config.withFieldSize(int(env_config.get("field_size", DEFAULT_FIELD_SIZE)))
         training_config.withActionRepeat(int(env_config.get("action_repeat", 4)))
-        training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 6400)))
+        training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 19200)))
         training_config.withRouteTargets(int(env_config.get("route_targets", 6)))
         training_config.withRouteTargetFraction(float(env_config.get("route_target_fraction", 0.0)))
         training_config.withRaceMode(True)
@@ -255,7 +255,6 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withRouteAlignmentReward(
             float(env_config.get("reward_route_alignment", 0.0))
         )
-        training_config.withRouteTargetReward(float(env_config.get("reward_route_target", 30.0)))
         training_config.withSteeringPenalty(float(env_config.get("reward_steering_penalty", 0.010)))
         training_config.withReverseSpeedPenalty(
             float(env_config.get("reward_reverse_free_epsilon", 0.20)),
@@ -514,7 +513,6 @@ def build_algorithm(args):
         "reward_step_penalty": args.reward_step_penalty,
         "reward_progress": args.reward_progress,
         "reward_route_alignment": args.reward_route_alignment,
-        "reward_route_target": args.reward_route_target,
         "reward_steering_penalty": args.reward_steering_penalty,
         "reward_reverse_free_epsilon": args.reward_reverse_free_epsilon,
         "reward_reverse_penalty_per_unit": args.reward_reverse_penalty_per_unit,
@@ -599,7 +597,7 @@ def load_exported_actor_state(policy_file: Path) -> Dict[str, np.ndarray]:
         payload = json.load(handle)
 
     exported_observation_size = int(payload.get("observationSize", -1))
-    if exported_observation_size <= 0 or exported_observation_size > OBSERVATION_SIZE:
+    if exported_observation_size != OBSERVATION_SIZE:
         raise ValueError(
             f"{policy_file} observationSize={payload.get('observationSize')} is not compatible "
             f"with current observation size {OBSERVATION_SIZE}"
@@ -669,9 +667,9 @@ def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
     if not policy_file.exists():
         raise FileNotFoundError(f"{policy_file} does not exist")
 
+    actor_state = load_exported_actor_state(policy_file)
     learner_weights = algorithm.learner_group.get_weights(module_ids=["shared_policy"])
     policy_weights = dict(learner_weights["shared_policy"])
-    actor_state = load_exported_actor_state(policy_file)
 
     partial_initialization = False
     for key, values in actor_state.items():
@@ -692,6 +690,20 @@ def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
         f"initialized_policy={policy_file} partial={str(partial_initialization).lower()}",
         flush=True,
     )
+
+
+def try_initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> bool:
+    try:
+        initialize_actor_from_exported_policy(algorithm, policy_file)
+    except (FileNotFoundError, OSError, ValueError) as error:
+        message = str(error).replace("\n", " ")
+        print(
+            f"init_policy_ignored={policy_file} "
+            f"reason=incompatible_or_unreadable action=train_from_scratch error={message}",
+            flush=True,
+        )
+        return False
+    return True
 
 
 def configure_ray_output(checkpoint_dir: Path) -> None:
@@ -781,7 +793,7 @@ def build_algorithm_with_restore(args, checkpoint_dir: Path):
             )
             algorithm = build_algorithm(args)
             if args.init_policy:
-                initialize_actor_from_exported_policy(
+                try_initialize_actor_from_exported_policy(
                     algorithm,
                     Path(args.init_policy).resolve(),
                 )
@@ -790,7 +802,7 @@ def build_algorithm_with_restore(args, checkpoint_dir: Path):
         if args.init_policy:
             print("init_policy_ignored=resume_checkpoint_present", flush=True)
     elif args.init_policy:
-        initialize_actor_from_exported_policy(
+        try_initialize_actor_from_exported_policy(
             algorithm,
             Path(args.init_policy).resolve(),
         )
@@ -919,6 +931,30 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         str(args.route_target_fraction),
         "--seed",
         str(args.seed),
+        "--reward-step-penalty",
+        str(args.reward_step_penalty),
+        "--reward-progress",
+        str(args.reward_progress),
+        "--reward-route-alignment",
+        str(args.reward_route_alignment),
+        "--reward-steering-penalty",
+        str(args.reward_steering_penalty),
+        "--reward-reverse-free-epsilon",
+        str(args.reward_reverse_free_epsilon),
+        "--reward-reverse-penalty-per-unit",
+        str(args.reward_reverse_penalty_per_unit),
+        "--reward-reverse-max-penalty",
+        str(args.reward_reverse_max_penalty),
+        "--reward-car-push-penalty",
+        str(args.reward_car_push_penalty),
+        "--reward-car-push-max-step-penalty",
+        str(args.reward_car_push_max_step_penalty),
+        "--reward-off-road-penalty",
+        str(args.reward_off_road_penalty),
+        "--reward-off-road-distance-penalty",
+        str(args.reward_off_road_distance_penalty),
+        "--reward-off-road-max-penalty",
+        str(args.reward_off_road_max_penalty),
     ]
     if episodes_per_map > 0:
         command.extend(["--episodes-per-map", str(episodes_per_map)])
@@ -1098,7 +1134,7 @@ def parse_args() -> argparse.Namespace:
         help="field size for the Java race environment",
     )
     parser.add_argument("--action-repeat", type=int, default=4)
-    parser.add_argument("--max-action-steps", type=int, default=6400)
+    parser.add_argument("--max-action-steps", type=int, default=19200)
     parser.add_argument(
         "--route-targets",
         type=int,
@@ -1142,7 +1178,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-step-penalty", type=float, default=0.006)
     parser.add_argument("--reward-progress", type=float, default=0.25)
     parser.add_argument("--reward-route-alignment", type=float, default=0.0)
-    parser.add_argument("--reward-route-target", type=float, default=30.0)
     parser.add_argument("--reward-steering-penalty", type=float, default=0.010)
     parser.add_argument("--reward-reverse-free-epsilon", type=float, default=0.20)
     parser.add_argument("--reward-reverse-penalty-per-unit", type=float, default=0.08)
