@@ -7,6 +7,8 @@ import com.badlogic.gdx.utils.Array;
 import java.util.Arrays;
 
 public final class ArenaMap {
+    public static final float ROUTE_CURVATURE_SAMPLE_RADIUS = 3.20f;
+    public static final float ROUTE_CURVATURE_ANGLE_NORMALIZER = 1.35f;
     private static final float APPROXIMATE_SAMPLES_PER_WORLD_UNIT = 12f;
     private static final int APPROXIMATE_MIN_GRID_SIZE = 96;
     private static final int APPROXIMATE_MAX_GRID_SIZE = 384;
@@ -598,6 +600,12 @@ public final class ArenaMap {
 
     public float getRouteCurvature(float progress) {
         return routeMetadata == null ? 0f : routeMetadata.sampleValue(progress, routeMetadata.curvature, 0f);
+    }
+
+    public float getRouteCurvaturePerWorldUnit(float progress) {
+        return getRouteCurvature(progress)
+                * ROUTE_CURVATURE_ANGLE_NORMALIZER
+                / (ROUTE_CURVATURE_SAMPLE_RADIUS * 2f);
     }
 
     public float getRouteNextCornerDistance(float progress) {

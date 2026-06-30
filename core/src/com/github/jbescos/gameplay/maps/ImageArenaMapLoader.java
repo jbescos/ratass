@@ -112,7 +112,6 @@ final class ImageArenaMapLoader {
     private static final int BLUE_ROUTE_HINT_MIN_DIAMETER_PIXELS = 18;
     private static final float ROUTE_METADATA_SAMPLE_STEP_WORLD = 0.75f;
     private static final float ROUTE_METADATA_TANGENT_SAMPLE_DISTANCE = 1.50f;
-    private static final float ROUTE_METADATA_CURVATURE_SAMPLE_DISTANCE = 3.20f;
     private static final float ROUTE_METADATA_CLEARANCE_DISTANCE = 24f;
     private static final float ROUTE_METADATA_CLEARANCE_STEP = 0.35f;
     private static final float ROUTE_METADATA_CLEARANCE_EDGE_MARGIN = 0.10f;
@@ -1354,18 +1353,22 @@ final class ImageArenaMapLoader {
                     routePoints,
                     cumulative,
                     routeLength,
-                    progress - ROUTE_METADATA_CURVATURE_SAMPLE_DISTANCE,
+                    progress - ArenaMap.ROUTE_CURVATURE_SAMPLE_RADIUS,
                     beforeTangent);
             sampleRouteTangent(
                     routePoints,
                     cumulative,
                     routeLength,
-                    progress + ROUTE_METADATA_CURVATURE_SAMPLE_DISTANCE,
+                    progress + ArenaMap.ROUTE_CURVATURE_SAMPLE_RADIUS,
                     afterTangent);
             float cross = beforeTangent.x * afterTangent.y - beforeTangent.y * afterTangent.x;
             float dot = beforeTangent.x * afterTangent.x + beforeTangent.y * afterTangent.y;
             float signedAngle = (float) Math.atan2(cross, dot);
-            curvature[i] = MathUtils.clamp(signedAngle / 1.35f, -1f, 1f);
+            curvature[i] =
+                    MathUtils.clamp(
+                            signedAngle / ArenaMap.ROUTE_CURVATURE_ANGLE_NORMALIZER,
+                            -1f,
+                            1f);
         }
 
         for (int i = 0; i < sampleCount; i++) {

@@ -18,7 +18,6 @@ DEFAULT_POLICY = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
 DEFAULT_ACTION_REPEAT = 4
 PHYSICS_STEP_SECONDS = 1.0 / 60.0
 OBS_CLOSE_CAR_THRESHOLD = 0.18
-OBS_TRACE_SIZE = 31
 REWARD_BUCKETS = (
     "route_progress",
     "step_cost",
@@ -218,16 +217,22 @@ def make_stats():
         "near_edge_fast_steps": 0,
         "braking_risk_steps": 0,
         "avg_route_alignment": 0.0,
-        "avg_route_lookahead_alignment": 0.0,
+        "avg_target_alignment": 0.0,
+        "avg_route_curvature": 0.0,
+        "avg_target_curvature": 0.0,
         "avg_route_left_clearance": 0.0,
         "avg_route_right_clearance": 0.0,
         "avg_lateral_slip": 0.0,
+        "avg_brake_demand": 0.0,
         "avg_edge_clearance": 0.0,
         "avg_left_road_clearance": 0.0,
         "avg_right_road_clearance": 0.0,
         "avg_front_road_clearance": 0.0,
         "avg_front_left_road_clearance": 0.0,
         "avg_front_right_road_clearance": 0.0,
+        "avg_trajectory_clearance": 0.0,
+        "avg_target_left_route_clearance": 0.0,
+        "avg_target_right_route_clearance": 0.0,
         "observation_samples": 0,
         "near_car_steps": 0,
         "close_car_steps": 0,
@@ -296,11 +301,18 @@ def trace_path(trace_dir: str, map_id: str, episode: int) -> Path:
     return directory / f"{map_id}-episode{episode:03d}.csv"
 
 
-def open_trace(trace_dir: str, map_id: str, episode: int, debug_trace_names):
+def open_trace(
+    trace_dir: str,
+    map_id: str,
+    episode: int,
+    observation_names,
+    debug_trace_names,
+):
     if not trace_dir:
         return None, None
     handle = trace_path(trace_dir, map_id, episode).open("w", encoding="utf-8", newline="")
     writer = csv.writer(handle)
+    observation_headers = [f"observation_{name}" for name in observation_names]
     debug_headers = [f"debug_{name}" for name in debug_trace_names]
     writer.writerow(
         [
@@ -320,44 +332,14 @@ def open_trace(trace_dir: str, map_id: str, episode: int, debug_trace_names):
             "turn",
             "effective_throttle",
             "effective_turn",
-            "route_progress_normalized",
-            "route_tangent_forward",
-            "route_tangent_side",
-            "route_lookahead_forward",
-            "route_lookahead_side",
-            "near_route_tangent_forward",
-            "near_route_tangent_side",
-            "far_route_tangent_forward",
-            "far_route_tangent_side",
-            "route_left_clearance",
-            "route_right_clearance",
-            "forward_speed",
-            "lateral_speed",
-            "angular_velocity",
-            "off_road",
-            "off_road_distance",
-            "edge_clearance",
-            "left_road_clearance",
-            "right_road_clearance",
-            "front_road_clearance",
-            "front_left_road_clearance",
-            "front_right_road_clearance",
-            "car_ray_forward",
-            "car_ray_front_left",
-            "car_ray_front_right",
-            "car_ray_left",
-            "car_ray_right",
-            "car_ray_rear",
-            "route_offset_forward",
-            "route_offset_side",
-            "slip_angle",
         ]
+        + observation_headers
         + debug_headers
     )
     return handle, writer
 
 
-def trace_step(writer, step, result, reward, throttle, turn):
+def trace_step(writer, step, result, reward, throttle, turn, observation_size):
     if writer is None:
         return
     observations = [float(value) for value in result.observations]
@@ -387,7 +369,7 @@ def trace_step(writer, step, result, reward, throttle, turn):
         ]
         + [
             f"{observations[index]:.6f}" if index < len(observations) else "0.000000"
-            for index in range(OBS_TRACE_SIZE)
+            for index in range(observation_size)
         ]
         + [
             f"{debug_trace[index]:.6f}" if index < len(debug_trace) else "0.000000"
@@ -396,37 +378,77 @@ def trace_step(writer, step, result, reward, throttle, turn):
     )
 
 
-def update_observation_stats(stats, result, controlled_agents: int, observation_size: int):
+def update_observation_stats(
+    stats,
+    result,
+    controlled_agents: int,
+    observation_size: int,
+    observation_indices,
+):
     observations = [float(value) for value in result.observations]
+
+    def value(offset, name, default=0.0):
+        index = observation_indices.get(name)
+        if index is None or offset + index >= len(observations):
+            return default
+        return observations[offset + index]
+
     for agent_index in range(controlled_agents):
         offset = agent_index * observation_size
         if offset + observation_size > len(observations):
             break
         stats["observation_samples"] += 1
-        forward_speed = observations[offset + 11]
-        front_road_clearance = observations[offset + 19]
-        edge_clearance = observations[offset + 16]
+        forward_speed = value(offset, "forward_speed")
+        trajectory_clearance = value(offset, "trajectory_clear", 1.0)
+        left_road_clearance = value(offset, "road_left", 1.0)
+        right_road_clearance = value(offset, "road_right", 1.0)
+        front_road_clearance = value(offset, "road_front", 1.0)
+        left_margin = value(offset, "route_left_margin", 1.0)
+        right_margin = value(offset, "route_right_margin", 1.0)
+        edge_clearance = min(left_road_clearance, right_road_clearance)
         stats["avg_edge_clearance"] += edge_clearance
-        stats["avg_route_alignment"] += observations[offset + 1]
-        stats["avg_route_lookahead_alignment"] += observations[offset + 3]
-        stats["avg_route_left_clearance"] += observations[offset + 9]
-        stats["avg_route_right_clearance"] += observations[offset + 10]
-        stats["avg_lateral_slip"] += abs(observations[offset + 12])
-        car_ray_distance = min(observations[offset + 22:offset + 28])
-        stats["avg_left_road_clearance"] += observations[offset + 17]
-        stats["avg_right_road_clearance"] += observations[offset + 18]
+        stats["avg_route_alignment"] += value(offset, "route_fwd")
+        stats["avg_target_alignment"] += value(offset, "target_fwd")
+        stats["avg_route_curvature"] += abs(value(offset, "route_curvature"))
+        stats["avg_target_curvature"] += abs(value(offset, "target_curvature"))
+        stats["avg_route_left_clearance"] += left_margin
+        stats["avg_route_right_clearance"] += right_margin
+        stats["avg_lateral_slip"] += abs(value(offset, "slip_angle"))
+        brake_demand = value(offset, "brake_demand")
+        stats["avg_brake_demand"] += brake_demand
+        car_ray_distance = min(
+            value(offset, name, 1.0)
+            for name in (
+                "car_front",
+                "car_front_left",
+                "car_front_right",
+                "car_left",
+                "car_right",
+            )
+        )
+        stats["avg_left_road_clearance"] += left_road_clearance
+        stats["avg_right_road_clearance"] += right_road_clearance
         stats["avg_front_road_clearance"] += front_road_clearance
-        stats["avg_front_left_road_clearance"] += observations[offset + 20]
-        stats["avg_front_right_road_clearance"] += observations[offset + 21]
+        stats["avg_front_left_road_clearance"] += value(offset, "road_front_left", 1.0)
+        stats["avg_front_right_road_clearance"] += value(offset, "road_front_right", 1.0)
+        stats["avg_trajectory_clearance"] += trajectory_clearance
+        stats["avg_target_left_route_clearance"] += value(
+            offset,
+            "target_route_left_clear",
+        )
+        stats["avg_target_right_route_clearance"] += value(
+            offset,
+            "target_route_right_clear",
+        )
         if front_road_clearance < 0.18:
             stats["lookahead_blocked_steps"] += 1
-        if observations[offset + 14] > 0.5:
+        if value(offset, "off_road_dist") > 0.0:
             stats["off_road_steps"] += 1
-        if edge_clearance < 0.25:
+        if edge_clearance < 0.15:
             stats["near_edge_steps"] += 1
-        if edge_clearance < 0.25 and forward_speed > 0.32:
+        if edge_clearance < 0.15 and forward_speed > 0.32:
             stats["near_edge_fast_steps"] += 1
-        if front_road_clearance < 0.82:
+        if brake_demand > 0.05:
             stats["braking_risk_steps"] += 1
         if car_ray_distance < 1.0:
             stats["near_car_steps"] += 1
@@ -462,6 +484,13 @@ def run_episode(
     small_actions = 0
     effective_small_actions = 0
     reward_breakdown_names = [str(name) for name in result.rewardBreakdownNames]
+    observation_names = [str(name) for name in environment.getObservationNames()]
+    if len(observation_names) != env_observation_size:
+        raise ValueError(
+            f"environment returned {len(observation_names)} observation names "
+            f"for {env_observation_size} values"
+        )
+    observation_indices = {name: index for index, name in enumerate(observation_names)}
     reward_breakdown_totals = [0.0 for _ in range(len(reward_breakdown_names) * controlled_agents)]
     last_raw_sign = 0
     last_effective_sign = 0
@@ -469,6 +498,7 @@ def run_episode(
         args.trace_dir,
         map_id,
         episode,
+        observation_names,
         [str(value) for value in result.debugTraceNames],
     )
     observation_buffers = [
@@ -517,8 +547,22 @@ def run_episode(
 
             result = environment.step(action_values)
             step_reward = sum(float(value) for value in result.rewards)
-            trace_step(trace_writer, steps + 1, result, step_reward, throttle, turn)
-            update_observation_stats(stats, result, controlled_agents, env_observation_size)
+            trace_step(
+                trace_writer,
+                steps + 1,
+                result,
+                step_reward,
+                throttle,
+                turn,
+                env_observation_size,
+            )
+            update_observation_stats(
+                stats,
+                result,
+                controlled_agents,
+                env_observation_size,
+                observation_indices,
+            )
 
             effective_throttle = float(result.effectiveActions[0])
             effective_sign = throttle_sign(effective_throttle, args.flip_deadzone)
@@ -617,10 +661,13 @@ def summary_metrics(stats, episodes_override: int = None):
         "near_edge_fast_fraction": stats["near_edge_fast_steps"] / observation_samples,
         "braking_risk_fraction": stats["braking_risk_steps"] / observation_samples,
         "avg_route_alignment": stats["avg_route_alignment"] / observation_samples,
-        "avg_route_lookahead_alignment": stats["avg_route_lookahead_alignment"] / observation_samples,
+        "avg_target_alignment": stats["avg_target_alignment"] / observation_samples,
+        "avg_route_curvature": stats["avg_route_curvature"] / observation_samples,
+        "avg_target_curvature": stats["avg_target_curvature"] / observation_samples,
         "avg_route_left_clearance": stats["avg_route_left_clearance"] / observation_samples,
         "avg_route_right_clearance": stats["avg_route_right_clearance"] / observation_samples,
         "avg_lateral_slip": stats["avg_lateral_slip"] / observation_samples,
+        "avg_brake_demand": stats["avg_brake_demand"] / observation_samples,
         "avg_edge_clearance": stats["avg_edge_clearance"] / observation_samples,
         "avg_left_road_clearance": stats["avg_left_road_clearance"] / observation_samples,
         "avg_right_road_clearance": stats["avg_right_road_clearance"] / observation_samples,
@@ -629,6 +676,11 @@ def summary_metrics(stats, episodes_override: int = None):
             stats["avg_front_left_road_clearance"] / observation_samples,
         "avg_front_right_road_clearance":
             stats["avg_front_right_road_clearance"] / observation_samples,
+        "avg_trajectory_clearance": stats["avg_trajectory_clearance"] / observation_samples,
+        "avg_target_left_route_clearance":
+            stats["avg_target_left_route_clearance"] / observation_samples,
+        "avg_target_right_route_clearance":
+            stats["avg_target_right_route_clearance"] / observation_samples,
         "near_car_fraction": stats["near_car_steps"] / observation_samples,
         "close_car_fraction": stats["close_car_steps"] / observation_samples,
     }
@@ -644,7 +696,7 @@ def evaluation_score(stats, episodes_override: int = None) -> float:
         + metrics["success_rate"] * 80.0
         + metrics["progress_avg"] * 0.3
         + metrics["avg_route_alignment"] * 10.0
-        + metrics["avg_route_lookahead_alignment"] * 5.0
+        + metrics["avg_target_alignment"] * 5.0
         - metrics["off_road_fraction"] * 12.0
         - metrics["effective_flips_per_step"] * 35.0
     )
@@ -670,15 +722,18 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"near_edge_fraction={metrics['near_edge_fraction']:.3f} "
         f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "
         f"braking_risk_fraction={metrics['braking_risk_fraction']:.3f} "
+        f"avg_brake_demand={metrics['avg_brake_demand']:.3f} "
         f"avg_route_alignment={metrics['avg_route_alignment']:.3f} "
-        f"avg_route_lookahead_alignment={metrics['avg_route_lookahead_alignment']:.3f} "
+        f"avg_target_alignment={metrics['avg_target_alignment']:.3f} "
+        f"avg_route_curvature={metrics['avg_route_curvature']:.3f} "
+        f"avg_target_curvature={metrics['avg_target_curvature']:.3f} "
         f"avg_lateral_slip={metrics['avg_lateral_slip']:.3f} "
         f"avg_edge_clearance={metrics['avg_edge_clearance']:.3f} "
         f"avg_left_road_clearance={metrics['avg_left_road_clearance']:.3f} "
         f"avg_right_road_clearance={metrics['avg_right_road_clearance']:.3f} "
         f"avg_front_road_clearance={metrics['avg_front_road_clearance']:.3f} "
-        f"avg_front_left_road_clearance={metrics['avg_front_left_road_clearance']:.3f} "
-        f"avg_front_right_road_clearance={metrics['avg_front_right_road_clearance']:.3f} "
+        f"avg_target_left_route_clearance={metrics['avg_target_left_route_clearance']:.3f} "
+        f"avg_target_right_route_clearance={metrics['avg_target_right_route_clearance']:.3f} "
         f"near_car_fraction={metrics['near_car_fraction']:.3f} "
         f"close_car_fraction={metrics['close_car_fraction']:.3f} "
         + " ".join(
@@ -779,10 +834,13 @@ def print_evaluation_tables(total_stats, per_map) -> None:
                 scope,
                 format_table_number(metrics["progress_avg"]),
                 format_table_number(metrics["avg_route_alignment"]),
-                format_table_number(metrics["avg_route_lookahead_alignment"]),
+                format_table_number(metrics["avg_target_alignment"]),
+                format_table_number(metrics["avg_route_curvature"]),
+                format_table_number(metrics["avg_target_curvature"]),
                 format_table_number(metrics["avg_route_left_clearance"]),
                 format_table_number(metrics["avg_route_right_clearance"]),
                 format_table_number(metrics["avg_edge_clearance"]),
+                format_table_number(metrics["avg_trajectory_clearance"]),
                 format_table_number(metrics["avg_front_road_clearance"]),
                 format_table_number(metrics["avg_left_road_clearance"]),
                 format_table_number(metrics["avg_right_road_clearance"]),
@@ -790,6 +848,7 @@ def print_evaluation_tables(total_stats, per_map) -> None:
                 format_table_number(metrics["avg_front_right_road_clearance"]),
                 format_table_number(metrics["near_edge_fraction"]),
                 format_table_number(metrics["near_edge_fast_fraction"]),
+                format_table_number(metrics["avg_brake_demand"]),
                 format_table_number(metrics["braking_risk_fraction"]),
                 format_table_number(metrics["avg_lateral_slip"]),
             ]
@@ -828,10 +887,13 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "scope",
             "progress",
             "route_align",
-            "lookahead",
-            "route_left",
-            "route_right",
-            "edge_clear",
+            "target_align",
+            "curve_now",
+            "curve_target",
+            "margin_left",
+            "margin_right",
+            "margin_min",
+            "trajectory",
             "road_front",
             "road_left",
             "road_right",
@@ -839,11 +901,12 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "road_fr",
             "near_edge",
             "edge_fast",
+            "brake_d",
             "brake_risk",
             "lat_slip",
         ],
         driving_rows,
-        right_aligned=set(range(1, 16)),
+        right_aligned=set(range(1, 20)),
     )
     print_table(
         "evaluation_rewards",
@@ -885,6 +948,7 @@ def print_evaluation_score(stats):
         f"near_car_fraction={metrics['near_car_fraction']:.3f} "
         f"close_car_fraction={metrics['close_car_fraction']:.3f} "
         f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "
+        f"avg_brake_demand={metrics['avg_brake_demand']:.3f} "
         f"braking_risk_fraction={metrics['braking_risk_fraction']:.3f}",
         flush=True,
     )
