@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import pickle
+import re
 from pathlib import Path
 from typing import Dict, Iterable
 
@@ -19,11 +20,11 @@ DEFAULT_OUTPUT = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
 OBSERVATION_SIZE = 31
 ACTION_SIZE = 2
 
-ACTOR_LAYERS = (
-    (("encoder.encoder.net.mlp.0", "encoder.actor_encoder.net.mlp.0"), "tanh"),
-    (("encoder.encoder.net.mlp.2", "encoder.actor_encoder.net.mlp.2"), "tanh"),
-    (("pi.net.mlp.0",), "linear"),
+ACTOR_ENCODER_PREFIXES = (
+    "encoder.encoder.net.mlp",
+    "encoder.actor_encoder.net.mlp",
 )
+SUPPORTED_ACTIVATIONS = ("tanh", "relu", "silu", "swish", "linear")
 
 
 def flatten(values: np.ndarray) -> Iterable[float]:
@@ -39,12 +40,14 @@ def resolve_layer_prefix(state: Dict[str, np.ndarray], prefixes: Iterable[str]) 
 
 
 def layer_from_state(state: Dict[str, np.ndarray], prefixes: Iterable[str], activation: str) -> Dict:
+    prefixes = tuple(prefixes)
     prefix = resolve_layer_prefix(state, prefixes)
     weights = state[f"{prefix}.weight"]
     bias = state[f"{prefix}.bias"]
     if len(weights.shape) != 2:
         raise ValueError(f"{prefix}.weight is not a matrix: {weights.shape}")
-    if prefix in ACTOR_LAYERS[0][0] and weights.shape[1] != OBSERVATION_SIZE:
+    if any(prefix == f"{base}.0" for base in ACTOR_ENCODER_PREFIXES) \
+            and weights.shape[1] != OBSERVATION_SIZE:
         raise ValueError(
             f"unsupported actor input size {weights.shape[1]}; expected {OBSERVATION_SIZE}"
         )
@@ -57,6 +60,45 @@ def layer_from_state(state: Dict[str, np.ndarray], prefixes: Iterable[str], acti
         "weights": list(flatten(weights)),
         "bias": list(flatten(bias)),
     }
+
+
+def actor_layers(state: Dict[str, np.ndarray], hidden_activation: str):
+    if hidden_activation not in SUPPORTED_ACTIVATIONS:
+        raise ValueError(
+            f"Unsupported hidden activation {hidden_activation!r}; "
+            f"expected one of {', '.join(SUPPORTED_ACTIVATIONS)}"
+        )
+
+    selected_base = next(
+        (
+            base
+            for base in ACTOR_ENCODER_PREFIXES
+            if any(key.startswith(f"{base}.") and key.endswith(".weight") for key in state)
+        ),
+        None,
+    )
+    if selected_base is None:
+        raise KeyError("No actor encoder layers were found in the checkpoint")
+
+    pattern = re.compile(rf"^{re.escape(selected_base)}\.(\d+)\.weight$")
+    indices = sorted(
+        int(match.group(1))
+        for key in state
+        if (match := pattern.match(key)) is not None
+    )
+    if not indices:
+        raise KeyError("No actor encoder weight matrices were found in the checkpoint")
+
+    layers = [
+        layer_from_state(
+            state,
+            tuple(f"{base}.{index}" for base in ACTOR_ENCODER_PREFIXES),
+            hidden_activation,
+        )
+        for index in indices
+    ]
+    layers.append(layer_from_state(state, ("pi.net.mlp.0",), "linear"))
+    return layers
 
 
 def load_policy_state(checkpoint_dir: Path) -> Dict[str, np.ndarray]:
@@ -77,12 +119,14 @@ def load_policy_state(checkpoint_dir: Path) -> Dict[str, np.ndarray]:
         return pickle.load(handle)
 
 
-def export_policy(checkpoint_dir: Path, output_file: Path, objective: str) -> None:
+def export_policy(
+    checkpoint_dir: Path,
+    output_file: Path,
+    objective: str,
+    hidden_activation: str = "tanh",
+) -> None:
     state = load_policy_state(checkpoint_dir)
-    layers = [
-        layer_from_state(state, prefix, activation)
-        for prefix, activation in ACTOR_LAYERS
-    ]
+    layers = actor_layers(state, hidden_activation)
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -108,12 +152,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-dir", default=os.fspath(DEFAULT_CHECKPOINT))
     parser.add_argument("--output", default=os.fspath(DEFAULT_OUTPUT))
     parser.add_argument("--objective", default="race-route-progress-v1")
+    parser.add_argument(
+        "--hidden-activation",
+        choices=SUPPORTED_ACTIVATIONS,
+        default="tanh",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    export_policy(Path(args.checkpoint_dir), Path(args.output), args.objective)
+    export_policy(
+        Path(args.checkpoint_dir),
+        Path(args.output),
+        args.objective,
+        args.hidden_activation,
+    )
 
 
 if __name__ == "__main__":

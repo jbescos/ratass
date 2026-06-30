@@ -52,6 +52,17 @@ public final class RlPolicy {
                             + " does not match observation size "
                             + observationSize);
         }
+        for (int i = 1; i < layers.length; i++) {
+            if (layers[i].inputSize != layers[i - 1].outputSize) {
+                throw new IllegalArgumentException(
+                        "RL policy layer "
+                                + i
+                                + " input size "
+                                + layers[i].inputSize
+                                + " does not match previous output size "
+                                + layers[i - 1].outputSize);
+            }
+        }
         if (layers[layers.length - 1].outputSize < actionSize) {
             throw new IllegalArgumentException("RL policy output is smaller than the action size.");
         }
@@ -116,19 +127,19 @@ public final class RlPolicy {
         private final int outputSize;
         private final float[] weights;
         private final float[] bias;
-        private final boolean tanhActivation;
+        private final Activation activation;
 
         private Layer(
                 int inputSize,
                 int outputSize,
                 float[] weights,
                 float[] bias,
-                boolean tanhActivation) {
+                Activation activation) {
             this.inputSize = inputSize;
             this.outputSize = outputSize;
             this.weights = weights;
             this.bias = bias;
-            this.tanhActivation = tanhActivation;
+            this.activation = activation;
         }
 
         private static Layer fromJson(JsonValue json) {
@@ -147,7 +158,7 @@ public final class RlPolicy {
                     outputSize,
                     weights,
                     bias,
-                    "tanh".equals(json.getString("activation", "linear")));
+                    Activation.fromName(json.getString("activation", "linear")));
         }
 
         private void forward(float[] input, float[] output) {
@@ -157,8 +168,53 @@ public final class RlPolicy {
                 for (int column = 0; column < inputSize; column++) {
                     sum += weights[weightOffset + column] * input[column];
                 }
-                output[row] = tanhActivation ? (float) Math.tanh(sum) : sum;
+                output[row] = activation.apply(sum);
             }
+        }
+    }
+
+    private enum Activation {
+        LINEAR {
+            @Override
+            float apply(float value) {
+                return value;
+            }
+        },
+        TANH {
+            @Override
+            float apply(float value) {
+                return (float) Math.tanh(value);
+            }
+        },
+        RELU {
+            @Override
+            float apply(float value) {
+                return Math.max(0f, value);
+            }
+        },
+        SILU {
+            @Override
+            float apply(float value) {
+                return value / (1f + (float) Math.exp(-value));
+            }
+        };
+
+        abstract float apply(float value);
+
+        private static Activation fromName(String name) {
+            if ("linear".equals(name)) {
+                return LINEAR;
+            }
+            if ("tanh".equals(name)) {
+                return TANH;
+            }
+            if ("relu".equals(name)) {
+                return RELU;
+            }
+            if ("silu".equals(name) || "swish".equals(name)) {
+                return SILU;
+            }
+            throw new IllegalArgumentException("Unsupported RL policy activation: " + name);
         }
     }
 }

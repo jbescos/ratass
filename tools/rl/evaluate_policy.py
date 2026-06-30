@@ -27,12 +27,19 @@ REWARD_BUCKETS = (
     "reverse_speed",
     "car_push",
     "route_alignment",
+    "no_progress",
+    "off_road_recovery",
+    "off_road_failure",
 )
 
 
 def start_jvm(jar_path: Path) -> None:
     if not jpype.isJVMStarted():
-        jpype.startJVM(classpath=[str(jar_path)])
+        max_heap = os.environ.get("RATASS_RL_JVM_MAX_HEAP", "512m").strip()
+        jvm_args = ["-Xrs"]
+        if max_heap:
+            jvm_args.append(f"-Xmx{max_heap}")
+        jpype.startJVM(*jvm_args, classpath=[str(jar_path)])
         configure_libgdx_files()
 
 
@@ -64,6 +71,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--field-size", type=int, default=None)
     parser.add_argument("--steps", type=int, default=None)
+    parser.add_argument(
+        "--no-progress-max-action-steps",
+        type=int,
+        default=600,
+    )
+    parser.add_argument(
+        "--off-road-failure-max-action-steps",
+        type=int,
+        default=45,
+    )
     parser.add_argument(
         "--action-repeat",
         type=int,
@@ -133,6 +150,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-off-road-penalty", type=float, default=0.80)
     parser.add_argument("--reward-off-road-distance-penalty", type=float, default=0.22)
     parser.add_argument("--reward-off-road-max-penalty", type=float, default=5.0)
+    parser.add_argument("--reward-no-progress-penalty", type=float, default=50.0)
+    parser.add_argument("--reward-off-road-recovery", type=float, default=4.0)
+    parser.add_argument("--reward-off-road-failure-penalty", type=float, default=50.0)
     return parser.parse_args()
 
 
@@ -146,19 +166,21 @@ def select_map(ratass_game, map_id: str):
     if not map_id:
         return None
     arena_maps = jpype.JClass("com.github.jbescos.gameplay.maps.ArenaMaps")
-    for maps in (arena_maps.createHeadlessTrainingSet(), arena_maps.createDefaultSet()):
-        for index in range(int(maps.size)):
-            arena_map = maps.get(index)
-            if str(arena_map.getId()) == map_id:
-                return arena_map
-    raise ValueError(f"Unknown map id {map_id!r}")
+    maps = arena_maps.createSelectedSet(map_id)
+    return maps.get(0)
 
 
 def select_maps(ratass_game, map_ids: str):
     ids = [map_id.strip() for map_id in map_ids.split(",") if map_id.strip()]
     if not ids:
         return []
-    return [select_map(ratass_game, map_id) for map_id in ids]
+    arena_maps = jpype.JClass("com.github.jbescos.gameplay.maps.ArenaMaps")
+    maps = arena_maps.createSelectedSet(",".join(ids))
+    maps_by_id = {
+        str(maps.get(index).getId()): maps.get(index)
+        for index in range(int(maps.size))
+    }
+    return [maps_by_id[map_id] for map_id in ids]
 
 
 def make_stats():
@@ -187,6 +209,9 @@ def make_stats():
         "reverse_speed": 0.0,
         "car_push": 0.0,
         "route_alignment": 0.0,
+        "no_progress": 0.0,
+        "off_road_recovery": 0.0,
+        "off_road_failure": 0.0,
         "lookahead_blocked_steps": 0,
         "off_road_steps": 0,
         "near_edge_steps": 0,
@@ -230,6 +255,8 @@ def build_config(
         .withFieldSize(field_size)
         .withActionRepeat(max(1, args.action_repeat))
         .withMaxActionSteps(steps_limit)
+        .withNoProgressMaxActionSteps(args.no_progress_max_action_steps)
+        .withOffRoadFailureMaxActionSteps(args.off_road_failure_max_action_steps)
         .withRouteTargets(args.route_targets)
         .withRouteTargetFraction(float(args.route_target_fraction))
         .withRaceMode(True)
@@ -254,6 +281,9 @@ def build_config(
             float(args.reward_off_road_distance_penalty),
             float(args.reward_off_road_max_penalty),
         )
+        .withNoProgressPenalty(float(args.reward_no_progress_penalty))
+        .withOffRoadRecoveryReward(float(args.reward_off_road_recovery))
+        .withOffRoadFailurePenalty(float(args.reward_off_road_failure_penalty))
     )
     if arena_map is not None:
         config.addMap(arena_map)
@@ -283,6 +313,9 @@ def open_trace(trace_dir: str, map_id: str, episode: int, debug_trace_names):
             "reverse_speed",
             "car_push",
             "route_alignment",
+            "no_progress",
+            "off_road_recovery",
+            "off_road_failure",
             "throttle",
             "turn",
             "effective_throttle",
@@ -344,6 +377,9 @@ def trace_step(writer, step, result, reward, throttle, turn):
             f"{breakdown[4]:.6f}" if len(breakdown) > 4 else "0.000000",
             f"{breakdown[5]:.6f}" if len(breakdown) > 5 else "0.000000",
             f"{breakdown[6]:.6f}" if len(breakdown) > 6 else "0.000000",
+            f"{breakdown[7]:.6f}" if len(breakdown) > 7 else "0.000000",
+            f"{breakdown[8]:.6f}" if len(breakdown) > 8 else "0.000000",
+            f"{breakdown[9]:.6f}" if len(breakdown) > 9 else "0.000000",
             f"{throttle:.6f}",
             f"{turn:.6f}",
             f"{effective_throttle:.6f}",
@@ -435,29 +471,35 @@ def run_episode(
         episode,
         [str(value) for value in result.debugTraceNames],
     )
+    observation_buffers = [
+        java_float_array(env_observation_size) for _ in range(controlled_agents)
+    ]
+    scratch_a_buffers = [java_float_array(scratch_size) for _ in range(controlled_agents)]
+    scratch_b_buffers = [java_float_array(scratch_size) for _ in range(controlled_agents)]
+    decisions = [ai_control_decision() for _ in range(controlled_agents)]
+    action_values = java_float_array(controlled_agents * 2)
 
     try:
         while not result.episodeDone and steps < steps_limit:
-            flat_observations = [float(value) for value in result.observations]
-            action_values = []
             throttle = 0.0
             turn = 0.0
             for agent_index in range(controlled_agents):
                 offset = agent_index * env_observation_size
-                observation = java_float_array(
-                    flat_observations[offset : offset + env_observation_size]
-                )
-                scratch_a = java_float_array(scratch_size)
-                scratch_b = java_float_array(scratch_size)
+                observation = observation_buffers[agent_index]
+                for observation_index in range(env_observation_size):
+                    observation[observation_index] = result.observations[
+                        offset + observation_index
+                    ]
                 decision = policy.computeAction(
                     observation,
-                    scratch_a,
-                    scratch_b,
-                    ai_control_decision(),
+                    scratch_a_buffers[agent_index],
+                    scratch_b_buffers[agent_index],
+                    decisions[agent_index],
                 )
                 agent_throttle = float(decision.throttle)
                 agent_turn = float(decision.turn)
-                action_values.extend([agent_throttle, agent_turn])
+                action_values[agent_index * 2] = agent_throttle
+                action_values[agent_index * 2 + 1] = agent_turn
                 if agent_index == 0:
                     throttle = agent_throttle
                     turn = agent_turn
@@ -473,7 +515,7 @@ def run_episode(
             if abs(throttle) < args.flip_deadzone:
                 small_actions += 1
 
-            result = environment.step(java_float_array(action_values))
+            result = environment.step(action_values)
             step_reward = sum(float(value) for value in result.rewards)
             trace_step(trace_writer, steps + 1, result, step_reward, throttle, turn)
             update_observation_stats(stats, result, controlled_agents, env_observation_size)
@@ -649,6 +691,9 @@ def print_summary(label: str, stats, episodes_override: int = None):
                 "reverse_speed",
                 "car_push",
                 "route_alignment",
+                "no_progress",
+                "off_road_recovery",
+                "off_road_failure",
             )
             if name in stats
         ),
@@ -811,9 +856,12 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "reverse",
             "car_push",
             "align",
+            "no_progress",
+            "off_road_recovery",
+            "off_road_failure",
         ],
         reward_rows,
-        right_aligned=set(range(1, 8)),
+        right_aligned=set(range(1, 11)),
     )
 
 

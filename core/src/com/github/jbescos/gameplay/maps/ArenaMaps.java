@@ -6,6 +6,7 @@ import com.badlogic.gdx.utils.Array;
 import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.ArenaShape;
 import com.github.jbescos.gameplay.SpawnPoint;
+import java.util.HashSet;
 
 public final class ArenaMaps {
     private static final float DEFAULT_MAP_SCALE = 8f;
@@ -51,6 +52,54 @@ public final class ArenaMaps {
         maps.add(createTrainingBox(scale));
         maps.add(createTrainingBowl(scale));
         return maps;
+    }
+
+    public static Array<ArenaMap> createSelectedSet(String commaSeparatedMapIds) {
+        HashSet<String> requestedIds = new HashSet<String>();
+        if (commaSeparatedMapIds != null) {
+            String[] tokens = commaSeparatedMapIds.split(",");
+            for (int i = 0; i < tokens.length; i++) {
+                String mapId = tokens[i].trim();
+                if (!mapId.isEmpty()) {
+                    requestedIds.add(mapId);
+                }
+            }
+        }
+        if (requestedIds.isEmpty()) {
+            return createHeadlessTrainingSet();
+        }
+        if (Gdx.files == null) {
+            throw new IllegalStateException("Selected picture maps require Gdx.files.");
+        }
+
+        Array<ArenaMap> selected = new Array<ArenaMap>();
+        HashSet<String> foundIds = new HashSet<String>();
+        Array<ArenaMap> trainingMaps =
+                ImageArenaMapLoader.loadTrainingMaps(DEFAULT_MAP_SCALE, requestedIds);
+        Array<ArenaMap> gameMaps =
+                ImageArenaMapLoader.loadDefaultMaps(DEFAULT_MAP_SCALE, requestedIds);
+        addSelectedMaps(selected, foundIds, trainingMaps, requestedIds);
+        addSelectedMaps(selected, foundIds, gameMaps, requestedIds);
+
+        HashSet<String> missingIds = new HashSet<String>(requestedIds);
+        missingIds.removeAll(foundIds);
+        if (!missingIds.isEmpty()) {
+            throw new IllegalArgumentException("Unknown map id(s): " + missingIds);
+        }
+        return selected;
+    }
+
+    private static void addSelectedMaps(
+            Array<ArenaMap> destination,
+            HashSet<String> foundIds,
+            Array<ArenaMap> candidates,
+            HashSet<String> requestedIds) {
+        for (int i = 0; i < candidates.size; i++) {
+            ArenaMap map = candidates.get(i);
+            if (requestedIds.contains(map.getId()) && foundIds.add(map.getId())) {
+                destination.add(map);
+            }
+        }
     }
 
     private static ArenaMap createTrainingBox(float scale) {

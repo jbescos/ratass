@@ -149,14 +149,30 @@ final class ImageArenaMapLoader {
         return loadMapsFromDirectory(MAPS_DIRECTORY, mapScale, true);
     }
 
+    static Array<ArenaMap> loadDefaultMaps(float mapScale, HashSet<String> selectedIds) {
+        return loadMapsFromDirectory(MAPS_DIRECTORY, mapScale, true, selectedIds);
+    }
+
     static Array<ArenaMap> loadTrainingMaps(float mapScale) {
         return loadMapsFromDirectory(TRAINING_MAPS_DIRECTORY, mapScale, false);
+    }
+
+    static Array<ArenaMap> loadTrainingMaps(float mapScale, HashSet<String> selectedIds) {
+        return loadMapsFromDirectory(TRAINING_MAPS_DIRECTORY, mapScale, false, selectedIds);
     }
 
     private static Array<ArenaMap> loadMapsFromDirectory(
             String directoryPath,
             float mapScale,
             boolean requireMaps) {
+        return loadMapsFromDirectory(directoryPath, mapScale, requireMaps, null);
+    }
+
+    private static Array<ArenaMap> loadMapsFromDirectory(
+            String directoryPath,
+            float mapScale,
+            boolean requireMaps,
+            HashSet<String> selectedIds) {
         if (Gdx.files == null) {
             throw new IllegalStateException("Picture maps require Gdx.files to be available.");
         }
@@ -175,7 +191,12 @@ final class ImageArenaMapLoader {
 
         Array<ArenaMap> maps = new Array<ArenaMap>();
         for (int i = 0; i < maskFiles.size; i++) {
-            maps.add(loadMap(maskFiles.get(i), scale));
+            FileHandle maskFile = maskFiles.get(i);
+            String fileName = maskFile.name();
+            String mapId = fileName.substring(0, fileName.length() - MASK_SUFFIX.length());
+            if (selectedIds == null || selectedIds.contains(mapId)) {
+                maps.add(loadMap(maskFile, scale));
+            }
         }
         return maps;
     }

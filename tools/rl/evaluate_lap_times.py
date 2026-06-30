@@ -103,7 +103,11 @@ def start_jvm(jar_path: Path) -> None:
         return
     if not jar_path.exists():
         raise FileNotFoundError(f"{jar_path} does not exist. Run `mvn -pl desktop -am package` first.")
-    jpype.startJVM(jpype.getDefaultJVMPath(), "-Xrs", classpath=[str(jar_path)])
+    max_heap = os.environ.get("RATASS_RL_JVM_MAX_HEAP", "512m").strip()
+    jvm_args = ["-Xrs"]
+    if max_heap:
+        jvm_args.append(f"-Xmx{max_heap}")
+    jpype.startJVM(jpype.getDefaultJVMPath(), *jvm_args, classpath=[str(jar_path)])
     jpype.JClass("com.badlogic.gdx.utils.GdxNativesLoader").load()
     gdx = jpype.JClass("com.badlogic.gdx.Gdx")
     if gdx.files is None:
@@ -145,6 +149,15 @@ def add_maps(target: list, source, seen: set[str]) -> None:
 
 def selected_maps(map_source: str, map_ids: str):
     arena_maps = jpype.JClass("com.github.jbescos.gameplay.maps.ArenaMaps")
+    requested = [value.strip() for value in map_ids.split(",") if value.strip()]
+    if requested:
+        selected = arena_maps.createSelectedSet(",".join(requested))
+        by_id = {
+            str(selected.get(index).getId()): selected.get(index)
+            for index in range(int(selected.size))
+        }
+        return [by_id[map_id] for map_id in requested]
+
     maps = []
     seen: set[str] = set()
     if map_source in ("all", "game"):
@@ -152,16 +165,7 @@ def selected_maps(map_source: str, map_ids: str):
     if map_source in ("all", "training"):
         add_maps(maps, arena_maps.createHeadlessTrainingSet(), seen)
 
-    requested = [value.strip() for value in map_ids.split(",") if value.strip()]
-    if not requested:
-        return maps
-
-    by_id = {str(arena_map.getId()): arena_map for arena_map in maps}
-    missing = [map_id for map_id in requested if map_id not in by_id]
-    if missing:
-        available = ",".join(sorted(by_id))
-        raise ValueError(f"Unknown map id(s) {','.join(missing)}. Available: {available}")
-    return [by_id[map_id] for map_id in requested]
+    return maps
 
 
 def load_policy(policy_path: Path):
@@ -218,6 +222,11 @@ def run_lap_timing(args: argparse.Namespace, arena_map, profile: str, policy) ->
                 f"policy observation size {policy_observation_size} != env {env_observation_size}",
             )
 
+        observation = java_float_array(env_observation_size)
+        scratch_a = java_float_array(scratch_size)
+        scratch_b = java_float_array(scratch_size)
+        decision_buffer = ai_control_decision()
+        action_buffer = java_float_array(2)
         while not result.episodeDone and (args.steps <= 0 or int(result.actionStep) < args.steps):
             if args.timeout_seconds > 0 and time.monotonic() - started_at >= args.timeout_seconds:
                 return TimedRun(
@@ -230,17 +239,17 @@ def run_lap_timing(args: argparse.Namespace, arena_map, profile: str, policy) ->
                     args.laps,
                     "timedout",
                 )
-            flat_observations = [float(value) for value in result.observations]
-            observation = java_float_array(flat_observations[:env_observation_size])
-            scratch_a = java_float_array(scratch_size)
-            scratch_b = java_float_array(scratch_size)
+            for observation_index in range(env_observation_size):
+                observation[observation_index] = result.observations[observation_index]
             decision = policy.computeAction(
                 observation,
                 scratch_a,
                 scratch_b,
-                ai_control_decision(),
+                decision_buffer,
             )
-            result = env.step(java_float_array([float(decision.throttle), float(decision.turn)]))
+            action_buffer[0] = decision.throttle
+            action_buffer[1] = decision.turn
+            result = env.step(action_buffer)
             total_time = int(result.actionStep) * max(1, args.action_repeat) * PHYSICS_STEP_SECONDS
             reached = int(result.routeTargetsReached[0]) if len(result.routeTargetsReached) > 0 else 0
             while len(lap_times) < args.laps and reached >= (len(lap_times) + 1):

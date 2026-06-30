@@ -1087,6 +1087,9 @@ route_targets="${RL_ROUTE_TARGETS:-6}"
 route_target_fraction="${RL_ROUTE_TARGET_FRACTION:-0}"
 train_batch_size="${RL_TRAIN_BATCH_SIZE:-4096}"
 minibatch_size="${RL_MINIBATCH_SIZE:-512}"
+num_epochs="${RL_NUM_EPOCHS:-30}"
+grad_clip="${RL_GRAD_CLIP:-40.0}"
+vf_clip_param="${RL_VF_CLIP_PARAM:-100.0}"
 lr="${RL_LR:-3e-4}"
 gamma="${RL_GAMMA:-0.995}"
 entropy_coeff="${RL_ENTROPY_COEFF:-0.005}"
@@ -1105,6 +1108,7 @@ ray_num_cpus="${RL_RAY_NUM_CPUS:-0}"
 ray_temp_dir="${RL_RAY_TEMP_DIR:-}"
 ray_node_ip="${RL_RAY_NODE_IP:-127.0.0.1}"
 sample_timeout_s="${RL_SAMPLE_TIMEOUT_S:-600}"
+jvm_max_heap="${RL_JVM_MAX_HEAP:-512m}"
 build_before_training="${RL_BUILD_BEFORE_TRAINING:-1}"
 regenerate_map_caches="${RL_REGENERATE_MAP_CACHES:-0}"
 desktop_jar="${RL_JAR:-desktop/target/ratass-desktop-1.0.jar}"
@@ -1121,6 +1125,8 @@ best_eval_state="${RL_BEST_EVAL_STATE:-}"
 best_eval_ignore_installed="${RL_BEST_EVAL_IGNORE_INSTALLED:-1}"
 seed="${RL_SEED:-}"
 route_target_max_action_steps="${RL_ROUTE_TARGET_MAX_ACTION_STEPS:-auto}"
+no_progress_max_action_steps="${RL_NO_PROGRESS_MAX_ACTION_STEPS:-600}"
+off_road_failure_max_action_steps="${RL_OFF_ROAD_FAILURE_MAX_ACTION_STEPS:-45}"
 reward_step_penalty="${RL_REWARD_STEP_PENALTY:-0.006}"
 reward_progress="${RL_REWARD_PROGRESS:-0.25}"
 reward_route_alignment="${RL_REWARD_ROUTE_ALIGNMENT:-0.0}"
@@ -1133,6 +1139,9 @@ reward_car_push_max_step_penalty="${RL_REWARD_CAR_PUSH_MAX_STEP_PENALTY:-8.0}"
 reward_off_road_penalty="${RL_REWARD_OFF_ROAD_PENALTY:-0.80}"
 reward_off_road_distance_penalty="${RL_REWARD_OFF_ROAD_DISTANCE_PENALTY:-0.22}"
 reward_off_road_max_penalty="${RL_REWARD_OFF_ROAD_MAX_PENALTY:-5.0}"
+reward_no_progress_penalty="${RL_REWARD_NO_PROGRESS_PENALTY:-50.0}"
+reward_off_road_recovery="${RL_REWARD_OFF_ROAD_RECOVERY:-4.0}"
+reward_off_road_failure_penalty="${RL_REWARD_OFF_ROAD_FAILURE_PENALTY:-50.0}"
 
 map_ids="$(resolve_map_ids_setting "${map_ids}")"
 best_eval_map_ids="$(resolve_map_ids_setting "${best_eval_map_ids}")"
@@ -1203,7 +1212,9 @@ fi
 
 checkpoint_file="${checkpoint_dir}/rllib_checkpoint.json"
 
-echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} spawn_mode=${race_spawn_mode} random_race_spawns=${random_race_spawns} seed=${seed} spawn_seed_file=${route_spawn_seed_file:-none} route_targets=${route_targets} route_target_fraction=${route_target_fraction} max_action_steps=${max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all}"
+echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} spawn_mode=${race_spawn_mode} random_race_spawns=${random_race_spawns} seed=${seed} spawn_seed_file=${route_spawn_seed_file:-none} route_targets=${route_targets} route_target_fraction=${route_target_fraction} max_action_steps=${max_action_steps} no_progress_max_action_steps=${no_progress_max_action_steps} off_road_failure_max_action_steps=${off_road_failure_max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} epochs=${num_epochs} grad_clip=${grad_clip} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} jvm_heap=${jvm_max_heap} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all}"
+
+export RATASS_RL_JVM_MAX_HEAP="${jvm_max_heap}"
 
 common_args=(
   --checkpoint-dir "${checkpoint_dir}"
@@ -1212,11 +1223,16 @@ common_args=(
   --field-size "${field_size}"
   --action-repeat "${action_repeat}"
   --max-action-steps "${max_action_steps}"
+  --no-progress-max-action-steps "${no_progress_max_action_steps}"
+  --off-road-failure-max-action-steps "${off_road_failure_max_action_steps}"
   --route-targets "${route_targets}"
   --route-target-fraction "${route_target_fraction}"
   --seed "${seed}"
   --train-batch-size "${train_batch_size}"
   --minibatch-size "${minibatch_size}"
+  --num-epochs "${num_epochs}"
+  --grad-clip "${grad_clip}"
+  --vf-clip-param "${vf_clip_param}"
   --lr "${lr}"
   --gamma "${gamma}"
   --entropy-coeff "${entropy_coeff}"
@@ -1239,6 +1255,9 @@ common_args=(
   --reward-off-road-penalty "${reward_off_road_penalty}"
   --reward-off-road-distance-penalty "${reward_off_road_distance_penalty}"
   --reward-off-road-max-penalty "${reward_off_road_max_penalty}"
+  --reward-no-progress-penalty "${reward_no_progress_penalty}"
+  --reward-off-road-recovery "${reward_off_road_recovery}"
+  --reward-off-road-failure-penalty "${reward_off_road_failure_penalty}"
 )
 
 if [[ -n "${map_ids}" ]]; then
@@ -1320,7 +1339,8 @@ export_policy() {
   "${python_bin}" tools/rl/export_policy.py \
     --checkpoint-dir "${checkpoint_dir}" \
     --output "${best_output}" \
-    --objective "${export_objective}"
+    --objective "${export_objective}" \
+    --hidden-activation "${hidden_activation}"
 }
 
 package_game() {

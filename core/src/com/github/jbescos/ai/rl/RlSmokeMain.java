@@ -19,6 +19,7 @@ public final class RlSmokeMain {
         int actionRepeat = 4;
         int routeTargets = 6;
         boolean raceMode = true;
+        boolean zeroActions = false;
         long seed = 1L;
 
         for (int i = 0; i < args.length; i++) {
@@ -44,6 +45,8 @@ public final class RlSmokeMain {
                 }
             } else if ("--seed".equals(arg) && i + 1 < args.length) {
                 seed = Long.parseLong(args[++i]);
+            } else if ("--zero-actions".equals(arg)) {
+                zeroActions = true;
             } else {
                 throw new IllegalArgumentException("Unknown or incomplete argument: " + arg);
             }
@@ -81,7 +84,7 @@ public final class RlSmokeMain {
                                     environment.getControlledAgentCount()
                                             * environment.getActionSize()];
                     for (int i = 0; i < actions.length; i++) {
-                        actions[i] = random.nextFloat() * 2f - 1f;
+                        actions[i] = zeroActions ? 0f : random.nextFloat() * 2f - 1f;
                     }
 
                     long stepStartNanos = System.nanoTime();
@@ -96,7 +99,8 @@ public final class RlSmokeMain {
 
                 System.out.printf(
                         Locale.US,
-                        "episode=%d steps=%d reward=%.3f targets=%d progress=%.3f success=%s%n",
+                        "episode=%d steps=%d reward=%.3f targets=%d progress=%.3f "
+                                + "success=%s terminated=%s truncated=%s%n",
                         episode + 1,
                         steps,
                         totalReward,
@@ -104,7 +108,9 @@ public final class RlSmokeMain {
                         result.routeProgressDeltas.length > 0
                                 ? result.routeProgressDeltas[0]
                                 : 0f,
-                        result.winnerAgentIndex == 0 ? "true" : "false");
+                        result.winnerAgentIndex == 0 ? "true" : "false",
+                        result.episodeTerminated ? "true" : "false",
+                        result.episodeTruncated ? "true" : "false");
             }
             long totalNanos = System.nanoTime() - totalStartNanos;
             System.out.printf(

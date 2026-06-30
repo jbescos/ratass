@@ -42,11 +42,6 @@ OBSERVATION_SIZE = 31
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
-EXPORTED_ACTOR_LAYERS = (
-    "encoder.encoder.net.mlp.0",
-    "encoder.encoder.net.mlp.2",
-    "pi.net.mlp.0",
-)
 EXPORT_OBJECTIVES = {"race": "race-route-progress-v1"}
 INCOMPATIBLE_CHECKPOINT_PATTERNS = (
     "Error(s) in loading state_dict",
@@ -216,7 +211,11 @@ def _start_jvm(jar_path: Path) -> None:
     jvm_path = jpype.getDefaultJVMPath()
     _validate_windows_jvm(jvm_path)
     print(f"jvm_path={jvm_path}", flush=True)
-    jpype.startJVM(jvm_path, "-Xrs", classpath=[str(jar_path)])
+    max_heap = os.environ.get("RATASS_RL_JVM_MAX_HEAP", "512m").strip()
+    jvm_args = ["-Xrs"]
+    if max_heap:
+        jvm_args.append(f"-Xmx{max_heap}")
+    jpype.startJVM(jvm_path, *jvm_args, classpath=[str(jar_path)])
     _configure_libgdx_files()
 
 
@@ -242,6 +241,12 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withFieldSize(int(env_config.get("field_size", DEFAULT_FIELD_SIZE)))
         training_config.withActionRepeat(int(env_config.get("action_repeat", 4)))
         training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 19200)))
+        training_config.withNoProgressMaxActionSteps(
+            int(env_config.get("no_progress_max_action_steps", 600))
+        )
+        training_config.withOffRoadFailureMaxActionSteps(
+            int(env_config.get("off_road_failure_max_action_steps", 45))
+        )
         training_config.withRouteTargets(int(env_config.get("route_targets", 6)))
         training_config.withRouteTargetFraction(float(env_config.get("route_target_fraction", 0.0)))
         training_config.withRaceMode(True)
@@ -269,6 +274,15 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             float(env_config.get("reward_off_road_penalty", 0.80)),
             float(env_config.get("reward_off_road_distance_penalty", 0.22)),
             float(env_config.get("reward_off_road_max_penalty", 5.0)),
+        )
+        training_config.withNoProgressPenalty(
+            float(env_config.get("reward_no_progress_penalty", 50.0))
+        )
+        training_config.withOffRoadRecoveryReward(
+            float(env_config.get("reward_off_road_recovery", 4.0))
+        )
+        training_config.withOffRoadFailurePenalty(
+            float(env_config.get("reward_off_road_failure_penalty", 50.0))
         )
         self._reward_summary_enabled = bool(env_config.get("reward_summary", True))
         training_config.withRewardBreakdownEnabled(self._reward_summary_enabled)
@@ -315,23 +329,13 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             return
 
         arena_maps = jpype.JClass("com.github.jbescos.gameplay.maps.ArenaMaps")
-        available = {}
-        for maps in (arena_maps.createHeadlessTrainingSet(), arena_maps.createDefaultSet()):
-            for index in range(int(maps.size)):
-                arena_map = maps.get(index)
-                available[str(arena_map.getId())] = arena_map
-
-        missing = [map_id for map_id in selected_ids if map_id not in available]
-        if missing:
-            raise ValueError(
-                "Unknown map id(s) "
-                + ", ".join(missing)
-                + ". Available: "
-                + ", ".join(sorted(available))
-            )
-
+        selected_maps = arena_maps.createSelectedSet(",".join(selected_ids))
+        selected_by_id = {
+            str(selected_maps.get(index).getId()): selected_maps.get(index)
+            for index in range(int(selected_maps.size))
+        }
         for map_id in selected_ids:
-            training_config.addMap(available[map_id])
+            training_config.addMap(selected_by_id[map_id])
 
     def reset(self, *, seed=None, options=None):
         result = self._env.reset()
@@ -364,16 +368,18 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             for index, agent in enumerate(current_agents)
         }
         episode_done = bool(result.episodeDone)
+        episode_truncated = bool(result.episodeTruncated)
+        episode_terminated = bool(result.episodeTerminated)
         terminateds = {
-            agent: episode_done
+            agent: episode_terminated
             for agent in current_agents
         }
-        terminateds["__all__"] = episode_done
+        terminateds["__all__"] = episode_terminated
         truncateds = {
-            agent: False
+            agent: episode_truncated
             for agent in current_agents
         }
-        truncateds["__all__"] = False
+        truncateds["__all__"] = episode_truncated
         reward_breakdown = None
         if self._reward_summary_enabled:
             reward_breakdown = self._reward_breakdown_array(result)
@@ -408,7 +414,13 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             self.agents = []
         else:
             self.agents = list(self._agents)
-        return self._observations(result, self.agents), rewards, terminateds, truncateds, infos
+        return (
+            self._observations(result, current_agents),
+            rewards,
+            terminateds,
+            truncateds,
+            infos,
+        )
 
     def close(self):
         self._env.close()
@@ -503,6 +515,8 @@ def build_algorithm(args):
         "field_size": args.field_size,
         "action_repeat": args.action_repeat,
         "max_action_steps": args.max_action_steps,
+        "no_progress_max_action_steps": args.no_progress_max_action_steps,
+        "off_road_failure_max_action_steps": args.off_road_failure_max_action_steps,
         "route_targets": args.route_targets,
         "route_target_fraction": args.route_target_fraction,
         "random_race_spawns": args.random_race_spawns,
@@ -522,6 +536,9 @@ def build_algorithm(args):
         "reward_off_road_penalty": args.reward_off_road_penalty,
         "reward_off_road_distance_penalty": args.reward_off_road_distance_penalty,
         "reward_off_road_max_penalty": args.reward_off_road_max_penalty,
+        "reward_no_progress_penalty": args.reward_no_progress_penalty,
+        "reward_off_road_recovery": args.reward_off_road_recovery,
+        "reward_off_road_failure_penalty": args.reward_off_road_failure_penalty,
     }
     config = (
         PPOConfig()
@@ -544,6 +561,9 @@ def build_algorithm(args):
             entropy_coeff=args.entropy_coeff,
             train_batch_size=args.train_batch_size,
             minibatch_size=args.minibatch_size,
+            num_epochs=args.num_epochs,
+            grad_clip=args.grad_clip,
+            vf_clip_param=args.vf_clip_param,
         )
     except TypeError:
         config = config.training(
@@ -552,6 +572,9 @@ def build_algorithm(args):
             entropy_coeff=args.entropy_coeff,
             train_batch_size=args.train_batch_size,
             sgd_minibatch_size=args.minibatch_size,
+            num_sgd_iter=args.num_epochs,
+            grad_clip=args.grad_clip,
+            vf_clip_param=args.vf_clip_param,
         )
 
     config = config.multi_agent(
@@ -592,7 +615,20 @@ def _reshape_exported_layer(layer: Dict, policy_file: Path) -> Tuple[np.ndarray,
     return weights, bias
 
 
-def load_exported_actor_state(policy_file: Path) -> Dict[str, np.ndarray]:
+def exported_actor_layer_prefixes(layer_count: int) -> List[Tuple[str, ...]]:
+    if layer_count < 2:
+        raise ValueError("Exported actor must contain at least one hidden layer and an output layer")
+    hidden_count = layer_count - 1
+    return [
+        (
+            f"encoder.encoder.net.mlp.{index * 2}",
+            f"encoder.actor_encoder.net.mlp.{index * 2}",
+        )
+        for index in range(hidden_count)
+    ] + [("pi.net.mlp.0",)]
+
+
+def load_exported_actor_state(policy_file: Path) -> Dict[Tuple[str, ...], np.ndarray]:
     with policy_file.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
 
@@ -609,21 +645,20 @@ def load_exported_actor_state(policy_file: Path) -> Dict[str, np.ndarray]:
         )
 
     layers = payload.get("layers")
-    if not isinstance(layers, list) or len(layers) != len(EXPORTED_ACTOR_LAYERS):
-        raise ValueError(
-            f"{policy_file} must contain {len(EXPORTED_ACTOR_LAYERS)} exported layers"
-        )
+    if not isinstance(layers, list) or len(layers) < 2:
+        raise ValueError(f"{policy_file} must contain hidden and output actor layers")
 
-    actor_state: Dict[str, np.ndarray] = {}
-    for prefix, layer in zip(EXPORTED_ACTOR_LAYERS, layers):
+    actor_state: Dict[Tuple[str, ...], np.ndarray] = {}
+    layer_prefixes = exported_actor_layer_prefixes(len(layers))
+    for layer_index, (prefixes, layer) in enumerate(zip(layer_prefixes, layers)):
         weights, bias = _reshape_exported_layer(layer, policy_file)
-        if prefix == EXPORTED_ACTOR_LAYERS[0] and weights.shape[1] != exported_observation_size:
+        if layer_index == 0 and weights.shape[1] != exported_observation_size:
             raise ValueError(
                 f"{policy_file} actor input size {weights.shape[1]} does not match exported "
                 f"observation size {exported_observation_size}"
             )
-        actor_state[f"{prefix}.weight"] = weights
-        actor_state[f"{prefix}.bias"] = bias
+        actor_state[tuple(f"{prefix}.weight" for prefix in prefixes)] = weights
+        actor_state[tuple(f"{prefix}.bias" for prefix in prefixes)] = bias
     return actor_state
 
 
@@ -672,9 +707,13 @@ def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
     policy_weights = dict(learner_weights["shared_policy"])
 
     partial_initialization = False
-    for key, values in actor_state.items():
-        if key not in policy_weights:
-            raise ValueError(f"Current PPO module does not contain actor key {key}")
+    for candidate_keys, values in actor_state.items():
+        key = next((candidate for candidate in candidate_keys if candidate in policy_weights), None)
+        if key is None:
+            raise ValueError(
+                "Current PPO module does not contain any actor key from "
+                + ", ".join(candidate_keys)
+            )
         current = np.asarray(policy_weights[key])
         copied_values, partial = copy_exported_actor_values(key, current, values)
         partial_initialization = partial_initialization or partial
@@ -897,6 +936,10 @@ def best_eval_archive_path(args, checkpoint_dir: Path) -> Path:
     return path
 
 
+def best_eval_checkpoint_dir(args, checkpoint_dir: Path) -> Path:
+    return best_eval_dir(args, checkpoint_dir) / "best-rllib-checkpoint"
+
+
 def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float], Dict[str, str]]:
     episodes_per_map = args.best_eval_episodes_per_map
     episodes = args.best_eval_episodes
@@ -929,6 +972,10 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         str(args.route_targets),
         "--route-target-fraction",
         str(args.route_target_fraction),
+        "--no-progress-max-action-steps",
+        str(args.no_progress_max_action_steps),
+        "--off-road-failure-max-action-steps",
+        str(args.off_road_failure_max_action_steps),
         "--seed",
         str(args.seed),
         "--reward-step-penalty",
@@ -955,6 +1002,12 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         str(args.reward_off_road_distance_penalty),
         "--reward-off-road-max-penalty",
         str(args.reward_off_road_max_penalty),
+        "--reward-no-progress-penalty",
+        str(args.reward_no_progress_penalty),
+        "--reward-off-road-recovery",
+        str(args.reward_off_road_recovery),
+        "--reward-off-road-failure-penalty",
+        str(args.reward_off_road_failure_penalty),
     ]
     if episodes_per_map > 0:
         command.extend(["--episodes-per-map", str(episodes_per_map)])
@@ -992,6 +1045,7 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
 
 
 def maybe_promote_best_policy(
+        algorithm,
         args,
         checkpoint_dir: Path,
         iteration: int,
@@ -1008,7 +1062,12 @@ def maybe_promote_best_policy(
 
     candidate_policy = best_eval_candidate_path(args, checkpoint_dir)
     export_objective = args.best_export_objective or EXPORT_OBJECTIVES[args.objective]
-    export_checkpoint_policy(checkpoint_dir, candidate_policy, export_objective)
+    export_checkpoint_policy(
+        checkpoint_dir,
+        candidate_policy,
+        export_objective,
+        args.hidden_activation,
+    )
     output_file = Path(args.best_export_output).resolve()
     score, metrics = run_policy_evaluation(args, candidate_policy)
     if score is None:
@@ -1079,10 +1138,16 @@ def maybe_promote_best_policy(
     shutil.copyfile(candidate_policy, archive_file)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(candidate_policy, output_file)
+    archived_checkpoint = best_eval_checkpoint_dir(args, checkpoint_dir)
+    if archived_checkpoint.exists():
+        shutil.rmtree(archived_checkpoint)
+    archived_checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    archived_checkpoint_path = checkpoint_path(algorithm.save(str(archived_checkpoint)))
     next_state = {
         "best_score": score,
         "iteration": iteration,
         "checkpoint": saved_checkpoint,
+        "best_rllib_checkpoint": archived_checkpoint_path,
         "policy": os.fspath(output_file),
         "archived_policy": os.fspath(archive_file),
         "metrics": metrics,
@@ -1113,7 +1178,32 @@ def save_checkpoint(algorithm, checkpoint_dir: Path, args, iteration: int) -> Di
     checkpoint = algorithm.save(str(checkpoint_dir))
     saved_path = checkpoint_path(checkpoint)
     print(f"checkpoint={saved_path}", flush=True)
-    return maybe_promote_best_policy(args, checkpoint_dir, iteration, saved_path)
+    return maybe_promote_best_policy(algorithm, args, checkpoint_dir, iteration, saved_path)
+
+
+def restore_stage_best_checkpoint(algorithm, args, checkpoint_dir: Path) -> bool:
+    state = read_best_state(best_eval_state_path(args, checkpoint_dir))
+    archived_checkpoint = state.get("best_rllib_checkpoint")
+    if not archived_checkpoint:
+        print("stage_best_checkpoint_restore_skipped reason=no_promoted_checkpoint", flush=True)
+        return False
+    archived_path = Path(str(archived_checkpoint)).resolve()
+    if not (archived_path / "rllib_checkpoint.json").exists():
+        print(
+            f"stage_best_checkpoint_restore_skipped reason=checkpoint_missing "
+            f"checkpoint={archived_path}",
+            flush=True,
+        )
+        return False
+
+    algorithm.restore(str(archived_path))
+    restored_path = checkpoint_path(algorithm.save(str(checkpoint_dir)))
+    print(
+        f"stage_best_checkpoint_restored checkpoint={archived_path} "
+        f"stage_iteration={state.get('iteration', '?')} output={restored_path}",
+        flush=True,
+    )
+    return True
 
 
 def parse_args() -> argparse.Namespace:
@@ -1135,6 +1225,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--action-repeat", type=int, default=4)
     parser.add_argument("--max-action-steps", type=int, default=19200)
+    parser.add_argument(
+        "--no-progress-max-action-steps",
+        type=int,
+        default=600,
+        help="truncate an episode after this many actions without meaningful forward progress; 0 disables it",
+    )
+    parser.add_argument(
+        "--off-road-failure-max-action-steps",
+        type=int,
+        default=45,
+        help="terminate an attempt after this many consecutive actions physically outside the road; 0 disables it",
+    )
     parser.add_argument(
         "--route-targets",
         type=int,
@@ -1187,9 +1289,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-off-road-penalty", type=float, default=0.80)
     parser.add_argument("--reward-off-road-distance-penalty", type=float, default=0.22)
     parser.add_argument("--reward-off-road-max-penalty", type=float, default=5.0)
+    parser.add_argument("--reward-no-progress-penalty", type=float, default=50.0)
+    parser.add_argument("--reward-off-road-recovery", type=float, default=4.0)
+    parser.add_argument("--reward-off-road-failure-penalty", type=float, default=50.0)
     parser.add_argument("--gamma", type=float, default=0.995)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--entropy-coeff", type=float, default=0.005)
+    parser.add_argument("--num-epochs", type=int, default=30)
+    parser.add_argument("--grad-clip", type=float, default=40.0)
+    parser.add_argument("--vf-clip-param", type=float, default=100.0)
     parser.add_argument("--train-batch-size", type=int, default=8192)
     parser.add_argument("--minibatch-size", type=int, default=512)
     parser.add_argument(
@@ -1431,6 +1539,7 @@ def main() -> None:
         final_iteration = current_iteration if current_iteration > 0 else args.iterations
         if last_saved_iteration != final_iteration:
             save_checkpoint(algorithm, checkpoint_dir, args, final_iteration)
+        restore_stage_best_checkpoint(algorithm, args, checkpoint_dir)
     finally:
         algorithm.stop()
 

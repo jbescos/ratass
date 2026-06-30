@@ -252,7 +252,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
     public static final int RL_OBSERVATION_SIZE = 31;
     public static final int RL_ACTION_SIZE = 2;
-    public static final int RL_REWARD_BREAKDOWN_SIZE = 7;
+    public static final int RL_REWARD_BREAKDOWN_SIZE = 10;
     private static final int RL_REWARD_ROUTE_PROGRESS = 0;
     private static final int RL_REWARD_STEP_COST = 1;
     private static final int RL_REWARD_OFF_ROAD = 2;
@@ -260,6 +260,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final int RL_REWARD_REVERSE_SPEED = 4;
     private static final int RL_REWARD_CAR_PUSH = 5;
     private static final int RL_REWARD_ROUTE_ALIGNMENT = 6;
+    private static final int RL_REWARD_NO_PROGRESS = 7;
+    private static final int RL_REWARD_OFF_ROAD_RECOVERY = 8;
+    private static final int RL_REWARD_OFF_ROAD_FAILURE = 9;
     private static final String[] RL_REWARD_BREAKDOWN_NAMES = {
             "route_progress",
             "step_cost",
@@ -267,7 +270,10 @@ public class RatassGame extends ApplicationAdapter {
             "steering",
             "reverse_speed",
             "car_push",
-            "route_alignment"
+            "route_alignment",
+            "no_progress",
+            "off_road_recovery",
+            "off_road_failure"
     };
     private static final String[] RL_OBSERVATION_NAMES = {
             "route_progress",
@@ -333,11 +339,12 @@ public class RatassGame extends ApplicationAdapter {
     private static final int RL_DEFAULT_ACTION_REPEAT = 4;
     private static final int RL_DEFAULT_MAX_ACTION_STEPS = 6400;
     private static final int RL_DEFAULT_ROUTE_TARGETS = 6;
-    private static final float RL_LIVE_DECISION_INTERVAL = 0.08f;
+    private static final float RL_LIVE_DECISION_INTERVAL = RL_DEFAULT_ACTION_REPEAT * PHYSICS_STEP;
     private static final float RL_INITIAL_DECISION_STAGGER = 0.24f;
     private static final float RL_POSITION_NORMALIZER_MIN = 1f;
     private static final float RL_ANGULAR_VELOCITY_NORMALIZER = 8f;
     private static final float RL_HAZARD_DISTANCE_NORMALIZER = 12f;
+    private static final float RL_OFF_ROAD_DISTANCE_NORMALIZER = Car.HEIGHT * 4f;
     private static final float RL_ROUTE_CLEARANCE_NORMALIZER = 24f;
     private static final float RL_ROUTE_MARGIN = 0.50f;
     private static final float RL_RAYCAST_DISTANCE = 22f;
@@ -369,6 +376,14 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_PROGRESS_REWARD = 0.25f;
     private static final float RL_PROGRESS_FAST_DELTA = Car.HEIGHT;
     private static final float RL_PROGRESS_FAST_BONUS = 3.00f;
+    private static final float RL_PROGRESS_MOVEMENT_TOLERANCE = 1.50f;
+    private static final float RL_PROGRESS_MOVEMENT_EPSILON = 0.05f;
+    private static final float RL_NO_PROGRESS_RESET_DISTANCE = Car.HEIGHT * 0.50f;
+    private static final int RL_DEFAULT_NO_PROGRESS_MAX_ACTION_STEPS = 600;
+    private static final float RL_NO_PROGRESS_PENALTY = 50f;
+    private static final float RL_OFF_ROAD_RECOVERY_REWARD = 4f;
+    private static final int RL_DEFAULT_OFF_ROAD_FAILURE_MAX_ACTION_STEPS = 45;
+    private static final float RL_OFF_ROAD_FAILURE_PENALTY = 50f;
     private static final float RL_ROUTE_ALIGNMENT_REWARD = 0f;
     private static final float RL_STEERING_PENALTY = 0.010f;
     private static final float RL_REVERSE_SPEED_FREE_EPSILON = 0.20f;
@@ -10349,6 +10364,7 @@ public class RatassGame extends ApplicationAdapter {
         private static final float BASE_EDGE_FINISH_IMPULSE = 1.1f;
         private static final float EMPOWERED_EDGE_FINISH_MULTIPLIER = 1.35f;
         private static final float TRACK_LIMIT_SLOW_MARGIN = 0.82f;
+        private static final float TRACK_LIMIT_FORWARD_ACCELERATION_MULTIPLIER = 0.12f;
         private static final float ARENA_WALL_CONTACT_DURATION = 0.28f;
         private static final float AUTO_RECOVERY_TRIGGER_SECONDS = 3f;
         private static final float CONTACT_AUTO_RECOVERY_RANGE_FACTOR = 0.58f;
@@ -10538,7 +10554,8 @@ public class RatassGame extends ApplicationAdapter {
                     turn = externalControlDecision.turn;
                 }
             }
-            boolean automaticOffRoadRecoveryAllowed = allowControl && controlLockTimer <= 0f;
+            boolean automaticOffRoadRecoveryAllowed =
+                    !trainingMode && allowControl && controlLockTimer <= 0f;
             boolean automaticContactRecoveryAllowed =
                     !trainingMode && allowControl && controlLockTimer <= 0f;
             updateAutomaticRecoveryState(
@@ -10568,7 +10585,7 @@ public class RatassGame extends ApplicationAdapter {
                 return;
             }
 
-            drive(throttle, turn);
+            drive(throttle, turn, arenaMap);
         }
 
         private void updateAutomaticRecoveryState(
@@ -10827,9 +10844,7 @@ public class RatassGame extends ApplicationAdapter {
                 setDirectRlControl(
                         rawExternalControlDecision.throttle,
                         rawExternalControlDecision.turn);
-                rlDecisionTimer =
-                        RL_LIVE_DECISION_INTERVAL
-                                + (template.vehicleId % 5) * RL_LIVE_DECISION_INTERVAL * 0.11f;
+                rlDecisionTimer = RL_LIVE_DECISION_INTERVAL;
             }
             return externalControlDecision;
         }
@@ -10978,7 +10993,7 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
-        private void drive(float throttle, float turn) {
+        private void drive(float throttle, float turn, ArenaMap arenaMap) {
             updateAxes();
             float signedForwardSpeed = forwardAxis.dot(body.getLinearVelocity());
             CarPhysics physics = physics();
@@ -10999,7 +11014,10 @@ public class RatassGame extends ApplicationAdapter {
                                     1f);
                     engineForce =
                             limitLongitudinalForce(
-                                    throttle * physics.engineForce() * enginePowerCurve(speedRatio),
+                                    throttle
+                                            * physics.engineForce()
+                                            * enginePowerCurve(speedRatio)
+                                            * getTrackLimitForwardAccelerationMultiplier(arenaMap),
                                     physics,
                                     false);
                 } else if (reverseDriveEngaged) {
@@ -11041,6 +11059,14 @@ public class RatassGame extends ApplicationAdapter {
                     signedForwardSpeed);
 
             applySoftSpeedLimit(reverseDriveEngaged, physics);
+        }
+
+        private float getTrackLimitForwardAccelerationMultiplier(ArenaMap arenaMap) {
+            float severity = getTrackLimitSlowSeverity(arenaMap, body.getPosition());
+            return MathUtils.lerp(
+                    1f,
+                    TRACK_LIMIT_FORWARD_ACCELERATION_MULTIPLIER,
+                    severity);
         }
 
         private boolean updateReverseDriveEngagement(float throttle, float signedForwardSpeed) {
@@ -11293,7 +11319,7 @@ public class RatassGame extends ApplicationAdapter {
                 return 0f;
             }
             if (!arenaMap.supports(position)) {
-                return arenaMap.distanceToSafety(position);
+                return TRACK_LIMIT_SLOW_MARGIN + arenaMap.distanceToSafety(position);
             }
             return Math.max(0f, TRACK_LIMIT_SLOW_MARGIN - arenaMap.distanceToHazard(position));
         }
@@ -11778,7 +11804,8 @@ public class RatassGame extends ApplicationAdapter {
         observations[offset + 13] =
                 normalizedRlValue(car.body.getAngularVelocity(), RL_ANGULAR_VELOCITY_NORMALIZER);
         observations[offset + 14] = offRoad ? 1f : 0f;
-        observations[offset + 15] = MathUtils.clamp(offRoadDistance / positionNormalizer, 0f, 1f);
+        observations[offset + 15] =
+                MathUtils.clamp(offRoadDistance / RL_OFF_ROAD_DISTANCE_NORMALIZER, 0f, 1f);
         observations[offset + 16] = edgeClearance;
         observations[offset + 17] = leftRoadClearance;
         observations[offset + 18] = rightRoadClearance;
@@ -11939,6 +11966,9 @@ public class RatassGame extends ApplicationAdapter {
         public int fieldSize = RL_DEFAULT_FIELD_SIZE;
         public int actionRepeat = RL_DEFAULT_ACTION_REPEAT;
         public int maxActionSteps = RL_DEFAULT_MAX_ACTION_STEPS;
+        public int noProgressMaxActionSteps = RL_DEFAULT_NO_PROGRESS_MAX_ACTION_STEPS;
+        public int offRoadFailureMaxActionSteps =
+                RL_DEFAULT_OFF_ROAD_FAILURE_MAX_ACTION_STEPS;
         public int routeTargets = RL_DEFAULT_ROUTE_TARGETS;
         public float routeTargetFraction;
         public long seed = 1L;
@@ -11960,6 +11990,9 @@ public class RatassGame extends ApplicationAdapter {
         public float offRoadPenalty = RL_OFF_ROAD_PENALTY;
         public float offRoadDistancePenalty = RL_OFF_ROAD_DISTANCE_PENALTY;
         public float offRoadMaxPenalty = RL_OFF_ROAD_MAX_PENALTY;
+        public float noProgressPenalty = RL_NO_PROGRESS_PENALTY;
+        public float offRoadRecoveryReward = RL_OFF_ROAD_RECOVERY_REWARD;
+        public float offRoadFailurePenalty = RL_OFF_ROAD_FAILURE_PENALTY;
 
         public RlTrainingConfig addMap(ArenaMap map) {
             if (map != null) {
@@ -11985,6 +12018,17 @@ public class RatassGame extends ApplicationAdapter {
 
         public RlTrainingConfig withMaxActionSteps(int maxActionSteps) {
             this.maxActionSteps = maxActionSteps;
+            return this;
+        }
+
+        public RlTrainingConfig withNoProgressMaxActionSteps(int noProgressMaxActionSteps) {
+            this.noProgressMaxActionSteps = noProgressMaxActionSteps;
+            return this;
+        }
+
+        public RlTrainingConfig withOffRoadFailureMaxActionSteps(
+                int offRoadFailureMaxActionSteps) {
+            this.offRoadFailureMaxActionSteps = offRoadFailureMaxActionSteps;
             return this;
         }
 
@@ -12079,6 +12123,21 @@ public class RatassGame extends ApplicationAdapter {
             return this;
         }
 
+        public RlTrainingConfig withNoProgressPenalty(float noProgressPenalty) {
+            this.noProgressPenalty = noProgressPenalty;
+            return this;
+        }
+
+        public RlTrainingConfig withOffRoadRecoveryReward(float offRoadRecoveryReward) {
+            this.offRoadRecoveryReward = offRoadRecoveryReward;
+            return this;
+        }
+
+        public RlTrainingConfig withOffRoadFailurePenalty(float offRoadFailurePenalty) {
+            this.offRoadFailurePenalty = offRoadFailurePenalty;
+            return this;
+        }
+
     }
 
     public static final class RlStepResult {
@@ -12089,6 +12148,8 @@ public class RatassGame extends ApplicationAdapter {
         public final float[] effectiveActions;
         public final boolean[] dones;
         public final boolean episodeDone;
+        public final boolean episodeTerminated;
+        public final boolean episodeTruncated;
         public final int actionStep;
         public final int winnerAgentIndex;
         public final String winnerLabel;
@@ -12107,6 +12168,8 @@ public class RatassGame extends ApplicationAdapter {
                 float[] effectiveActions,
                 boolean[] dones,
                 boolean episodeDone,
+                boolean episodeTerminated,
+                boolean episodeTruncated,
                 int actionStep,
                 int winnerAgentIndex,
                 String winnerLabel,
@@ -12123,6 +12186,8 @@ public class RatassGame extends ApplicationAdapter {
             this.effectiveActions = effectiveActions;
             this.dones = dones;
             this.episodeDone = episodeDone;
+            this.episodeTerminated = episodeTerminated;
+            this.episodeTruncated = episodeTruncated;
             this.actionStep = actionStep;
             this.winnerAgentIndex = winnerAgentIndex;
             this.winnerLabel = winnerLabel;
@@ -12164,6 +12229,9 @@ public class RatassGame extends ApplicationAdapter {
         private final float[] checkpointDeadlineTimers;
         private final float[] checkpointDeadlineDurations;
         private final float[] routeProgressDeltas;
+        private final float[] progressSinceDeadlineReset;
+        private final int[] actionsSinceProgress;
+        private final int[] consecutiveOffRoadActions;
         private final float[] bestRaceRouteProgress;
         private final float[] routeDistanceSinceLastTarget;
         private final int[] raceNextCheckpointIndices;
@@ -12180,6 +12248,10 @@ public class RatassGame extends ApplicationAdapter {
         private int actionStep;
         private boolean episodeStarted;
         private boolean episodeDone;
+        private boolean episodeTerminated;
+        private boolean episodeTruncated;
+        private boolean episodeNoProgressFailure;
+        private boolean episodeOffRoadFailure;
         private boolean closed;
 
         public RlTrainingEnvironment(RlTrainingConfig config) {
@@ -12208,6 +12280,9 @@ public class RatassGame extends ApplicationAdapter {
             checkpointDeadlineTimers = new float[controlledAgentCount];
             checkpointDeadlineDurations = new float[controlledAgentCount];
             routeProgressDeltas = new float[controlledAgentCount];
+            progressSinceDeadlineReset = new float[controlledAgentCount];
+            actionsSinceProgress = new int[controlledAgentCount];
+            consecutiveOffRoadActions = new int[controlledAgentCount];
             bestRaceRouteProgress = new float[controlledAgentCount];
             routeDistanceSinceLastTarget = new float[controlledAgentCount];
             raceNextCheckpointIndices = new int[controlledAgentCount];
@@ -12265,6 +12340,10 @@ public class RatassGame extends ApplicationAdapter {
             actionStep = 0;
             episodeStarted = true;
             episodeDone = false;
+            episodeTerminated = false;
+            episodeTruncated = false;
+            episodeNoProgressFailure = false;
+            episodeOffRoadFailure = false;
             clearEpisodeMetrics();
             clearRewards();
             game.checkpointTargetActive = false;
@@ -12299,7 +12378,20 @@ public class RatassGame extends ApplicationAdapter {
 
             captureSnapshots(afterSnapshots);
             updateRouteProgress();
-            episodeDone = maxStepsReached || game.roundOver || hasCompletedTrainingRace();
+            updateNoProgressState();
+            updateOffRoadFailureState();
+            boolean trainingRaceCompleted = hasCompletedTrainingRace();
+            episodeNoProgressFailure =
+                    !game.roundOver && !trainingRaceCompleted && hasNoProgressTimeout();
+            episodeOffRoadFailure =
+                    !game.roundOver && !trainingRaceCompleted && hasOffRoadFailureTimeout();
+            episodeTerminated =
+                    game.roundOver
+                            || trainingRaceCompleted
+                            || episodeNoProgressFailure
+                            || episodeOffRoadFailure;
+            episodeTruncated = !episodeTerminated && maxStepsReached;
+            episodeDone = episodeTerminated || episodeTruncated;
             computeRewards();
             buildObservations();
             return createResult();
@@ -12581,7 +12673,17 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             Vector2 position = car.body.getPosition();
-            snapshot.offRoad = Car.isTrackLimitSlowdownActive(game.currentMap, position);
+            snapshot.positionX = position.x;
+            snapshot.positionY = position.y;
+            snapshot.outsideRoad = !game.currentMap.supports(position);
+            snapshot.offRoad =
+                    snapshot.outsideRoad
+                            || game.currentMap.distanceToHazard(position)
+                                    < Car.TRACK_LIMIT_SLOW_MARGIN;
+            snapshot.offRoadDistance =
+                    snapshot.offRoad
+                            ? Car.getTrackLimitPenaltyDistance(game.currentMap, position)
+                            : 0f;
             snapshot.carHitCount = car.getCarHitCount();
             if (!snapshot.offRoad) {
                 observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
@@ -12606,8 +12708,14 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             Vector2 position = car.body.getPosition();
+            snapshot.positionX = position.x;
+            snapshot.positionY = position.y;
             snapshot.edgeDistance = game.currentMap.approximateDistanceToHazard(position);
-            snapshot.offRoad = Car.isTrackLimitSlowdownActive(game.currentMap, position);
+            snapshot.outsideRoad = !game.currentMap.supports(position);
+            snapshot.offRoad =
+                    snapshot.outsideRoad
+                            || game.currentMap.distanceToHazard(position)
+                                    < Car.TRACK_LIMIT_SLOW_MARGIN;
             snapshot.offRoadDistance =
                     snapshot.offRoad ? Car.getTrackLimitPenaltyDistance(game.currentMap, position) : 0f;
             Vector2 velocity = car.body.getLinearVelocity();
@@ -12617,7 +12725,7 @@ public class RatassGame extends ApplicationAdapter {
             snapshot.carHitCount = car.getCarHitCount();
             snapshot.angularSpeed = Math.abs(car.body.getAngularVelocity());
             observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
-            snapshot.effectiveThrottle = car.externalControlDecision.throttle;
+            snapshot.effectiveThrottle = car.lastThrottleCommand;
             snapshot.raceRouteProgress =
                     game.currentMap.findRouteProgressNear(
                             position,
@@ -12713,6 +12821,13 @@ public class RatassGame extends ApplicationAdapter {
                         game.currentMap.routeProgressDelta(
                                 before.raceRouteProgress,
                                 after.raceRouteProgress);
+                float movedX = after.positionX - before.positionX;
+                float movedY = after.positionY - before.positionY;
+                float maxPlausibleProgress =
+                        (float) Math.sqrt(movedX * movedX + movedY * movedY)
+                                        * RL_PROGRESS_MOVEMENT_TOLERANCE
+                                + RL_PROGRESS_MOVEMENT_EPSILON;
+                delta = MathUtils.clamp(delta, -maxPlausibleProgress, maxPlausibleProgress);
                 routeProgressDeltas[agentIndex] = delta;
                 routeDistanceSinceLastTarget[agentIndex] =
                         Math.max(0f, routeDistanceSinceLastTarget[agentIndex] + delta);
@@ -12723,6 +12838,73 @@ public class RatassGame extends ApplicationAdapter {
                     raceTargetSequences[agentIndex]++;
                 }
             }
+        }
+
+        private void updateNoProgressState() {
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                RlAgentSnapshot after = afterSnapshots[agentIndex];
+                if (!after.active) {
+                    actionsSinceProgress[agentIndex] = 0;
+                    progressSinceDeadlineReset[agentIndex] = 0f;
+                    continue;
+                }
+
+                actionsSinceProgress[agentIndex]++;
+                progressSinceDeadlineReset[agentIndex] =
+                        Math.max(
+                                0f,
+                                progressSinceDeadlineReset[agentIndex]
+                                        + routeProgressDeltas[agentIndex]);
+                if (progressSinceDeadlineReset[agentIndex] >= RL_NO_PROGRESS_RESET_DISTANCE) {
+                    actionsSinceProgress[agentIndex] = 0;
+                    progressSinceDeadlineReset[agentIndex] = 0f;
+                }
+            }
+        }
+
+        private boolean hasNoProgressTimeout() {
+            if (config.noProgressMaxActionSteps <= 0) {
+                return false;
+            }
+            boolean hasActiveAgent = false;
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                if (!afterSnapshots[agentIndex].active) {
+                    continue;
+                }
+                hasActiveAgent = true;
+                if (actionsSinceProgress[agentIndex] < config.noProgressMaxActionSteps) {
+                    return false;
+                }
+            }
+            return hasActiveAgent;
+        }
+
+        private void updateOffRoadFailureState() {
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                RlAgentSnapshot after = afterSnapshots[agentIndex];
+                consecutiveOffRoadActions[agentIndex] =
+                        after.active && after.outsideRoad
+                                ? consecutiveOffRoadActions[agentIndex] + 1
+                                : 0;
+            }
+        }
+
+        private boolean hasOffRoadFailureTimeout() {
+            if (config.offRoadFailureMaxActionSteps <= 0) {
+                return false;
+            }
+            boolean hasActiveAgent = false;
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                if (!afterSnapshots[agentIndex].active) {
+                    continue;
+                }
+                hasActiveAgent = true;
+                if (consecutiveOffRoadActions[agentIndex]
+                        < config.offRoadFailureMaxActionSteps) {
+                    return false;
+                }
+            }
+            return hasActiveAgent;
         }
 
         private void computeRewards() {
@@ -12746,6 +12928,10 @@ public class RatassGame extends ApplicationAdapter {
                     }
                     reward += recordReward(
                             agentIndex,
+                            RL_REWARD_OFF_ROAD_RECOVERY,
+                            getOffRoadRecoveryReward(before, after));
+                    reward += recordReward(
+                            agentIndex,
                             RL_REWARD_ROUTE_PROGRESS,
                             getProgressReward(agentIndex, after));
                     reward += recordReward(
@@ -12760,6 +12946,18 @@ public class RatassGame extends ApplicationAdapter {
                             agentIndex,
                             RL_REWARD_CAR_PUSH,
                             -getCarPushPenalty(before, after));
+                    if (episodeNoProgressFailure) {
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_NO_PROGRESS,
+                                -config.noProgressPenalty);
+                    }
+                    if (episodeOffRoadFailure) {
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_OFF_ROAD_FAILURE,
+                                -config.offRoadFailurePenalty);
+                    }
                 }
 
                 rewards[agentIndex] = reward;
@@ -12789,6 +12987,16 @@ public class RatassGame extends ApplicationAdapter {
                     config.offRoadMaxPenalty,
                     config.offRoadPenalty
                             + snapshot.offRoadDistance * config.offRoadDistancePenalty);
+        }
+
+        private float getOffRoadRecoveryReward(
+                RlAgentSnapshot before,
+                RlAgentSnapshot after) {
+            if (!before.offRoad && !after.offRoad) {
+                return 0f;
+            }
+            return (before.offRoadDistance - after.offRoadDistance)
+                    * config.offRoadRecoveryReward;
         }
 
         private float getProgressReward(int agentIndex, RlAgentSnapshot after) {
@@ -12954,6 +13162,9 @@ public class RatassGame extends ApplicationAdapter {
                 checkpointDeadlineTimers[i] = deadline;
                 checkpointDeadlineDurations[i] = deadline;
                 routeProgressDeltas[i] = 0f;
+                progressSinceDeadlineReset[i] = 0f;
+                actionsSinceProgress[i] = 0;
+                consecutiveOffRoadActions[i] = 0;
                 routeDistanceSinceLastTarget[i] = 0f;
                 raceTargetSequences[i] = 0;
                 resetRaceRouteProgressBaseline(i);
@@ -13025,6 +13236,8 @@ public class RatassGame extends ApplicationAdapter {
                     effectiveActionCopy,
                     doneCopy,
                     episodeDone,
+                    episodeTerminated,
+                    episodeTruncated,
                     actionStep,
                     config.stepDetailsEnabled ? getWinnerAgentIndex() : -1,
                     config.stepDetailsEnabled ? getWinnerLabel() : "",
@@ -13115,8 +13328,8 @@ public class RatassGame extends ApplicationAdapter {
                     continue;
                 }
                 int actionOffset = agentIndex * RL_ACTION_SIZE;
-                effectiveActions[actionOffset] = car.externalControlDecision.throttle;
-                effectiveActions[actionOffset + 1] = car.externalControlDecision.turn;
+                effectiveActions[actionOffset] = car.lastThrottleCommand;
+                effectiveActions[actionOffset + 1] = car.lastTurnCommand;
             }
         }
 
@@ -13134,7 +13347,10 @@ public class RatassGame extends ApplicationAdapter {
         private boolean checkpointTargetInside;
         private boolean wallContact;
         private boolean offRoad;
+        private boolean outsideRoad;
         private float offRoadDistance;
+        private float positionX;
+        private float positionY;
         private float edgeDistance;
         private float checkpointRouteDistance;
         private float checkpointTargetRadius;
@@ -13155,7 +13371,10 @@ public class RatassGame extends ApplicationAdapter {
             checkpointTargetInside = false;
             wallContact = false;
             offRoad = false;
+            outsideRoad = false;
             offRoadDistance = 0f;
+            positionX = 0f;
+            positionY = 0f;
             edgeDistance = 0f;
             checkpointRouteDistance = 0f;
             checkpointTargetRadius = 0f;
