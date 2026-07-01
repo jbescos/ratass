@@ -21,6 +21,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -32,6 +33,12 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
+from checkpoint_candidates import (
+    CHECKPOINT_CANDIDATE_WINDOW,
+    CheckpointCandidate,
+    select_checkpoint_candidate,
+    should_capture_checkpoint_candidate,
+)
 from export_policy import export_policy as export_checkpoint_policy
 
 
@@ -885,6 +892,42 @@ def checkpoint_path(save_result) -> str:
     return os.fspath(path) if path is not None else str(save_result)
 
 
+def capture_checkpoint_candidate(
+        algorithm,
+        candidate_root: Path,
+        iteration: int,
+        reward_mean: float,
+        episode_len_mean: float,
+        episodes: float) -> CheckpointCandidate:
+    destination = candidate_root / f"iteration-{iteration:06d}"
+    if destination.exists():
+        shutil.rmtree(destination)
+    saved_path = checkpoint_path(algorithm.save(str(destination)))
+    return CheckpointCandidate(
+        iteration=iteration,
+        reward_mean=reward_mean,
+        episode_len_mean=episode_len_mean,
+        episodes=episodes,
+        checkpoint_path=saved_path,
+    )
+
+
+def prune_checkpoint_candidates(
+        candidates: List[CheckpointCandidate],
+        current_iteration: int) -> None:
+    minimum_iteration = current_iteration - CHECKPOINT_CANDIDATE_WINDOW + 1
+    stale = [candidate for candidate in candidates if candidate.iteration < minimum_iteration]
+    candidates[:] = [
+        candidate for candidate in candidates if candidate.iteration >= minimum_iteration
+    ]
+    for candidate in stale:
+        path = Path(candidate.checkpoint_path)
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
+
+
 def parse_metric_tokens(line: str) -> Dict[str, str]:
     metrics: Dict[str, str] = {}
     for token in line.strip().split():
@@ -1181,6 +1224,63 @@ def save_checkpoint(algorithm, checkpoint_dir: Path, args, iteration: int) -> Di
     return maybe_promote_best_policy(algorithm, args, checkpoint_dir, iteration, saved_path)
 
 
+def save_selected_checkpoint_candidate(
+        algorithm,
+        checkpoint_dir: Path,
+        args,
+        candidates: List[CheckpointCandidate],
+        current_iteration: int) -> Dict[str, object]:
+    window_start = max(1, current_iteration - CHECKPOINT_CANDIDATE_WINDOW + 1)
+    window_candidates = [
+        candidate
+        for candidate in candidates
+        if window_start <= candidate.iteration <= current_iteration
+    ]
+    latest_candidate = max(
+        window_candidates,
+        key=lambda candidate: candidate.iteration,
+        default=None,
+    )
+    if latest_candidate is None or latest_candidate.iteration != current_iteration:
+        print(
+            f"checkpoint_candidate_selected iteration={current_iteration} "
+            f"window={window_start}-{current_iteration} candidates={len(window_candidates)} "
+            "eligible=0 reward_mean=none episode_len_mean=none episodes=0 "
+            "reason=current_snapshot_unavailable",
+            flush=True,
+        )
+        return save_checkpoint(algorithm, checkpoint_dir, args, current_iteration)
+
+    selection = select_checkpoint_candidate(window_candidates)
+    selected = selection.candidate
+    print(
+        f"checkpoint_candidate_selected iteration={selected.iteration} "
+        f"window={window_start}-{current_iteration} "
+        f"candidates={len(window_candidates)} eligible={selection.eligible_count} "
+        f"reward_mean={format_metric(selected.reward_mean)} "
+        f"episode_len_mean={format_metric(selected.episode_len_mean, 1)} "
+        f"episodes={format_count_metric(selected.episodes)} "
+        f"reason={selection.reason}",
+        flush=True,
+    )
+
+    # Evaluate the selected historical state without rolling live training back.
+    selected_is_latest = selected.iteration == current_iteration
+    if not selected_is_latest:
+        algorithm.restore(selected.checkpoint_path)
+    try:
+        return save_checkpoint(algorithm, checkpoint_dir, args, selected.iteration)
+    finally:
+        if not selected_is_latest:
+            algorithm.restore(latest_candidate.checkpoint_path)
+            latest_checkpoint = checkpoint_path(algorithm.save(str(checkpoint_dir)))
+            print(
+                f"checkpoint_training_state_restored iteration={current_iteration} "
+                f"checkpoint={latest_checkpoint}",
+                flush=True,
+            )
+
+
 def restore_stage_best_checkpoint(algorithm, args, checkpoint_dir: Path) -> bool:
     state = read_best_state(best_eval_state_path(args, checkpoint_dir))
     archived_checkpoint = state.get("best_rllib_checkpoint")
@@ -1318,7 +1418,15 @@ def parse_args() -> argparse.Namespace:
         help="activation for PPO fully-connected hidden layers",
     )
     parser.add_argument("--checkpoint-dir", default=os.fspath(DEFAULT_CHECKPOINT))
-    parser.add_argument("--checkpoint-every", type=int, default=0)
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=0,
+        help=(
+            "checkpoint and evaluate the highest-reward candidate "
+            "from the preceding ten iterations"
+        ),
+    )
     parser.add_argument(
         "--ray-num-cpus",
         type=int,
@@ -1464,6 +1572,13 @@ def main() -> None:
     configure_ray_output(checkpoint_dir)
     configure_ray_runtime(args)
     algorithm = build_algorithm_with_restore(args, checkpoint_dir)
+    candidate_root = Path(
+        tempfile.mkdtemp(
+            prefix=f".{checkpoint_dir.name}-checkpoint-candidates-",
+            dir=checkpoint_dir.parent,
+        )
+    )
+    checkpoint_candidates: List[CheckpointCandidate] = []
     if args.workers > 0 and not args.no_reward_summary:
         print(
             "reward_summary_warning=local_summary_only workers>0 may hide remote worker episodes",
@@ -1519,12 +1634,31 @@ def main() -> None:
                 if not args.no_reward_summary:
                     for line in REWARD_SUMMARY.render_since(summary_mark, iteration):
                         print(line, flush=True)
+                if should_capture_checkpoint_candidate(
+                        iteration,
+                        args.iterations,
+                        args.checkpoint_every):
+                    checkpoint_candidates.append(capture_checkpoint_candidate(
+                        algorithm,
+                        candidate_root,
+                        iteration,
+                        reward_mean,
+                        length_mean,
+                        episodes,
+                    ))
+                    prune_checkpoint_candidates(checkpoint_candidates, iteration)
                 checkpoint_due = (
                     args.checkpoint_every > 0
                     and iteration % args.checkpoint_every == 0
                 )
                 if checkpoint_due:
-                    save_checkpoint(algorithm, checkpoint_dir, args, iteration)
+                    save_selected_checkpoint_candidate(
+                        algorithm,
+                        checkpoint_dir,
+                        args,
+                        checkpoint_candidates,
+                        iteration,
+                    )
                     last_saved_iteration = iteration
         except KeyboardInterrupt:
             save_iteration = current_iteration if current_iteration > 0 else last_saved_iteration
@@ -1533,15 +1667,31 @@ def main() -> None:
                 f"interrupted=1 saving_checkpoint=1 iteration={save_iteration}",
                 flush=True,
             )
+            print(
+                f"checkpoint_candidate_selected iteration={save_iteration} "
+                f"window={save_iteration}-{save_iteration} candidates=1 eligible=0 "
+                "reward_mean=none episode_len_mean=none episodes=0 "
+                "reason=interrupted_live_state",
+                flush=True,
+            )
             save_checkpoint(algorithm, checkpoint_dir, args, save_iteration)
             raise SystemExit(130)
 
         final_iteration = current_iteration if current_iteration > 0 else args.iterations
         if last_saved_iteration != final_iteration:
-            save_checkpoint(algorithm, checkpoint_dir, args, final_iteration)
+            save_selected_checkpoint_candidate(
+                algorithm,
+                checkpoint_dir,
+                args,
+                checkpoint_candidates,
+                final_iteration,
+            )
         restore_stage_best_checkpoint(algorithm, args, checkpoint_dir)
     finally:
-        algorithm.stop()
+        try:
+            algorithm.stop()
+        finally:
+            shutil.rmtree(candidate_root, ignore_errors=True)
 
 
 if __name__ == "__main__":
