@@ -176,6 +176,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RACE_CHECKPOINT_GATE_MARGIN = 2.40f;
     private static final float RACE_CHECKPOINT_MIN_FORWARD_CROSS_SPEED = 0.30f;
     private static final float RACE_ROUTE_MIN_DELTA = 0.001f;
+    private static final float SLIPSTREAM_RANGE = Car.HEIGHT * 7.0f;
+    private static final float SLIPSTREAM_MIN_DISTANCE = Car.HEIGHT * 1.15f;
+    private static final float SLIPSTREAM_LATERAL_WIDTH = Car.WIDTH * 2.35f;
+    private static final float SLIPSTREAM_SPEED_CAP_RATIO = 0.20f;
+    private static final float SLIPSTREAM_MIN_ALIGNMENT = 0.82f;
+    private static final float SLIPSTREAM_MAX_SPEED_BONUS = 0.10f;
+    private static final float SLIPSTREAM_ENGINE_FORCE_BONUS = 0.20f;
+    private static final float SLIPSTREAM_ATTACK_LERP = 9.0f;
+    private static final float SLIPSTREAM_RELEASE_LERP = 6.0f;
     private static final float MIN_WORLD_CAMERA_ZOOM = 0.90f;
     private static final float PLAYER_CAMERA_ZOOM = 1.04f;
     private static final float PLAYER_CAMERA_SPEED_ZOOM_OUT = 0.46f;
@@ -4538,6 +4547,7 @@ public class RatassGame extends ApplicationAdapter {
 
         boolean allowControl = !roundOver && preRoundCountdownTimer <= 0f;
         boolean liveLapRace = isLiveLapRaceMode();
+        prepareSlipstreamSnapshots();
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
             boolean targetActive = checkpointTargetActive;
@@ -4597,6 +4607,15 @@ public class RatassGame extends ApplicationAdapter {
                     updateGrowthPickup(delta);
                 }
             }
+        }
+    }
+
+    private void prepareSlipstreamSnapshots() {
+        if (cars.size <= 1) {
+            return;
+        }
+        for (int i = 0; i < cars.size; i++) {
+            cars.get(i).prepareSlipstreamSnapshot(currentMap);
         }
     }
 
@@ -7448,6 +7467,8 @@ public class RatassGame extends ApplicationAdapter {
             float carHeight = car.getHeight();
             float carScale = car.getSizeScale();
 
+            drawSlipstreamEffect(car, centerX, centerY, carWidth, carHeight, angleDeg, i);
+
             if (car.hasGrowthBoost()) {
                 float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 6f + i * 0.4f);
                 shapeRenderer.setColor(1f, 0.84f, 0.24f, 0.12f + pulse * 0.08f);
@@ -7485,6 +7506,45 @@ public class RatassGame extends ApplicationAdapter {
             if (car.template.spriteTexture == null) {
                 drawFallbackCarBody(car, centerX, centerY, carWidth, carHeight, carScale, angleDeg);
             }
+        }
+    }
+
+    private void drawSlipstreamEffect(
+            Car car,
+            float centerX,
+            float centerY,
+            float carWidth,
+            float carHeight,
+            float angleDeg,
+            int carIndex) {
+        float boost = car.getSlipstreamBoost();
+        if (boost <= 0.01f) {
+            return;
+        }
+
+        float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 12.0f + carIndex * 0.73f);
+        float alpha = MathUtils.clamp(0.10f + boost * 0.28f + pulse * 0.05f, 0f, 0.42f);
+        float streamLength = carHeight * (1.15f + boost * 0.85f);
+        float streamWidth = carWidth * (0.055f + boost * 0.025f);
+        float driftPhase = wrap01(effectClock * 2.4f + carIndex * 0.17f);
+
+        for (int lane = -1; lane <= 1; lane++) {
+            float sideOffset = lane * carWidth * 0.36f;
+            float lanePhase = wrap01(driftPhase + lane * 0.21f + 0.33f);
+            float backOffset = -carHeight * (0.92f + lanePhase * 0.92f);
+            float laneAlpha = alpha * (lane == 0 ? 0.95f : 0.58f);
+            drawOffsetRotatedRect(
+                    centerX,
+                    centerY,
+                    sideOffset,
+                    backOffset,
+                    streamWidth,
+                    streamLength * (0.72f + lanePhase * 0.28f),
+                    angleDeg,
+                    1f,
+                    1f,
+                    1f,
+                    laneAlpha);
         }
     }
 
@@ -10376,6 +10436,18 @@ public class RatassGame extends ApplicationAdapter {
         private float recentImpactTimer;
         private float arenaWallContactTimer;
         private float ramChargeTimer;
+        private float slipstreamBoost;
+        private float slipstreamSnapshotX;
+        private float slipstreamSnapshotY;
+        private float slipstreamSnapshotForwardX;
+        private float slipstreamSnapshotForwardY;
+        private float slipstreamSnapshotSideX;
+        private float slipstreamSnapshotSideY;
+        private float slipstreamSnapshotForwardSpeed;
+        private float slipstreamSnapshotBaseSpeed;
+        private float slipstreamSnapshotSpeedCap;
+        private boolean slipstreamSnapshotReady;
+        private boolean slipstreamSnapshotOnRoad;
         private float rlDecisionTimer;
         private float sustainedCarContactTimer;
         private float sustainedOffRoadTimer;
@@ -10536,10 +10608,38 @@ public class RatassGame extends ApplicationAdapter {
             applyGrip(delta, impactSlideFactor);
 
             if (!allowControl || controlLockTimer > 0f) {
+                updateSlipstream(delta, cars, 0f);
                 return;
             }
 
+            updateSlipstream(delta, cars, throttle);
             drive(throttle, turn, arenaMap);
+        }
+
+        private void prepareSlipstreamSnapshot(ArenaMap arenaMap) {
+            if (!active || body == null) {
+                slipstreamSnapshotReady = false;
+                slipstreamSnapshotOnRoad = false;
+                return;
+            }
+
+            updateAxes();
+            Vector2 position = body.getPosition();
+            Vector2 velocity = body.getLinearVelocity();
+            slipstreamSnapshotX = position.x;
+            slipstreamSnapshotY = position.y;
+            slipstreamSnapshotForwardX = forwardAxis.x;
+            slipstreamSnapshotForwardY = forwardAxis.y;
+            slipstreamSnapshotSideX = sidewaysAxis.x;
+            slipstreamSnapshotSideY = sidewaysAxis.y;
+            slipstreamSnapshotForwardSpeed =
+                    slipstreamSnapshotForwardX * velocity.x
+                            + slipstreamSnapshotForwardY * velocity.y;
+            slipstreamSnapshotBaseSpeed = getBaseForwardMaxSpeed();
+            slipstreamSnapshotSpeedCap =
+                    slipstreamSnapshotBaseSpeed * SLIPSTREAM_SPEED_CAP_RATIO;
+            slipstreamSnapshotOnRoad = arenaMap == null || arenaMap.supports(position);
+            slipstreamSnapshotReady = true;
         }
 
         private void updateAutomaticRecoveryState(
@@ -10840,6 +10940,121 @@ public class RatassGame extends ApplicationAdapter {
             return braking ? MathUtils.clamp(Math.abs(throttle), 0f, 1f) : 0f;
         }
 
+        private void updateSlipstream(float delta, Array<Car> cars, float throttle) {
+            if (cars == null || cars.size <= 1 || !slipstreamSnapshotReady) {
+                slipstreamBoost = 0f;
+                return;
+            }
+
+            float targetBoost = calculateSlipstreamBoost(cars, throttle);
+            float lerpSpeed =
+                    targetBoost > slipstreamBoost
+                            ? SLIPSTREAM_ATTACK_LERP
+                            : SLIPSTREAM_RELEASE_LERP;
+            float alpha = 1f - (float) Math.exp(-lerpSpeed * Math.max(0f, delta));
+            slipstreamBoost +=
+                    (targetBoost - slipstreamBoost) * MathUtils.clamp(alpha, 0f, 1f);
+            if (slipstreamBoost < 0.01f && targetBoost <= 0f) {
+                slipstreamBoost = 0f;
+            }
+        }
+
+        private float calculateSlipstreamBoost(Array<Car> cars, float throttle) {
+            if (throttle <= 0.05f
+                    || body == null
+                    || !slipstreamSnapshotOnRoad) {
+                return 0f;
+            }
+
+            float forwardSpeed = slipstreamSnapshotForwardSpeed;
+            float speedCap = slipstreamSnapshotSpeedCap;
+            if (forwardSpeed < speedCap) {
+                return 0f;
+            }
+
+            float rangeSquared = SLIPSTREAM_RANGE * SLIPSTREAM_RANGE;
+            float bestBoost = 0f;
+            for (int i = 0; i < cars.size; i++) {
+                Car other = cars.get(i);
+                if (other == null
+                        || other == this
+                        || !other.slipstreamSnapshotReady
+                        || !other.slipstreamSnapshotOnRoad) {
+                    continue;
+                }
+
+                float dx = other.slipstreamSnapshotX - slipstreamSnapshotX;
+                float dy = other.slipstreamSnapshotY - slipstreamSnapshotY;
+                float distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared > rangeSquared) {
+                    continue;
+                }
+
+                float longitudinal =
+                        dx * slipstreamSnapshotForwardX + dy * slipstreamSnapshotForwardY;
+                if (longitudinal <= SLIPSTREAM_MIN_DISTANCE
+                        || longitudinal >= SLIPSTREAM_RANGE) {
+                    continue;
+                }
+
+                float lateral =
+                        Math.abs(dx * slipstreamSnapshotSideX + dy * slipstreamSnapshotSideY);
+                float distanceFraction =
+                        MathUtils.clamp(
+                                (longitudinal - SLIPSTREAM_MIN_DISTANCE)
+                                        / Math.max(
+                                                0.001f,
+                                                SLIPSTREAM_RANGE - SLIPSTREAM_MIN_DISTANCE),
+                                0f,
+                                1f);
+                float allowedLateral =
+                        SLIPSTREAM_LATERAL_WIDTH
+                                * MathUtils.lerp(0.62f, 1.0f, distanceFraction);
+                if (lateral >= allowedLateral) {
+                    continue;
+                }
+
+                float alignment =
+                        slipstreamSnapshotForwardX * other.slipstreamSnapshotForwardX
+                                + slipstreamSnapshotForwardY
+                                        * other.slipstreamSnapshotForwardY;
+                if (alignment < SLIPSTREAM_MIN_ALIGNMENT) {
+                    continue;
+                }
+
+                float otherForwardSpeed = other.slipstreamSnapshotForwardSpeed;
+                if (otherForwardSpeed < other.slipstreamSnapshotSpeedCap) {
+                    continue;
+                }
+
+                float distanceScore = 1f - distanceFraction;
+                float lateralScore =
+                        1f - MathUtils.clamp(lateral / allowedLateral, 0f, 1f);
+                float alignmentScore =
+                        MathUtils.clamp(
+                                (alignment - SLIPSTREAM_MIN_ALIGNMENT)
+                                        / Math.max(0.001f, 1f - SLIPSTREAM_MIN_ALIGNMENT),
+                                0f,
+                                1f);
+                float speedScore =
+                        MathUtils.clamp(
+                                (Math.min(forwardSpeed, otherForwardSpeed) - speedCap)
+                                        / Math.max(
+                                                1f,
+                                                slipstreamSnapshotBaseSpeed * 0.24f),
+                                0f,
+                                1f);
+                bestBoost =
+                        Math.max(
+                                bestBoost,
+                                distanceScore
+                                        * lateralScore
+                                        * (0.35f + 0.65f * alignmentScore)
+                                        * (0.35f + 0.65f * speedScore));
+            }
+            return MathUtils.clamp(bestBoost, 0f, 1f);
+        }
+
         private void applyPendingImpactImpulse() {
             if (pendingImpactImpulse.isZero(0.0001f)) {
                 return;
@@ -10969,6 +11184,7 @@ public class RatassGame extends ApplicationAdapter {
             boolean reverseDriveEngaged = updateReverseDriveEngagement(throttle, signedForwardSpeed);
 
             float engineForce = 0f;
+            float trackLimitForwardAccelerationMultiplier = 1f;
             if (throttle != 0f) {
                 boolean braking =
                         (throttle > 0f && signedForwardSpeed < -REVERSE_ENGAGE_SPEED)
@@ -10976,6 +11192,8 @@ public class RatassGame extends ApplicationAdapter {
                 if (braking) {
                     applyServiceBrake(Math.abs(throttle), physics);
                 } else if (throttle > 0f) {
+                    trackLimitForwardAccelerationMultiplier =
+                            getTrackLimitForwardAccelerationMultiplier(arenaMap);
                     float speedRatio =
                             MathUtils.clamp(
                                     Math.abs(signedForwardSpeed) / getForwardMaxSpeed(),
@@ -10986,7 +11204,7 @@ public class RatassGame extends ApplicationAdapter {
                                     throttle
                                             * physics.engineForce()
                                             * enginePowerCurve(speedRatio)
-                                            * getTrackLimitForwardAccelerationMultiplier(arenaMap),
+                                            * trackLimitForwardAccelerationMultiplier,
                                     physics,
                                     false);
                 } else if (reverseDriveEngaged) {
@@ -11010,6 +11228,22 @@ public class RatassGame extends ApplicationAdapter {
 
             if (engineForce != 0f) {
                 working.set(forwardAxis).scl(engineForce);
+                body.applyForceToCenter(working, true);
+            }
+            if (slipstreamBoost > 0.01f
+                    && throttle > 0f
+                    && signedForwardSpeed
+                            > getBaseForwardMaxSpeed() * SLIPSTREAM_SPEED_CAP_RATIO) {
+                float draftForce =
+                        limitLongitudinalForce(
+                                physics.engineForce()
+                                        * SLIPSTREAM_ENGINE_FORCE_BONUS
+                                        * slipstreamBoost
+                                        * MathUtils.clamp(throttle, 0f, 1f)
+                                        * trackLimitForwardAccelerationMultiplier,
+                                physics,
+                                false);
+                working.set(forwardAxis).scl(draftForce);
                 body.applyForceToCenter(working, true);
             }
 
@@ -11180,7 +11414,16 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private float getForwardMaxSpeed() {
+            return getBaseForwardMaxSpeed()
+                    * (1f + SLIPSTREAM_MAX_SPEED_BONUS * slipstreamBoost);
+        }
+
+        private float getBaseForwardMaxSpeed() {
             return physics().maxForwardSpeed * (growthBoosted ? MAX_GROWTH_SPEED_MULTIPLIER : 1f);
+        }
+
+        private float getSlipstreamBoost() {
+            return slipstreamBoost;
         }
 
         private float getReverseMaxSpeed() {
@@ -11486,6 +11729,9 @@ public class RatassGame extends ApplicationAdapter {
             sustainedOffRoadTimer = 0f;
             contactAutoRecoveryTimer = 0f;
             offRoadAutoRecoveryTimer = 0f;
+            slipstreamBoost = 0f;
+            slipstreamSnapshotReady = false;
+            slipstreamSnapshotOnRoad = false;
             contactAutoRecoveryActive = false;
             offRoadAutoRecoveryActive = false;
             contactAutoRecoveryThrottleSign = -1f;
