@@ -17,7 +17,6 @@ DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_POLICY = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
 DEFAULT_ACTION_REPEAT = 4
 PHYSICS_STEP_SECONDS = 1.0 / 60.0
-OBS_CLOSE_CAR_THRESHOLD = 0.18
 REWARD_BUCKETS = (
     "route_progress",
     "step_cost",
@@ -234,8 +233,6 @@ def make_stats():
         "avg_target_left_route_clearance": 0.0,
         "avg_target_right_route_clearance": 0.0,
         "observation_samples": 0,
-        "near_car_steps": 0,
-        "close_car_steps": 0,
     }
 
 
@@ -416,16 +413,6 @@ def update_observation_stats(
         stats["avg_lateral_slip"] += abs(value(offset, "slip_angle"))
         brake_demand = value(offset, "brake_demand")
         stats["avg_brake_demand"] += brake_demand
-        car_ray_distance = min(
-            value(offset, name, 1.0)
-            for name in (
-                "car_front",
-                "car_front_left",
-                "car_front_right",
-                "car_left",
-                "car_right",
-            )
-        )
         stats["avg_left_road_clearance"] += left_road_clearance
         stats["avg_right_road_clearance"] += right_road_clearance
         stats["avg_front_road_clearance"] += front_road_clearance
@@ -450,10 +437,6 @@ def update_observation_stats(
             stats["near_edge_fast_steps"] += 1
         if brake_demand > 0.05:
             stats["braking_risk_steps"] += 1
-        if car_ray_distance < 1.0:
-            stats["near_car_steps"] += 1
-        if car_ray_distance < OBS_CLOSE_CAR_THRESHOLD:
-            stats["close_car_steps"] += 1
     for agent_index in range(min(controlled_agents, len(result.routeProgressDeltas))):
         stats["progress_total"] += float(result.routeProgressDeltas[agent_index])
 
@@ -681,8 +664,6 @@ def summary_metrics(stats, episodes_override: int = None):
             stats["avg_target_left_route_clearance"] / observation_samples,
         "avg_target_right_route_clearance":
             stats["avg_target_right_route_clearance"] / observation_samples,
-        "near_car_fraction": stats["near_car_steps"] / observation_samples,
-        "close_car_fraction": stats["close_car_steps"] / observation_samples,
     }
 
 
@@ -734,8 +715,6 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"avg_front_road_clearance={metrics['avg_front_road_clearance']:.3f} "
         f"avg_target_left_route_clearance={metrics['avg_target_left_route_clearance']:.3f} "
         f"avg_target_right_route_clearance={metrics['avg_target_right_route_clearance']:.3f} "
-        f"near_car_fraction={metrics['near_car_fraction']:.3f} "
-        f"close_car_fraction={metrics['close_car_fraction']:.3f} "
         + " ".join(
             f"{name}={stats[name] / episodes:.3f}"
             for name in (
@@ -826,7 +805,6 @@ def print_evaluation_tables(total_stats, per_map) -> None:
                 format_table_number(metrics["avg_targets"]),
                 format_table_number(metrics["off_road_fraction"]),
                 format_table_number(metrics["effective_reverse_fraction"]),
-                format_table_number(metrics["near_car_fraction"]),
             ]
         )
         driving_rows.append(
@@ -876,10 +854,9 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "targets",
             "off_road",
             "reverse",
-            "near_car",
         ],
         overview_rows,
-        right_aligned=set(range(1, 10)),
+        right_aligned=set(range(1, 9)),
     )
     print_table(
         "evaluation_driving",
@@ -945,8 +922,6 @@ def print_evaluation_score(stats):
         f"avg_front_road_clearance={metrics['avg_front_road_clearance']:.3f} "
         f"avg_route_left_clearance={metrics['avg_route_left_clearance']:.3f} "
         f"avg_route_right_clearance={metrics['avg_route_right_clearance']:.3f} "
-        f"near_car_fraction={metrics['near_car_fraction']:.3f} "
-        f"close_car_fraction={metrics['close_car_fraction']:.3f} "
         f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "
         f"avg_brake_demand={metrics['avg_brake_demand']:.3f} "
         f"braking_risk_fraction={metrics['braking_risk_fraction']:.3f}",
