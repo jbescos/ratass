@@ -36,7 +36,7 @@ final class ImageArenaMapLoader {
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
     private static final String CACHE_SUFFIX = ".json.gz";
-    private static final int CACHE_VERSION = 118;
+    private static final int CACHE_VERSION = 119;
     private static final boolean USE_ROUTE_LINE_MARKERS = false;
     private static final float BASE_WORLD_HEIGHT = 22f;
     private static final String MAP005_ID = "map005";
@@ -94,6 +94,12 @@ final class ImageArenaMapLoader {
     private static final int ROUTE_CENTERLINE_SMOOTHING_PASSES = 2;
     private static final float ROUTE_CENTERLINE_SMOOTHING_SAMPLE_STEP = 0.65f;
     private static final float ROUTE_CENTERLINE_SMOOTHING_MIN_CLEARANCE = 0.32f;
+    private static final int ROUTE_CENTERLINE_STRAIGHTENING_PASSES = 3;
+    private static final int ROUTE_CENTERLINE_STRAIGHTENING_RADIUS = 8;
+    private static final float ROUTE_CENTERLINE_STRAIGHTENING_MIN_OSCILLATION = 0.035f;
+    private static final float ROUTE_CENTERLINE_STRAIGHTENING_MAX_DEVIATION = 0.55f;
+    private static final float ROUTE_CENTERLINE_STRAIGHTENING_MIN_ALIGNMENT = 0.90f;
+    private static final float ROUTE_CENTERLINE_STRAIGHTENING_STRENGTH = 0.85f;
     private static final float ROUTE_CENTERLINE_EXACT_MIN_CLEARANCE = 0.04f;
     private static final float ROUTE_CENTERLINE_EXACT_SAMPLE_STEP = 0.22f;
     private static final float ROUTE_CENTERLINE_CLEARANCE_WEIGHT = 2.70f;
@@ -5127,7 +5133,101 @@ final class ImageArenaMapLoader {
             }
             smoothed = candidate;
         }
-        return smoothed;
+        return straightenRouteCenterline(routeMap, smoothed);
+    }
+
+    private static Array<Vector2> straightenRouteCenterline(
+            ArenaMap routeMap, Array<Vector2> route) {
+        int radius = ROUTE_CENTERLINE_STRAIGHTENING_RADIUS;
+        if (routeMap == null || route == null || route.size <= radius * 2) {
+            return route;
+        }
+
+        Array<Vector2> straightened = copyRoutePoints(route);
+        for (int pass = 0; pass < ROUTE_CENTERLINE_STRAIGHTENING_PASSES; pass++) {
+            Array<Vector2> candidate = copyRoutePoints(straightened);
+            boolean changed = false;
+            for (int i = 0; i < straightened.size; i++) {
+                Vector2 before = straightened.get(wrapRoutePointIndex(i - radius, straightened.size));
+                Vector2 current = straightened.get(i);
+                Vector2 after = straightened.get(wrapRoutePointIndex(i + radius, straightened.size));
+
+                float chordX = after.x - before.x;
+                float chordY = after.y - before.y;
+                float chordLengthSquared = chordX * chordX + chordY * chordY;
+                if (chordLengthSquared <= 0.001f) {
+                    continue;
+                }
+
+                float incomingX = current.x - before.x;
+                float incomingY = current.y - before.y;
+                float outgoingX = after.x - current.x;
+                float outgoingY = after.y - current.y;
+                float incomingLengthSquared = incomingX * incomingX + incomingY * incomingY;
+                float outgoingLengthSquared = outgoingX * outgoingX + outgoingY * outgoingY;
+                if (incomingLengthSquared <= 0.001f || outgoingLengthSquared <= 0.001f) {
+                    continue;
+                }
+                float alignment =
+                        (incomingX * outgoingX + incomingY * outgoingY)
+                                / (float) Math.sqrt(incomingLengthSquared * outgoingLengthSquared);
+                if (alignment < ROUTE_CENTERLINE_STRAIGHTENING_MIN_ALIGNMENT) {
+                    continue;
+                }
+
+                float chordLength = (float) Math.sqrt(chordLengthSquared);
+                float chordDirectionX = chordX / chordLength;
+                float chordDirectionY = chordY / chordLength;
+                float minimumSignedDistance = 0f;
+                float maximumSignedDistance = 0f;
+                float maximumAbsoluteDistance = 0f;
+                for (int offset = -radius + 1; offset < radius; offset++) {
+                    Vector2 point =
+                            straightened.get(wrapRoutePointIndex(i + offset, straightened.size));
+                    float pointX = point.x - before.x;
+                    float pointY = point.y - before.y;
+                    float signedDistance =
+                            chordDirectionX * pointY - chordDirectionY * pointX;
+                    minimumSignedDistance = Math.min(minimumSignedDistance, signedDistance);
+                    maximumSignedDistance = Math.max(maximumSignedDistance, signedDistance);
+                    maximumAbsoluteDistance =
+                            Math.max(maximumAbsoluteDistance, Math.abs(signedDistance));
+                }
+                if (minimumSignedDistance > -ROUTE_CENTERLINE_STRAIGHTENING_MIN_OSCILLATION
+                        || maximumSignedDistance < ROUTE_CENTERLINE_STRAIGHTENING_MIN_OSCILLATION
+                        || maximumAbsoluteDistance > ROUTE_CENTERLINE_STRAIGHTENING_MAX_DEVIATION) {
+                    continue;
+                }
+
+                float progressAlongChord =
+                        MathUtils.clamp(
+                                (incomingX * chordX + incomingY * chordY)
+                                        / chordLengthSquared,
+                                0f,
+                                1f);
+                float targetX = before.x + chordX * progressAlongChord;
+                float targetY = before.y + chordY * progressAlongChord;
+                Vector2 adjusted = candidate.get(i);
+                adjusted.set(
+                        current.x
+                                + (targetX - current.x)
+                                        * ROUTE_CENTERLINE_STRAIGHTENING_STRENGTH,
+                        current.y
+                                + (targetY - current.y)
+                                        * ROUTE_CENTERLINE_STRAIGHTENING_STRENGTH);
+                changed = true;
+            }
+            if (!changed || !isRouteCenterlineSafe(routeMap, candidate)) {
+                break;
+            }
+            straightened = candidate;
+        }
+        return straightened;
+    }
+
+    private static int wrapRoutePointIndex(int index, int size) {
+        int wrapped = index % size;
+        return wrapped < 0 ? wrapped + size : wrapped;
     }
 
     private static Array<Vector2> copyRoutePoints(Array<Vector2> route) {
