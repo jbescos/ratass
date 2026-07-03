@@ -396,10 +396,6 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_PROGRESS_REWARD = 0.25f;
     private static final float RL_PROGRESS_FAST_DELTA = Car.HEIGHT;
     private static final float RL_PROGRESS_FAST_BONUS = 3.00f;
-    private static final float RL_PROGRESS_EDGE_RESERVE = Car.WIDTH * 0.35f;
-    private static final float RL_PROGRESS_TRAJECTORY_SAFE_CLEARANCE = 0.30f;
-    private static final int RL_OBSERVATION_TRAJECTORY_CLEAR = 16;
-    private static final int RL_OBSERVATION_BRAKE_DEMAND = 17;
     private static final float RL_PROGRESS_MOVEMENT_TOLERANCE = 1.50f;
     private static final float RL_PROGRESS_MOVEMENT_EPSILON = 0.05f;
     private static final float RL_NO_PROGRESS_RESET_DISTANCE = Car.HEIGHT * 0.50f;
@@ -13473,37 +13469,8 @@ public class RatassGame extends ApplicationAdapter {
                 return progress * config.progressReward;
             }
             float fastFraction = Math.max(0f, progress / RL_PROGRESS_FAST_DELTA);
-            float safetyFactor = getProgressSafetyFactor(agentIndex, after);
-            float multiplier =
-                    1f
-                            + RL_PROGRESS_FAST_BONUS
-                                    * fastFraction
-                                    * safetyFactor;
+            float multiplier = 1f + RL_PROGRESS_FAST_BONUS * fastFraction;
             return progress * multiplier * config.progressReward;
-        }
-
-        private float getProgressSafetyFactor(int agentIndex, RlAgentSnapshot after) {
-            float edgeReserve =
-                    MathUtils.clamp(
-                            (after.edgeDistance - Car.TRACK_LIMIT_SLOW_MARGIN)
-                                    / RL_PROGRESS_EDGE_RESERVE,
-                            0f,
-                            1f);
-            float edgeSafety = edgeReserve * edgeReserve * (3f - 2f * edgeReserve);
-            int observationOffset = agentIndex * RL_OBSERVATION_SIZE;
-            float trajectorySafety =
-                    MathUtils.clamp(
-                            observations[observationOffset + RL_OBSERVATION_TRAJECTORY_CLEAR]
-                                    / RL_PROGRESS_TRAJECTORY_SAFE_CLEARANCE,
-                            0f,
-                            1f);
-            float brakingSafety =
-                    1f
-                            - MathUtils.clamp(
-                                    observations[observationOffset + RL_OBSERVATION_BRAKE_DEMAND],
-                                    0f,
-                                    1f);
-            return Math.min(edgeSafety, Math.min(trajectorySafety, brakingSafety));
         }
 
         private float getRouteAlignmentReward(RlAgentSnapshot snapshot) {

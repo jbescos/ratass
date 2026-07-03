@@ -669,15 +669,13 @@ def summary_metrics(stats, episodes_override: int = None):
 
 def evaluation_score(stats, episodes_override: int = None) -> float:
     metrics = summary_metrics(stats, episodes_override)
-    # Reward remains the main signal. Walls are survivable now, so evaluation
-    # only applies a small smoothness cost for repeated wall contact.
+    # Score outcomes rather than body orientation so a faster drifting policy
+    # is not rejected for having lower route or target alignment.
     return (
         metrics["avg_reward"]
         + metrics["avg_targets"] * 35.0
         + metrics["success_rate"] * 80.0
         + metrics["progress_avg"] * 0.3
-        + metrics["avg_route_alignment"] * 10.0
-        + metrics["avg_target_alignment"] * 5.0
         - metrics["off_road_fraction"] * 12.0
         - metrics["effective_flips_per_step"] * 35.0
     )
