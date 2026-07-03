@@ -816,6 +816,30 @@ def archive_incompatible_checkpoint(checkpoint_dir: Path) -> Path:
     return archive_dir
 
 
+def restore_algorithm_checkpoint(algorithm, checkpoint_dir: Path) -> None:
+    checkpoint_dir = checkpoint_dir.resolve()
+    algorithm.restore(str(checkpoint_dir))
+
+    # RLlib's Algorithm.restore() can leave the newly built LearnerGroup at its
+    # initialized weights when the checkpoint came from a different curriculum
+    # stage. Restore that component explicitly, including optimizer state, then
+    # synchronize the inference copies used by the EnvRunners.
+    learner_checkpoint = checkpoint_dir / "learner_group"
+    if not learner_checkpoint.is_dir():
+        return
+    algorithm.learner_group.restore_from_path(str(learner_checkpoint))
+    algorithm.env_runner_group.sync_weights(
+        from_worker_or_learner_group=algorithm.learner_group,
+        inference_only=True,
+    )
+    if algorithm.eval_env_runner_group:
+        algorithm.eval_env_runner_group.sync_weights(
+            from_worker_or_learner_group=algorithm.learner_group,
+            inference_only=True,
+        )
+    print(f"checkpoint_learner_state_restored={learner_checkpoint}", flush=True)
+
+
 def build_algorithm_with_restore(args, checkpoint_dir: Path):
     algorithm = build_algorithm(args)
     if args.resume:
@@ -825,7 +849,7 @@ def build_algorithm_with_restore(args, checkpoint_dir: Path):
                 f"{checkpoint_file} does not exist. Remove --resume or train once first."
             )
         try:
-            algorithm.restore(str(checkpoint_dir))
+            restore_algorithm_checkpoint(algorithm, checkpoint_dir)
         except RuntimeError as error:
             if not is_incompatible_checkpoint_error(error):
                 raise
@@ -1092,7 +1116,8 @@ def maybe_promote_best_policy(
         args,
         checkpoint_dir: Path,
         iteration: int,
-        saved_checkpoint: str) -> Dict[str, object]:
+        saved_checkpoint: str,
+        compare_installed: bool = True) -> Dict[str, object]:
     result: Dict[str, object] = {
         "evaluated": False,
         "accepted": False,
@@ -1150,7 +1175,7 @@ def maybe_promote_best_policy(
         previous_score = float(state.get("best_score", "-inf"))
     except (TypeError, ValueError):
         previous_score = float("-inf")
-    if output_file.exists() and not args.best_eval_ignore_installed:
+    if output_file.exists() and compare_installed and not args.best_eval_ignore_installed:
         installed_score, installed_metrics = run_policy_evaluation(args, output_file)
         if installed_score is not None and installed_score > previous_score:
             previous_score = installed_score
@@ -1217,6 +1242,80 @@ def maybe_promote_best_policy(
     return result
 
 
+def has_restorable_best_checkpoint(state: Dict) -> bool:
+    archived_checkpoint = state.get("best_rllib_checkpoint")
+    if not archived_checkpoint:
+        return False
+    return (Path(str(archived_checkpoint)).resolve() / "rllib_checkpoint.json").exists()
+
+
+def establish_stage_baseline(algorithm, args, checkpoint_dir: Path) -> Dict[str, object]:
+    result: Dict[str, object] = {
+        "evaluated": False,
+        "accepted": False,
+        "promoted": False,
+        "score": None,
+        "previous_score": None,
+    }
+    if not args.best_export_output:
+        print("stage_baseline_skipped reason=best_export_disabled", flush=True)
+        return result
+
+    state_path = best_eval_state_path(args, checkpoint_dir)
+    state = read_best_state(state_path)
+    if has_restorable_best_checkpoint(state):
+        archived_path = Path(str(state["best_rllib_checkpoint"])).resolve()
+        restore_algorithm_checkpoint(algorithm, archived_path)
+        restored_path = checkpoint_path(algorithm.save(str(checkpoint_dir)))
+        print(
+            f"stage_baseline_restored iteration={state.get('iteration', '?')} "
+            f"score={state.get('best_score', '?')} "
+            f"checkpoint={archived_path} output={restored_path}",
+            flush=True,
+        )
+        return result
+
+    if state_path.exists():
+        state_path.unlink()
+        print(
+            f"stage_baseline_state_reset reason=checkpoint_not_restorable "
+            f"state={state_path}",
+            flush=True,
+        )
+
+    checkpoint = algorithm.save(str(checkpoint_dir))
+    saved_path = checkpoint_path(checkpoint)
+    print(
+        f"stage_baseline_evaluation_start iteration=0 checkpoint={saved_path}",
+        flush=True,
+    )
+    result = maybe_promote_best_policy(
+        algorithm,
+        args,
+        checkpoint_dir,
+        0,
+        saved_path,
+        compare_installed=False,
+    )
+    if result["promoted"]:
+        print(
+            f"stage_baseline_archived iteration=0 score={result['score']:.3f} "
+            f"checkpoint={best_eval_checkpoint_dir(args, checkpoint_dir)}",
+            flush=True,
+        )
+    elif result["accepted"]:
+        print(
+            f"stage_baseline_kept_existing score={result['score']:.3f}",
+            flush=True,
+        )
+    else:
+        print(
+            "stage_baseline_not_eligible reason=evaluation_or_route_goals",
+            flush=True,
+        )
+    return result
+
+
 def save_checkpoint(algorithm, checkpoint_dir: Path, args, iteration: int) -> Dict[str, object]:
     checkpoint = algorithm.save(str(checkpoint_dir))
     saved_path = checkpoint_path(checkpoint)
@@ -1267,12 +1366,15 @@ def save_selected_checkpoint_candidate(
     # Evaluate the selected historical state without rolling live training back.
     selected_is_latest = selected.iteration == current_iteration
     if not selected_is_latest:
-        algorithm.restore(selected.checkpoint_path)
+        restore_algorithm_checkpoint(algorithm, Path(selected.checkpoint_path))
     try:
         return save_checkpoint(algorithm, checkpoint_dir, args, selected.iteration)
     finally:
         if not selected_is_latest:
-            algorithm.restore(latest_candidate.checkpoint_path)
+            restore_algorithm_checkpoint(
+                algorithm,
+                Path(latest_candidate.checkpoint_path),
+            )
             latest_checkpoint = checkpoint_path(algorithm.save(str(checkpoint_dir)))
             print(
                 f"checkpoint_training_state_restored iteration={current_iteration} "
@@ -1283,20 +1385,13 @@ def save_selected_checkpoint_candidate(
 
 def restore_stage_best_checkpoint(algorithm, args, checkpoint_dir: Path) -> bool:
     state = read_best_state(best_eval_state_path(args, checkpoint_dir))
-    archived_checkpoint = state.get("best_rllib_checkpoint")
-    if not archived_checkpoint:
+    if not has_restorable_best_checkpoint(state):
         print("stage_best_checkpoint_restore_skipped reason=no_promoted_checkpoint", flush=True)
         return False
+    archived_checkpoint = state["best_rllib_checkpoint"]
     archived_path = Path(str(archived_checkpoint)).resolve()
-    if not (archived_path / "rllib_checkpoint.json").exists():
-        print(
-            f"stage_best_checkpoint_restore_skipped reason=checkpoint_missing "
-            f"checkpoint={archived_path}",
-            flush=True,
-        )
-        return False
 
-    algorithm.restore(str(archived_path))
+    restore_algorithm_checkpoint(algorithm, archived_path)
     restored_path = checkpoint_path(algorithm.save(str(checkpoint_dir)))
     print(
         f"stage_best_checkpoint_restored checkpoint={archived_path} "
@@ -1586,6 +1681,7 @@ def main() -> None:
         )
 
     try:
+        establish_stage_baseline(algorithm, args, checkpoint_dir)
         last_saved_iteration = 0
         current_iteration = 0
         try:
