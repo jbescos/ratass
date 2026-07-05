@@ -112,7 +112,19 @@ public class RatassGame extends ApplicationAdapter {
     private static final float HALLOWEEN_CIRCUIT_TINT_R = 0.56f;
     private static final float HALLOWEEN_CIRCUIT_TINT_G = 0.52f;
     private static final float HALLOWEEN_CIRCUIT_TINT_B = 0.64f;
-    private static final float HALLOWEEN_WORLD_RAIN_ALPHA = 0.24f;
+    private static final float WEATHER_RAIN_ALPHA = 0.24f;
+    private static final float WEATHER_SNOW_ALPHA = 0.78f;
+    private static final float WEATHER_RAIN_GRIP_MULTIPLIER = 0.82f;
+    private static final float WEATHER_SNOW_GRIP_MULTIPLIER = 0.58f;
+    private static final float WEATHER_GRIP_TRANSITION_SPEED = 1.6f;
+    private static final float WEATHER_SUNNY_MIN_DURATION = 24f;
+    private static final float WEATHER_SUNNY_MAX_DURATION = 40f;
+    private static final float WEATHER_RAIN_MIN_DURATION = 40f;
+    private static final float WEATHER_RAIN_MAX_DURATION = 60f;
+    private static final float WEATHER_SNOW_MIN_DURATION = 35f;
+    private static final float WEATHER_SNOW_MAX_DURATION = 50f;
+    private static final float WEATHER_SUNNY_REPEAT_CHANCE = 0.55f;
+    private static final float WEATHER_RAIN_CHANCE = 0.30f;
     private static final int STANDALONE_CAR_PREVIEW_COLUMNS = 5;
     private static final int STANDALONE_CAR_PREVIEW_CELL_WIDTH = 150;
     private static final int STANDALONE_CAR_PREVIEW_CELL_HEIGHT = 200;
@@ -257,6 +269,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final int SANDBOX_PHYSICS_WHEEL_GRIP = 3;
     private static final int SANDBOX_PHYSICS_MASS_MULTIPLIER = 4;
     private static final int SANDBOX_PHYSICS_TUNER_COUNT = 5;
+    private static final int SANDBOX_TUNER_WEATHER_ROW = SANDBOX_PHYSICS_TUNER_COUNT;
+    private static final int SANDBOX_TUNER_ROW_COUNT = SANDBOX_PHYSICS_TUNER_COUNT + 1;
     private static final String[] SANDBOX_PHYSICS_TUNER_LABELS = {
             "horsepower",
             "brake",
@@ -729,6 +743,7 @@ public class RatassGame extends ApplicationAdapter {
             new LinkedHashMap<String, Texture>();
     private final Random sessionEnemyVisualRandom = new Random();
     private final Random sessionEnemyPolicyRandom = new Random();
+    private final Random weatherRandom = new Random();
     private final GlyphLayout glyphLayout = new GlyphLayout();
     private int sessionEnemyVisualPaletteSize = -1;
     private int sessionEnemyPolicyAvailableCount = -1;
@@ -804,6 +819,8 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle sidebarTablesScrollbarBounds = new Rectangle();
     private final Rectangle sandboxPhysicsTunerBounds = new Rectangle();
     private final Rectangle sandboxPhysicsResetBounds = new Rectangle();
+    private final Rectangle sandboxWeatherPrevBounds = new Rectangle();
+    private final Rectangle sandboxWeatherNextBounds = new Rectangle();
     private final Rectangle[] sandboxPhysicsDecreaseBounds =
             createRectangleArray(SANDBOX_PHYSICS_TUNER_COUNT);
     private final Rectangle[] sandboxPhysicsIncreaseBounds =
@@ -895,6 +912,8 @@ public class RatassGame extends ApplicationAdapter {
     private float cameraTargetTransitionTimer;
     private float eventCalloutTimer;
     private float raceFinishTimer;
+    private float weatherTimeRemaining;
+    private float weatherGripMultiplier = 1f;
     private float sidebarTablesScrollOffset;
     private float sidebarTablesScrollbarGrabOffsetY;
     private boolean touchRestartPressed;
@@ -931,6 +950,7 @@ public class RatassGame extends ApplicationAdapter {
     private int pauseMenuSelection;
     private int optionsMenuSelection;
     private int cameraTargetRosterIndex = -1;
+    private Weather currentWeather = Weather.SUNNY;
     private Car boostedCar;
     private Car playerCar;
     private Car winner;
@@ -995,6 +1015,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private void startNewGame(boolean sandbox) {
         sandboxMode = sandbox;
+        resetWeatherForSession();
         disposeRosterSpriteTextures();
         disposeArenaSurfaceTextures();
         disposeMenuCarPreview();
@@ -2310,6 +2331,112 @@ public class RatassGame extends ApplicationAdapter {
         eventCalloutSubline = "";
     }
 
+    private void resetWeatherForSession() {
+        currentWeather = Weather.SUNNY;
+        weatherGripMultiplier = Weather.SUNNY.gripMultiplier;
+        weatherTimeRemaining = randomWeatherDuration(Weather.SUNNY);
+    }
+
+    private void forceSunnyWeather() {
+        currentWeather = Weather.SUNNY;
+        weatherGripMultiplier = Weather.SUNNY.gripMultiplier;
+        weatherTimeRemaining = Float.POSITIVE_INFINITY;
+    }
+
+    private void updateWeather(float delta) {
+        if (rlTrainingMode) {
+            forceSunnyWeather();
+            return;
+        }
+
+        float response =
+                1f
+                        - (float)
+                                Math.exp(
+                                        -WEATHER_GRIP_TRANSITION_SPEED
+                                                * Math.max(0f, delta));
+        weatherGripMultiplier =
+                MathUtils.lerp(
+                        weatherGripMultiplier,
+                        currentWeather.gripMultiplier,
+                        MathUtils.clamp(response, 0f, 1f));
+
+        if (sandboxMode || roundOver || preRoundCountdownTimer > 0f) {
+            return;
+        }
+
+        weatherTimeRemaining -= Math.max(0f, delta);
+        if (weatherTimeRemaining > 0f) {
+            return;
+        }
+        setWeather(chooseNextWeather(), true);
+    }
+
+    private Weather chooseNextWeather() {
+        if (currentWeather != Weather.SUNNY) {
+            return Weather.SUNNY;
+        }
+        float roll = weatherRandom.nextFloat();
+        if (roll < WEATHER_SUNNY_REPEAT_CHANCE) {
+            return Weather.SUNNY;
+        }
+        if (roll < WEATHER_SUNNY_REPEAT_CHANCE + WEATHER_RAIN_CHANCE) {
+            return Weather.RAIN;
+        }
+        return Weather.SNOW;
+    }
+
+    private float randomWeatherDuration(Weather weather) {
+        float minimum;
+        float maximum;
+        if (weather == Weather.RAIN) {
+            minimum = WEATHER_RAIN_MIN_DURATION;
+            maximum = WEATHER_RAIN_MAX_DURATION;
+        } else if (weather == Weather.SNOW) {
+            minimum = WEATHER_SNOW_MIN_DURATION;
+            maximum = WEATHER_SNOW_MAX_DURATION;
+        } else {
+            minimum = WEATHER_SUNNY_MIN_DURATION;
+            maximum = WEATHER_SUNNY_MAX_DURATION;
+        }
+        return minimum + weatherRandom.nextFloat() * (maximum - minimum);
+    }
+
+    private void setWeather(Weather weather, boolean announce) {
+        Weather nextWeather = weather == null ? Weather.SUNNY : weather;
+        boolean changed = currentWeather != nextWeather;
+        currentWeather = nextWeather;
+        weatherTimeRemaining = randomWeatherDuration(nextWeather);
+        if (!announce || !changed) {
+            return;
+        }
+        if (nextWeather == Weather.RAIN) {
+            announceEvent("RAIN", "WEATHER CHANGE", new Color(0.58f, 0.76f, 0.96f, 1f));
+        } else if (nextWeather == Weather.SNOW) {
+            announceEvent("SNOW", "WEATHER CHANGE", new Color(0.90f, 0.96f, 1f, 1f));
+        } else {
+            announceEvent("SUNNY", "WEATHER CHANGE", new Color(1f, 0.88f, 0.42f, 1f));
+        }
+    }
+
+    private void cycleSandboxWeather(int direction) {
+        if (!sandboxMode || direction == 0) {
+            return;
+        }
+        Weather[] weatherValues = Weather.values();
+        int nextIndex = (currentWeather.ordinal() + direction) % weatherValues.length;
+        if (nextIndex < 0) {
+            nextIndex += weatherValues.length;
+        }
+        setWeather(weatherValues[nextIndex], true);
+    }
+
+    private float getWeatherGripMultiplierForSimulation() {
+        return rlTrainingMode
+                ? Weather.SUNNY.gripMultiplier
+                : MathUtils.clamp(weatherGripMultiplier, WEATHER_SNOW_GRIP_MULTIPLIER, 1f);
+    }
+
     private Car findActiveRamChargeCar() {
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
@@ -2553,6 +2680,15 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
+        if (sandboxWeatherPrevBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            cycleSandboxWeather(-1);
+            return;
+        }
+        if (sandboxWeatherNextBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            cycleSandboxWeather(1);
+            return;
+        }
+
         for (int i = 0; i < SANDBOX_PHYSICS_TUNER_COUNT; i++) {
             if (sandboxPhysicsDecreaseBounds[i].contains(hudTouchPoint.x, hudTouchPoint.y)) {
                 changeSandboxPhysicsTuning(i, -1);
@@ -2571,7 +2707,7 @@ public class RatassGame extends ApplicationAdapter {
                 Math.max(230f, playfieldWidth - SANDBOX_PHYSICS_TUNER_MARGIN * 2f));
         float height =
                 SANDBOX_PHYSICS_TUNER_HEADER_HEIGHT
-                        + SANDBOX_PHYSICS_TUNER_ROW_HEIGHT * SANDBOX_PHYSICS_TUNER_COUNT
+                        + SANDBOX_PHYSICS_TUNER_ROW_HEIGHT * SANDBOX_TUNER_ROW_COUNT
                         + 12f;
         float x = SANDBOX_PHYSICS_TUNER_MARGIN;
         float y = Math.max(
@@ -2602,6 +2738,23 @@ public class RatassGame extends ApplicationAdapter {
                     buttonSize,
                     buttonSize);
         }
+        float weatherRowY =
+                rowTop
+                        - (SANDBOX_TUNER_WEATHER_ROW + 1)
+                                * SANDBOX_PHYSICS_TUNER_ROW_HEIGHT;
+        float weatherButtonY =
+                weatherRowY
+                        + (SANDBOX_PHYSICS_TUNER_ROW_HEIGHT - buttonSize) * 0.5f;
+        sandboxWeatherPrevBounds.set(
+                x + width - buttonSize * 2f - 17f,
+                weatherButtonY,
+                buttonSize,
+                buttonSize);
+        sandboxWeatherNextBounds.set(
+                x + width - buttonSize - 8f,
+                weatherButtonY,
+                buttonSize,
+                buttonSize);
     }
 
     private void resetSandboxPhysicsTuning() {
@@ -4636,6 +4789,7 @@ public class RatassGame extends ApplicationAdapter {
     private void update(float delta) {
         effectClock += delta;
         updatePresentationState(delta);
+        updateWeather(delta);
         updateDestructionEffects(delta);
 
         if (roundOver) {
@@ -4675,6 +4829,7 @@ public class RatassGame extends ApplicationAdapter {
 
         boolean allowControl = !roundOver && preRoundCountdownTimer <= 0f;
         boolean liveLapRace = isLiveLapRaceMode();
+        float surfaceGripMultiplier = getWeatherGripMultiplierForSimulation();
         prepareSlipstreamSnapshots();
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
@@ -4712,6 +4867,7 @@ public class RatassGame extends ApplicationAdapter {
                     targetTimeRemaining,
                     cars,
                     car.template.rlPolicy,
+                    surfaceGripMultiplier,
                     rlTrainingMode);
         }
         if (!allowControl && !roundOver) {
@@ -4805,6 +4961,10 @@ public class RatassGame extends ApplicationAdapter {
     private void resetRound(boolean advanceMap) {
         if (advanceMap) {
             mapProgression.advance();
+        }
+
+        if (rlTrainingMode) {
+            forceSunnyWeather();
         }
 
         currentMap = mapProgression.getCurrentMap();
@@ -6447,7 +6607,7 @@ public class RatassGame extends ApplicationAdapter {
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawDestructionEffects();
-        drawHalloweenStormOverlay();
+        drawWeatherOverlay();
         shapeRenderer.end();
 
         if (sandboxMode) {
@@ -6536,8 +6696,8 @@ public class RatassGame extends ApplicationAdapter {
                 alpha);
     }
 
-    private void drawHalloweenStormOverlay() {
-        if (!isHalloweenTheme() || worldCamera == null) {
+    private void drawWeatherOverlay() {
+        if (rlTrainingMode || currentWeather == Weather.SUNNY || worldCamera == null) {
             return;
         }
 
@@ -6547,6 +6707,11 @@ public class RatassGame extends ApplicationAdapter {
                 (float) Math.sqrt(visibleWidth * visibleWidth + visibleHeight * visibleHeight) * 1.18f;
         float left = worldCamera.position.x - coverSize * 0.5f;
         float bottom = worldCamera.position.y - coverSize * 0.5f;
+        if (currentWeather == Weather.SNOW) {
+            drawSnowOverlay(left, bottom, coverSize);
+            return;
+        }
+
         float rainLength = Math.max(0.75f, coverSize * 0.030f);
         float rainWidth = Math.max(0.018f, coverSize * 0.0010f);
 
@@ -6555,7 +6720,7 @@ public class RatassGame extends ApplicationAdapter {
             float yPhase = wrap01(hash01(i * 29, i * 11, 197) - effectClock * 0.34f);
             float x = left + xPhase * coverSize;
             float y = bottom + yPhase * coverSize;
-            float alpha = HALLOWEEN_WORLD_RAIN_ALPHA * (0.45f + hash01(i * 5, i * 19, 71) * 0.55f);
+            float alpha = WEATHER_RAIN_ALPHA * (0.45f + hash01(i * 5, i * 19, 71) * 0.55f);
             drawRotatedRect(
                     x,
                     y,
@@ -6567,7 +6732,37 @@ public class RatassGame extends ApplicationAdapter {
                     0.72f,
                     alpha);
         }
+    }
 
+    private void drawSnowOverlay(float left, float bottom, float coverSize) {
+        for (int i = 0; i < 72; i++) {
+            float fallSpeed = 0.045f + hash01(i * 13, i * 31, 181) * 0.055f;
+            float drift =
+                    MathUtils.sin(effectClock * (0.55f + hash01(i, i * 7, 43)) + i)
+                            * 0.022f;
+            float xPhase =
+                    wrap01(
+                            hash01(i * 17, i * 37, 113)
+                                    + effectClock * 0.008f
+                                    + drift);
+            float yPhase =
+                    wrap01(hash01(i * 29, i * 11, 197) - effectClock * fallSpeed);
+            float radius =
+                    Math.max(
+                            0.035f,
+                            coverSize
+                                    * (0.00075f
+                                            + hash01(i * 5, i * 19, 71) * 0.00075f));
+            float alpha =
+                    WEATHER_SNOW_ALPHA
+                            * (0.45f + hash01(i * 23, i * 3, 97) * 0.55f);
+            shapeRenderer.setColor(0.92f, 0.97f, 1f, alpha);
+            shapeRenderer.circle(
+                    left + xPhase * coverSize,
+                    bottom + yPhase * coverSize,
+                    radius,
+                    8);
+        }
     }
 
     private float wrap01(float value) {
@@ -7980,7 +8175,7 @@ public class RatassGame extends ApplicationAdapter {
                 sandboxPhysicsTunerBounds.width,
                 3f);
 
-        for (int i = 0; i < SANDBOX_PHYSICS_TUNER_COUNT; i++) {
+        for (int i = 0; i < SANDBOX_TUNER_ROW_COUNT; i++) {
             float rowY =
                     sandboxPhysicsTunerBounds.y
                             + sandboxPhysicsTunerBounds.height
@@ -7992,8 +8187,16 @@ public class RatassGame extends ApplicationAdapter {
                     rowY + 2f,
                     sandboxPhysicsTunerBounds.width - 14f,
                     SANDBOX_PHYSICS_TUNER_ROW_HEIGHT - 4f);
-            drawSandboxPhysicsTunerButtonShape(sandboxPhysicsDecreaseBounds[i], 0.12f, 0.16f, 0.20f);
-            drawSandboxPhysicsTunerButtonShape(sandboxPhysicsIncreaseBounds[i], 0.15f, 0.20f, 0.16f);
+            Rectangle decreaseBounds =
+                    i == SANDBOX_TUNER_WEATHER_ROW
+                            ? sandboxWeatherPrevBounds
+                            : sandboxPhysicsDecreaseBounds[i];
+            Rectangle increaseBounds =
+                    i == SANDBOX_TUNER_WEATHER_ROW
+                            ? sandboxWeatherNextBounds
+                            : sandboxPhysicsIncreaseBounds[i];
+            drawSandboxPhysicsTunerButtonShape(decreaseBounds, 0.12f, 0.16f, 0.20f);
+            drawSandboxPhysicsTunerButtonShape(increaseBounds, 0.15f, 0.20f, 0.16f);
         }
         drawSandboxPhysicsTunerButtonShape(sandboxPhysicsResetBounds, 0.18f, 0.13f, 0.11f);
         shapeRenderer.end();
@@ -8013,7 +8216,7 @@ public class RatassGame extends ApplicationAdapter {
         hudFont.setColor(0.96f, 0.92f, 0.78f, 1f);
         hudFont.draw(
                 spriteBatch,
-                "sandbox physics",
+                "sandbox tuning",
                 sandboxPhysicsTunerBounds.x + 10f,
                 sandboxPhysicsTunerBounds.y + sandboxPhysicsTunerBounds.height - 10f);
         hudFont.setColor(1f, 0.86f, 0.62f, 1f);
@@ -8023,7 +8226,7 @@ public class RatassGame extends ApplicationAdapter {
                 sandboxPhysicsResetBounds.x + sandboxPhysicsResetBounds.width * 0.5f,
                 sandboxPhysicsResetBounds.y + sandboxPhysicsResetBounds.height * 0.68f);
 
-        for (int i = 0; i < SANDBOX_PHYSICS_TUNER_COUNT; i++) {
+        for (int i = 0; i < SANDBOX_TUNER_ROW_COUNT; i++) {
             float rowY =
                     sandboxPhysicsTunerBounds.y
                             + sandboxPhysicsTunerBounds.height
@@ -8033,26 +8236,40 @@ public class RatassGame extends ApplicationAdapter {
             hudFont.setColor(0.82f, 0.88f, 0.91f, 1f);
             hudFont.draw(
                     spriteBatch,
-                    SANDBOX_PHYSICS_TUNER_LABELS[i],
+                    i == SANDBOX_TUNER_WEATHER_ROW
+                            ? "weather"
+                            : SANDBOX_PHYSICS_TUNER_LABELS[i],
                     sandboxPhysicsTunerBounds.x + 12f,
                     textY);
             hudFont.setColor(0.98f, 0.92f, 0.76f, 1f);
             drawTextCentered(
                     hudFont,
-                    formatSandboxPhysicsTuningValue(i),
-                    sandboxPhysicsTunerBounds.x + sandboxPhysicsTunerBounds.width - 72f,
+                    i == SANDBOX_TUNER_WEATHER_ROW
+                            ? currentWeather.displayName
+                            : formatSandboxPhysicsTuningValue(i),
+                    sandboxPhysicsTunerBounds.x
+                            + sandboxPhysicsTunerBounds.width
+                            - (i == SANDBOX_TUNER_WEATHER_ROW ? 118f : 72f),
                     textY);
+            Rectangle decreaseBounds =
+                    i == SANDBOX_TUNER_WEATHER_ROW
+                            ? sandboxWeatherPrevBounds
+                            : sandboxPhysicsDecreaseBounds[i];
+            Rectangle increaseBounds =
+                    i == SANDBOX_TUNER_WEATHER_ROW
+                            ? sandboxWeatherNextBounds
+                            : sandboxPhysicsIncreaseBounds[i];
             hudFont.setColor(0.94f, 0.96f, 0.98f, 1f);
             drawTextCentered(
                     hudFont,
-                    "-",
-                    sandboxPhysicsDecreaseBounds[i].x + sandboxPhysicsDecreaseBounds[i].width * 0.5f,
-                    sandboxPhysicsDecreaseBounds[i].y + sandboxPhysicsDecreaseBounds[i].height * 0.70f);
+                    i == SANDBOX_TUNER_WEATHER_ROW ? "<" : "-",
+                    decreaseBounds.x + decreaseBounds.width * 0.5f,
+                    decreaseBounds.y + decreaseBounds.height * 0.70f);
             drawTextCentered(
                     hudFont,
-                    "+",
-                    sandboxPhysicsIncreaseBounds[i].x + sandboxPhysicsIncreaseBounds[i].width * 0.5f,
-                    sandboxPhysicsIncreaseBounds[i].y + sandboxPhysicsIncreaseBounds[i].height * 0.70f);
+                    i == SANDBOX_TUNER_WEATHER_ROW ? ">" : "+",
+                    increaseBounds.x + increaseBounds.width * 0.5f,
+                    increaseBounds.y + increaseBounds.height * 0.70f);
         }
         spriteBatch.end();
     }
@@ -10491,6 +10708,7 @@ public class RatassGame extends ApplicationAdapter {
         private float passingAssistRouteCheckTimer;
         private float passingAssistAcquireCooldown;
         private float passingAssistBrakeDemand;
+        private float surfaceGripMultiplier = 1f;
         private boolean passingAssistCommitted;
         private boolean passingAssistRouteSafe;
         private float rlDecisionTimer;
@@ -10595,10 +10813,19 @@ public class RatassGame extends ApplicationAdapter {
                 float targetTimeRemaining,
                 Array<Car> cars,
                 RlPolicy rlPolicy,
+                float surfaceGripMultiplier,
                 boolean trainingMode) {
             if (!active || body == null) {
                 return;
             }
+
+            this.surfaceGripMultiplier =
+                    trainingMode
+                            ? 1f
+                            : MathUtils.clamp(
+                                    surfaceGripMultiplier,
+                                    WEATHER_SNOW_GRIP_MULTIPLIER,
+                                    1f);
 
             advanceCombatTimers(delta);
             float impactSlideFactor = advanceImpactSlide(delta);
@@ -11884,6 +12111,7 @@ public class RatassGame extends ApplicationAdapter {
 
             float gripMultiplier = MathUtils.clamp(1f - 0.68f * impactSlideFactor, 0.18f, 1f);
             float dragMultiplier = MathUtils.clamp(1f - 0.58f * impactSlideFactor, 0.24f, 1f);
+            gripMultiplier *= surfaceGripMultiplier;
             if (controlLockTimer > 0f) {
                 gripMultiplier *= 0.58f;
                 dragMultiplier *= 0.76f;
@@ -12175,6 +12403,7 @@ public class RatassGame extends ApplicationAdapter {
                     body.getMass()
                             * physics.lateralGripPerSecond
                             * physics.wheelGrip
+                            * surfaceGripMultiplier
                             * (braking ? BRAKE_TRACTION_MULTIPLIER : DRIVE_TRACTION_MULTIPLIER);
             return MathUtils.clamp(requestedForce, -maxForce, maxForce);
         }
@@ -12273,13 +12502,18 @@ public class RatassGame extends ApplicationAdapter {
             float gripLimitedDeceleration =
                     physics.lateralGripPerSecond
                             * physics.wheelGrip
+                            * surfaceGripMultiplier
                             * BRAKE_TRACTION_MULTIPLIER;
             return Math.max(0f, Math.min(requestedDeceleration, gripLimitedDeceleration));
         }
 
         private float getMaximumLateralAcceleration() {
             CarPhysics physics = physics();
-            return Math.max(0f, physics.lateralGripPerSecond * physics.wheelGrip);
+            return Math.max(
+                    0f,
+                    physics.lateralGripPerSecond
+                            * physics.wheelGrip
+                            * surfaceGripMultiplier);
         }
 
         private void applyTrackLimitSlowdown(ArenaMap arenaMap) {
@@ -14436,6 +14670,20 @@ public class RatassGame extends ApplicationAdapter {
         private float timer;
         private float rotationDeg;
         private float scale;
+    }
+
+    private enum Weather {
+        SUNNY("sunny", 1f),
+        RAIN("raining", WEATHER_RAIN_GRIP_MULTIPLIER),
+        SNOW("snowing", WEATHER_SNOW_GRIP_MULTIPLIER);
+
+        private final String displayName;
+        private final float gripMultiplier;
+
+        Weather(String displayName, float gripMultiplier) {
+            this.displayName = displayName;
+            this.gripMultiplier = gripMultiplier;
+        }
     }
 
     private enum GameMode {
