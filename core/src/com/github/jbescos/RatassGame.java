@@ -10298,6 +10298,9 @@ public class RatassGame extends ApplicationAdapter {
         private static final float OFF_ROAD_AUTO_RECOVERY_MAX_SECONDS = 5.0f;
         private static final float OFF_ROAD_AUTO_RECOVERY_FORWARD_THROTTLE = 0.86f;
         private static final float OFF_ROAD_AUTO_RECOVERY_REVERSE_THROTTLE = 0.62f;
+        private static final float NO_PROGRESS_AUTO_RECOVERY_DISTANCE = HEIGHT * 0.50f;
+        private static final float NO_PROGRESS_AUTO_RECOVERY_LOOKAHEAD = HEIGHT * 2.5f;
+        private static final float NO_PROGRESS_AUTO_RECOVERY_MAX_SECONDS = 5.0f;
 
         private final CarTemplate template;
         private final String name;
@@ -10364,10 +10367,15 @@ public class RatassGame extends ApplicationAdapter {
         private float rlDecisionTimer;
         private float sustainedCarContactTimer;
         private float sustainedOffRoadTimer;
+        private float sustainedNoProgressTimer;
         private float contactAutoRecoveryTimer;
         private float offRoadAutoRecoveryTimer;
+        private float noProgressAutoRecoveryTimer;
+        private float noProgressReferenceRouteProgress;
         private boolean contactAutoRecoveryActive;
         private boolean offRoadAutoRecoveryActive;
+        private boolean noProgressAutoRecoveryActive;
+        private boolean noProgressRouteTrackingInitialized;
         private float contactAutoRecoveryThrottleSign = -1f;
         private boolean reverseDriveActive;
         private float lastThrottleCommand;
@@ -10912,11 +10920,12 @@ public class RatassGame extends ApplicationAdapter {
                 sustainedOffRoadTimer = 0f;
                 contactAutoRecoveryActive = false;
                 offRoadAutoRecoveryActive = false;
+                resetNoProgressAutoRecoveryState();
                 return;
             }
 
+            boolean offRoad = arenaMap != null && !arenaMap.supports(body.getPosition());
             if (allowOffRoadRecovery) {
-                boolean offRoad = arenaMap != null && !arenaMap.supports(body.getPosition());
                 if (offRoad) {
                     sustainedOffRoadTimer += delta;
                     if (sustainedOffRoadTimer >= AUTO_RECOVERY_TRIGGER_SECONDS) {
@@ -10932,6 +10941,11 @@ public class RatassGame extends ApplicationAdapter {
                 offRoadAutoRecoveryActive = false;
                 offRoadAutoRecoveryTimer = 0f;
             }
+
+            updateNoProgressAutoRecoveryState(
+                    delta,
+                    arenaMap,
+                    allowOffRoadRecovery && !offRoad);
 
             if (!allowContactRecovery) {
                 sustainedCarContactTimer = 0f;
@@ -10972,8 +10986,65 @@ public class RatassGame extends ApplicationAdapter {
             if (allowContactRecovery && contactAutoRecoveryActive) {
                 return applyContactAutoRecoveryControl(delta);
             }
+            if (allowOffRoadRecovery && noProgressAutoRecoveryActive) {
+                return applyNoProgressAutoRecoveryControl(arenaMap, delta);
+            }
             automaticRecoveryControlDecision.set(modelThrottle, modelTurn);
             return false;
+        }
+
+        private void updateNoProgressAutoRecoveryState(
+                float delta,
+                ArenaMap arenaMap,
+                boolean allowed) {
+            if (!allowed
+                    || arenaMap == null
+                    || !arenaMap.hasRoute()
+                    || template == null
+                    || template.roundRaceFinished) {
+                resetNoProgressAutoRecoveryState();
+                return;
+            }
+
+            float routeProgress = template.roundRaceLastRouteProgress;
+            if (Float.isNaN(routeProgress) || Float.isInfinite(routeProgress)) {
+                resetNoProgressAutoRecoveryState();
+                return;
+            }
+            if (!noProgressRouteTrackingInitialized) {
+                noProgressReferenceRouteProgress = routeProgress;
+                noProgressRouteTrackingInitialized = true;
+                return;
+            }
+
+            float routeDelta =
+                    arenaMap.routeProgressDelta(noProgressReferenceRouteProgress, routeProgress);
+            if (!Float.isNaN(routeDelta)
+                    && !Float.isInfinite(routeDelta)
+                    && routeDelta >= NO_PROGRESS_AUTO_RECOVERY_DISTANCE) {
+                sustainedNoProgressTimer = 0f;
+                noProgressAutoRecoveryTimer = 0f;
+                noProgressReferenceRouteProgress = routeProgress;
+                noProgressAutoRecoveryActive = false;
+                return;
+            }
+
+            if (!noProgressAutoRecoveryActive) {
+                sustainedNoProgressTimer += delta;
+                if (sustainedNoProgressTimer >= AUTO_RECOVERY_TRIGGER_SECONDS) {
+                    noProgressAutoRecoveryActive = true;
+                    noProgressAutoRecoveryTimer = 0f;
+                    noProgressReferenceRouteProgress = routeProgress;
+                }
+            }
+        }
+
+        private void resetNoProgressAutoRecoveryState() {
+            sustainedNoProgressTimer = 0f;
+            noProgressAutoRecoveryTimer = 0f;
+            noProgressReferenceRouteProgress = 0f;
+            noProgressAutoRecoveryActive = false;
+            noProgressRouteTrackingInitialized = false;
         }
 
         private boolean applyContactAutoRecoveryControl(float delta) {
@@ -11010,7 +11081,27 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             findOffRoadAutoRecoveryTarget(arenaMap, autoRecoveryTarget);
-            autoRecoveryToTarget.set(autoRecoveryTarget).sub(body.getPosition());
+            return applyAutoRecoveryTowardTarget(autoRecoveryTarget);
+        }
+
+        private boolean applyNoProgressAutoRecoveryControl(ArenaMap arenaMap, float delta) {
+            noProgressAutoRecoveryTimer += delta;
+            if (arenaMap == null
+                    || !arenaMap.hasRoute()
+                    || template == null
+                    || template.roundRaceFinished
+                    || noProgressAutoRecoveryTimer >= NO_PROGRESS_AUTO_RECOVERY_MAX_SECONDS) {
+                resetNoProgressAutoRecoveryState();
+                automaticRecoveryControlDecision.set(0f, 0f);
+                return false;
+            }
+
+            findNoProgressAutoRecoveryTarget(arenaMap, autoRecoveryTarget);
+            return applyAutoRecoveryTowardTarget(autoRecoveryTarget);
+        }
+
+        private boolean applyAutoRecoveryTowardTarget(Vector2 target) {
+            autoRecoveryToTarget.set(target).sub(body.getPosition());
             if (autoRecoveryToTarget.isZero(0.0001f)) {
                 automaticRecoveryControlDecision.set(0f, 0f);
                 return true;
@@ -11031,6 +11122,11 @@ public class RatassGame extends ApplicationAdapter {
                             1f);
             automaticRecoveryControlDecision.set(throttle, turn);
             return true;
+        }
+
+        private void findNoProgressAutoRecoveryTarget(ArenaMap arenaMap, Vector2 out) {
+            float referenceProgress = template == null ? 0f : template.roundRaceLastRouteProgress;
+            arenaMap.findRoutePoint(referenceProgress + NO_PROGRESS_AUTO_RECOVERY_LOOKAHEAD, out);
         }
 
         private void findOffRoadAutoRecoveryTarget(ArenaMap arenaMap, Vector2 out) {
@@ -11986,6 +12082,7 @@ public class RatassGame extends ApplicationAdapter {
             sustainedOffRoadTimer = 0f;
             contactAutoRecoveryTimer = 0f;
             offRoadAutoRecoveryTimer = 0f;
+            resetNoProgressAutoRecoveryState();
             slipstreamBoost = 0f;
             slipstreamSnapshotReady = false;
             slipstreamSnapshotOnRoad = false;
