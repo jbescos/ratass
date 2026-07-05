@@ -203,6 +203,23 @@ public class RatassGame extends ApplicationAdapter {
     private static final float PASSING_ASSIST_MAX_TURN = 0.68f;
     private static final float PASSING_ASSIST_ATTACK_LERP = 9.0f;
     private static final float PASSING_ASSIST_RELEASE_LERP = 6.0f;
+    private static final float PASSING_ASSIST_COMMIT_FORWARD_DISTANCE = Car.HEIGHT * 1.25f;
+    private static final float PASSING_ASSIST_COMMIT_LATERAL_RATIO = 0.55f;
+    private static final float PASSING_ASSIST_ROUTE_CHECK_INTERVAL = 0.12f;
+    private static final float PASSING_ASSIST_ABORT_COOLDOWN = 0.35f;
+    private static final float PASSING_ASSIST_MIN_ROUTE_SCAN_DISTANCE = Car.HEIGHT * 8f;
+    private static final float PASSING_ASSIST_ROUTE_SAMPLE_STEP = Car.HEIGHT * 1.5f;
+    private static final float PASSING_ASSIST_MAX_ROUTE_CURVATURE = 0.12f;
+    private static final float PASSING_ASSIST_MIN_ROUTE_TANGENT_ALIGNMENT = 0.94f;
+    private static final float PASSING_ASSIST_MAX_BRAKE_DEMAND = 0.10f;
+    private static final float PASSING_ASSIST_MIN_EXPECTED_CLOSING_SPEED_RATIO = 0.04f;
+    private static final float PASSING_ASSIST_PASS_TIME_MARGIN = 0.45f;
+    private static final float PASSING_ASSIST_MIN_PASS_TIME = 0.75f;
+    private static final float PASSING_ASSIST_MAX_PASS_TIME = 3.0f;
+    private static final float PASSING_ASSIST_CORNER_BIAS_SCALE = 0.20f;
+    private static final float PASSING_ASSIST_CORNER_THROTTLE_CAP = 0.35f;
+    private static final float PASSING_ASSIST_FOLLOW_REACTION_TIME = 0.35f;
+    private static final float PASSING_ASSIST_FOLLOW_THROTTLE_CAP = 0.35f;
     private static final float MIN_WORLD_CAMERA_ZOOM = 0.90f;
     private static final float PLAYER_CAMERA_ZOOM = 1.04f;
     private static final float PLAYER_CAMERA_SPEED_ZOOM_OUT = 0.46f;
@@ -10417,6 +10434,7 @@ public class RatassGame extends ApplicationAdapter {
         private final AiControlDecision externalControlDecision = new AiControlDecision();
         private final AiControlDecision rawExternalControlDecision = new AiControlDecision();
         private final AiControlDecision automaticRecoveryControlDecision = new AiControlDecision();
+        private final AiControlDecision passingAssistControlDecision = new AiControlDecision();
         private final float[] rlObservation = new float[RL_OBSERVATION_SIZE];
         private final Vector2 forwardAxis = new Vector2();
         private final Vector2 sidewaysAxis = new Vector2();
@@ -10439,8 +10457,8 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 passingRouteForward = new Vector2();
         private final Vector2 passingRoutePoint = new Vector2();
         private final Vector2 passingRouteTangent = new Vector2();
-        private final float[] passingSelfRouteMargins = new float[2];
-        private final float[] passingTargetRouteMargins = new float[2];
+        private final float[] passingSelfRouteMargins = new float[4];
+        private final float[] passingTargetRouteMargins = new float[4];
 
         private Body body;
         private boolean active = true;
@@ -10470,6 +10488,11 @@ public class RatassGame extends ApplicationAdapter {
         private Car passingAssistTarget;
         private int passingAssistDirection;
         private float passingAssistTurnBias;
+        private float passingAssistRouteCheckTimer;
+        private float passingAssistAcquireCooldown;
+        private float passingAssistBrakeDemand;
+        private boolean passingAssistCommitted;
+        private boolean passingAssistRouteSafe;
         private float rlDecisionTimer;
         private float sustainedCarContactTimer;
         private float sustainedOffRoadTimer;
@@ -10630,7 +10653,15 @@ public class RatassGame extends ApplicationAdapter {
                 turn = automaticRecoveryControlDecision.turn;
                 resetPassingAssist();
             } else {
-                turn = applyPassingAssist(delta, arenaMap, cars, turn);
+                applyPassingAssist(
+                        delta,
+                        arenaMap,
+                        cars,
+                        throttle,
+                        turn,
+                        passingAssistControlDecision);
+                throttle = passingAssistControlDecision.throttle;
+                turn = passingAssistControlDecision.turn;
             }
             lastThrottleCommand = allowControl && controlLockTimer <= 0f ? throttle : 0f;
             lastTurnCommand = allowControl && controlLockTimer <= 0f ? turn : 0f;
@@ -10672,11 +10703,13 @@ public class RatassGame extends ApplicationAdapter {
             slipstreamSnapshotReady = true;
         }
 
-        private float applyPassingAssist(
+        private void applyPassingAssist(
                 float delta,
                 ArenaMap arenaMap,
                 Array<Car> cars,
-                float requestedTurn) {
+                float requestedThrottle,
+                float requestedTurn,
+                AiControlDecision out) {
             if ((!modelControlled && !externallyControlled)
                     || arenaMap == null
                     || !arenaMap.hasRoute()
@@ -10685,27 +10718,94 @@ public class RatassGame extends ApplicationAdapter {
                     || !slipstreamSnapshotReady
                     || !slipstreamSnapshotOnRoad) {
                 resetPassingAssist();
-                return requestedTurn;
+                out.set(requestedThrottle, requestedTurn);
+                return;
             }
 
+            passingAssistRouteCheckTimer =
+                    Math.max(0f, passingAssistRouteCheckTimer - Math.max(0f, delta));
+            passingAssistAcquireCooldown =
+                    Math.max(0f, passingAssistAcquireCooldown - Math.max(0f, delta));
             Car target = findPassingAssistTarget(cars);
             float targetBias = 0f;
+            float adjustedThrottle = requestedThrottle;
+            boolean routeSteeringHasPriority = false;
             if (target != null) {
-                if (target != passingAssistTarget) {
+                boolean newTarget = target != passingAssistTarget;
+                if (newTarget && passingAssistAcquireCooldown > 0f) {
+                    adjustedThrottle =
+                            limitPassingFollowThrottle(
+                                    adjustedThrottle,
+                                    target);
+                    target = null;
+                } else if (newTarget) {
                     passingAssistTarget = target;
                     passingAssistDirection = 0;
+                    passingAssistCommitted = false;
+                    passingAssistRouteSafe = false;
+                    passingAssistBrakeDemand = 0f;
+                    passingAssistRouteCheckTimer = 0f;
                 }
-                int selectedDirection = selectPassingAssistDirection(arenaMap, cars, target);
-                if (selectedDirection != 0) {
-                    passingAssistDirection = selectedDirection;
-                    targetBias = calculatePassingAssistTurnBias(target, selectedDirection);
-                } else {
-                    passingAssistTarget = null;
-                    passingAssistDirection = 0;
+
+                if (target != null) {
+                    int selectedDirection =
+                            selectPassingAssistDirection(arenaMap, cars, target);
+                    if (selectedDirection != 0) {
+                        passingAssistDirection = selectedDirection;
+                        passingAssistCommitted =
+                                passingAssistCommitted
+                                        || isPassingAssistAlongside(
+                                                target,
+                                                selectedDirection);
+                    }
+
+                    boolean canHoldDirection =
+                            selectedDirection != 0
+                                    || (passingAssistCommitted
+                                            && passingAssistDirection != 0);
+                    if (canHoldDirection) {
+                        if (selectedDirection == 0) {
+                            passingAssistRouteSafe = false;
+                            passingAssistRouteCheckTimer = 0f;
+                        } else if (newTarget || passingAssistRouteCheckTimer <= 0f) {
+                            passingAssistRouteSafe =
+                                    isPassingAssistRouteSafe(
+                                            arenaMap,
+                                            target,
+                                            passingAssistDirection);
+                            passingAssistRouteCheckTimer =
+                                    PASSING_ASSIST_ROUTE_CHECK_INTERVAL;
+                        }
+
+                        if (!passingAssistRouteSafe && !passingAssistCommitted) {
+                            adjustedThrottle =
+                                    limitPassingFollowThrottle(
+                                            adjustedThrottle,
+                                            target);
+                            abortPassingAssist();
+                        } else {
+                            targetBias =
+                                    calculatePassingAssistTurnBias(
+                                            target,
+                                            passingAssistDirection);
+                            if (!passingAssistRouteSafe) {
+                                routeSteeringHasPriority = true;
+                                adjustedThrottle =
+                                        limitCommittedPassingThrottle(
+                                                adjustedThrottle);
+                            }
+                        }
+                    } else {
+                        adjustedThrottle =
+                                limitPassingFollowThrottle(
+                                        adjustedThrottle,
+                                        target);
+                        abortPassingAssist();
+                    }
                 }
-            } else {
-                passingAssistTarget = null;
-                passingAssistDirection = 0;
+            }
+            if (target == null) {
+                clearPassingAssistTarget();
             }
 
             float lerpSpeed =
@@ -10719,18 +10819,31 @@ public class RatassGame extends ApplicationAdapter {
                 passingAssistTurnBias = 0f;
             }
 
+            float adjustedTurn;
             if (passingAssistTarget == null || Math.abs(passingAssistTurnBias) < 0.001f) {
-                return MathUtils.clamp(
+                adjustedTurn = MathUtils.clamp(
                         requestedTurn + passingAssistTurnBias * 0.25f,
                         -1f,
                         1f);
+            } else if (routeSteeringHasPriority) {
+                adjustedTurn =
+                        MathUtils.clamp(
+                                requestedTurn
+                                        + passingAssistTurnBias
+                                                * PASSING_ASSIST_CORNER_BIAS_SCALE,
+                                -1f,
+                                1f);
+            } else if (requestedTurn * passingAssistTurnBias <= 0f) {
+                adjustedTurn = passingAssistTurnBias;
+            } else {
+                adjustedTurn =
+                        Math.copySign(
+                                Math.max(
+                                        Math.abs(requestedTurn),
+                                        Math.abs(passingAssistTurnBias)),
+                                passingAssistTurnBias);
             }
-            if (requestedTurn * passingAssistTurnBias <= 0f) {
-                return passingAssistTurnBias;
-            }
-            return Math.copySign(
-                    Math.max(Math.abs(requestedTurn), Math.abs(passingAssistTurnBias)),
-                    passingAssistTurnBias);
+            out.set(adjustedThrottle, adjustedTurn);
         }
 
         private Car findPassingAssistTarget(Array<Car> cars) {
@@ -10828,6 +10941,27 @@ public class RatassGame extends ApplicationAdapter {
                     || timeToContact <= PASSING_ASSIST_TIME_TO_CONTACT;
         }
 
+        private boolean isPassingAssistAlongside(Car target, int direction) {
+            if (target == null || direction == 0) {
+                return false;
+            }
+            float dx = target.slipstreamSnapshotX - slipstreamSnapshotX;
+            float dy = target.slipstreamSnapshotY - slipstreamSnapshotY;
+            float forwardDistance =
+                    dx * slipstreamSnapshotForwardX + dy * slipstreamSnapshotForwardY;
+            if (forwardDistance > PASSING_ASSIST_COMMIT_FORWARD_DISTANCE) {
+                return false;
+            }
+            float targetLateral =
+                    -(dx * slipstreamSnapshotSideX + dy * slipstreamSnapshotSideY);
+            float desiredSeparation =
+                    HALF_WIDTH * sizeScale
+                            + HALF_WIDTH * target.sizeScale
+                            + PASSING_ASSIST_SIDE_GAP;
+            return -direction * targetLateral
+                    >= desiredSeparation * PASSING_ASSIST_COMMIT_LATERAL_RATIO;
+        }
+
         private int selectPassingAssistDirection(
                 ArenaMap arenaMap,
                 Array<Car> cars,
@@ -10884,6 +11018,130 @@ public class RatassGame extends ApplicationAdapter {
             return leftAvailable && (!rightAvailable || leftSpace >= rightSpace) ? 1 : -1;
         }
 
+        private boolean isPassingAssistRouteSafe(
+                ArenaMap arenaMap,
+                Car target,
+                int direction) {
+            if (arenaMap == null
+                    || target == null
+                    || direction == 0
+                    || passingSelfRouteMargins.length < 4
+                    || passingTargetRouteMargins.length < 4) {
+                passingAssistBrakeDemand = 1f;
+                return false;
+            }
+
+            float dx = target.slipstreamSnapshotX - slipstreamSnapshotX;
+            float dy = target.slipstreamSnapshotY - slipstreamSnapshotY;
+            float forwardDistance =
+                    dx * slipstreamSnapshotForwardX + dy * slipstreamSnapshotForwardY;
+            Vector2 targetVelocity = target.body.getLinearVelocity();
+            float targetForwardSpeed =
+                    targetVelocity.x * slipstreamSnapshotForwardX
+                            + targetVelocity.y * slipstreamSnapshotForwardY;
+            float closingSpeed = slipstreamSnapshotForwardSpeed - targetForwardSpeed;
+            float expectedClosingSpeed =
+                    Math.max(
+                            closingSpeed,
+                            getBaseForwardMaxSpeed()
+                                    * PASSING_ASSIST_MIN_EXPECTED_CLOSING_SPEED_RATIO);
+            float relativeDistance =
+                    Math.max(
+                            0f,
+                            forwardDistance
+                                    + PASSING_ASSIST_RELEASE_BEHIND_DISTANCE);
+            float passTime =
+                    MathUtils.clamp(
+                            relativeDistance / Math.max(0.001f, expectedClosingSpeed)
+                                    + PASSING_ASSIST_PASS_TIME_MARGIN,
+                            PASSING_ASSIST_MIN_PASS_TIME,
+                            PASSING_ASSIST_MAX_PASS_TIME);
+
+            float routeProgress = passingSelfRouteMargins[2];
+            arenaMap.findRouteTangent(routeProgress, passingRouteTangent);
+            float initialTangentX = passingRouteTangent.x;
+            float initialTangentY = passingRouteTangent.y;
+            Vector2 velocity = body.getLinearVelocity();
+            float routeForwardSpeed =
+                    Math.max(
+                            0f,
+                            velocity.x * initialTangentX
+                                    + velocity.y * initialTangentY);
+            float scanDistance =
+                    Math.max(
+                            PASSING_ASSIST_MIN_ROUTE_SCAN_DISTANCE,
+                            routeForwardSpeed * passTime
+                                    + getEstimatedBrakingDistance());
+            scanDistance =
+                    Math.min(
+                            Math.min(scanDistance, RL_SENSOR_MAX_LOOKAHEAD_DISTANCE),
+                            arenaMap.getRouteLength());
+            passingAssistBrakeDemand =
+                    getRlBrakeDemand(
+                            this,
+                            arenaMap,
+                            routeProgress,
+                            routeForwardSpeed,
+                            scanDistance);
+            if (passingAssistBrakeDemand > PASSING_ASSIST_MAX_BRAKE_DEMAND) {
+                return false;
+            }
+
+            float followerHalfWidth = HALF_WIDTH * sizeScale;
+            float targetHalfWidth = HALF_WIDTH * target.sizeScale;
+            float desiredSeparation =
+                    followerHalfWidth
+                            + targetHalfWidth
+                            + PASSING_ASSIST_SIDE_GAP;
+            float followerOffset = passingSelfRouteMargins[3];
+            float targetOffset = passingTargetRouteMargins[3];
+            float desiredFollowerOffset = targetOffset + direction * desiredSeparation;
+            float maximumFollowerOffset =
+                    Math.max(followerOffset, desiredFollowerOffset);
+            float minimumFollowerOffset =
+                    Math.min(followerOffset, desiredFollowerOffset);
+            float requiredLeftClearance =
+                    Math.max(
+                                    targetOffset + targetHalfWidth,
+                                    maximumFollowerOffset + followerHalfWidth)
+                            + PASSING_ASSIST_EDGE_GAP;
+            float requiredRightClearance =
+                    Math.max(
+                                    -targetOffset + targetHalfWidth,
+                                    -minimumFollowerOffset + followerHalfWidth)
+                            + PASSING_ASSIST_EDGE_GAP;
+
+            int sampleCount =
+                    Math.max(
+                            1,
+                            MathUtils.ceil(
+                                    scanDistance
+                                            / PASSING_ASSIST_ROUTE_SAMPLE_STEP));
+            for (int sample = 0; sample <= sampleCount; sample++) {
+                float distance =
+                        Math.min(
+                                scanDistance,
+                                sample * PASSING_ASSIST_ROUTE_SAMPLE_STEP);
+                float sampleProgress = routeProgress + distance;
+                if (Math.abs(arenaMap.getRouteCurvature(sampleProgress))
+                        > PASSING_ASSIST_MAX_ROUTE_CURVATURE) {
+                    return false;
+                }
+                arenaMap.findRouteTangent(sampleProgress, passingRouteTangent);
+                float tangentAlignment =
+                        initialTangentX * passingRouteTangent.x
+                                + initialTangentY * passingRouteTangent.y;
+                if (tangentAlignment < PASSING_ASSIST_MIN_ROUTE_TANGENT_ALIGNMENT
+                        || arenaMap.getRouteLeftClearance(sampleProgress)
+                                < requiredLeftClearance
+                        || arenaMap.getRouteRightClearance(sampleProgress)
+                                < requiredRightClearance) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         private boolean isPassingSideClear(
                 Array<Car> cars,
                 Car target,
@@ -10938,7 +11196,7 @@ public class RatassGame extends ApplicationAdapter {
                     || car == null
                     || car.body == null
                     || out == null
-                    || out.length < 2) {
+                    || out.length < 4) {
                 return false;
             }
 
@@ -10960,6 +11218,8 @@ public class RatassGame extends ApplicationAdapter {
                             + (position.y - passingRoutePoint.y) * routeNormalY;
             out[0] = arenaMap.getRouteLeftClearance(routeProgress) - lateralOffset;
             out[1] = arenaMap.getRouteRightClearance(routeProgress) + lateralOffset;
+            out[2] = routeProgress;
+            out[3] = lateralOffset;
             return out[0] > 0f || out[1] > 0f;
         }
 
@@ -11009,10 +11269,77 @@ public class RatassGame extends ApplicationAdapter {
             return direction * turnMagnitude;
         }
 
-        private void resetPassingAssist() {
+        private float limitCommittedPassingThrottle(float requestedThrottle) {
+            if (requestedThrottle <= 0f) {
+                return requestedThrottle;
+            }
+            float throttleCap =
+                    PASSING_ASSIST_CORNER_THROTTLE_CAP
+                            * (1f - MathUtils.clamp(passingAssistBrakeDemand, 0f, 1f));
+            return Math.min(requestedThrottle, throttleCap);
+        }
+
+        private float limitPassingFollowThrottle(
+                float requestedThrottle,
+                Car target) {
+            if (requestedThrottle <= 0f || target == null || target.body == null) {
+                return requestedThrottle;
+            }
+            float dx = target.slipstreamSnapshotX - slipstreamSnapshotX;
+            float dy = target.slipstreamSnapshotY - slipstreamSnapshotY;
+            float forwardDistance =
+                    dx * slipstreamSnapshotForwardX + dy * slipstreamSnapshotForwardY;
+            if (forwardDistance <= 0f) {
+                return requestedThrottle;
+            }
+            Vector2 targetVelocity = target.body.getLinearVelocity();
+            float targetForwardSpeed =
+                    targetVelocity.x * slipstreamSnapshotForwardX
+                            + targetVelocity.y * slipstreamSnapshotForwardY;
+            float closingSpeed = slipstreamSnapshotForwardSpeed - targetForwardSpeed;
+            if (closingSpeed <= 0f) {
+                return requestedThrottle;
+            }
+            float contactDistance =
+                    HEIGHT * (sizeScale + target.sizeScale) * 0.5f;
+            float reactionDistance =
+                    Math.max(
+                            HEIGHT,
+                            slipstreamSnapshotForwardSpeed
+                                    * PASSING_ASSIST_FOLLOW_REACTION_TIME);
+            float availableDistance =
+                    Math.max(0f, forwardDistance - contactDistance);
+            if (availableDistance >= reactionDistance) {
+                return requestedThrottle;
+            }
+            float throttleCap =
+                    PASSING_ASSIST_FOLLOW_THROTTLE_CAP
+                            * MathUtils.clamp(
+                                    availableDistance
+                                            / Math.max(0.001f, reactionDistance),
+                                    0f,
+                                    1f);
+            return Math.min(requestedThrottle, throttleCap);
+        }
+
+        private void abortPassingAssist() {
+            clearPassingAssistTarget();
+            passingAssistAcquireCooldown = PASSING_ASSIST_ABORT_COOLDOWN;
+        }
+
+        private void clearPassingAssistTarget() {
             passingAssistTarget = null;
             passingAssistDirection = 0;
+            passingAssistRouteCheckTimer = 0f;
+            passingAssistBrakeDemand = 0f;
+            passingAssistCommitted = false;
+            passingAssistRouteSafe = false;
+        }
+
+        private void resetPassingAssist() {
+            clearPassingAssistTarget();
             passingAssistTurnBias = 0f;
+            passingAssistAcquireCooldown = 0f;
         }
 
         private void updateAutomaticRecoveryState(
