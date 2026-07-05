@@ -8,10 +8,17 @@ All imported files were converted with `ffmpeg` to PCM WAV, 16-bit, mono,
 The `halloween` theme audio was generated procedurally for this project using
 simple synthesized tones and noise. It does not use third-party source audio.
 
+## Procedural Vehicle Sounds
+
+The engine loops, tire-slip loops, and replacement crash impacts used by the
+`gt3` and `halloween` themes were generated procedurally for this project on
+2026-07-05. They do not use third-party source audio.
+
 ## Sound Effects
 
-All sound effects are from Kenney asset packs licensed under Creative Commons
-CC0 1.0 Universal.
+The sound effects listed below are from Kenney asset packs licensed under
+Creative Commons CC0 1.0 Universal. The procedural vehicle sounds listed above
+are the exception.
 
 | Pack | Author | Source |
 | --- | --- | --- |

@@ -470,6 +470,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final float CAR_SPRITE_ROTATION_OFFSET_DEG = 180f;
     private static final float IMPACT_SOUND_COOLDOWN = 0.06f;
     private static final float DESTRUCTION_SOUND_COOLDOWN = 0.08f;
+    private static final float ENGINE_SOUND_IDLE_PITCH = 0.64f;
+    private static final float ENGINE_SOUND_MAX_PITCH = 1.58f;
+    private static final float ENGINE_SOUND_IDLE_VOLUME = 0.08f;
+    private static final float ENGINE_SOUND_MAX_VOLUME = 0.34f;
+    private static final float ENGINE_SOUND_RESPONSE = 7f;
+    private static final float SLIP_SOUND_START_THRESHOLD = 0.32f;
+    private static final float SLIP_SOUND_STOP_THRESHOLD = 0.25f;
+    private static final float SLIP_SOUND_MIN_SPEED_RATIO = 0.20f;
+    private static final float SLIP_SOUND_MAX_VOLUME = 0.46f;
     private static final String[] DEFAULT_ENEMY_NAMES = new String[] {
             "Brim",
             "Cinderskull",
@@ -832,6 +841,8 @@ public class RatassGame extends ApplicationAdapter {
     private Sound destructionSound;
     private Sound countdownSound;
     private Sound roundStartSound;
+    private Sound engineSound;
+    private Sound slipSound;
     private Music themeMusic;
     private World world;
     private Texture arenaSurfaceTexture;
@@ -859,6 +870,10 @@ public class RatassGame extends ApplicationAdapter {
     private float sidebarHudWidth;
     private float impactSoundCooldown;
     private float destructionSoundCooldown;
+    private float engineSoundPitch = ENGINE_SOUND_IDLE_PITCH;
+    private float engineSoundVolume;
+    private long engineSoundId = -1L;
+    private long slipSoundId = -1L;
     private float smoothedCameraZoom = 1f;
     private float cameraTargetTransitionTimer;
     private float eventCalloutTimer;
@@ -1718,23 +1733,30 @@ public class RatassGame extends ApplicationAdapter {
         destructionSound = loadSound("audio/destroy.wav");
         countdownSound = loadSound("audio/countdown.wav");
         roundStartSound = loadSound("audio/start.wav");
+        engineSound = loadSound("audio/engine.wav");
+        slipSound = loadSound("audio/slip.wav");
         themeMusic = loadMusic("audio/music.wav");
         playThemeMusic();
     }
 
     private void disposeGameSounds() {
+        stopVehicleSounds();
         disposeMusic(themeMusic);
         disposeSound(impactSound);
         disposeSound(pickupSound);
         disposeSound(destructionSound);
         disposeSound(countdownSound);
         disposeSound(roundStartSound);
+        disposeSound(engineSound);
+        disposeSound(slipSound);
         themeMusic = null;
         impactSound = null;
         pickupSound = null;
         destructionSound = null;
         countdownSound = null;
         roundStartSound = null;
+        engineSound = null;
+        slipSound = null;
     }
 
     private void playThemeMusic() {
@@ -2150,12 +2172,95 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
-        float volume = MathUtils.clamp(
+        float normalizedStrength = MathUtils.clamp(
                 (impactStrength - Car.MIN_COLLISION_RESPONSE_IMPULSE) / 24f,
-                0.18f,
-                0.82f);
-        playSound(impactSound, volume);
+                0f,
+                1f);
+        float volume = MathUtils.lerp(0.18f, 0.86f, normalizedStrength);
+        float pitch = MathUtils.lerp(1.08f, 0.82f, normalizedStrength);
+        if (impactSound != null) {
+            impactSound.play(volume, pitch, 0f);
+        }
         impactSoundCooldown = IMPACT_SOUND_COOLDOWN;
+    }
+
+    private void updateVehicleSounds(float delta) {
+        if (rlTrainingMode || gameMode != GameMode.PLAYING || isInGameMenuOpen()) {
+            stopVehicleSounds();
+            return;
+        }
+
+        Car audibleCar = getCameraTargetCar();
+        if (!isCameraFollowable(audibleCar)) {
+            stopVehicleSounds();
+            return;
+        }
+
+        float speedRatio = MathUtils.clamp(
+                audibleCar.body.getLinearVelocity().len()
+                        / Math.max(0.001f, audibleCar.getBaseForwardMaxSpeed()),
+                0f,
+                1f);
+        float throttle = MathUtils.clamp(Math.abs(audibleCar.lastThrottleCommand), 0f, 1f);
+        float revRatio = MathUtils.clamp(speedRatio * 0.78f + throttle * 0.22f, 0f, 1f);
+        float targetPitch = MathUtils.lerp(ENGINE_SOUND_IDLE_PITCH, ENGINE_SOUND_MAX_PITCH, revRatio);
+        float targetVolume = MathUtils.lerp(
+                ENGINE_SOUND_IDLE_VOLUME,
+                ENGINE_SOUND_MAX_VOLUME,
+                Math.max(speedRatio, throttle * 0.72f));
+        float response = 1f - (float) Math.exp(-ENGINE_SOUND_RESPONSE * Math.max(0f, delta));
+        engineSoundPitch = MathUtils.lerp(engineSoundPitch, targetPitch, response);
+        engineSoundVolume = MathUtils.lerp(engineSoundVolume, targetVolume, response);
+
+        if (engineSound != null) {
+            if (engineSoundId < 0L) {
+                engineSoundId = engineSound.loop(engineSoundVolume, engineSoundPitch, 0f);
+            } else {
+                engineSound.setVolume(engineSoundId, engineSoundVolume);
+                engineSound.setPitch(engineSoundId, engineSoundPitch);
+            }
+        }
+
+        float slip = audibleCar.getLateralSlipSignal();
+        float slipThreshold = slipSoundId >= 0L
+                ? SLIP_SOUND_STOP_THRESHOLD
+                : SLIP_SOUND_START_THRESHOLD;
+        if (speedRatio < SLIP_SOUND_MIN_SPEED_RATIO || slip < slipThreshold) {
+            stopSlipSound();
+            return;
+        }
+
+        float slipSeverity = MathUtils.clamp(
+                (slip - SLIP_SOUND_STOP_THRESHOLD) / (0.75f - SLIP_SOUND_STOP_THRESHOLD),
+                0f,
+                1f);
+        float slipVolume = MathUtils.lerp(0.12f, SLIP_SOUND_MAX_VOLUME, slipSeverity);
+        float slipPitch = MathUtils.lerp(0.88f, 1.12f, slipSeverity);
+        if (slipSound != null) {
+            if (slipSoundId < 0L) {
+                slipSoundId = slipSound.loop(slipVolume, slipPitch, 0f);
+            } else {
+                slipSound.setVolume(slipSoundId, slipVolume);
+                slipSound.setPitch(slipSoundId, slipPitch);
+            }
+        }
+    }
+
+    private void stopVehicleSounds() {
+        if (engineSound != null && engineSoundId >= 0L) {
+            engineSound.stop(engineSoundId);
+        }
+        engineSoundId = -1L;
+        engineSoundPitch = ENGINE_SOUND_IDLE_PITCH;
+        engineSoundVolume = 0f;
+        stopSlipSound();
+    }
+
+    private void stopSlipSound() {
+        if (slipSound != null && slipSoundId >= 0L) {
+            slipSound.stop(slipSoundId);
+        }
+        slipSoundId = -1L;
     }
 
     private void playDestructionSound(float volume) {
@@ -2228,6 +2333,7 @@ public class RatassGame extends ApplicationAdapter {
     @Override
     public void render() {
         float delta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
+        updateVehicleSounds(delta);
 
         if (isInGameMenuOpen()) {
             effectClock += delta;
