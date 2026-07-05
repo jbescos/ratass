@@ -25,6 +25,8 @@ exec "${python_bin}" "${script_dir}/evaluate_lap_times.py" \
   --steps 0 \
   --timeout-seconds "${RL_LAP_EVAL_TIMEOUT_SECONDS:-10}" \
   --include-missing \
+  --cars default \
   --group-by-map \
   --stream-map-tables \
+  --quiet \
   "$@"

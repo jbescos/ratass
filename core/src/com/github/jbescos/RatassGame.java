@@ -724,11 +724,26 @@ public class RatassGame extends ApplicationAdapter {
             new CarVisual("cars/car20.png", Color.valueOf("87c538")),
             new CarVisual("cars/car33.png", Color.valueOf("363c49"))
     };
+    // Theme property files override these values; they also keep missing or malformed assets safe.
+    private static final CarPerformance[] DEFAULT_CAR_PERFORMANCES = new CarPerformance[] {
+            new CarPerformance("Car 1", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 2", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 3", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 4", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 5", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 6", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 7", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 8", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 9", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 10", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f)
+    };
     private final Array<Car> cars = new Array<Car>();
     private final Array<CarTemplate> roster = new Array<CarTemplate>();
     private final Array<CarTemplate> leaderboardEntries = new Array<CarTemplate>();
     private final Array<DestructionEffect> destructionEffects = new Array<DestructionEffect>();
     private final Array<CarVisual> themeCarVisuals = new Array<CarVisual>();
+    private final CarPerformance[] themeCarPerformances =
+            new CarPerformance[DEFAULT_CAR_PERFORMANCES.length];
     private final Array<Integer> sessionEnemyVisualIndices = new Array<Integer>();
     private final Array<Integer> sessionEnemyVisualPool = new Array<Integer>();
     private final Array<String> sessionEnemyPolicyIds = new Array<String>();
@@ -960,6 +975,7 @@ public class RatassGame extends ApplicationAdapter {
     private String eventCalloutSubline = "";
     private String configuredThemeName = DEFAULT_THEME_NAME;
     private String menuCarSheetThemeName = "";
+    private String carPerformanceThemeName = "";
     private boolean followCameraBehind;
     private boolean optionsOpenedFromPause;
     private float cameraZoom = DEFAULT_CAMERA_ZOOM;
@@ -1474,7 +1490,9 @@ public class RatassGame extends ApplicationAdapter {
 
     private void createRoster() {
         roster.clear();
-        CarVisual playerVisual = getPlayerCarVisual();
+        int playerVisualIndex =
+                clampPlayerCarIndex(selectedPlayerCarIndex, getAvailableCarVisualCount());
+        CarVisual playerVisual = getCarVisual(playerVisualIndex);
         RlPolicy playerPolicy = getRlPolicyById(getSelectedDriverPolicyId());
         boolean playerAutopilot = playerPolicy != null;
         addRosterTemplate(
@@ -1485,11 +1503,13 @@ public class RatassGame extends ApplicationAdapter {
                 "player",
                 false,
                 playerAutopilot,
-                playerPolicy);
+                playerPolicy,
+                getCarPerformance(playerVisualIndex).physics);
 
         int enemyCount = getConfiguredEnemyCount();
         for (int enemyIndex = 0; enemyIndex < enemyCount; enemyIndex++) {
-            CarVisual visual = getEnemyCarVisual(enemyIndex);
+            int visualIndex = getEnemyCarVisualIndex(enemyIndex);
+            CarVisual visual = getCarVisual(visualIndex);
             RlPolicy enemyPolicy = getEnemyDriverPolicy(enemyIndex);
             boolean modelControlledEnemy = enemyPolicy != null;
             addRosterTemplate(
@@ -1500,7 +1520,8 @@ public class RatassGame extends ApplicationAdapter {
                     "rl-" + enemyIndex,
                     !modelControlledEnemy,
                     modelControlledEnemy,
-                    enemyPolicy);
+                    enemyPolicy,
+                    getCarPerformance(visualIndex).physics);
         }
         invalidateLeaderboard();
     }
@@ -1523,12 +1544,12 @@ public class RatassGame extends ApplicationAdapter {
         return "Rival " + (enemyIndex + 1);
     }
 
-    private CarVisual getEnemyCarVisual(int enemyIndex) {
+    private int getEnemyCarVisualIndex(int enemyIndex) {
         ensureSessionEnemyVisualIndices(enemyIndex + 1);
         if (enemyIndex >= 0 && enemyIndex < sessionEnemyVisualIndices.size) {
-            return getCarVisual(sessionEnemyVisualIndices.get(enemyIndex).intValue());
+            return sessionEnemyVisualIndices.get(enemyIndex).intValue();
         }
-        return getCarVisual(enemyIndex + 1);
+        return enemyIndex + 1;
     }
 
     private RlPolicy getEnemyDriverPolicy(int enemyIndex) {
@@ -1682,6 +1703,28 @@ public class RatassGame extends ApplicationAdapter {
             boolean externallyControlled,
             boolean modelControlled,
             RlPolicy rlPolicy) {
+        addRosterTemplate(
+                name,
+                playerControlled,
+                color,
+                visual,
+                statsLabel,
+                externallyControlled,
+                modelControlled,
+                rlPolicy,
+                CarPhysics.DEFAULT);
+    }
+
+    private void addRosterTemplate(
+            String name,
+            boolean playerControlled,
+            Color color,
+            CarVisual visual,
+            String statsLabel,
+            boolean externallyControlled,
+            boolean modelControlled,
+            RlPolicy rlPolicy,
+            CarPhysics physics) {
         roster.add(new CarTemplate(
                 roster.size,
                 name,
@@ -1692,7 +1735,7 @@ public class RatassGame extends ApplicationAdapter {
                 externallyControlled,
                 modelControlled,
                 rlPolicy,
-                CarPhysics.DEFAULT));
+                physics));
     }
 
     private CarVisual getCarVisual(int rosterIndex) {
@@ -1705,6 +1748,121 @@ public class RatassGame extends ApplicationAdapter {
 
     private CarVisual getPlayerCarVisual() {
         return getCarVisual(selectedPlayerCarIndex);
+    }
+
+    private CarPerformance getCarPerformance(int visualIndex) {
+        ensureThemeCarPerformancesLoaded();
+        int index = visualIndex % DEFAULT_CAR_PERFORMANCES.length;
+        if (index < 0) {
+            index += DEFAULT_CAR_PERFORMANCES.length;
+        }
+        CarPerformance performance = themeCarPerformances[index];
+        return performance == null ? DEFAULT_CAR_PERFORMANCES[index] : performance;
+    }
+
+    public static int getCarPerformanceCount() {
+        return DEFAULT_CAR_PERFORMANCES.length;
+    }
+
+    private void ensureThemeCarPerformancesLoaded() {
+        if (Gdx.files == null || configuredThemeName.equals(carPerformanceThemeName)) {
+            return;
+        }
+
+        for (int i = 0; i < themeCarPerformances.length; i++) {
+            themeCarPerformances[i] = loadThemeCarPerformance(i, DEFAULT_CAR_PERFORMANCES[i]);
+        }
+        carPerformanceThemeName = configuredThemeName;
+    }
+
+    private CarPerformance loadThemeCarPerformance(int index, CarPerformance fallback) {
+        String fileName = String.format(Locale.ROOT, "%02d.properties", index);
+        FileHandle handle = resolveThemeCarPerformanceHandle(fileName);
+        if (handle == null || !handle.exists()) {
+            return fallback;
+        }
+
+        try {
+            Map<String, String> properties = new LinkedHashMap<String, String>();
+            parseProperties(properties, handle.readString("UTF-8"));
+            return new CarPerformance(
+                    readNonBlankString(properties, "name", fallback.name),
+                    readNonNegativeInt(properties, "horsepower", fallback.horsePower),
+                    readPositiveInt(properties, "weight.kg", fallback.weightKg),
+                    readPositiveInt(properties, "top.speed.kph", fallback.topSpeedKph),
+                    readNonNegativeFloat(properties, "brake.force", fallback.brakeForce),
+                    readNonNegativeFloat(
+                            properties, "steering.torque", fallback.steeringTorque),
+                    readNonNegativeFloat(properties, "wheel.grip", fallback.wheelGrip),
+                    readNonNegativeFloat(properties, "aero.drag", fallback.aeroDrag));
+        } catch (RuntimeException exception) {
+            if (Gdx.app != null) {
+                Gdx.app.error(
+                        "RatassGame",
+                        "Could not load car performance from " + handle.path(),
+                        exception);
+            }
+            return fallback;
+        }
+    }
+
+    private FileHandle resolveThemeCarPerformanceHandle(String fileName) {
+        String relativePath = THEME_CAR_DIRECTORY_PATH + "/" + fileName;
+        FileHandle localOverride =
+                Gdx.files.local("assets/" + buildThemeAssetPath(relativePath));
+        if (localOverride != null && localOverride.exists()) {
+            return localOverride;
+        }
+        return resolveThemedAssetHandle(relativePath);
+    }
+
+    private static int readPositiveInt(
+            Map<String, String> properties, String key, int fallback) {
+        int value = readInt(properties, key, fallback);
+        return value > 0 ? value : fallback;
+    }
+
+    private static String readNonBlankString(
+            Map<String, String> properties, String key, String fallback) {
+        String value = properties.get(key);
+        if (value == null || value.trim().length() == 0) {
+            return fallback;
+        }
+        return value.trim();
+    }
+
+    private static int readNonNegativeInt(
+            Map<String, String> properties, String key, int fallback) {
+        int value = readInt(properties, key, fallback);
+        return value >= 0 ? value : fallback;
+    }
+
+    private static int readInt(Map<String, String> properties, String key, int fallback) {
+        String value = properties.get(key);
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
+    }
+
+    private static float readNonNegativeFloat(
+            Map<String, String> properties, String key, float fallback) {
+        String value = properties.get(key);
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            float parsed = Float.parseFloat(value.trim());
+            return parsed >= 0f && !Float.isInfinite(parsed) && !Float.isNaN(parsed)
+                    ? parsed
+                    : fallback;
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
     }
 
     private int getAvailableCarVisualCount() {
@@ -2831,7 +2989,25 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
         for (int i = 0; i < roster.size; i++) {
-            roster.get(i).physics = sandboxPhysicsOverride;
+            CarTemplate template = roster.get(i);
+            CarPhysics base = template.basePhysics;
+            template.physics =
+                    base.withSandboxTuning(
+                            base.massMultiplier
+                                    * sandboxPhysicsOverride.massMultiplier
+                                    / CarPhysics.DEFAULT.massMultiplier,
+                            base.horsePower
+                                    * sandboxPhysicsOverride.horsePower
+                                    / CarPhysics.DEFAULT.horsePower,
+                            base.brakeForce
+                                    * sandboxPhysicsOverride.brakeForce
+                                    / CarPhysics.DEFAULT.brakeForce,
+                            base.steeringTorque
+                                    * sandboxPhysicsOverride.steeringTorque
+                                    / CarPhysics.DEFAULT.steeringTorque,
+                            base.wheelGrip
+                                    * sandboxPhysicsOverride.wheelGrip
+                                    / CarPhysics.DEFAULT.wheelGrip);
         }
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
@@ -3387,10 +3563,11 @@ public class RatassGame extends ApplicationAdapter {
         float previewHeight = 0f;
         float previewX = 0f;
         float previewY = 0f;
+        boolean sideBySide = false;
 
         if (showCarPreview) {
             float previewAspect = getMenuCarSheetAspect();
-            boolean sideBySide = availableWidth >= 820f && height >= 520f;
+            sideBySide = availableWidth >= 820f && height >= 520f;
             if (sideBySide) {
                 rowWidth = Math.min(420f, Math.max(320f, availableWidth * 0.42f));
                 previewWidth =
@@ -3420,6 +3597,7 @@ public class RatassGame extends ApplicationAdapter {
                 rowTopY = previewY - rowGap;
                 rowTopY = Math.max(rowTopY, MENU_MIN_SIDE_MARGIN + rowsHeight);
             }
+
         }
 
         optionsCarSheetBounds.set(previewX, previewY, previewWidth, previewHeight);
@@ -10434,6 +10612,49 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private static final class CarPerformance {
+        private static final float BASE_WEIGHT_KG_PER_MASS_MULTIPLIER = 1040f;
+
+        private final String name;
+        private final int horsePower;
+        private final int weightKg;
+        private final int topSpeedKph;
+        private final float brakeForce;
+        private final float steeringTorque;
+        private final float wheelGrip;
+        private final float aeroDrag;
+        private final CarPhysics physics;
+
+        private CarPerformance(
+                String name,
+                int horsePower,
+                int weightKg,
+                int topSpeedKph,
+                float brakeForce,
+                float steeringTorque,
+                float wheelGrip,
+                float aeroDrag) {
+            this.name = name;
+            this.horsePower = horsePower;
+            this.weightKg = weightKg;
+            this.topSpeedKph = topSpeedKph;
+            this.brakeForce = brakeForce;
+            this.steeringTorque = steeringTorque;
+            this.wheelGrip = wheelGrip;
+            this.aeroDrag = aeroDrag;
+            physics =
+                    CarPhysics.DEFAULT.withPerformanceTuning(
+                            weightKg / BASE_WEIGHT_KG_PER_MASS_MULTIPLIER,
+                            horsePower,
+                            brakeForce,
+                            steeringTorque,
+                            wheelGrip,
+                            aeroDrag,
+                            topSpeedKph / 3.6f);
+        }
+
+    }
+
     private static final class CarPhysics {
         private static final CarPhysics DEFAULT =
                 new CarPhysics(
@@ -10550,6 +10771,42 @@ public class RatassGame extends ApplicationAdapter {
                 float brakeForce,
                 float steeringTorque,
                 float wheelGrip) {
+            return new CarPhysics(
+                    massMultiplier,
+                    horsePower,
+                    reversePowerMultiplier,
+                    brakeForce,
+                    reverseSpeedMultiplier,
+                    steeringTorque,
+                    lowSpeedSteeringAuthority,
+                    highSpeedSteeringAuthority,
+                    wheelGrip,
+                    lateralGripPerSecond,
+                    yawGripPerSecond,
+                    rollingResistance,
+                    aeroDrag,
+                    maxForwardSpeed,
+                    steeringReferenceSpeed,
+                    trackLimitMaxSpeedMultiplier,
+                    trackLimitVelocityDamping,
+                    trackLimitAngularDamping,
+                    linearDamping,
+                    angularDamping,
+                    fixtureDensity,
+                    fixtureFriction,
+                    fixtureRestitution,
+                    collisionImpulseFactor,
+                    maxCollisionImpulse);
+        }
+
+        private CarPhysics withPerformanceTuning(
+                float massMultiplier,
+                float horsePower,
+                float brakeForce,
+                float steeringTorque,
+                float wheelGrip,
+                float aeroDrag,
+                float maxForwardSpeed) {
             return new CarPhysics(
                     massMultiplier,
                     horsePower,
@@ -13183,6 +13440,7 @@ public class RatassGame extends ApplicationAdapter {
         public int offRoadFailureMaxActionSteps =
                 RL_DEFAULT_OFF_ROAD_FAILURE_MAX_ACTION_STEPS;
         public int routeTargets = RL_DEFAULT_ROUTE_TARGETS;
+        public int carPerformanceIndex = -1;
         public float routeTargetFraction;
         public long seed = 1L;
         public boolean skipCountdown = true;
@@ -13247,6 +13505,17 @@ public class RatassGame extends ApplicationAdapter {
 
         public RlTrainingConfig withRouteTargets(int routeTargets) {
             this.routeTargets = routeTargets;
+            return this;
+        }
+
+        public RlTrainingConfig withCarPerformanceIndex(int carPerformanceIndex) {
+            this.carPerformanceIndex =
+                    carPerformanceIndex < 0
+                            ? -1
+                            : MathUtils.clamp(
+                                    carPerformanceIndex,
+                                    0,
+                                    getCarPerformanceCount() - 1);
             return this;
         }
 
@@ -13630,14 +13899,23 @@ public class RatassGame extends ApplicationAdapter {
 
             int controlledAgentCount = getControlledAgentCount();
             for (int i = 0; i < controlledAgentCount; i++) {
-                CarVisual visual = game.getCarVisual(i);
+                int visualIndex =
+                        config.carPerformanceIndex >= 0 ? config.carPerformanceIndex : i;
+                CarVisual visual = game.getCarVisual(visualIndex);
+                CarPhysics physics =
+                        config.carPerformanceIndex >= 0
+                                ? game.getCarPerformance(config.carPerformanceIndex).physics
+                                : CarPhysics.DEFAULT;
                 game.addRosterTemplate(
                         "Learner " + (i + 1),
                         false,
                         new Color(visual.color),
                         visual,
                         "learner-" + i,
-                        true);
+                        true,
+                        false,
+                        null,
+                        physics);
                 controlledVehicleIds.add(
                         Integer.valueOf(game.roster.get(game.roster.size - 1).vehicleId));
             }
@@ -14609,6 +14887,7 @@ public class RatassGame extends ApplicationAdapter {
         private final boolean externallyControlled;
         private final boolean modelControlled;
         private final RlPolicy rlPolicy;
+        private final CarPhysics basePhysics;
         private CarPhysics physics;
         private Texture spriteTexture;
         private boolean ownsSpriteTexture;
@@ -14660,7 +14939,8 @@ public class RatassGame extends ApplicationAdapter {
             this.externallyControlled = externallyControlled;
             this.modelControlled = modelControlled;
             this.rlPolicy = rlPolicy;
-            this.physics = physics == null ? CarPhysics.DEFAULT : physics;
+            basePhysics = physics == null ? CarPhysics.DEFAULT : physics;
+            this.physics = basePhysics;
         }
     }
 
