@@ -503,8 +503,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float DESTRUCTION_SOUND_COOLDOWN = 0.08f;
     private static final float ENGINE_SOUND_IDLE_PITCH = 0.64f;
     private static final float ENGINE_SOUND_MAX_PITCH = 1.58f;
-    private static final float ENGINE_SOUND_IDLE_VOLUME = 0.08f;
-    private static final float ENGINE_SOUND_MAX_VOLUME = 0.34f;
+    private static final float ENGINE_SOUND_IDLE_VOLUME = 0.12f;
+    private static final float ENGINE_SOUND_MAX_VOLUME = 0.50f;
     private static final float ENGINE_SOUND_RESPONSE = 7f;
     private static final float SLIP_SOUND_START_THRESHOLD = 0.32f;
     private static final float SLIP_SOUND_STOP_THRESHOLD = 0.25f;
