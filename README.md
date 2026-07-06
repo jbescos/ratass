@@ -7,6 +7,11 @@ Small LibGDX self-driving racing prototype.
 Cars race through ordered checkpoints on circuit maps. The first car to complete
 the configured laps starts a short finish timeout for the rest of the field.
 
+## Game design
+
+The proposed run progression, experience rules, skill trees, abilities, and
+synergies are documented in [docs/roguelite-design.md](docs/roguelite-design.md).
+
 ## Controls
 
 - `WASD` or arrow keys: drive and steer
