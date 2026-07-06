@@ -20,7 +20,7 @@ fi
 
 exec "${python_bin}" "${script_dir}/evaluate_lap_times.py" \
   --profiles "${profiles}" \
-  --map-source all \
+  --map-source game \
   --laps 5 \
   --steps 0 \
   --timeout-seconds "${RL_LAP_EVAL_TIMEOUT_SECONDS:-10}" \
@@ -28,5 +28,6 @@ exec "${python_bin}" "${script_dir}/evaluate_lap_times.py" \
   --cars default \
   --group-by-map \
   --stream-map-tables \
+  --overall-profile-averages \
   --quiet \
   "$@"

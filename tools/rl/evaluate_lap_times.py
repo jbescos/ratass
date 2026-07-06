@@ -48,6 +48,26 @@ class BestTimes:
     profile_values: dict[tuple[str, str], float]
 
 
+@dataclass
+class OverallCarAverage:
+    car: str
+    fastest_lap: float | None
+    avg_lap: float | None
+    total_time: float | None
+    completed_runs: int
+    expected_runs: int
+
+
+@dataclass
+class OverallProfileAverage:
+    profile: str
+    fastest_lap: float | None
+    avg_lap: float | None
+    total_time: float | None
+    completed_runs: int
+    expected_runs: int
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--jar", default=os.fspath(DEFAULT_JAR))
@@ -113,6 +133,16 @@ def parse_args() -> argparse.Namespace:
         "--stream-map-tables",
         action="store_true",
         help="print each map table as soon as all profiles for that map finish",
+    )
+    parser.add_argument(
+        "--overall-car-averages",
+        action="store_true",
+        help="append averages for each car across all selected maps and profiles",
+    )
+    parser.add_argument(
+        "--overall-profile-averages",
+        action="store_true",
+        help="append averages for each profile across all selected maps",
     )
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
@@ -549,6 +579,183 @@ def car_average_row(map_id: str, profile: str, car_rows: list[TimedRun]) -> Time
     )
 
 
+def overall_car_averages(rows: Iterable[TimedRun]) -> list[OverallCarAverage]:
+    grouped: dict[str, list[TimedRun]] = {}
+    for row in rows:
+        if row.is_car_average:
+            continue
+        grouped.setdefault(row.car, []).append(row)
+
+    averages: list[OverallCarAverage] = []
+    for car, car_rows in grouped.items():
+        completed = [
+            row
+            for row in car_rows
+            if row.complete
+            and row.fastest_lap is not None
+            and row.avg_lap is not None
+            and row.total_time is not None
+        ]
+        count = len(completed)
+        averages.append(
+            OverallCarAverage(
+                car=car,
+                fastest_lap=(
+                    sum(float(row.fastest_lap) for row in completed) / count
+                    if completed
+                    else None
+                ),
+                avg_lap=(
+                    sum(float(row.avg_lap) for row in completed) / count
+                    if completed
+                    else None
+                ),
+                total_time=(
+                    sum(float(row.total_time) for row in completed) / count
+                    if completed
+                    else None
+                ),
+                completed_runs=count,
+                expected_runs=len(car_rows),
+            )
+        )
+    return averages
+
+
+def highlight_overall_average(
+    value: float | None,
+    best: float | None,
+    worst: float | None,
+) -> str:
+    text = format_duration(value)
+    if value is None:
+        return text
+    if best is not None and abs(value - best) <= 0.0005:
+        return f"**{text}**"
+    if worst is not None and abs(value - worst) <= 0.0005:
+        return f"--{text}--"
+    return text
+
+
+def print_overall_car_averages(rows: Iterable[TimedRun]) -> None:
+    averages = overall_car_averages(rows)
+
+    def bounds(metric: str) -> tuple[float | None, float | None]:
+        values = [
+            float(value)
+            for average in averages
+            if (value := getattr(average, metric)) is not None
+        ]
+        return (min(values), max(values)) if values else (None, None)
+
+    fastest_best, fastest_worst = bounds("fastest_lap")
+    average_best, average_worst = bounds("avg_lap")
+    total_best, total_worst = bounds("total_time")
+    table_rows = [
+        [
+            average.car,
+            f"{average.completed_runs}/{average.expected_runs}",
+            highlight_overall_average(average.fastest_lap, fastest_best, fastest_worst),
+            highlight_overall_average(average.avg_lap, average_best, average_worst),
+            highlight_overall_average(average.total_time, total_best, total_worst),
+        ]
+        for average in averages
+    ]
+    print("all_maps_car_average")
+    print_markdown_table(
+        ["car", "completed", "avg fastest lap", "avg lap", "avg total time"],
+        table_rows,
+        {1, 2, 3, 4},
+    )
+
+
+def overall_profile_averages(rows: Iterable[TimedRun]) -> list[OverallProfileAverage]:
+    grouped: dict[str, list[TimedRun]] = {}
+    for row in rows:
+        if row.is_car_average:
+            continue
+        grouped.setdefault(row.profile, []).append(row)
+
+    averages: list[OverallProfileAverage] = []
+    for profile, profile_rows in grouped.items():
+        completed = [
+            row
+            for row in profile_rows
+            if row.complete
+            and row.fastest_lap is not None
+            and row.avg_lap is not None
+            and row.total_time is not None
+        ]
+        completed_count = len(completed)
+        all_complete = completed_count == len(profile_rows) and completed_count > 0
+        averages.append(
+            OverallProfileAverage(
+                profile=profile,
+                fastest_lap=(
+                    sum(float(row.fastest_lap) for row in completed) / completed_count
+                    if all_complete
+                    else None
+                ),
+                avg_lap=(
+                    sum(float(row.avg_lap) for row in completed) / completed_count
+                    if all_complete
+                    else None
+                ),
+                total_time=(
+                    sum(float(row.total_time) for row in completed) / completed_count
+                    if all_complete
+                    else None
+                ),
+                completed_runs=completed_count,
+                expected_runs=len(profile_rows),
+            )
+        )
+    return averages
+
+
+def print_overall_profile_averages(rows: Iterable[TimedRun]) -> None:
+    averages = overall_profile_averages(rows)
+
+    def bounds(metric: str) -> tuple[float | None, float | None]:
+        values = [
+            float(value)
+            for average in averages
+            if (value := getattr(average, metric)) is not None
+        ]
+        return (min(values), max(values)) if values else (None, None)
+
+    fastest_best, fastest_worst = bounds("fastest_lap")
+    average_best, average_worst = bounds("avg_lap")
+    total_best, total_worst = bounds("total_time")
+
+    def cell(
+        average: OverallProfileAverage,
+        metric: str,
+        best: float | None,
+        worst: float | None,
+    ) -> str:
+        value = getattr(average, metric)
+        if value is None:
+            return f"DNF {average.completed_runs}/{average.expected_runs}"
+        return highlight_overall_average(float(value), best, worst)
+
+    table_rows = [
+        [
+            average.profile,
+            cell(average, "fastest_lap", fastest_best, fastest_worst),
+            cell(average, "avg_lap", average_best, average_worst),
+            cell(average, "total_time", total_best, total_worst),
+        ]
+        for average in averages
+    ]
+    print("all_maps_profile_average")
+    print_markdown_table(
+        ["profile", "avg fastest lap", "avg lap", "avg total time"],
+        table_rows,
+        {1, 2, 3},
+    )
+
+
 def print_table(rows: list[TimedRun], group_by_map: bool) -> None:
     fastest_best = best_times(rows, "fastest_lap")
     average_best = best_times(rows, "avg_lap")
@@ -681,6 +888,14 @@ def main() -> None:
 
     if not args.stream_map_tables:
         print_table(rows, args.group_by_map)
+
+    if args.overall_car_averages:
+        print()
+        print_overall_car_averages(rows)
+
+    if args.overall_profile_averages:
+        print()
+        print_overall_profile_averages(rows)
 
 
 if __name__ == "__main__":

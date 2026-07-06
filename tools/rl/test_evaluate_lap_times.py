@@ -15,6 +15,10 @@ from evaluate_lap_times import (
     car_average_row,
     highlight,
     load_car_names,
+    overall_car_averages,
+    overall_profile_averages,
+    print_overall_car_averages,
+    print_overall_profile_averages,
     print_table,
     selected_cars,
 )
@@ -146,6 +150,89 @@ class CarAverageTest(unittest.TestCase):
             highlight("14.000", rows[1], "fastest_lap", fastest),
             "--14.000--",
         )
+
+
+class OverallCarAverageTest(unittest.TestCase):
+    def test_averages_each_car_across_maps_and_profiles(self):
+        rows = [
+            TimedRun("map000", "expert", "Car 1", 10.0, 12.0, 60.0, 5, 5),
+            TimedRun("map001", "expert", "Car 1", 14.0, 16.0, 80.0, 5, 5),
+            TimedRun("map000", "rookie", "Car 2", 20.0, 22.0, 110.0, 5, 5),
+            TimedRun("map001", "rookie", "Car 2", 24.0, 26.0, 130.0, 5, 5),
+            TimedRun(
+                "map001",
+                "rookie",
+                "avg",
+                19.0,
+                21.0,
+                105.0,
+                2,
+                2,
+                is_car_average=True,
+            ),
+        ]
+
+        averages = overall_car_averages(rows)
+
+        self.assertEqual([average.car for average in averages], ["Car 1", "Car 2"])
+        self.assertEqual(averages[0].fastest_lap, 12.0)
+        self.assertEqual(averages[0].avg_lap, 14.0)
+        self.assertEqual(averages[0].total_time, 70.0)
+        self.assertEqual(averages[0].completed_runs, 2)
+        self.assertEqual(averages[0].expected_runs, 2)
+
+    def test_reports_completion_ratio_and_averages_only_completed_runs(self):
+        rows = [
+            TimedRun("map000", "expert", "Car 1", 10.0, 12.0, 60.0, 5, 5),
+            TimedRun("map001", "expert", "Car 1", None, None, None, 0, 5),
+        ]
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            print_overall_car_averages(rows)
+
+        rendered = output.getvalue()
+        self.assertIn("all_maps_car_average", rendered)
+        self.assertIn("| Car 1 |       1/2 |", rendered)
+        self.assertIn("**10.000**", rendered)
+
+
+class OverallProfileAverageTest(unittest.TestCase):
+    def test_averages_each_profile_across_maps(self):
+        rows = [
+            TimedRun("map000", "aggressive", "default", 10.0, 12.0, 60.0, 5, 5),
+            TimedRun("map001", "aggressive", "default", 14.0, 16.0, 80.0, 5, 5),
+            TimedRun("map000", "clean", "default", 20.0, 22.0, 110.0, 5, 5),
+            TimedRun("map001", "clean", "default", 24.0, 26.0, 130.0, 5, 5),
+        ]
+
+        averages = overall_profile_averages(rows)
+
+        self.assertEqual(
+            [average.profile for average in averages],
+            ["aggressive", "clean"],
+        )
+        self.assertEqual(averages[0].fastest_lap, 12.0)
+        self.assertEqual(averages[0].avg_lap, 14.0)
+        self.assertEqual(averages[0].total_time, 70.0)
+
+    def test_requires_every_map_and_prints_requested_columns(self):
+        rows = [
+            TimedRun("map000", "aggressive", "default", 10.0, 12.0, 60.0, 5, 5),
+            TimedRun("map001", "aggressive", "default", None, None, None, 0, 5),
+        ]
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            print_overall_profile_averages(rows)
+
+        rendered = output.getvalue()
+        self.assertIn("all_maps_profile_average", rendered)
+        self.assertIn("| profile", rendered)
+        self.assertIn("avg fastest lap", rendered)
+        self.assertIn("avg lap", rendered)
+        self.assertIn("avg total time", rendered)
+        self.assertIn("DNF 1/2", rendered)
 
 
 if __name__ == "__main__":
