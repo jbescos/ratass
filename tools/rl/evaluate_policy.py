@@ -15,6 +15,8 @@ import jpype
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_POLICY = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
+DEFAULT_MAPS_DIRECTORY = REPO_ROOT / "assets" / "maps"
+MAP_MASK_SUFFIX = "_mask.png"
 DEFAULT_ACTION_REPEAT = 4
 PHYSICS_STEP_SECONDS = 1.0 / 60.0
 REWARD_BUCKETS = (
@@ -154,10 +156,20 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def available_maps():
-    arena_maps = jpype.JClass("com.github.jbescos.gameplay.maps.ArenaMaps")
-    maps = arena_maps.createDefaultSet()
-    return [maps.get(index) for index in range(int(maps.size))]
+def load_maps_lazily(ratass_game, map_ids):
+    # ArenaMap owns several full-resolution lookup arrays, so never retain all maps at once.
+    for map_id in map_ids:
+        yield select_map(ratass_game, map_id)
+
+
+def available_maps(ratass_game):
+    map_ids = sorted(
+        path.name[: -len(MAP_MASK_SUFFIX)]
+        for path in DEFAULT_MAPS_DIRECTORY.glob(f"*{MAP_MASK_SUFFIX}")
+    )
+    if not map_ids:
+        raise FileNotFoundError(f"No map masks found in {DEFAULT_MAPS_DIRECTORY}")
+    return load_maps_lazily(ratass_game, map_ids)
 
 
 def select_map(ratass_game, map_id: str):
@@ -170,15 +182,7 @@ def select_map(ratass_game, map_id: str):
 
 def select_maps(ratass_game, map_ids: str):
     ids = [map_id.strip() for map_id in map_ids.split(",") if map_id.strip()]
-    if not ids:
-        return []
-    arena_maps = jpype.JClass("com.github.jbescos.gameplay.maps.ArenaMaps")
-    maps = arena_maps.createSelectedSet(",".join(ids))
-    maps_by_id = {
-        str(maps.get(index).getId()): maps.get(index)
-        for index in range(int(maps.size))
-    }
-    return [maps_by_id[map_id] for map_id in ids]
+    return load_maps_lazily(ratass_game, ids)
 
 
 def make_stats():
@@ -959,7 +963,7 @@ def main() -> None:
     if args.map_id and args.map_ids:
         raise ValueError("Use either --map-id or --map-ids, not both")
     if args.episodes_per_map > 0:
-        selected_maps = available_maps()
+        selected_maps = available_maps(ratass_game)
         if args.map_id:
             selected_maps = [select_map(ratass_game, args.map_id)]
         elif args.map_ids:
@@ -998,6 +1002,9 @@ def main() -> None:
                 add_stats(per_map[map_id], episode_stats)
         finally:
             environment.close()
+            environment = None
+            config = None
+            arena_map = None
 
     print_evaluation_tables(total_stats, per_map)
     print_evaluation_score(total_stats)
