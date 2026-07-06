@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -15,13 +17,139 @@ from evaluate_lap_times import (
     car_average_row,
     highlight,
     load_car_names,
+    make_environment,
     overall_car_averages,
     overall_profile_averages,
     print_overall_car_averages,
     print_overall_profile_averages,
     print_table,
+    run_lap_timing,
     selected_cars,
 )
+
+
+class LapTimingEnvironmentTest(unittest.TestCase):
+    def test_disables_training_only_episode_failures(self):
+        class FakeConfig:
+            def __init__(self):
+                self.values = {}
+
+            def __getattr__(self, name):
+                def record(value):
+                    self.values[name] = value
+                    return self
+
+                return record
+
+        class FakeRatassGame:
+            def __init__(self):
+                self.config = FakeConfig()
+
+            def RlTrainingConfig(self):
+                return self.config
+
+            @staticmethod
+            def RlTrainingEnvironment(config):
+                return config
+
+        ratass_game = FakeRatassGame()
+        args = SimpleNamespace(
+            steps=0,
+            action_repeat=4,
+            random_race_spawns=False,
+            seed=1,
+        )
+
+        config = make_environment(args, ratass_game, object(), 5, None)
+
+        self.assertEqual(config.values["withNoProgressMaxActionSteps"], 0)
+        self.assertEqual(config.values["withOffRoadFailureMaxActionSteps"], 0)
+
+    def test_wall_timeout_preserves_completed_laps(self):
+        class FakeEnvironment:
+            def __init__(self):
+                self.closed = False
+
+            @staticmethod
+            def reset():
+                return SimpleNamespace(
+                    episodeDone=False,
+                    actionStep=0,
+                    observations=[0.0],
+                    routeTargetsReached=[0],
+                )
+
+            @staticmethod
+            def getObservationSize():
+                return 1
+
+            @staticmethod
+            def step(_actions):
+                return SimpleNamespace(
+                    episodeDone=False,
+                    actionStep=1,
+                    observations=[0.0],
+                    routeTargetsReached=[1],
+                )
+
+            def close(self):
+                self.closed = True
+
+        class FakePolicy:
+            @staticmethod
+            def getObservationSize():
+                return 1
+
+            @staticmethod
+            def getScratchSize():
+                return 1
+
+            @staticmethod
+            def computeAction(*_args):
+                return SimpleNamespace(throttle=0.0, turn=0.0)
+
+        class FakeJpype:
+            JFloat = float
+
+            @staticmethod
+            def JClass(name):
+                if name.endswith("AiControlDecision"):
+                    return SimpleNamespace
+                return object()
+
+            @staticmethod
+            def JArray(_type):
+                return lambda size: [0.0] * size
+
+        arena_map = SimpleNamespace(getId=lambda: "map013")
+        environment = FakeEnvironment()
+        args = SimpleNamespace(
+            laps=5,
+            timeout_seconds=1.0,
+            steps=0,
+            action_repeat=4,
+        )
+
+        with (
+            patch("evaluate_lap_times.jpype", FakeJpype()),
+            patch("evaluate_lap_times.make_environment", return_value=environment),
+            patch("evaluate_lap_times.time.monotonic", side_effect=[0.0, 0.0, 2.0]),
+        ):
+            result = run_lap_timing(
+                args,
+                arena_map,
+                "clean",
+                "default",
+                None,
+                FakePolicy(),
+            )
+
+        self.assertEqual(result.completed_laps, 1)
+        self.assertIsNotNone(result.fastest_lap)
+        self.assertIsNotNone(result.avg_lap)
+        self.assertIsNone(result.total_time)
+        self.assertEqual(result.error, "")
+        self.assertTrue(environment.closed)
 
 
 class CarSelectionTest(unittest.TestCase):
@@ -216,10 +344,10 @@ class OverallProfileAverageTest(unittest.TestCase):
         self.assertEqual(averages[0].avg_lap, 14.0)
         self.assertEqual(averages[0].total_time, 70.0)
 
-    def test_requires_every_map_and_prints_requested_columns(self):
+    def test_keeps_available_lap_averages_when_a_map_does_not_finish(self):
         rows = [
             TimedRun("map000", "aggressive", "default", 10.0, 12.0, 60.0, 5, 5),
-            TimedRun("map001", "aggressive", "default", None, None, None, 0, 5),
+            TimedRun("map001", "aggressive", "default", 14.0, 16.0, None, 1, 5),
         ]
         output = io.StringIO()
 
@@ -232,6 +360,8 @@ class OverallProfileAverageTest(unittest.TestCase):
         self.assertIn("avg fastest lap", rendered)
         self.assertIn("avg lap", rendered)
         self.assertIn("avg total time", rendered)
+        self.assertIn("**12.000**", rendered)
+        self.assertIn("**14.000**", rendered)
         self.assertIn("DNF 1/2", rendered)
 
 

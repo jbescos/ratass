@@ -282,12 +282,15 @@ def make_environment(
     car_index: int | None,
 ):
     max_action_steps = args.steps if args.steps > 0 else 2_147_483_647
+    # Keep headless assistance disabled, but do not apply training-only race termination.
     config = (
         ratass_game.RlTrainingConfig()
         .withControlledAgentCount(1)
         .withFieldSize(1)
         .withActionRepeat(args.action_repeat)
         .withMaxActionSteps(max_action_steps)
+        .withNoProgressMaxActionSteps(0)
+        .withOffRoadFailureMaxActionSteps(0)
         .withRouteTargets(route_target)
         .withRaceMode(True)
         .withRandomRaceSpawns(bool(args.random_race_spawns))
@@ -320,6 +323,7 @@ def run_lap_timing(
     lap_times: list[float] = []
     total_time = 0.0
     last_lap_time = 0.0
+    timed_out = False
     try:
         result = env.reset()
         started_at = time.monotonic()
@@ -346,17 +350,8 @@ def run_lap_timing(
         action_buffer = java_float_array(2)
         while not result.episodeDone and (args.steps <= 0 or int(result.actionStep) < args.steps):
             if args.timeout_seconds > 0 and time.monotonic() - started_at >= args.timeout_seconds:
-                return TimedRun(
-                    map_id,
-                    profile,
-                    car,
-                    None,
-                    None,
-                    None,
-                    len(lap_times),
-                    args.laps,
-                    "timedout",
-                )
+                timed_out = True
+                break
             for observation_index in range(env_observation_size):
                 observation[observation_index] = result.observations[observation_index]
             decision = policy.computeAction(
@@ -377,7 +372,17 @@ def run_lap_timing(
         env.close()
 
     if not lap_times:
-        return TimedRun(map_id, profile, car, None, None, None, 0, args.laps)
+        return TimedRun(
+            map_id,
+            profile,
+            car,
+            None,
+            None,
+            None,
+            0,
+            args.laps,
+            "timedout" if timed_out else "",
+        )
     fastest = min(lap_times)
     average = sum(lap_times) / len(lap_times)
     completed_total = sum(lap_times) if len(lap_times) >= args.laps else None
@@ -678,12 +683,20 @@ def overall_profile_averages(rows: Iterable[TimedRun]) -> list[OverallProfileAve
 
     averages: list[OverallProfileAverage] = []
     for profile, profile_rows in grouped.items():
+        fastest_values = [
+            float(row.fastest_lap)
+            for row in profile_rows
+            if not row.error and row.fastest_lap is not None
+        ]
+        average_values = [
+            float(row.avg_lap)
+            for row in profile_rows
+            if not row.error and row.avg_lap is not None
+        ]
         completed = [
             row
             for row in profile_rows
             if row.complete
-            and row.fastest_lap is not None
-            and row.avg_lap is not None
             and row.total_time is not None
         ]
         completed_count = len(completed)
@@ -692,13 +705,13 @@ def overall_profile_averages(rows: Iterable[TimedRun]) -> list[OverallProfileAve
             OverallProfileAverage(
                 profile=profile,
                 fastest_lap=(
-                    sum(float(row.fastest_lap) for row in completed) / completed_count
-                    if all_complete
+                    sum(fastest_values) / len(fastest_values)
+                    if fastest_values
                     else None
                 ),
                 avg_lap=(
-                    sum(float(row.avg_lap) for row in completed) / completed_count
-                    if all_complete
+                    sum(average_values) / len(average_values)
+                    if average_values
                     else None
                 ),
                 total_time=(
