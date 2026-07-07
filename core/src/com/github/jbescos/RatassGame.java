@@ -123,8 +123,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float WEATHER_RAIN_MAX_DURATION = 60f;
     private static final float WEATHER_SNOW_MIN_DURATION = 35f;
     private static final float WEATHER_SNOW_MAX_DURATION = 50f;
-    private static final float WEATHER_SUNNY_REPEAT_CHANCE = 0.55f;
-    private static final float WEATHER_RAIN_CHANCE = 0.30f;
+    private static final float WEATHER_SUNNY_REPEAT_CHANCE = 0.80f;
+    private static final float WEATHER_RAIN_CHANCE = 0.14f;
     private static final int STANDALONE_CAR_PREVIEW_COLUMNS = 5;
     private static final int STANDALONE_CAR_PREVIEW_CELL_WIDTH = 150;
     private static final int STANDALONE_CAR_PREVIEW_CELL_HEIGHT = 200;
@@ -1031,7 +1031,6 @@ public class RatassGame extends ApplicationAdapter {
 
     private void startNewGame(boolean sandbox) {
         sandboxMode = sandbox;
-        resetWeatherForSession();
         disposeRosterSpriteTextures();
         disposeArenaSurfaceTextures();
         disposeMenuCarPreview();
@@ -2489,10 +2488,10 @@ public class RatassGame extends ApplicationAdapter {
         eventCalloutSubline = "";
     }
 
-    private void resetWeatherForSession() {
-        currentWeather = Weather.SUNNY;
-        weatherGripMultiplier = Weather.SUNNY.gripMultiplier;
-        weatherTimeRemaining = randomWeatherDuration(Weather.SUNNY);
+    private void resetWeatherForCircuit() {
+        currentWeather = chooseWeatherFromSunny();
+        weatherGripMultiplier = currentWeather.gripMultiplier;
+        weatherTimeRemaining = randomWeatherDuration(currentWeather);
     }
 
     private void forceSunnyWeather() {
@@ -2534,6 +2533,10 @@ public class RatassGame extends ApplicationAdapter {
         if (currentWeather != Weather.SUNNY) {
             return Weather.SUNNY;
         }
+        return chooseWeatherFromSunny();
+    }
+
+    private Weather chooseWeatherFromSunny() {
         float roll = weatherRandom.nextFloat();
         if (roll < WEATHER_SUNNY_REPEAT_CHANCE) {
             return Weather.SUNNY;
@@ -5143,6 +5146,8 @@ public class RatassGame extends ApplicationAdapter {
 
         if (rlTrainingMode) {
             forceSunnyWeather();
+        } else {
+            resetWeatherForCircuit();
         }
 
         currentMap = mapProgression.getCurrentMap();
@@ -13722,6 +13727,8 @@ public class RatassGame extends ApplicationAdapter {
         private final boolean[] checkpointCrossRewardEvents;
         private final boolean[] checkpointTimeoutEvents;
         private final boolean[] raceCheckpointCrossEvents;
+        private final boolean[] offRoadDuringAction;
+        private final float[] maxOffRoadDistanceDuringAction;
         private final boolean[] dones;
         private final int controlledAgentCount;
         private int episodeIndex;
@@ -13776,6 +13783,8 @@ public class RatassGame extends ApplicationAdapter {
             checkpointCrossRewardEvents = new boolean[controlledAgentCount];
             checkpointTimeoutEvents = new boolean[controlledAgentCount];
             raceCheckpointCrossEvents = new boolean[controlledAgentCount];
+            offRoadDuringAction = new boolean[controlledAgentCount];
+            maxOffRoadDistanceDuringAction = new float[controlledAgentCount];
             dones = new boolean[controlledAgentCount];
         }
 
@@ -13852,10 +13861,12 @@ public class RatassGame extends ApplicationAdapter {
 
             clearStepEvents();
             captureBeforeSnapshots();
+            recordSnapshotOffRoadState(beforeSnapshots);
             applyActions(actions);
             int repeats = Math.max(1, config.actionRepeat);
             for (int i = 0; i < repeats && !game.roundOver; i++) {
                 game.stepSimulation(PHYSICS_STEP);
+                recordCurrentOffRoadState();
                 if (config.raceMode) {
                     updateRaceCheckpointCrossEvents();
                 }
@@ -13865,6 +13876,7 @@ public class RatassGame extends ApplicationAdapter {
             boolean maxStepsReached = !game.roundOver && actionStep >= getMaxActionSteps();
 
             captureSnapshots(afterSnapshots);
+            recordSnapshotOffRoadState(afterSnapshots);
             updateRouteProgress();
             updateNoProgressState();
             updateOffRoadFailureState();
@@ -14260,6 +14272,43 @@ public class RatassGame extends ApplicationAdapter {
                 checkpointCrossRewardEvents[agentIndex] = false;
                 checkpointTimeoutEvents[agentIndex] = false;
                 raceCheckpointCrossEvents[agentIndex] = false;
+                offRoadDuringAction[agentIndex] = false;
+                maxOffRoadDistanceDuringAction[agentIndex] = 0f;
+            }
+        }
+
+        private void recordSnapshotOffRoadState(RlAgentSnapshot[] snapshots) {
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                RlAgentSnapshot snapshot = snapshots[agentIndex];
+                if (!snapshot.active || !snapshot.offRoad) {
+                    continue;
+                }
+                offRoadDuringAction[agentIndex] = true;
+                maxOffRoadDistanceDuringAction[agentIndex] =
+                        Math.max(
+                                maxOffRoadDistanceDuringAction[agentIndex],
+                                snapshot.offRoadDistance);
+            }
+        }
+
+        private void recordCurrentOffRoadState() {
+            if (game.currentMap == null) {
+                return;
+            }
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                Car car = getControlledCar(agentIndex);
+                if (car == null || !car.active || car.body == null) {
+                    continue;
+                }
+                Vector2 position = car.body.getPosition();
+                if (!Car.isTrackLimitSlowdownActive(game.currentMap, position)) {
+                    continue;
+                }
+                offRoadDuringAction[agentIndex] = true;
+                maxOffRoadDistanceDuringAction[agentIndex] =
+                        Math.max(
+                                maxOffRoadDistanceDuringAction[agentIndex],
+                                Car.getTrackLimitPenaltyDistance(game.currentMap, position));
             }
         }
 
@@ -14305,7 +14354,7 @@ public class RatassGame extends ApplicationAdapter {
                     continue;
                 }
 
-                if (before.offRoad || after.offRoad) {
+                if (offRoadDuringAction[agentIndex]) {
                     routeProgressDeltas[agentIndex] = 0f;
                     if (!after.offRoad) {
                         bestRaceRouteProgress[agentIndex] = after.raceRouteProgress;
@@ -14416,11 +14465,11 @@ public class RatassGame extends ApplicationAdapter {
                             agentIndex,
                             RL_REWARD_STEERING,
                             -getSteeringPenalty(agentIndex));
-                    if (after.offRoad) {
+                    if (offRoadDuringAction[agentIndex]) {
                         reward += recordReward(
                                 agentIndex,
                                 RL_REWARD_OFF_ROAD,
-                                -getOffRoadPenalty(after));
+                                -getOffRoadPenalty(agentIndex));
                     }
                     reward += recordReward(
                             agentIndex,
@@ -14478,11 +14527,12 @@ public class RatassGame extends ApplicationAdapter {
             return reward;
         }
 
-        private float getOffRoadPenalty(RlAgentSnapshot snapshot) {
+        private float getOffRoadPenalty(int agentIndex) {
             return Math.min(
                     config.offRoadMaxPenalty,
                     config.offRoadPenalty
-                            + snapshot.offRoadDistance * config.offRoadDistancePenalty);
+                            + maxOffRoadDistanceDuringAction[agentIndex]
+                                    * config.offRoadDistancePenalty);
         }
 
         private float getOffRoadRecoveryReward(

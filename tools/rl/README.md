@@ -44,8 +44,10 @@ still runs on CPU.
 - Rewards are bucketed as `route_progress`, `step_cost`, `off_road`, `steering`,
   `reverse_speed`, `car_push`, and `route_alignment`. The route-progress bucket
   contains signed progress along the circuit route. Route targets are training
-  objectives, not direct reward bonuses. Braking is not penalized, but actual
-  negative forward speed is. Car collisions are treated as push/contact
+  objectives, not direct reward bonuses. If any repeated physics frame enters
+  the gameplay track-limit slowdown area, that complete action earns no route
+  progress and receives the off-road penalty. Braking is not penalized, but
+  actual negative forward speed is. Car collisions are treated as push/contact
   penalties, not as rewards.
 - Java exposes episode metrics for route targets reached and route progress.
 - The shell training presets stage route learning through `5%`, `10%`, `25%`,

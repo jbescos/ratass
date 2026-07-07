@@ -36,7 +36,7 @@ final class ImageArenaMapLoader {
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
     private static final String CACHE_SUFFIX = ".json.gz";
-    private static final int CACHE_VERSION = 119;
+    private static final int CACHE_VERSION = 120;
     private static final boolean USE_ROUTE_LINE_MARKERS = false;
     private static final float BASE_WORLD_HEIGHT = 22f;
     private static final String MAP005_ID = "map005";
@@ -94,6 +94,8 @@ final class ImageArenaMapLoader {
     private static final int ROUTE_CENTERLINE_SMOOTHING_PASSES = 2;
     private static final float ROUTE_CENTERLINE_SMOOTHING_SAMPLE_STEP = 0.65f;
     private static final float ROUTE_CENTERLINE_SMOOTHING_MIN_CLEARANCE = 0.32f;
+    private static final float ROUTE_CENTERLINE_FINAL_SAMPLE_STEP = 0.50f;
+    private static final int ROUTE_CENTERLINE_FINAL_SMOOTHING_PASSES = 3;
     private static final int ROUTE_CENTERLINE_STRAIGHTENING_PASSES = 3;
     private static final int ROUTE_CENTERLINE_STRAIGHTENING_RADIUS = 8;
     private static final float ROUTE_CENTERLINE_STRAIGHTENING_MIN_OSCILLATION = 0.035f;
@@ -117,7 +119,7 @@ final class ImageArenaMapLoader {
     private static final int BLUE_ROUTE_HINT_MIN_AREA = 96;
     private static final int BLUE_ROUTE_HINT_MIN_DIAMETER_PIXELS = 18;
     private static final float ROUTE_METADATA_SAMPLE_STEP_WORLD = 0.75f;
-    private static final float ROUTE_METADATA_TANGENT_SAMPLE_DISTANCE = 1.50f;
+    private static final float ROUTE_METADATA_TANGENT_SAMPLE_DISTANCE = 3.00f;
     private static final float ROUTE_METADATA_CLEARANCE_DISTANCE = 24f;
     private static final float ROUTE_METADATA_CLEARANCE_STEP = 0.35f;
     private static final float ROUTE_METADATA_CLEARANCE_EDGE_MARGIN = 0.10f;
@@ -344,6 +346,7 @@ final class ImageArenaMapLoader {
                             worldMinY,
                             worldWidth,
                             worldHeight);
+            routePoints = smoothFinalRouteCenterline(routeOrderingMap, routePoints);
             alignRouteCenterlineWithSpawnDirection(routePoints, spawnPoints, averageSpawnForward(spawnPoints));
             ArenaMap.RouteMetadata routeMetadata =
                     buildRouteMetadata(
@@ -5134,6 +5137,64 @@ final class ImageArenaMapLoader {
             smoothed = candidate;
         }
         return straightenRouteCenterline(routeMap, smoothed);
+    }
+
+    private static Array<Vector2> smoothFinalRouteCenterline(
+            ArenaMap routeMap, Array<Vector2> route) {
+        if (routeMap == null || route == null || route.size < 4) {
+            return route;
+        }
+
+        float[] cumulative = buildRouteCumulativeDistances(route);
+        float routeLength = cumulative.length == 0 ? 0f : cumulative[cumulative.length - 1];
+        if (routeLength <= 0.001f) {
+            return route;
+        }
+
+        int sampleCount =
+                Math.max(
+                        4,
+                        MathUtils.ceil(routeLength / ROUTE_CENTERLINE_FINAL_SAMPLE_STEP));
+        float sampleStep = routeLength / sampleCount;
+        Array<Vector2> smoothed = new Array<Vector2>(sampleCount);
+        for (int i = 0; i < sampleCount; i++) {
+            Vector2 point = new Vector2();
+            sampleRoutePoint(route, cumulative, routeLength, i * sampleStep, point);
+            smoothed.add(point);
+        }
+        if (!isRouteCenterlineSafe(routeMap, smoothed)) {
+            return route;
+        }
+
+        for (int pass = 0; pass < ROUTE_CENTERLINE_FINAL_SMOOTHING_PASSES; pass++) {
+            Array<Vector2> candidate = new Array<Vector2>(sampleCount);
+            for (int i = 0; i < sampleCount; i++) {
+                Vector2 beforeFar = smoothed.get(wrapRoutePointIndex(i - 2, sampleCount));
+                Vector2 before = smoothed.get(wrapRoutePointIndex(i - 1, sampleCount));
+                Vector2 current = smoothed.get(i);
+                Vector2 after = smoothed.get(wrapRoutePointIndex(i + 1, sampleCount));
+                Vector2 afterFar = smoothed.get(wrapRoutePointIndex(i + 2, sampleCount));
+                candidate.add(
+                        new Vector2(
+                                (beforeFar.x
+                                                + 4f * before.x
+                                                + 6f * current.x
+                                                + 4f * after.x
+                                                + afterFar.x)
+                                        / 16f,
+                                (beforeFar.y
+                                                + 4f * before.y
+                                                + 6f * current.y
+                                                + 4f * after.y
+                                                + afterFar.y)
+                                        / 16f));
+            }
+            if (!isRouteCenterlineSafe(routeMap, candidate)) {
+                break;
+            }
+            smoothed = candidate;
+        }
+        return smoothed;
     }
 
     private static Array<Vector2> straightenRouteCenterline(
