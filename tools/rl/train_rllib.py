@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -56,6 +57,31 @@ INCOMPATIBLE_CHECKPOINT_PATTERNS = (
     "Missing key(s)",
     "Unexpected key(s)",
 )
+
+
+@dataclass(frozen=True)
+class PolicyEvaluation:
+    score: Optional[float]
+    metrics: Dict[str, str]
+    output_lines: Tuple[str, ...]
+    return_code: int
+
+
+@dataclass(frozen=True)
+class EvaluatedCheckpointCandidate:
+    candidate: CheckpointCandidate
+    evaluation: PolicyEvaluation
+    avg_targets: float
+    route_eligible: bool
+
+
+@dataclass(frozen=True)
+class EvaluatedCheckpointSelection:
+    evaluated_candidate: EvaluatedCheckpointCandidate
+    evaluated_count: int
+    eligible_count: int
+    failed_count: int
+    reason: str
 
 
 def _metric_token(value: str) -> str:
@@ -894,17 +920,17 @@ def read_metric(result: Dict, *paths: Tuple[str, ...], default: float = float("n
     return default
 
 
-def has_metric(value: float) -> bool:
-    return math.isfinite(value)
+def has_metric(value: Optional[float]) -> bool:
+    return value is not None and math.isfinite(value)
 
 
-def format_metric(value: float, precision: int = 3) -> str:
+def format_metric(value: Optional[float], precision: int = 3) -> str:
     if not has_metric(value):
         return "none"
     return f"{value:.{precision}f}"
 
 
-def format_count_metric(value: float) -> str:
+def format_count_metric(value: Optional[float]) -> str:
     if not has_metric(value):
         return "0"
     return f"{value:.0f}"
@@ -1007,7 +1033,19 @@ def best_eval_checkpoint_dir(args, checkpoint_dir: Path) -> Path:
     return best_eval_dir(args, checkpoint_dir) / "best-rllib-checkpoint"
 
 
-def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float], Dict[str, str]]:
+def emit_policy_evaluation(evaluation: PolicyEvaluation) -> None:
+    for line in evaluation.output_lines:
+        print(f"best_eval {line}", flush=True)
+    if evaluation.return_code != 0:
+        print(f"best_eval_failed exit_code={evaluation.return_code}", flush=True)
+    elif evaluation.score is None:
+        print("best_eval_failed reason=missing_evaluation_score", flush=True)
+
+
+def run_policy_evaluation(
+        args,
+        candidate_policy: Path,
+        emit_output: bool = True) -> PolicyEvaluation:
     episodes_per_map = args.best_eval_episodes_per_map
     episodes = args.best_eval_episodes
     if episodes_per_map <= 0 and episodes <= 0:
@@ -1094,21 +1132,118 @@ def run_policy_evaluation(args, candidate_policy: Path) -> Tuple[Optional[float]
         text=True,
         check=False,
     )
+    output_lines = tuple(completed.stdout.splitlines())
     metrics: Dict[str, str] = {}
-    score: Optional[float] = None
-    for line in completed.stdout.splitlines():
-        print(f"best_eval {line}", flush=True)
+    for line in output_lines:
         if line.startswith("evaluation_score="):
             metrics.update(parse_metric_tokens(line))
-    if completed.returncode != 0:
-        print(f"best_eval_failed exit_code={completed.returncode}", flush=True)
-        return None, metrics
+    score: Optional[float] = None
+    if completed.returncode == 0:
+        try:
+            parsed_score = float(metrics["evaluation_score"])
+            if math.isfinite(parsed_score):
+                score = parsed_score
+        except (KeyError, ValueError):
+            pass
+    evaluation = PolicyEvaluation(
+        score=score,
+        metrics=metrics,
+        output_lines=output_lines,
+        return_code=completed.returncode,
+    )
+    if emit_output:
+        emit_policy_evaluation(evaluation)
+    return evaluation
+
+
+def evaluation_avg_targets(evaluation: PolicyEvaluation) -> float:
     try:
-        score = float(metrics["evaluation_score"])
-    except (KeyError, ValueError):
-        print("best_eval_failed reason=missing_evaluation_score", flush=True)
-        return None, metrics
-    return score, metrics
+        value = float(evaluation.metrics.get("avg_targets", "nan"))
+    except (TypeError, ValueError):
+        return float("nan")
+    return value if math.isfinite(value) else float("nan")
+
+
+def evaluate_checkpoint_candidates(
+        args,
+        candidates: List[CheckpointCandidate],
+        output_dir: Path) -> List[EvaluatedCheckpointCandidate]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    export_objective = args.best_export_objective or EXPORT_OBJECTIVES[args.objective]
+    evaluated: List[EvaluatedCheckpointCandidate] = []
+    for candidate in candidates:
+        candidate_policy = output_dir / f"iteration-{candidate.iteration:06d}.json"
+        try:
+            export_checkpoint_policy(
+                Path(candidate.checkpoint_path),
+                candidate_policy,
+                export_objective,
+                args.hidden_activation,
+                emit_summary=False,
+            )
+            evaluation = run_policy_evaluation(args, candidate_policy, emit_output=False)
+        except Exception as error:
+            message = str(error).replace("\n", " ")
+            evaluation = PolicyEvaluation(
+                score=None,
+                metrics={},
+                output_lines=(
+                    f"candidate_export_failed iteration={candidate.iteration} "
+                    f"checkpoint={candidate.checkpoint_path} error={message}",
+                ),
+                return_code=1,
+            )
+        avg_targets = evaluation_avg_targets(evaluation)
+        route_eligible = (
+            evaluation.score is not None
+            and math.isfinite(avg_targets)
+            and avg_targets >= args.best_eval_min_route_targets
+        )
+        evaluated.append(EvaluatedCheckpointCandidate(
+            candidate=candidate,
+            evaluation=evaluation,
+            avg_targets=avg_targets,
+            route_eligible=route_eligible,
+        ))
+    return evaluated
+
+
+def select_evaluated_checkpoint_candidate(
+        candidates: List[EvaluatedCheckpointCandidate]) -> EvaluatedCheckpointSelection:
+    if not candidates:
+        raise ValueError("At least one evaluated checkpoint candidate is required")
+
+    successful = [candidate for candidate in candidates if candidate.evaluation.score is not None]
+    eligible = [candidate for candidate in successful if candidate.route_eligible]
+    if eligible:
+        selected = max(
+            eligible,
+            key=lambda candidate: (
+                candidate.evaluation.score,
+                candidate.candidate.iteration,
+            ),
+        )
+        reason = "highest_all_maps_evaluation_score"
+    elif successful:
+        selected = max(
+            successful,
+            key=lambda candidate: (
+                candidate.evaluation.score,
+                candidate.candidate.iteration,
+            ),
+        )
+        reason = "no_route_eligible_candidate_highest_evaluation_score"
+    else:
+        selected = max(candidates, key=lambda candidate: candidate.candidate.iteration)
+        reason = "all_candidate_evaluations_failed"
+
+    return EvaluatedCheckpointSelection(
+        evaluated_candidate=selected,
+        evaluated_count=len(successful),
+        eligible_count=len(eligible),
+        failed_count=len(candidates) - len(successful),
+        reason=reason,
+    )
 
 
 def maybe_promote_best_policy(
@@ -1117,7 +1252,8 @@ def maybe_promote_best_policy(
         checkpoint_dir: Path,
         iteration: int,
         saved_checkpoint: str,
-        compare_installed: bool = True) -> Dict[str, object]:
+        compare_installed: bool = True,
+        policy_evaluation: Optional[PolicyEvaluation] = None) -> Dict[str, object]:
     result: Dict[str, object] = {
         "evaluated": False,
         "accepted": False,
@@ -1137,7 +1273,12 @@ def maybe_promote_best_policy(
         args.hidden_activation,
     )
     output_file = Path(args.best_export_output).resolve()
-    score, metrics = run_policy_evaluation(args, candidate_policy)
+    if policy_evaluation is None:
+        policy_evaluation = run_policy_evaluation(args, candidate_policy)
+    else:
+        emit_policy_evaluation(policy_evaluation)
+    score = policy_evaluation.score
+    metrics = policy_evaluation.metrics
     if score is None:
         print(
             f"model_export_not_overwritten reason=evaluation_failed "
@@ -1147,11 +1288,8 @@ def maybe_promote_best_policy(
         return result
     result["evaluated"] = True
     result["score"] = score
-    try:
-        avg_targets = float(metrics.get("avg_targets", "nan"))
-    except (TypeError, ValueError):
-        avg_targets = float("nan")
-    if avg_targets < args.best_eval_min_route_targets:
+    avg_targets = evaluation_avg_targets(policy_evaluation)
+    if not math.isfinite(avg_targets) or avg_targets < args.best_eval_min_route_targets:
         print(
             f"best_policy_rejected score={score:.3f} "
             f"avg_targets={avg_targets:.3f} "
@@ -1176,7 +1314,9 @@ def maybe_promote_best_policy(
     except (TypeError, ValueError):
         previous_score = float("-inf")
     if output_file.exists() and compare_installed and not args.best_eval_ignore_installed:
-        installed_score, installed_metrics = run_policy_evaluation(args, output_file)
+        installed_evaluation = run_policy_evaluation(args, output_file, emit_output=False)
+        installed_score = installed_evaluation.score
+        installed_metrics = installed_evaluation.metrics
         if installed_score is not None and installed_score > previous_score:
             previous_score = installed_score
             state = {
@@ -1316,11 +1456,23 @@ def establish_stage_baseline(algorithm, args, checkpoint_dir: Path) -> Dict[str,
     return result
 
 
-def save_checkpoint(algorithm, checkpoint_dir: Path, args, iteration: int) -> Dict[str, object]:
+def save_checkpoint(
+        algorithm,
+        checkpoint_dir: Path,
+        args,
+        iteration: int,
+        policy_evaluation: Optional[PolicyEvaluation] = None) -> Dict[str, object]:
     checkpoint = algorithm.save(str(checkpoint_dir))
     saved_path = checkpoint_path(checkpoint)
     print(f"checkpoint={saved_path}", flush=True)
-    return maybe_promote_best_policy(algorithm, args, checkpoint_dir, iteration, saved_path)
+    return maybe_promote_best_policy(
+        algorithm,
+        args,
+        checkpoint_dir,
+        iteration,
+        saved_path,
+        policy_evaluation=policy_evaluation,
+    )
 
 
 def save_selected_checkpoint_candidate(
@@ -1350,25 +1502,67 @@ def save_selected_checkpoint_candidate(
         )
         return save_checkpoint(algorithm, checkpoint_dir, args, current_iteration)
 
-    selection = select_checkpoint_candidate(window_candidates)
-    selected = selection.candidate
-    print(
-        f"checkpoint_candidate_selected iteration={selected.iteration} "
-        f"window={window_start}-{current_iteration} "
-        f"candidates={len(window_candidates)} eligible={selection.eligible_count} "
-        f"reward_mean={format_metric(selected.reward_mean)} "
-        f"episode_len_mean={format_metric(selected.episode_len_mean, 1)} "
-        f"episodes={format_count_metric(selected.episodes)} "
-        f"reason={selection.reason}",
-        flush=True,
-    )
+    selected_evaluation: Optional[PolicyEvaluation] = None
+    if (
+            args.best_export_output
+            and getattr(args, "evaluate_all_checkpoint_candidates", False)):
+        evaluation_dir = Path(tempfile.mkdtemp(
+            prefix=".checkpoint-candidate-evaluations-",
+            dir=checkpoint_dir.parent,
+        ))
+        try:
+            evaluated_candidates = evaluate_checkpoint_candidates(
+                args,
+                window_candidates,
+                evaluation_dir,
+            )
+        finally:
+            shutil.rmtree(evaluation_dir, ignore_errors=True)
+        evaluation_selection = select_evaluated_checkpoint_candidate(evaluated_candidates)
+        selected_result = evaluation_selection.evaluated_candidate
+        selected = selected_result.candidate
+        selected_evaluation = selected_result.evaluation
+        print(
+            f"checkpoint_candidate_selected iteration={selected.iteration} "
+            f"window={window_start}-{current_iteration} "
+            f"candidates={len(window_candidates)} "
+            f"evaluated={evaluation_selection.evaluated_count} "
+            f"eligible={evaluation_selection.eligible_count} "
+            f"failed={evaluation_selection.failed_count} "
+            f"evaluation_score={format_metric(selected_evaluation.score)} "
+            f"avg_targets={format_metric(selected_result.avg_targets)} "
+            f"reward_mean={format_metric(selected.reward_mean)} "
+            f"episode_len_mean={format_metric(selected.episode_len_mean, 1)} "
+            f"episodes={format_count_metric(selected.episodes)} "
+            f"reason={evaluation_selection.reason}",
+            flush=True,
+        )
+    else:
+        selection = select_checkpoint_candidate(window_candidates)
+        selected = selection.candidate
+        print(
+            f"checkpoint_candidate_selected iteration={selected.iteration} "
+            f"window={window_start}-{current_iteration} "
+            f"candidates={len(window_candidates)} eligible={selection.eligible_count} "
+            f"reward_mean={format_metric(selected.reward_mean)} "
+            f"episode_len_mean={format_metric(selected.episode_len_mean, 1)} "
+            f"episodes={format_count_metric(selected.episodes)} "
+            f"reason={selection.reason}",
+            flush=True,
+        )
 
-    # Evaluate the selected historical state without rolling live training back.
+    # Promote the selected historical state without rolling live training back.
     selected_is_latest = selected.iteration == current_iteration
     if not selected_is_latest:
         restore_algorithm_checkpoint(algorithm, Path(selected.checkpoint_path))
     try:
-        return save_checkpoint(algorithm, checkpoint_dir, args, selected.iteration)
+        return save_checkpoint(
+            algorithm,
+            checkpoint_dir,
+            args,
+            selected.iteration,
+            policy_evaluation=selected_evaluation,
+        )
     finally:
         if not selected_is_latest:
             restore_algorithm_checkpoint(
@@ -1518,8 +1712,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help=(
-            "checkpoint and evaluate the highest-reward candidate "
-            "from the preceding ten iterations"
+            "checkpoint using candidates captured from the preceding ten iterations"
+        ),
+    )
+    parser.add_argument(
+        "--evaluate-all-checkpoint-candidates",
+        action="store_true",
+        help=(
+            "evaluate every candidate from the preceding ten iterations and "
+            "select by best-evaluation score; otherwise preselect by reward mean"
         ),
     )
     parser.add_argument(

@@ -124,6 +124,7 @@ def export_policy(
     output_file: Path,
     objective: str,
     hidden_activation: str = "tanh",
+    emit_summary: bool = True,
 ) -> None:
     state = load_policy_state(checkpoint_dir)
     layers = actor_layers(state, hidden_activation)
@@ -142,9 +143,10 @@ def export_policy(
         json.dump(payload, handle, separators=(",", ":"))
         handle.write("\n")
 
-    print(f"exported={output_file}")
-    print(f"layers={len(layers)}")
-    print(f"bytes={output_file.stat().st_size}")
+    if emit_summary:
+        print(f"exported={output_file}")
+        print(f"layers={len(layers)}")
+        print(f"bytes={output_file.stat().st_size}")
 
 
 def parse_args() -> argparse.Namespace:
