@@ -35,6 +35,7 @@ class TimedRun:
     expected_laps: int
     error: str = ""
     is_car_average: bool = False
+    off_road_actions: int | float | None = 0
 
     @property
     def complete(self) -> bool:
@@ -54,6 +55,7 @@ class OverallCarAverage:
     fastest_lap: float | None
     avg_lap: float | None
     total_time: float | None
+    off_road_actions: float | None
     completed_runs: int
     expected_runs: int
 
@@ -64,6 +66,7 @@ class OverallProfileAverage:
     fastest_lap: float | None
     avg_lap: float | None
     total_time: float | None
+    off_road_actions: float | None
     completed_runs: int
     expected_runs: int
 
@@ -294,7 +297,7 @@ def make_environment(
         .withRouteTargets(route_target)
         .withRaceMode(True)
         .withRandomRaceSpawns(bool(args.random_race_spawns))
-        .withRewardBreakdownEnabled(False)
+        .withRewardBreakdownEnabled(True)
         .withStepDetailsEnabled(True)
         .withDebugTraceEnabled(False)
         .withSeed(args.seed)
@@ -323,6 +326,7 @@ def run_lap_timing(
     lap_times: list[float] = []
     total_time = 0.0
     last_lap_time = 0.0
+    off_road_actions = 0
     timed_out = False
     try:
         result = env.reset()
@@ -348,6 +352,12 @@ def run_lap_timing(
         scratch_b = java_float_array(scratch_size)
         decision_buffer = ai_control_decision()
         action_buffer = java_float_array(2)
+        reward_breakdown_names = [str(name) for name in result.rewardBreakdownNames]
+        off_road_reward_index = (
+            reward_breakdown_names.index("off_road")
+            if "off_road" in reward_breakdown_names
+            else -1
+        )
         while not result.episodeDone and (args.steps <= 0 or int(result.actionStep) < args.steps):
             if args.timeout_seconds > 0 and time.monotonic() - started_at >= args.timeout_seconds:
                 timed_out = True
@@ -363,6 +373,11 @@ def run_lap_timing(
             action_buffer[0] = decision.throttle
             action_buffer[1] = decision.turn
             result = env.step(action_buffer)
+            if (
+                0 <= off_road_reward_index < len(result.rewardBreakdown)
+                and float(result.rewardBreakdown[off_road_reward_index]) < 0.0
+            ):
+                off_road_actions += 1
             total_time = int(result.actionStep) * max(1, args.action_repeat) * PHYSICS_STEP_SECONDS
             reached = int(result.routeTargetsReached[0]) if len(result.routeTargetsReached) > 0 else 0
             while len(lap_times) < args.laps and reached >= (len(lap_times) + 1):
@@ -382,6 +397,7 @@ def run_lap_timing(
             0,
             args.laps,
             "timedout" if timed_out else "",
+            off_road_actions=off_road_actions,
         )
     fastest = min(lap_times)
     average = sum(lap_times) / len(lap_times)
@@ -395,6 +411,7 @@ def run_lap_timing(
         completed_total,
         len(lap_times),
         args.laps,
+        off_road_actions=off_road_actions,
     )
 
 
@@ -406,6 +423,15 @@ def format_duration(value: float | None) -> str:
     if minutes > 0:
         return f"{minutes}:{seconds:06.3f}"
     return f"{seconds:.3f}"
+
+
+def format_metric(value: float | None, metric: str) -> str:
+    if metric != "off_road_actions":
+        return format_duration(value)
+    if value is None:
+        return "-"
+    rounded = round(value)
+    return str(int(rounded)) if abs(value - rounded) <= 0.0005 else f"{value:.1f}"
 
 
 def best_times(rows: Iterable[TimedRun], metric: str) -> BestTimes:
@@ -480,13 +506,15 @@ def format_cell(
         value = getattr(row, metric)
         if not row.complete or value is None:
             return f"DNF {row.completed_laps}/{row.expected_laps}"
-        return highlight(format_duration(value), row, metric, best)
+        return highlight(format_metric(value, metric), row, metric, best)
+    value = getattr(row, metric)
+    if metric == "off_road_actions" and row.error == "timedout" and value is not None:
+        return format_metric(value, metric)
     if row.error:
         return row.error
-    value = getattr(row, metric)
     if metric == "total_time" and not row.complete:
         return f"DNF {row.completed_laps}/{row.expected_laps}"
-    return highlight(format_duration(value), row, metric, best)
+    return highlight(format_metric(value, metric), row, metric, best)
 
 
 def print_markdown_table(headers: list[str], rows: list[list[str]], right_aligned: set[int]) -> None:
@@ -523,6 +551,7 @@ def lap_time_row(
     fastest_best: BestTimes,
     average_best: BestTimes,
     total_best: BestTimes,
+    off_road_best: BestTimes,
     include_car: bool,
 ) -> list[str]:
     cells = [
@@ -536,6 +565,7 @@ def lap_time_row(
             format_cell(row, "fastest_lap", fastest_best),
             format_cell(row, "avg_lap", average_best),
             format_cell(row, "total_time", total_best),
+            format_cell(row, "off_road_actions", off_road_best),
         ]
     )
     return cells
@@ -545,12 +575,12 @@ def print_table_rows(table_rows: list[list[str]], include_car: bool) -> None:
     headers = ["map", "profile"]
     if include_car:
         headers.append("car")
-    headers.extend(["fastest lap", "avg lap", "total time"])
+    headers.extend(["fastest lap", "avg lap", "total time", "off-road actions"])
     first_metric = 3 if include_car else 2
     print_markdown_table(
         headers,
         table_rows,
-        {first_metric, first_metric + 1, first_metric + 2},
+        {first_metric, first_metric + 1, first_metric + 2, first_metric + 3},
     )
 
 
@@ -567,10 +597,14 @@ def car_average_row(map_id: str, profile: str, car_rows: list[TimedRun]) -> Time
     fastest_lap = None
     avg_lap = None
     total_time = None
+    off_road_actions = None
     if len(completed) == len(car_rows) and completed:
         fastest_lap = sum(float(row.fastest_lap) for row in completed) / len(completed)
         avg_lap = sum(float(row.avg_lap) for row in completed) / len(completed)
         total_time = sum(float(row.total_time) for row in completed) / len(completed)
+        off_road_actions = (
+            sum(float(row.off_road_actions) for row in completed) / len(completed)
+        )
     return TimedRun(
         map_id=map_id,
         profile=profile,
@@ -581,6 +615,7 @@ def car_average_row(map_id: str, profile: str, car_rows: list[TimedRun]) -> Time
         completed_laps=len(completed),
         expected_laps=len(car_rows),
         is_car_average=True,
+        off_road_actions=off_road_actions,
     )
 
 
@@ -620,6 +655,11 @@ def overall_car_averages(rows: Iterable[TimedRun]) -> list[OverallCarAverage]:
                     if completed
                     else None
                 ),
+                off_road_actions=(
+                    sum(float(row.off_road_actions) for row in completed) / count
+                    if completed
+                    else None
+                ),
                 completed_runs=count,
                 expected_runs=len(car_rows),
             )
@@ -631,8 +671,9 @@ def highlight_overall_average(
     value: float | None,
     best: float | None,
     worst: float | None,
+    metric: str,
 ) -> str:
-    text = format_duration(value)
+    text = format_metric(value, metric)
     if value is None:
         return text
     if best is not None and abs(value - best) <= 0.0005:
@@ -656,21 +697,39 @@ def print_overall_car_averages(rows: Iterable[TimedRun]) -> None:
     fastest_best, fastest_worst = bounds("fastest_lap")
     average_best, average_worst = bounds("avg_lap")
     total_best, total_worst = bounds("total_time")
+    off_road_best, off_road_worst = bounds("off_road_actions")
     table_rows = [
         [
             average.car,
             f"{average.completed_runs}/{average.expected_runs}",
-            highlight_overall_average(average.fastest_lap, fastest_best, fastest_worst),
-            highlight_overall_average(average.avg_lap, average_best, average_worst),
-            highlight_overall_average(average.total_time, total_best, total_worst),
+            highlight_overall_average(
+                average.fastest_lap, fastest_best, fastest_worst, "fastest_lap"
+            ),
+            highlight_overall_average(average.avg_lap, average_best, average_worst, "avg_lap"),
+            highlight_overall_average(
+                average.total_time, total_best, total_worst, "total_time"
+            ),
+            highlight_overall_average(
+                average.off_road_actions,
+                off_road_best,
+                off_road_worst,
+                "off_road_actions",
+            ),
         ]
         for average in averages
     ]
     print("all_maps_car_average")
     print_markdown_table(
-        ["car", "completed", "avg fastest lap", "avg lap", "avg total time"],
+        [
+            "car",
+            "completed",
+            "avg fastest lap",
+            "avg lap",
+            "avg total time",
+            "avg off-road actions",
+        ],
         table_rows,
-        {1, 2, 3, 4},
+        {1, 2, 3, 4, 5},
     )
 
 
@@ -719,6 +778,11 @@ def overall_profile_averages(rows: Iterable[TimedRun]) -> list[OverallProfileAve
                     if all_complete
                     else None
                 ),
+                off_road_actions=(
+                    sum(float(row.off_road_actions) for row in completed) / completed_count
+                    if completed
+                    else None
+                ),
                 completed_runs=completed_count,
                 expected_runs=len(profile_rows),
             )
@@ -740,6 +804,7 @@ def print_overall_profile_averages(rows: Iterable[TimedRun]) -> None:
     fastest_best, fastest_worst = bounds("fastest_lap")
     average_best, average_worst = bounds("avg_lap")
     total_best, total_worst = bounds("total_time")
+    off_road_best, off_road_worst = bounds("off_road_actions")
 
     def cell(
         average: OverallProfileAverage,
@@ -750,7 +815,7 @@ def print_overall_profile_averages(rows: Iterable[TimedRun]) -> None:
         value = getattr(average, metric)
         if value is None:
             return f"DNF {average.completed_runs}/{average.expected_runs}"
-        return highlight_overall_average(float(value), best, worst)
+        return highlight_overall_average(float(value), best, worst, metric)
 
     table_rows = [
         [
@@ -758,14 +823,21 @@ def print_overall_profile_averages(rows: Iterable[TimedRun]) -> None:
             cell(average, "fastest_lap", fastest_best, fastest_worst),
             cell(average, "avg_lap", average_best, average_worst),
             cell(average, "total_time", total_best, total_worst),
+            cell(average, "off_road_actions", off_road_best, off_road_worst),
         ]
         for average in averages
     ]
     print("all_maps_profile_average")
     print_markdown_table(
-        ["profile", "avg fastest lap", "avg lap", "avg total time"],
+        [
+            "profile",
+            "avg fastest lap",
+            "avg lap",
+            "avg total time",
+            "avg off-road actions",
+        ],
         table_rows,
-        {1, 2, 3},
+        {1, 2, 3, 4},
     )
 
 
@@ -773,6 +845,7 @@ def print_table(rows: list[TimedRun], group_by_map: bool) -> None:
     fastest_best = best_times(rows, "fastest_lap")
     average_best = best_times(rows, "avg_lap")
     total_best = best_times(rows, "total_time")
+    off_road_best = best_times(rows, "off_road_actions")
     include_car = any(row.car != "default" for row in rows)
     if group_by_map:
         current_map = None
@@ -787,7 +860,14 @@ def print_table(rows: list[TimedRun], group_by_map: bool) -> None:
                 current_map = row.map_id
                 table_rows = []
             table_rows.append(
-                lap_time_row(row, fastest_best, average_best, total_best, include_car)
+                lap_time_row(
+                    row,
+                    fastest_best,
+                    average_best,
+                    total_best,
+                    off_road_best,
+                    include_car,
+                )
             )
         if current_map is not None:
             print(f"map={current_map}")
@@ -796,7 +876,16 @@ def print_table(rows: list[TimedRun], group_by_map: bool) -> None:
 
     table_rows: list[list[str]] = []
     for row in rows:
-        table_rows.append(lap_time_row(row, fastest_best, average_best, total_best, include_car))
+        table_rows.append(
+            lap_time_row(
+                row,
+                fastest_best,
+                average_best,
+                total_best,
+                off_road_best,
+                include_car,
+            )
+        )
     print_table_rows(table_rows, include_car)
 
 

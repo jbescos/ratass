@@ -15,6 +15,7 @@ from evaluate_lap_times import (
     TimedRun,
     best_times,
     car_average_row,
+    format_cell,
     highlight,
     load_car_names,
     make_environment,
@@ -64,6 +65,7 @@ class LapTimingEnvironmentTest(unittest.TestCase):
 
         self.assertEqual(config.values["withNoProgressMaxActionSteps"], 0)
         self.assertEqual(config.values["withOffRoadFailureMaxActionSteps"], 0)
+        self.assertTrue(config.values["withRewardBreakdownEnabled"])
 
     def test_wall_timeout_preserves_completed_laps(self):
         class FakeEnvironment:
@@ -77,6 +79,8 @@ class LapTimingEnvironmentTest(unittest.TestCase):
                     actionStep=0,
                     observations=[0.0],
                     routeTargetsReached=[0],
+                    rewardBreakdownNames=["off_road"],
+                    rewardBreakdown=[0.0],
                 )
 
             @staticmethod
@@ -90,6 +94,8 @@ class LapTimingEnvironmentTest(unittest.TestCase):
                     actionStep=1,
                     observations=[0.0],
                     routeTargetsReached=[1],
+                    rewardBreakdownNames=["off_road"],
+                    rewardBreakdown=[-1.0],
                 )
 
             def close(self):
@@ -148,6 +154,7 @@ class LapTimingEnvironmentTest(unittest.TestCase):
         self.assertIsNotNone(result.fastest_lap)
         self.assertIsNotNone(result.avg_lap)
         self.assertIsNone(result.total_time)
+        self.assertEqual(result.off_road_actions, 1)
         self.assertEqual(result.error, "")
         self.assertTrue(environment.closed)
 
@@ -181,10 +188,33 @@ class CarSelectionTest(unittest.TestCase):
 
 
 class CarAverageTest(unittest.TestCase):
+    def test_timeout_still_displays_off_road_counter(self):
+        row = TimedRun(
+            "map000",
+            "expert",
+            "default",
+            None,
+            None,
+            None,
+            0,
+            5,
+            "timedout",
+            off_road_actions=17,
+        )
+
+        self.assertEqual(
+            format_cell(row, "off_road_actions", best_times([row], "off_road_actions")),
+            "17",
+        )
+
     def test_averages_fastest_laps_only(self):
         rows = [
-            TimedRun("map000", "expert", "1", 10.0, 12.0, 60.0, 5, 5),
-            TimedRun("map000", "expert", "2", 14.0, 18.0, 90.0, 5, 5),
+            TimedRun(
+                "map000", "expert", "1", 10.0, 12.0, 60.0, 5, 5, off_road_actions=2
+            ),
+            TimedRun(
+                "map000", "expert", "2", 14.0, 18.0, 90.0, 5, 5, off_road_actions=6
+            ),
         ]
 
         average = car_average_row("map000", "expert", rows)
@@ -193,6 +223,7 @@ class CarAverageTest(unittest.TestCase):
         self.assertEqual(average.fastest_lap, 12.0)
         self.assertEqual(average.avg_lap, 15.0)
         self.assertEqual(average.total_time, 75.0)
+        self.assertEqual(average.off_road_actions, 4.0)
         self.assertTrue(average.complete)
 
     def test_requires_every_car_to_complete(self):
@@ -228,6 +259,7 @@ class CarAverageTest(unittest.TestCase):
 
         lines = output.getvalue().splitlines()
         self.assertIn("| map    | profile | car", lines[0])
+        self.assertIn("off-road actions", lines[0])
         self.assertTrue(any("| avg |" in line for line in lines))
 
     def test_table_omits_car_column_for_default_physics(self):
@@ -240,6 +272,7 @@ class CarAverageTest(unittest.TestCase):
         header = output.getvalue().splitlines()[0]
         self.assertIn("| map    | profile |", header)
         self.assertNotIn("| car", header)
+        self.assertIn("off-road actions", header)
 
     def test_map_best_and_profile_best_have_distinct_markers(self):
         rows = [
@@ -328,8 +361,28 @@ class OverallCarAverageTest(unittest.TestCase):
 class OverallProfileAverageTest(unittest.TestCase):
     def test_averages_each_profile_across_maps(self):
         rows = [
-            TimedRun("map000", "aggressive", "default", 10.0, 12.0, 60.0, 5, 5),
-            TimedRun("map001", "aggressive", "default", 14.0, 16.0, 80.0, 5, 5),
+            TimedRun(
+                "map000",
+                "aggressive",
+                "default",
+                10.0,
+                12.0,
+                60.0,
+                5,
+                5,
+                off_road_actions=4,
+            ),
+            TimedRun(
+                "map001",
+                "aggressive",
+                "default",
+                14.0,
+                16.0,
+                80.0,
+                5,
+                5,
+                off_road_actions=8,
+            ),
             TimedRun("map000", "clean", "default", 20.0, 22.0, 110.0, 5, 5),
             TimedRun("map001", "clean", "default", 24.0, 26.0, 130.0, 5, 5),
         ]
@@ -343,6 +396,7 @@ class OverallProfileAverageTest(unittest.TestCase):
         self.assertEqual(averages[0].fastest_lap, 12.0)
         self.assertEqual(averages[0].avg_lap, 14.0)
         self.assertEqual(averages[0].total_time, 70.0)
+        self.assertEqual(averages[0].off_road_actions, 6.0)
 
     def test_keeps_available_lap_averages_when_a_map_does_not_finish(self):
         rows = [
@@ -360,6 +414,7 @@ class OverallProfileAverageTest(unittest.TestCase):
         self.assertIn("avg fastest lap", rendered)
         self.assertIn("avg lap", rendered)
         self.assertIn("avg total time", rendered)
+        self.assertIn("avg off-road actions", rendered)
         self.assertIn("**12.000**", rendered)
         self.assertIn("**14.000**", rendered)
         self.assertIn("DNF 1/2", rendered)
