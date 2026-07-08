@@ -308,7 +308,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_CROWDED_SAFE_MARGIN = 1.0f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     private static final float EVENT_CALLOUT_DURATION = 1.35f;
-    public static final int RL_OBSERVATION_SIZE = 25;
+    public static final int RL_OBSERVATION_SIZE = 33;
     public static final int RL_ACTION_SIZE = 2;
     public static final int RL_REWARD_BREAKDOWN_SIZE = 10;
     private static final int RL_REWARD_ROUTE_PROGRESS = 0;
@@ -358,7 +358,15 @@ public class RatassGame extends ApplicationAdapter {
             "road_right",
             "road_front",
             "road_front_left",
-            "road_front_right"
+            "road_front_right",
+            "route_mid_point_fwd",
+            "route_mid_point_side",
+            "route_mid_left_clear",
+            "route_mid_right_clear",
+            "route_far_point_fwd",
+            "route_far_point_side",
+            "route_far_left_clear",
+            "route_far_right_clear"
     };
     private static final int RL_DEBUG_TRACE_SIZE = 23;
     private static final String[] RL_DEBUG_TRACE_NAMES = {
@@ -408,6 +416,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_SENSOR_MIN_LOOKAHEAD_DISTANCE = Car.HEIGHT * 4f;
     private static final float RL_SENSOR_MAX_LOOKAHEAD_DISTANCE = Car.HEIGHT * 85f;
     private static final float RL_SENSOR_LOOKAHEAD_SECONDS = 0.45f;
+    private static final float RL_CORRIDOR_MID_FRACTION = 0.50f;
+    private static final float RL_CORRIDOR_FAR_FRACTION = 1.00f;
+    private static final float RL_CORRIDOR_MAX_ROUTE_FRACTION = 0.45f;
     private static final float RL_BRAKE_DEMAND_SAMPLE_STEP = Car.HEIGHT;
     private static final float RL_BRAKE_DEMAND_CURVATURE_EPSILON = 0.001f;
     private static final float RL_SHORT_RAYCAST_DISTANCE = 7.5f;
@@ -4205,7 +4216,7 @@ public class RatassGame extends ApplicationAdapter {
         if (map == null || Gdx.gl == null) {
             return null;
         }
-        String path = getMapDebugMaskPath(map);
+        String path = getMapMaskPath(map);
         if (path == null || path.length() == 0) {
             return null;
         }
@@ -4213,7 +4224,7 @@ public class RatassGame extends ApplicationAdapter {
         if (texture != null) {
             return texture;
         }
-        FileHandle handle = resolveMapDebugMaskHandle(path, map.getId());
+        FileHandle handle = resolveMapMaskHandle(path, map.getId());
         if (handle == null || !handle.exists()) {
             return null;
         }
@@ -4228,19 +4239,25 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private String getMapDebugMaskPath(ArenaMap map) {
+    private String getMapMaskPath(ArenaMap map) {
         if (map == null) {
             return "";
         }
         String surfacePath = map.getSurfaceImagePath();
         if (surfacePath != null && surfacePath.length() > 0) {
-            return surfacePath;
+            if (surfacePath.endsWith("_mask.png")) {
+                return surfacePath;
+            }
+            if (surfacePath.endsWith(".png")) {
+                return surfacePath.substring(0, surfacePath.length() - ".png".length())
+                        + "_mask.png";
+            }
         }
         String mapId = map.getId();
         return mapId == null || mapId.length() == 0 ? "" : "assets/maps/" + mapId + "_mask.png";
     }
 
-    private FileHandle resolveMapDebugMaskHandle(String path, String mapId) {
+    private FileHandle resolveMapMaskHandle(String path, String mapId) {
         if (path != null && path.length() > 0) {
             FileHandle handle = Gdx.files.internal(path);
             if (handle != null && handle.exists()) {
@@ -7250,7 +7267,7 @@ public class RatassGame extends ApplicationAdapter {
             drawX += (mapBounds.width - drawWidth) * 0.5f;
         }
 
-        if (isHalloweenTheme()) {
+        if (!sandboxMode && isHalloweenTheme()) {
             spriteBatch.setColor(
                     HALLOWEEN_CIRCUIT_TINT_R,
                     HALLOWEEN_CIRCUIT_TINT_G,
@@ -7330,10 +7347,14 @@ public class RatassGame extends ApplicationAdapter {
 
     private String buildArenaSurfaceCacheKey(ArenaMap map) {
         String mapId = map.getId();
-        return configuredThemeName + ":" + (mapId == null ? Integer.toHexString(map.hashCode()) : mapId);
+        String surfaceMode = sandboxMode ? "sandbox-mask" : configuredThemeName;
+        return surfaceMode + ":" + (mapId == null ? Integer.toHexString(map.hashCode()) : mapId);
     }
 
     private Texture buildArenaSurfaceTexture(ArenaMap map, MapTheme theme) {
+        if (sandboxMode) {
+            return loadArenaMaskTexture(map);
+        }
         if (map.hasSurfaceImage()) {
             Texture texture = loadTexture(map.getSurfaceImagePath());
             if (texture != null) {
@@ -7392,6 +7413,22 @@ public class RatassGame extends ApplicationAdapter {
         texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         pixmap.dispose();
         return texture;
+    }
+
+    private Texture loadArenaMaskTexture(ArenaMap map) {
+        String path = getMapMaskPath(map);
+        FileHandle handle = resolveMapMaskHandle(path, map.getId());
+        if (handle == null || !handle.exists()) {
+            return null;
+        }
+        try {
+            Texture texture = new Texture(handle);
+            texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+            return texture;
+        } catch (RuntimeException exception) {
+            Gdx.app.error("RatassGame", "Could not load sandbox map mask " + handle.path(), exception);
+            return null;
+        }
     }
 
     private int buildArenaSurfacePixel(
@@ -9381,13 +9418,69 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.line(origin.x, origin.y, sandboxSensorPoint.x, sandboxSensorPoint.y);
         shapeRenderer.circle(sandboxSensorPoint.x, sandboxSensorPoint.y, 0.12f, 12);
 
-        currentMap.findRouteTangent(
-                routeProgress + steeringLookaheadDistance,
-                sandboxSensorDirection);
-        drawSandboxRouteArrow(origin, sandboxSensorDirection, 0.28f, 1f, 0.74f, 0.78f);
-
         currentMap.findRouteTangent(routeProgress, sandboxSensorDirection);
-        drawSandboxRouteArrow(origin, sandboxSensorDirection, 0.10f, 0.78f, 1f, 0.88f);
+        drawSandboxRouteArrow(
+                sandboxSensorRoutePoint,
+                sandboxSensorDirection,
+                0.10f,
+                0.78f,
+                1f,
+                0.88f);
+
+        float corridorLookaheadDistance = getRlCorridorLookaheadDistance(car, currentMap);
+        drawSandboxCorridorSample(
+                origin,
+                routeProgress,
+                corridorLookaheadDistance * RL_CORRIDOR_MID_FRACTION,
+                0.25f,
+                0.80f,
+                1f);
+        drawSandboxCorridorSample(
+                origin,
+                routeProgress,
+                corridorLookaheadDistance * RL_CORRIDOR_FAR_FRACTION,
+                1f,
+                0.35f,
+                0.75f);
+    }
+
+    private void drawSandboxCorridorSample(
+            Vector2 origin,
+            float routeProgress,
+            float routeDistance,
+            float red,
+            float green,
+            float blue) {
+        float sampleProgress = routeProgress + routeDistance;
+        currentMap.findRoutePoint(sampleProgress, sandboxSensorPoint);
+        currentMap.findRouteTangent(sampleProgress, sandboxSensorDirection);
+        float tangentX = sandboxSensorDirection.x;
+        float tangentY = sandboxSensorDirection.y;
+        float normalX = -tangentY;
+        float normalY = tangentX;
+        float leftClearance = currentMap.getRouteLeftClearance(sampleProgress);
+        float rightClearance = currentMap.getRouteRightClearance(sampleProgress);
+
+        shapeRenderer.setColor(red, green, blue, 0.42f);
+        shapeRenderer.line(origin.x, origin.y, sandboxSensorPoint.x, sandboxSensorPoint.y);
+        shapeRenderer.setColor(red, green, blue, 0.76f);
+        shapeRenderer.line(
+                sandboxSensorPoint.x + normalX * leftClearance,
+                sandboxSensorPoint.y + normalY * leftClearance,
+                sandboxSensorPoint.x - normalX * rightClearance,
+                sandboxSensorPoint.y - normalY * rightClearance);
+        shapeRenderer.circle(
+                sandboxSensorPoint.x + normalX * leftClearance,
+                sandboxSensorPoint.y + normalY * leftClearance,
+                0.08f,
+                10);
+        shapeRenderer.circle(
+                sandboxSensorPoint.x - normalX * rightClearance,
+                sandboxSensorPoint.y - normalY * rightClearance,
+                0.08f,
+                10);
+        shapeRenderer.setColor(red, green, blue, 0.92f);
+        shapeRenderer.circle(sandboxSensorPoint.x, sandboxSensorPoint.y, 0.12f, 12);
     }
 
     private void drawSandboxRouteArrow(
@@ -13140,6 +13233,16 @@ public class RatassGame extends ApplicationAdapter {
                 RL_SENSOR_MAX_LOOKAHEAD_DISTANCE);
     }
 
+    private static float getRlCorridorLookaheadDistance(Car car, ArenaMap arenaMap) {
+        float lookaheadDistance = getRlSensorLookaheadDistance(car);
+        if (arenaMap == null || !arenaMap.hasRoute()) {
+            return lookaheadDistance;
+        }
+        return Math.min(
+                lookaheadDistance,
+                arenaMap.getRouteLength() * RL_CORRIDOR_MAX_ROUTE_FRACTION);
+    }
+
     private static float getRlSteeringLookaheadDistance(Car car) {
         if (car == null || car.body == null) {
             return RL_STEERING_MIN_LOOKAHEAD_DISTANCE;
@@ -13249,6 +13352,7 @@ public class RatassGame extends ApplicationAdapter {
                 arenaMap.getRouteRightClearance(routeProgress) + lateralOffset;
 
         float sensorLookaheadDistance = getRlSensorLookaheadDistance(car);
+        float corridorLookaheadDistance = getRlCorridorLookaheadDistance(car, arenaMap);
         float steeringLookaheadDistance = getRlSteeringLookaheadDistance(car);
         float steeringRouteProgress = routeProgress + steeringLookaheadDistance;
         float targetForward = routeTangentForward;
@@ -13400,6 +13504,75 @@ public class RatassGame extends ApplicationAdapter {
         observations[offset + 22] = frontRoadClearance;
         observations[offset + 23] = frontLeftRoadClearance;
         observations[offset + 24] = frontRightRoadClearance;
+        fillRlCorridorObservation(
+                observations,
+                offset + 25,
+                arenaMap,
+                routeProgress,
+                corridorLookaheadDistance * RL_CORRIDOR_MID_FRACTION,
+                position,
+                observationForward,
+                observationSide,
+                observationRouteTarget);
+        fillRlCorridorObservation(
+                observations,
+                offset + 29,
+                arenaMap,
+                routeProgress,
+                corridorLookaheadDistance * RL_CORRIDOR_FAR_FRACTION,
+                position,
+                observationForward,
+                observationSide,
+                observationRouteTarget);
+    }
+
+    private static void fillRlCorridorObservation(
+            float[] observations,
+            int offset,
+            ArenaMap arenaMap,
+            float routeProgress,
+            float routeDistance,
+            Vector2 carPosition,
+            Vector2 carForward,
+            Vector2 carSide,
+            Vector2 routePoint) {
+        if (arenaMap == null
+                || !arenaMap.hasRoute()
+                || carPosition == null
+                || routeDistance <= 0.0001f) {
+            observations[offset] = 0f;
+            observations[offset + 1] = 0f;
+            observations[offset + 2] = 0f;
+            observations[offset + 3] = 0f;
+            return;
+        }
+
+        float sampleProgress = routeProgress + routeDistance;
+        arenaMap.findRoutePoint(sampleProgress, routePoint);
+        float deltaX = routePoint.x - carPosition.x;
+        float deltaY = routePoint.y - carPosition.y;
+        observations[offset] =
+                MathUtils.clamp(
+                        (deltaX * carForward.x + deltaY * carForward.y) / routeDistance,
+                        -1f,
+                        1f);
+        observations[offset + 1] =
+                MathUtils.clamp(
+                        (deltaX * carSide.x + deltaY * carSide.y) / routeDistance,
+                        -1f,
+                        1f);
+        observations[offset + 2] =
+                MathUtils.clamp(
+                        arenaMap.getRouteLeftClearance(sampleProgress)
+                                / RL_ROUTE_MARGIN_NORMALIZER,
+                        0f,
+                        1f);
+        observations[offset + 3] =
+                MathUtils.clamp(
+                        arenaMap.getRouteRightClearance(sampleProgress)
+                                / RL_ROUTE_MARGIN_NORMALIZER,
+                        0f,
+                        1f);
     }
 
     private static float sampleRlRayClearance(

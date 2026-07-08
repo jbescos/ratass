@@ -28,19 +28,24 @@ still runs on CPU.
 
 ## Environment Contract
 
-- Observation size: `31` floats per learner.
+- Observation size: `33` floats per learner.
 - Action size: `2` floats per learner: `[throttle, turn]`, each in `[-1, 1]`.
 - Default PPO network: two fully-connected hidden layers of width `256`
   with `tanh` activation.
-- Race observations include normalized route progress, current/near/far route
-  tangent alignment, route lookahead alignment, route-side clearances, speed and
-  car-frame velocity, angular velocity, edge/off-road state, left/right/front/
-  front-diagonal road-clearance rays, six opponent-car ray clearances, and
-  current route-point forward/side offsets matching the sandbox route
-  guidance ray. The final observation is signed slip angle, normalized so `0`
-  means velocity follows the car nose and `-1`/`1` means mostly sideways motion.
-  The old checkpoint target observations, nearest-car aggregate observations,
-  previous action, and constant `active` observation were removed.
+- Race observations include current route-tangent alignment, direction to a
+  speed-dependent steering target, current and target curvature, current and
+  target route-side clearance, car- and route-frame speed, angular speed,
+  signed slip angle, off-road and recovery state, trajectory and braking
+  demand, five road-clearance rays, and mid/far route corridor samples. The
+  current tangent is `route_fwd`/`route_side`; mid and far samples use 50% and
+  100% of a speed-plus-braking-distance horizon capped below half a lap. Each
+  future sample includes route-point displacement in the car's forward/side
+  frame and left/right road clearance. Point displacement is divided by route
+  distance so it retains the shape of the intervening arc. Future tangent
+  observations are deliberately omitted so the policy follows the centerline
+  corridor instead of steering directly toward a distant route orientation.
+  The sandbox draws lines to both future route points and crossbars spanning
+  the corresponding road limits.
 - Rewards are bucketed as `route_progress`, `step_cost`, `off_road`, `steering`,
   `reverse_speed`, `car_push`, and `route_alignment`. The route-progress bucket
   contains signed progress along the circuit route. Route targets are training
