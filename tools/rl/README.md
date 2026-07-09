@@ -180,6 +180,14 @@ reuses the same training cases. Full-lap stages always use the fixed start grid.
 Multi-car training is valid only for full-lap stages; route-target stages fail
 fast if configured with more than one learner car.
 
+At each `lap_real` checkpoint boundary, every saved candidate from the latest
+ten iterations is evaluated on the complete best-eval map set. Promotion uses
+the highest evaluation score among candidates that meet the route-target
+requirement, rather than the training iteration's `reward_mean`. Evaluation
+output from the other candidates is suppressed; the log prints the tables only
+for the selected candidate. Other stages preselect one candidate by
+`reward_mean` and evaluate only that candidate.
+
 Regenerate the synthetic training maps and prebuild their caches:
 
 ```bash

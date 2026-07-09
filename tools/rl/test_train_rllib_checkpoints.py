@@ -124,5 +124,103 @@ class EstablishStageBaselineTest(unittest.TestCase):
             promote.assert_not_called()
 
 
+def evaluated_candidate(iteration, score, avg_targets, route_eligible=True, return_code=0):
+    checkpoint = train_rllib.CheckpointCandidate(
+        iteration=iteration,
+        reward_mean=float(iteration),
+        episode_len_mean=100.0,
+        episodes=1.0,
+        checkpoint_path=f"checkpoint-{iteration}",
+    )
+    evaluation = train_rllib.PolicyEvaluation(
+        score=score,
+        metrics={"avg_targets": str(avg_targets)} if score is not None else {},
+        output_lines=(f"evaluation_score={score}",) if score is not None else (),
+        return_code=return_code,
+    )
+    return train_rllib.EvaluatedCheckpointCandidate(
+        candidate=checkpoint,
+        evaluation=evaluation,
+        avg_targets=avg_targets,
+        route_eligible=route_eligible,
+    )
+
+
+class EvaluatedCheckpointSelectionTest(unittest.TestCase):
+    def test_selects_highest_all_map_score_from_route_eligible_candidates(self):
+        selection = train_rllib.select_evaluated_checkpoint_candidate([
+            evaluated_candidate(41, 150.0, 0.9, route_eligible=False),
+            evaluated_candidate(42, 120.0, 1.0),
+            evaluated_candidate(43, 130.0, 1.0),
+        ])
+
+        self.assertEqual(43, selection.evaluated_candidate.candidate.iteration)
+        self.assertEqual(2, selection.eligible_count)
+        self.assertEqual(3, selection.evaluated_count)
+        self.assertEqual("highest_all_maps_evaluation_score", selection.reason)
+
+    def test_falls_back_to_latest_when_every_evaluation_failed(self):
+        selection = train_rllib.select_evaluated_checkpoint_candidate([
+            evaluated_candidate(49, None, float("nan"), False, return_code=1),
+            evaluated_candidate(50, None, float("nan"), False, return_code=1),
+        ])
+
+        self.assertEqual(50, selection.evaluated_candidate.candidate.iteration)
+        self.assertEqual(0, selection.evaluated_count)
+        self.assertEqual(2, selection.failed_count)
+        self.assertEqual("all_candidate_evaluations_failed", selection.reason)
+
+    def test_evaluates_every_checkpoint_without_emitting_loser_output(self):
+        args = SimpleNamespace(
+            best_export_objective="",
+            objective="race",
+            hidden_activation="tanh",
+            best_eval_min_route_targets=1.0,
+        )
+        candidates = [
+            train_rllib.CheckpointCandidate(
+                iteration=iteration,
+                reward_mean=float(iteration),
+                episode_len_mean=100.0,
+                episodes=1.0,
+                checkpoint_path=f"checkpoint-{iteration}",
+            )
+            for iteration in range(41, 51)
+        ]
+
+        def evaluation_for_candidate(unused_args, policy_path, emit_output=True):
+            iteration = int(policy_path.stem.split("-")[-1])
+            self.assertFalse(emit_output)
+            return train_rllib.PolicyEvaluation(
+                score=float(iteration),
+                metrics={"avg_targets": "1.0"},
+                output_lines=(f"evaluation_score={iteration}",),
+                return_code=0,
+            )
+
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(train_rllib, "export_checkpoint_policy") as export,
+            patch.object(
+                train_rllib,
+                "run_policy_evaluation",
+                side_effect=evaluation_for_candidate,
+            ) as evaluate,
+        ):
+            results = train_rllib.evaluate_checkpoint_candidates(
+                args,
+                candidates,
+                Path(temp_dir),
+            )
+
+        self.assertEqual(10, len(results))
+        self.assertEqual(10, export.call_count)
+        self.assertEqual(10, evaluate.call_count)
+        self.assertTrue(all(
+            call.kwargs["emit_summary"] is False
+            for call in export.call_args_list
+        ))
+
+
 if __name__ == "__main__":
     unittest.main()

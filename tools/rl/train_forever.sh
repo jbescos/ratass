@@ -232,6 +232,7 @@ run_curriculum_phase() {
   local phase_route_targets="${route_targets}"
   local phase_route_target_fraction="${route_target_fraction:-0}"
   local phase_fixed_full_laps=0
+  local phase_evaluate_all_checkpoint_candidates=0
   local phase_map_ids="${RL_MAP_IDS:-}"
   local phase_best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS:-}"
   if [[ "${phase_route_targets}" == "-2" ]]; then
@@ -247,6 +248,7 @@ run_curriculum_phase() {
   elif [[ "${phase_route_targets}" == "-4" ]]; then
     phase_route_targets="-1"
     phase_route_target_fraction="0"
+    phase_evaluate_all_checkpoint_candidates=1
     phase_map_ids="${RL_LAP_REAL_MAP_IDS:-auto-game}"
     phase_best_eval_map_ids="${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
   elif [[ "${phase_route_targets}" == "-5" ]]; then
@@ -382,6 +384,7 @@ run_curriculum_phase() {
     RL_ROUTE_PHASE_NAME="${phase}" \
     RL_ROUTE_STAGE_ACTIVE=1 \
     RL_FIXED_FULL_LAPS="${phase_fixed_full_laps}" \
+    RL_EVALUATE_ALL_CHECKPOINT_CANDIDATES="${phase_evaluate_all_checkpoint_candidates}" \
     RL_FORCE_FRESH_START=0 \
     RL_FRESH_START=0 \
     bash "${script_dir}/train_forever.sh" "${preset}"
@@ -1120,6 +1123,7 @@ best_eval_min_route_targets="${RL_BEST_EVAL_MIN_ROUTE_TARGETS:-1}"
 best_eval_controlled_agents="${RL_BEST_EVAL_CONTROLLED_AGENTS:-${controlled_agents}}"
 best_eval_field_size="${RL_BEST_EVAL_FIELD_SIZE:-${field_size}}"
 best_eval_steps="${RL_BEST_EVAL_STEPS:-auto}"
+evaluate_all_checkpoint_candidates="${RL_EVALUATE_ALL_CHECKPOINT_CANDIDATES:-0}"
 best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS:-}"
 best_eval_state="${RL_BEST_EVAL_STATE:-}"
 best_eval_ignore_installed="${RL_BEST_EVAL_IGNORE_INSTALLED:-1}"
@@ -1212,7 +1216,7 @@ fi
 
 checkpoint_file="${checkpoint_dir}/rllib_checkpoint.json"
 
-echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} spawn_mode=${race_spawn_mode} random_race_spawns=${random_race_spawns} seed=${seed} spawn_seed_file=${route_spawn_seed_file:-none} route_targets=${route_targets} route_target_fraction=${route_target_fraction} max_action_steps=${max_action_steps} no_progress_max_action_steps=${no_progress_max_action_steps} off_road_failure_max_action_steps=${off_road_failure_max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} epochs=${num_epochs} grad_clip=${grad_clip} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} jvm_heap=${jvm_max_heap} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all}"
+echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} spawn_mode=${race_spawn_mode} random_race_spawns=${random_race_spawns} seed=${seed} spawn_seed_file=${route_spawn_seed_file:-none} route_targets=${route_targets} route_target_fraction=${route_target_fraction} max_action_steps=${max_action_steps} no_progress_max_action_steps=${no_progress_max_action_steps} off_road_failure_max_action_steps=${off_road_failure_max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} epochs=${num_epochs} grad_clip=${grad_clip} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} jvm_heap=${jvm_max_heap} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all} evaluate_all_checkpoint_candidates=${evaluate_all_checkpoint_candidates}"
 
 export RATASS_RL_JVM_MAX_HEAP="${jvm_max_heap}"
 
@@ -1299,6 +1303,9 @@ if [[ "${best_export}" == "1" || "${best_export}" == "true" ]]; then
   fi
   if is_true "${best_eval_ignore_installed}"; then
     common_args+=(--best-eval-ignore-installed)
+  fi
+  if is_true "${evaluate_all_checkpoint_candidates}"; then
+    common_args+=(--evaluate-all-checkpoint-candidates)
   fi
 fi
 
