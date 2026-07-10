@@ -222,5 +222,83 @@ class EvaluatedCheckpointSelectionTest(unittest.TestCase):
         ))
 
 
+class TrafficPromotionTest(unittest.TestCase):
+    def test_traffic_evaluation_does_not_require_winning_every_map(self):
+        args = SimpleNamespace(
+            controlled_agents=1,
+            field_size=4,
+            best_eval_controlled_agents=1,
+            best_eval_field_size=4,
+            best_eval_min_route_targets=5.0,
+        )
+        evaluation = train_rllib.PolicyEvaluation(
+            score=100.0,
+            metrics={"avg_targets": "3.278"},
+            output_lines=(),
+            return_code=0,
+        )
+
+        self.assertTrue(train_rllib.evaluation_meets_route_gate(args, evaluation))
+
+    def test_solo_evaluation_keeps_absolute_route_gate(self):
+        args = SimpleNamespace(
+            controlled_agents=1,
+            field_size=1,
+            best_eval_controlled_agents=1,
+            best_eval_field_size=1,
+            best_eval_min_route_targets=5.0,
+        )
+        evaluation = train_rllib.PolicyEvaluation(
+            score=100.0,
+            metrics={"avg_targets": "3.278"},
+            output_lines=(),
+            return_code=0,
+        )
+
+        self.assertFalse(train_rllib.evaluation_meets_route_gate(args, evaluation))
+
+class OpponentPolicySnapshotTest(unittest.TestCase):
+    def test_copies_running_opponent_policy_for_stable_stage_evaluation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.json"
+            checkpoint_dir = root / "checkpoint"
+            checkpoint_dir.mkdir()
+            source.write_text('{"policy": "incoming"}\n', encoding="utf-8")
+            args = SimpleNamespace(
+                controlled_agents=1,
+                field_size=4,
+                opponent_policy=str(source),
+                resume=False,
+            )
+
+            train_rllib.snapshot_opponent_policy(args, checkpoint_dir)
+
+            snapshot = checkpoint_dir / train_rllib.OPPONENT_POLICY_SNAPSHOT
+            self.assertEqual(source.read_bytes(), snapshot.read_bytes())
+            self.assertEqual(str(snapshot), args.opponent_policy)
+
+    def test_resume_reuses_existing_opponent_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.json"
+            checkpoint_dir = root / "checkpoint"
+            checkpoint_dir.mkdir()
+            snapshot = checkpoint_dir / train_rllib.OPPONENT_POLICY_SNAPSHOT
+            source.write_text('{"policy": "new"}\n', encoding="utf-8")
+            snapshot.write_text('{"policy": "original"}\n', encoding="utf-8")
+            args = SimpleNamespace(
+                controlled_agents=1,
+                field_size=4,
+                opponent_policy=str(source),
+                resume=True,
+            )
+
+            train_rllib.snapshot_opponent_policy(args, checkpoint_dir)
+
+            self.assertIn("original", snapshot.read_text(encoding="utf-8"))
+            self.assertEqual(str(snapshot), args.opponent_policy)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -30,6 +30,8 @@ REWARD_BUCKETS = (
     "no_progress",
     "off_road_recovery",
     "off_road_failure",
+    "position_change",
+    "finish_position",
 )
 
 
@@ -70,6 +72,8 @@ def parse_args() -> argparse.Namespace:
         help="number of learner cars to control with the evaluated policy",
     )
     parser.add_argument("--field-size", type=int, default=None)
+    parser.add_argument("--opponent-policy", default="")
+    parser.add_argument("--opponent-speed-scale", type=float, default=0.88)
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument(
         "--no-progress-max-action-steps",
@@ -153,6 +157,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-no-progress-penalty", type=float, default=50.0)
     parser.add_argument("--reward-off-road-recovery", type=float, default=4.0)
     parser.add_argument("--reward-off-road-failure-penalty", type=float, default=50.0)
+    parser.add_argument("--reward-position-change", type=float, default=12.0)
+    parser.add_argument("--reward-finish-position", type=float, default=30.0)
     return parser.parse_args()
 
 
@@ -204,6 +210,10 @@ def make_stats():
         "effective_small": 0,
         "targets": 0,
         "progress_total": 0.0,
+        "positions_gained": 0,
+        "positions_lost": 0,
+        "finish_position_sum": 0,
+        "finish_position_count": 0,
         "route_progress": 0.0,
         "step_cost": 0.0,
         "off_road": 0.0,
@@ -214,6 +224,9 @@ def make_stats():
         "no_progress": 0.0,
         "off_road_recovery": 0.0,
         "off_road_failure": 0.0,
+        "position_change": 0.0,
+        "finish_position": 0.0,
+        "near_car_steps": 0,
         "lookahead_blocked_steps": 0,
         "off_road_steps": 0,
         "near_edge_steps": 0,
@@ -290,7 +303,18 @@ def build_config(
         .withNoProgressPenalty(float(args.reward_no_progress_penalty))
         .withOffRoadRecoveryReward(float(args.reward_off_road_recovery))
         .withOffRoadFailurePenalty(float(args.reward_off_road_failure_penalty))
+        .withRacePositionRewards(
+            float(args.reward_position_change),
+            float(args.reward_finish_position),
+        )
     )
+    if field_size > controlled_agents:
+        if not args.opponent_policy:
+            raise ValueError("--opponent-policy is required when --field-size exceeds --controlled-agents")
+        config.withOpponentPolicyJson(
+            Path(args.opponent_policy).resolve().read_text(encoding="utf-8")
+        )
+        config.withOpponentSpeedScale(float(args.opponent_speed_scale))
     if arena_map is not None:
         config.addMap(arena_map)
     return config
@@ -329,6 +353,8 @@ def open_trace(
             "no_progress",
             "off_road_recovery",
             "off_road_failure",
+            "position_change",
+            "finish_position",
             "throttle",
             "turn",
             "effective_throttle",
@@ -363,6 +389,8 @@ def trace_step(writer, step, result, reward, throttle, turn, observation_size):
             f"{breakdown[7]:.6f}" if len(breakdown) > 7 else "0.000000",
             f"{breakdown[8]:.6f}" if len(breakdown) > 8 else "0.000000",
             f"{breakdown[9]:.6f}" if len(breakdown) > 9 else "0.000000",
+            f"{breakdown[10]:.6f}" if len(breakdown) > 10 else "0.000000",
+            f"{breakdown[11]:.6f}" if len(breakdown) > 11 else "0.000000",
             f"{throttle:.6f}",
             f"{turn:.6f}",
             f"{effective_throttle:.6f}",
@@ -441,6 +469,8 @@ def update_observation_stats(
             stats["near_edge_fast_steps"] += 1
         if brake_demand > 0.05:
             stats["braking_risk_steps"] += 1
+        if value(offset, "ahead_car_present") > 0.5:
+            stats["near_car_steps"] += 1
     for agent_index in range(min(controlled_agents, len(result.routeProgressDeltas))):
         stats["progress_total"] += float(result.routeProgressDeltas[agent_index])
 
@@ -595,6 +625,23 @@ def run_episode(
             int(result.routeTargetsReached[index])
             for index in range(min(controlled_agents, len(result.routeTargetsReached)))
         )
+    stats["positions_gained"] = sum(
+        int(result.positionsGained[index])
+        for index in range(min(controlled_agents, len(result.positionsGained)))
+    )
+    stats["positions_lost"] = sum(
+        int(result.positionsLost[index])
+        for index in range(min(controlled_agents, len(result.positionsLost)))
+    )
+    if len(result.racePositions) > 0:
+        stats["finish_position_sum"] = sum(
+            int(result.racePositions[index])
+            for index in range(min(controlled_agents, len(result.racePositions)))
+        )
+        stats["finish_position_count"] = min(
+            controlled_agents,
+            len(result.racePositions),
+        )
     for agent_index in range(controlled_agents):
         breakdown_offset = agent_index * len(reward_breakdown_names)
         for bucket, name in enumerate(reward_breakdown_names):
@@ -615,6 +662,8 @@ def run_episode(
             f"effective_flips={effective_flips} "
             f"effective_flip_rate={effective_flip_rate:.3f} "
             f"targets={stats['targets']} "
+            f"positions_gained={stats['positions_gained']} "
+            f"positions_lost={stats['positions_lost']} "
             f"success={stats['successes']}",
             flush=True,
         )
@@ -627,6 +676,7 @@ def summary_metrics(stats, episodes_override: int = None):
     actions = max(1, stats["actions"])
     observation_samples = max(1, stats["observation_samples"])
     goal_time_count = int(stats.get("goal_time_count", 0))
+    finish_position_count = int(stats.get("finish_position_count", 0))
     return {
         "success_rate": stats["successes"] / episodes,
         "avg_steps": stats["steps"] / episodes,
@@ -638,6 +688,13 @@ def summary_metrics(stats, episodes_override: int = None):
         ),
         "avg_targets": stats["targets"] / episodes,
         "progress_avg": stats["progress_total"] / episodes,
+        "avg_positions_gained": stats["positions_gained"] / episodes,
+        "avg_positions_lost": stats["positions_lost"] / episodes,
+        "avg_finish_position": (
+            stats["finish_position_sum"] / finish_position_count
+            if finish_position_count > 0
+            else None
+        ),
         "raw_flips_per_step": stats["raw_flips"] / actions,
         "effective_flips_per_step": stats["effective_flips"] / actions,
         "effective_reverse_fraction": stats["effective_reverse"] / actions,
@@ -647,6 +704,7 @@ def summary_metrics(stats, episodes_override: int = None):
         "near_edge_fraction": stats["near_edge_steps"] / observation_samples,
         "near_edge_fast_fraction": stats["near_edge_fast_steps"] / observation_samples,
         "braking_risk_fraction": stats["braking_risk_steps"] / observation_samples,
+        "near_car_fraction": stats["near_car_steps"] / observation_samples,
         "avg_route_alignment": stats["avg_route_alignment"] / observation_samples,
         "avg_target_alignment": stats["avg_target_alignment"] / observation_samples,
         "avg_route_curvature": stats["avg_route_curvature"] / observation_samples,
@@ -675,11 +733,17 @@ def evaluation_score(stats, episodes_override: int = None) -> float:
     metrics = summary_metrics(stats, episodes_override)
     # Score outcomes rather than body orientation so a faster drifting policy
     # is not rejected for having lower route or target alignment.
+    finish_position_penalty = (
+        max(0.0, metrics["avg_finish_position"] - 1.0) * 250.0
+        if metrics["avg_finish_position"] is not None
+        else 0.0
+    )
     return (
         metrics["avg_reward"]
         + metrics["avg_targets"] * 35.0
         + metrics["success_rate"] * 80.0
         + metrics["progress_avg"] * 0.3
+        - finish_position_penalty
         - metrics["off_road_fraction"] * 12.0
         - metrics["effective_flips_per_step"] * 35.0
     )
@@ -696,6 +760,9 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"avg_goal_time_s={format_optional_number(metrics['avg_goal_time_s'])} "
         f"avg_targets={metrics['avg_targets']:.3f} "
         f"progress_avg={metrics['progress_avg']:.3f} "
+        f"avg_positions_gained={metrics['avg_positions_gained']:.3f} "
+        f"avg_positions_lost={metrics['avg_positions_lost']:.3f} "
+        f"avg_finish_position={format_optional_number(metrics['avg_finish_position'])} "
         f"raw_flips_per_step={metrics['raw_flips_per_step']:.3f} "
         f"effective_flips_per_step={metrics['effective_flips_per_step']:.3f} "
         f"effective_reverse_fraction={metrics['effective_reverse_fraction']:.3f} "
@@ -730,6 +797,8 @@ def print_summary(label: str, stats, episodes_override: int = None):
                 "no_progress",
                 "off_road_recovery",
                 "off_road_failure",
+                "position_change",
+                "finish_position",
             )
             if name in stats
         ),
@@ -807,6 +876,10 @@ def print_evaluation_tables(total_stats, per_map) -> None:
                 format_table_number(metrics["avg_targets"]),
                 format_table_number(metrics["off_road_fraction"]),
                 format_table_number(metrics["effective_reverse_fraction"]),
+                format_table_number(metrics["avg_positions_gained"]),
+                format_table_number(metrics["avg_positions_lost"]),
+                format_optional_number(metrics["avg_finish_position"], 2),
+                format_table_number(metrics["near_car_fraction"]),
             ]
         )
         driving_rows.append(
@@ -856,9 +929,13 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "targets",
             "off_road",
             "reverse",
+            "gained",
+            "lost",
+            "finish",
+            "near_car",
         ],
         overview_rows,
-        right_aligned=set(range(1, 9)),
+        right_aligned=set(range(1, 13)),
     )
     print_table(
         "evaluation_driving",
@@ -901,9 +978,11 @@ def print_evaluation_tables(total_stats, per_map) -> None:
             "no_progress",
             "off_road_recovery",
             "off_road_failure",
+            "position_change",
+            "finish_position",
         ],
         reward_rows,
-        right_aligned=set(range(1, 11)),
+        right_aligned=set(range(1, 13)),
     )
 
 
@@ -917,6 +996,10 @@ def print_evaluation_score(stats):
         f"avg_goal_time_s={format_optional_number(metrics['avg_goal_time_s'])} "
         f"success_rate={metrics['success_rate']:.3f} "
         f"avg_targets={metrics['avg_targets']:.3f} "
+        f"avg_positions_gained={metrics['avg_positions_gained']:.3f} "
+        f"avg_positions_lost={metrics['avg_positions_lost']:.3f} "
+        f"avg_finish_position={format_optional_number(metrics['avg_finish_position'])} "
+        f"near_car_fraction={metrics['near_car_fraction']:.3f} "
         f"lookahead_blocked_fraction={metrics['lookahead_blocked_fraction']:.3f} "
         f"off_road_fraction={metrics['off_road_fraction']:.3f} "
         f"avg_left_road_clearance={metrics['avg_left_road_clearance']:.3f} "
@@ -950,10 +1033,12 @@ def main() -> None:
     field_size = max(field_size, controlled_agents)
     steps_limit = args.steps if args.steps is not None else 6400
     env_observation_size = int(ratass_game.RL_OBSERVATION_SIZE)
+    legacy_observation_size = int(ratass_game.RL_LEGACY_OBSERVATION_SIZE)
     policy_observation_size = int(policy.getObservationSize())
-    if policy_observation_size != env_observation_size:
+    if policy_observation_size not in {env_observation_size, legacy_observation_size}:
         raise ValueError(
-            f"policy observation size {policy_observation_size} != env {env_observation_size}; "
+            f"policy observation size {policy_observation_size} is not compatible with "
+            f"env {env_observation_size}; "
             "retrain the policy for the current observation contract"
         )
     scratch_size = int(policy.getScratchSize())

@@ -46,7 +46,8 @@ from export_policy import export_policy as export_checkpoint_policy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
-OBSERVATION_SIZE = 33
+LEGACY_OBSERVATION_SIZE = 33
+OBSERVATION_SIZE = 46
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
@@ -57,6 +58,7 @@ INCOMPATIBLE_CHECKPOINT_PATTERNS = (
     "Missing key(s)",
     "Unexpected key(s)",
 )
+OPPONENT_POLICY_SNAPSHOT = "opponent-policy-snapshot.json"
 
 
 @dataclass(frozen=True)
@@ -272,6 +274,14 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             int(env_config.get("controlled_agents", DEFAULT_CONTROLLED_AGENTS))
         )
         training_config.withFieldSize(int(env_config.get("field_size", DEFAULT_FIELD_SIZE)))
+        opponent_policy_path = str(env_config.get("opponent_policy_path", "")).strip()
+        if opponent_policy_path:
+            training_config.withOpponentPolicyJson(
+                Path(opponent_policy_path).read_text(encoding="utf-8")
+            )
+        training_config.withOpponentSpeedScale(
+            float(env_config.get("opponent_speed_scale", 0.88))
+        )
         training_config.withActionRepeat(int(env_config.get("action_repeat", 4)))
         training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 19200)))
         training_config.withNoProgressMaxActionSteps(
@@ -316,6 +326,10 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         )
         training_config.withOffRoadFailurePenalty(
             float(env_config.get("reward_off_road_failure_penalty", 50.0))
+        )
+        training_config.withRacePositionRewards(
+            float(env_config.get("reward_position_change", 12.0)),
+            float(env_config.get("reward_finish_position", 30.0)),
         )
         self._reward_summary_enabled = bool(env_config.get("reward_summary", True))
         training_config.withRewardBreakdownEnabled(self._reward_summary_enabled)
@@ -431,6 +445,9 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                     "route_progress_delta": float(
                         result.routeProgressDeltas[index]
                     ),
+                    "race_position": int(result.racePositions[index]),
+                    "positions_gained": int(result.positionsGained[index]),
+                    "positions_lost": int(result.positionsLost[index]),
                     "reward_breakdown": self._reward_breakdown_for_agent(
                         reward_breakdown,
                         agent,
@@ -546,6 +563,10 @@ def build_algorithm(args):
         "jar_path": str(Path(args.jar).resolve()),
         "controlled_agents": args.controlled_agents,
         "field_size": args.field_size,
+        "opponent_policy_path": (
+            str(Path(args.opponent_policy).resolve()) if args.opponent_policy else ""
+        ),
+        "opponent_speed_scale": args.opponent_speed_scale,
         "action_repeat": args.action_repeat,
         "max_action_steps": args.max_action_steps,
         "no_progress_max_action_steps": args.no_progress_max_action_steps,
@@ -572,6 +593,8 @@ def build_algorithm(args):
         "reward_no_progress_penalty": args.reward_no_progress_penalty,
         "reward_off_road_recovery": args.reward_off_road_recovery,
         "reward_off_road_failure_penalty": args.reward_off_road_failure_penalty,
+        "reward_position_change": args.reward_position_change,
+        "reward_finish_position": args.reward_finish_position,
     }
     config = (
         PPOConfig()
@@ -661,12 +684,17 @@ def exported_actor_layer_prefixes(layer_count: int) -> List[Tuple[str, ...]]:
     ] + [("pi.net.mlp.0",)]
 
 
-def load_exported_actor_state(policy_file: Path) -> Dict[Tuple[str, ...], np.ndarray]:
+def load_exported_actor_state(
+        policy_file: Path,
+        allow_legacy_observation_init: bool = False) -> Dict[Tuple[str, ...], np.ndarray]:
     with policy_file.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
 
     exported_observation_size = int(payload.get("observationSize", -1))
-    if exported_observation_size != OBSERVATION_SIZE:
+    compatible_observation_sizes = {OBSERVATION_SIZE}
+    if allow_legacy_observation_init:
+        compatible_observation_sizes.add(LEGACY_OBSERVATION_SIZE)
+    if exported_observation_size not in compatible_observation_sizes:
         raise ValueError(
             f"{policy_file} observationSize={payload.get('observationSize')} is not compatible "
             f"with current observation size {OBSERVATION_SIZE}"
@@ -731,11 +759,17 @@ def copy_exported_actor_values(
     raise ValueError(f"{key} unsupported tensor shape: {current.shape}")
 
 
-def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
+def initialize_actor_from_exported_policy(
+        algorithm,
+        policy_file: Path,
+        allow_legacy_observation_init: bool = False) -> None:
     if not policy_file.exists():
         raise FileNotFoundError(f"{policy_file} does not exist")
 
-    actor_state = load_exported_actor_state(policy_file)
+    actor_state = load_exported_actor_state(
+        policy_file,
+        allow_legacy_observation_init=allow_legacy_observation_init,
+    )
     learner_weights = algorithm.learner_group.get_weights(module_ids=["shared_policy"])
     policy_weights = dict(learner_weights["shared_policy"])
 
@@ -764,9 +798,16 @@ def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
     )
 
 
-def try_initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> bool:
+def try_initialize_actor_from_exported_policy(
+        algorithm,
+        policy_file: Path,
+        allow_legacy_observation_init: bool = False) -> bool:
     try:
-        initialize_actor_from_exported_policy(algorithm, policy_file)
+        initialize_actor_from_exported_policy(
+            algorithm,
+            policy_file,
+            allow_legacy_observation_init=allow_legacy_observation_init,
+        )
     except (FileNotFoundError, OSError, ValueError) as error:
         message = str(error).replace("\n", " ")
         print(
@@ -892,6 +933,7 @@ def build_algorithm_with_restore(args, checkpoint_dir: Path):
                 try_initialize_actor_from_exported_policy(
                     algorithm,
                     Path(args.init_policy).resolve(),
+                    allow_legacy_observation_init=args.allow_legacy_observation_init,
                 )
             return algorithm
         print(f"restored={checkpoint_dir}", flush=True)
@@ -901,6 +943,7 @@ def build_algorithm_with_restore(args, checkpoint_dir: Path):
         try_initialize_actor_from_exported_policy(
             algorithm,
             Path(args.init_policy).resolve(),
+            allow_legacy_observation_init=args.allow_legacy_observation_init,
         )
     return algorithm
 
@@ -1071,6 +1114,8 @@ def run_policy_evaluation(
         str(controlled_agents),
         "--field-size",
         str(field_size),
+        "--opponent-speed-scale",
+        str(args.opponent_speed_scale),
         "--action-repeat",
         str(args.action_repeat),
         "--route-targets",
@@ -1113,7 +1158,13 @@ def run_policy_evaluation(
         str(args.reward_off_road_recovery),
         "--reward-off-road-failure-penalty",
         str(args.reward_off_road_failure_penalty),
+        "--reward-position-change",
+        str(args.reward_position_change),
+        "--reward-finish-position",
+        str(args.reward_finish_position),
     ]
+    if field_size > controlled_agents:
+        command.extend(["--opponent-policy", os.fspath(Path(args.opponent_policy).resolve())])
     if episodes_per_map > 0:
         command.extend(["--episodes-per-map", str(episodes_per_map)])
     else:
@@ -1164,6 +1215,33 @@ def evaluation_avg_targets(evaluation: PolicyEvaluation) -> float:
     return value if math.isfinite(value) else float("nan")
 
 
+def is_traffic_evaluation(args) -> bool:
+    controlled_agents = int(
+        getattr(args, "best_eval_controlled_agents", 0)
+        or getattr(args, "controlled_agents", DEFAULT_CONTROLLED_AGENTS)
+    )
+    field_size = int(
+        getattr(args, "best_eval_field_size", 0)
+        or getattr(args, "field_size", controlled_agents)
+    )
+    return field_size > controlled_agents
+
+
+def is_traffic_training(args) -> bool:
+    return int(args.field_size) > int(args.controlled_agents)
+
+
+def evaluation_meets_route_gate(args, evaluation: PolicyEvaluation) -> bool:
+    avg_targets = evaluation_avg_targets(evaluation)
+    if evaluation.score is None or not math.isfinite(avg_targets):
+        return False
+    if is_traffic_evaluation(args):
+        # Traffic promotion is score-based. The environment still runs until
+        # the learner completes its target or reaches a learner failure timeout.
+        return True
+    return avg_targets >= args.best_eval_min_route_targets
+
+
 def evaluate_checkpoint_candidates(
         args,
         candidates: List[CheckpointCandidate],
@@ -1194,11 +1272,7 @@ def evaluate_checkpoint_candidates(
                 return_code=1,
             )
         avg_targets = evaluation_avg_targets(evaluation)
-        route_eligible = (
-            evaluation.score is not None
-            and math.isfinite(avg_targets)
-            and avg_targets >= args.best_eval_min_route_targets
-        )
+        route_eligible = evaluation_meets_route_gate(args, evaluation)
         evaluated.append(EvaluatedCheckpointCandidate(
             candidate=candidate,
             evaluation=evaluation,
@@ -1289,7 +1363,7 @@ def maybe_promote_best_policy(
     result["evaluated"] = True
     result["score"] = score
     avg_targets = evaluation_avg_targets(policy_evaluation)
-    if not math.isfinite(avg_targets) or avg_targets < args.best_eval_min_route_targets:
+    if not evaluation_meets_route_gate(args, policy_evaluation):
         print(
             f"best_policy_rejected score={score:.3f} "
             f"avg_targets={avg_targets:.3f} "
@@ -1612,6 +1686,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="field size for the Java race environment",
     )
+    parser.add_argument(
+        "--opponent-policy",
+        default="",
+        help="fixed exported policy used by running non-learning cars",
+    )
+    parser.add_argument(
+        "--opponent-speed-scale",
+        type=float,
+        default=0.88,
+        help="engine power and top-speed scale applied to fixed-policy opponents",
+    )
     parser.add_argument("--action-repeat", type=int, default=4)
     parser.add_argument("--max-action-steps", type=int, default=19200)
     parser.add_argument(
@@ -1681,6 +1766,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-no-progress-penalty", type=float, default=50.0)
     parser.add_argument("--reward-off-road-recovery", type=float, default=4.0)
     parser.add_argument("--reward-off-road-failure-penalty", type=float, default=50.0)
+    parser.add_argument("--reward-position-change", type=float, default=12.0)
+    parser.add_argument("--reward-finish-position", type=float, default=30.0)
     parser.add_argument("--gamma", type=float, default=0.995)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--entropy-coeff", type=float, default=0.005)
@@ -1757,6 +1844,11 @@ def parse_args() -> argparse.Namespace:
             "warm-start a fresh PPO run from an exported game policy JSON; ignored "
             "when --resume is used"
         ),
+    )
+    parser.add_argument(
+        "--allow-legacy-observation-init",
+        action="store_true",
+        help="copy a 33-input actor into the leading inputs of the current model",
     )
     parser.add_argument(
         "--no-reward-summary",
@@ -1844,13 +1936,19 @@ def validate_spawn_configuration(args: argparse.Namespace, parser: argparse.Argu
     if args.random_race_spawns is None:
         args.random_race_spawns = args.route_targets > 0
 
+    traffic_training = args.field_size > args.controlled_agents
+    if traffic_training and not args.opponent_policy:
+        parser.error("--opponent-policy is required when --field-size exceeds --controlled-agents")
+    if traffic_training and args.random_race_spawns:
+        parser.error("traffic training requires --fixed-race-spawns")
+
     if args.route_targets > 0:
         if args.controlled_agents > 1:
             parser.error(
                 "--controlled-agents must be 1 when --route-targets is a route-target "
                 "stage; train multiple cars only with full-lap training"
             )
-        if not args.random_race_spawns:
+        if not args.random_race_spawns and not traffic_training:
             parser.error(
                 "route-target training requires --random-race-spawns so saved "
                 "random spawn seeds can be reused"
@@ -1861,10 +1959,29 @@ def validate_spawn_configuration(args: argparse.Namespace, parser: argparse.Argu
         parser.error("full-lap training requires fixed race spawns")
 
 
+def snapshot_opponent_policy(args, checkpoint_dir: Path) -> None:
+    if not is_traffic_training(args):
+        return
+    source = Path(args.opponent_policy).resolve()
+    snapshot = checkpoint_dir / OPPONENT_POLICY_SNAPSHOT
+    if args.resume and snapshot.is_file():
+        args.opponent_policy = os.fspath(snapshot)
+        print(f"opponent_policy_snapshot_reused={snapshot}", flush=True)
+        return
+    if source != snapshot.resolve():
+        shutil.copyfile(source, snapshot)
+    args.opponent_policy = os.fspath(snapshot)
+    print(
+        f"opponent_policy_snapshot={snapshot} source={source}",
+        flush=True,
+    )
+
+
 def main() -> None:
     args = parse_args()
     checkpoint_dir = Path(args.checkpoint_dir).resolve()
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_opponent_policy(args, checkpoint_dir)
     configure_ray_output(checkpoint_dir)
     configure_ray_runtime(args)
     algorithm = build_algorithm_with_restore(args, checkpoint_dir)

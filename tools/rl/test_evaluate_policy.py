@@ -52,6 +52,20 @@ class EvaluationScoreTest(unittest.TestCase):
             summary_metrics(drifting)["avg_target_alignment"],
         )
 
+    def test_better_finish_position_scores_higher(self):
+        winner = make_stats()
+        winner.update(
+            episodes=1,
+            actions=1,
+            observation_samples=1,
+            finish_position_count=1,
+            finish_position_sum=1,
+        )
+        runner_up = dict(winner)
+        runner_up["finish_position_sum"] = 2
+
+        self.assertGreater(evaluation_score(winner), evaluation_score(runner_up))
+
 
 if __name__ == "__main__":
     unittest.main()

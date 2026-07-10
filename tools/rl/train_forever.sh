@@ -64,6 +64,15 @@ controlled_agents_for_preset() {
     "race-8") printf '%s\n' "8" ;;
     "race-16") printf '%s\n' "16" ;;
     "race-20"|"race-crowd") printf '%s\n' "20" ;;
+    "race-"*)
+      local car_count="${1#race-}"
+      if is_positive_integer "${car_count}" && [[ "${car_count}" -le 20 ]]; then
+        printf '%s\n' "${car_count}"
+        return
+      fi
+      echo "invalid_race_field_size=${car_count} expected=1..20" >&2
+      return 2
+      ;;
     *)
       echo "unknown_race_preset=${1:-}" >&2
       return 2
@@ -177,11 +186,12 @@ usage: bash tools/rl/train_forever.sh [preset]
 
 presets:
   race-single       one learner car; staged route targets, then full lap
-  race-2            two learner cars; full-lap fixed-grid training
-  race-4            four learner cars; full-lap fixed-grid training
-  race-8            eight learner cars; full-lap fixed-grid training
-  race-16           sixteen learner cars; full-lap fixed-grid training
-  race-20           twenty learner cars; full-lap fixed-grid training
+  race-2            one learner and one running fixed-policy rival
+  race-4            one learner and three running fixed-policy rivals
+  race-8            one learner and seven running fixed-policy rivals
+  race-16           one learner and fifteen running fixed-policy rivals
+  race-20           one learner and nineteen running fixed-policy rivals
+  race-N            one learner in any field size from 1 through 20
   race              alias for race-single
   diagnostic        short staged race run: one, two, then four cars
   quick             alias for diagnostic
@@ -195,7 +205,7 @@ EOF
 set_race_cars_defaults() {
   local car_count="$1"
   set_default RL_OBJECTIVE "race"
-  set_default RL_CONTROLLED_AGENTS "${car_count}"
+  set_default RL_CONTROLLED_AGENTS "1"
   set_default RL_FIELD_SIZE "${car_count}"
   set_default RL_ROUTE_TARGETS "-1"
   set_default RL_MAX_ACTION_STEPS "19200"
@@ -224,8 +234,9 @@ run_curriculum_phase() {
   local best_eval_state="${checkpoint_dir}/best-eval/${phase}/best_policy.json"
   local best_eval_min_route_targets="${RL_BEST_EVAL_MIN_ROUTE_TARGETS:-}"
   local phase_best_output="${RL_BEST_OUTPUT:-assets/ai/rl_enemy_policy.json}"
-  local phase_controlled_agents
-  phase_controlled_agents="$(controlled_agents_for_preset "${preset}")"
+  local phase_controlled_agents=1
+  local phase_field_size
+  phase_field_size="$(controlled_agents_for_preset "${preset}")"
   local phase_spawn_mode="fixed-grid"
   local phase_spawn_seed_file=""
   local phase_seed="${RL_SEED:-1}"
@@ -255,6 +266,7 @@ run_curriculum_phase() {
     phase_route_targets="${RL_LAP_REAL_TARGETS:-5}"
     phase_route_target_fraction="0"
     phase_fixed_full_laps=1
+    phase_evaluate_all_checkpoint_candidates=1
     phase_map_ids="${RL_LAP_REAL_MAP_IDS:-auto-game}"
     phase_best_eval_map_ids="${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
   fi
@@ -281,7 +293,9 @@ run_curriculum_phase() {
     echo "curriculum_phase_skip_completed policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} state=${RL_POLICY_TRAINING_STATE}"
     return
   fi
-  if [[ "${phase_fixed_full_laps}" == "1" ]]; then
+  if [[ "${phase_field_size}" -gt "${phase_controlled_agents}" ]]; then
+    phase_spawn_mode="distributed-route-traffic"
+  elif [[ "${phase_fixed_full_laps}" == "1" ]]; then
     if [[ ! "${phase_route_targets}" =~ ^[1-9][0-9]*$ ]]; then
       echo "invalid_lap_real_targets=${phase_route_targets} phase=${phase} expected=positive_integer" >&2
       exit 2
@@ -362,7 +376,7 @@ run_curriculum_phase() {
   echo "CURRENT_TRAINING_STAGE=${phase} stage=${stage_index}/${stage_total} stage_progress=$(progress_percent "${stage_index}" "${stage_total}")"
   echo "CURRENT_TRAINING_PROFILE_PROGRESS=${profile_stage_index}/${profile_stage_total} $(progress_percent "${profile_stage_index}" "${profile_stage_total}")"
   echo "CURRENT_TRAINING_OVERALL_PROGRESS=${overall_stage_index}/${overall_stage_total} $(progress_percent "${overall_stage_index}" "${overall_stage_total}")"
-  echo "CURRENT_TRAINING_DETAILS preset=${preset} iterations=${iterations} cars=${phase_controlled_agents} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} seed_file=${phase_spawn_seed_file:-none} seed_run=${RL_ROUTE_SPAWN_RUN_ID:-none}"
+  echo "CURRENT_TRAINING_DETAILS preset=${preset} iterations=${iterations} learners=${phase_controlled_agents} field_size=${phase_field_size} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} seed_file=${phase_spawn_seed_file:-none} seed_run=${RL_ROUTE_SPAWN_RUN_ID:-none}"
   echo "============================================================"
   echo "curriculum_phase=${phase} policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} preset=${preset} iterations=${iterations} max_cycles=${max_cycles} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} checkpoint_dir=${checkpoint_dir} best_eval_state=${best_eval_state} best_output=${phase_best_output} init_policy=${init_policy:-none}"
   env \
@@ -370,7 +384,7 @@ run_curriculum_phase() {
     RL_FOREVER_ITERATIONS="${iterations}" \
     RL_MAX_CYCLES="${max_cycles}" \
     RL_CONTROLLED_AGENTS="${phase_controlled_agents}" \
-    RL_FIELD_SIZE="${phase_controlled_agents}" \
+    RL_FIELD_SIZE="${phase_field_size}" \
     RL_INIT_POLICY="${init_policy}" \
     RL_BEST_EVAL_STATE="${best_eval_state}" \
     RL_BEST_EVAL_MIN_ROUTE_TARGETS="${best_eval_min_route_targets}" \
@@ -778,14 +792,16 @@ append_phase_state() {
 }
 
 preset_for_agent_count() {
-  case "$1" in
-    1) printf '%s\n' "race-single" ;;
-    2|4|8|16|20) printf 'race-%s\n' "$1" ;;
-    *)
-      echo "unsupported_controlled_agent_stage=$1 supported=1,2,4,8,16,20" >&2
-      return 2
-      ;;
-  esac
+  local car_count="$1"
+  if ! is_positive_integer "${car_count}" || [[ "${car_count}" -gt 20 ]]; then
+    echo "unsupported_stage_field_size=${car_count} expected=1..20" >&2
+    return 2
+  fi
+  if [[ "${car_count}" -eq 1 ]]; then
+    printf '%s\n' "race-single"
+  else
+    printf 'race-%s\n' "${car_count}"
+  fi
 }
 
 run_route_curriculum_for_preset() {
@@ -891,10 +907,6 @@ run_route_curriculum_for_preset() {
     local stage_car_count="${stage_cars[index]}"
     if [[ ! "${stage_car_count}" =~ ^[1-9][0-9]*$ ]]; then
       echo "invalid_stage_number_of_cars=${stage_car_count} stage=${stage_specs[index]}" >&2
-      return 2
-    fi
-    if is_route_target_training_stage "${route_target}" && [[ "${stage_car_count}" -ne 1 ]]; then
-      echo "invalid_stage_number_of_cars=${stage_car_count} stage=${stage_specs[index]} route_targets=${route_target} required_cars=1 reason=route_target_training_uses_saved_random_single_car_spawns" >&2
       return 2
     fi
     local stage_preset
@@ -1061,6 +1073,18 @@ case "${preset}" in
       exit 0
     fi
     ;;
+  "race-"*)
+    race_field_size="${preset#race-}"
+    if ! is_positive_integer "${race_field_size}" || [[ "${race_field_size}" -gt 20 ]]; then
+      echo "invalid_race_field_size=${race_field_size} expected=1..20" >&2
+      exit 2
+    fi
+    set_race_cars_defaults "${race_field_size}"
+    if ! is_true "${RL_ROUTE_STAGE_ACTIVE:-0}" && is_true "${RL_ROUTE_CURRICULUM:-1}"; then
+      run_direct_race_route_curriculum "${preset}"
+      exit 0
+    fi
+    ;;
   *)
     usage >&2
     echo "unknown_preset=${preset}" >&2
@@ -1117,6 +1141,9 @@ regenerate_map_caches="${RL_REGENERATE_MAP_CACHES:-0}"
 desktop_jar="${RL_JAR:-desktop/target/ratass-desktop-1.0.jar}"
 best_export="${RL_BEST_EXPORT:-1}"
 best_output="${RL_BEST_OUTPUT:-assets/ai/rl_enemy_policy.json}"
+opponent_policy="${RL_OPPONENT_POLICY:-${best_output}}"
+opponent_speed_scale="${RL_OPPONENT_SPEED_SCALE:-0.88}"
+allow_legacy_observation_init="${RL_ALLOW_LEGACY_OBSERVATION_INIT:-0}"
 best_eval_episodes_per_map="${RL_BEST_EVAL_EPISODES_PER_MAP:-1}"
 best_eval_episodes="${RL_BEST_EVAL_EPISODES:-0}"
 best_eval_min_route_targets="${RL_BEST_EVAL_MIN_ROUTE_TARGETS:-1}"
@@ -1146,6 +1173,8 @@ reward_off_road_max_penalty="${RL_REWARD_OFF_ROAD_MAX_PENALTY:-5.0}"
 reward_no_progress_penalty="${RL_REWARD_NO_PROGRESS_PENALTY:-50.0}"
 reward_off_road_recovery="${RL_REWARD_OFF_ROAD_RECOVERY:-4.0}"
 reward_off_road_failure_penalty="${RL_REWARD_OFF_ROAD_FAILURE_PENALTY:-50.0}"
+reward_position_change="${RL_REWARD_POSITION_CHANGE:-12.0}"
+reward_finish_position="${RL_REWARD_FINISH_POSITION:-30.0}"
 
 map_ids="$(resolve_map_ids_setting "${map_ids}")"
 best_eval_map_ids="$(resolve_map_ids_setting "${best_eval_map_ids}")"
@@ -1156,7 +1185,10 @@ race_spawn_mode="fixed-grid"
 random_race_spawns=0
 route_spawn_seed_file="${RL_ROUTE_SPAWN_SEED_FILE:-}"
 route_phase_name="${RL_ROUTE_PHASE_NAME:-${preset:-race}-$(route_stage_label "${route_targets}" "${route_target_fraction}")}"
-if is_true "${RL_FIXED_FULL_LAPS:-0}"; then
+if [[ "${field_size}" -gt "${controlled_agents}" ]]; then
+  race_spawn_mode="distributed-route-traffic"
+  random_race_spawns=0
+elif is_true "${RL_FIXED_FULL_LAPS:-0}"; then
   if [[ ! "${route_targets}" =~ ^[1-9][0-9]*$ ]]; then
     echo "invalid_fixed_full_lap_targets=${route_targets} preset=${preset:-race} expected=positive_integer" >&2
     exit 2
@@ -1209,6 +1241,10 @@ if [[ ! "${seed}" =~ ^[0-9]+$ || "${seed}" -le 0 ]]; then
   echo "invalid_seed=${seed} expected=positive_integer" >&2
   exit 2
 fi
+if [[ "${field_size}" -gt "${controlled_agents}" && ! -f "${opponent_policy}" ]]; then
+  echo "missing_opponent_policy=${opponent_policy} field_size=${field_size} controlled_agents=${controlled_agents}" >&2
+  exit 2
+fi
 
 if [[ "${best_eval_steps}" == "auto" ]]; then
   best_eval_steps="$(default_best_eval_steps_for_stage "${route_targets}" "${max_action_steps}")"
@@ -1225,6 +1261,7 @@ common_args=(
   --workers "${workers}"
   --controlled-agents "${controlled_agents}"
   --field-size "${field_size}"
+  --opponent-speed-scale "${opponent_speed_scale}"
   --action-repeat "${action_repeat}"
   --max-action-steps "${max_action_steps}"
   --no-progress-max-action-steps "${no_progress_max_action_steps}"
@@ -1262,7 +1299,16 @@ common_args=(
   --reward-no-progress-penalty "${reward_no_progress_penalty}"
   --reward-off-road-recovery "${reward_off_road_recovery}"
   --reward-off-road-failure-penalty "${reward_off_road_failure_penalty}"
+  --reward-position-change "${reward_position_change}"
+  --reward-finish-position "${reward_finish_position}"
 )
+
+if [[ "${field_size}" -gt "${controlled_agents}" ]]; then
+  common_args+=(--opponent-policy "${opponent_policy}")
+fi
+if is_true "${allow_legacy_observation_init}"; then
+  common_args+=(--allow-legacy-observation-init)
+fi
 
 if [[ -n "${map_ids}" ]]; then
   common_args+=(--map-ids "${map_ids}")
