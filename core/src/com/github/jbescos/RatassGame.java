@@ -429,8 +429,6 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SANDBOX_SENSOR_HIT_RADIUS = 0.13f;
     private static final float SANDBOX_ROUTE_ARROW_LENGTH = 1.15f;
     private static final float SANDBOX_ROUTE_ARROW_WIDTH = 0.11f;
-    private static final float SANDBOX_SENSOR_LABEL_DISTANCE = 0.95f;
-    private static final float SANDBOX_SENSOR_LABEL_STEP = 10f;
     private static final float SANDBOX_SENSOR_WORLD_LABEL_OFFSET = 0.24f;
     private static final float RL_CONTROL_DEADZONE = 0.06f;
     private static final float RL_ACTION_FLIP_DEADZONE = 0.18f;
@@ -1520,7 +1518,10 @@ public class RatassGame extends ApplicationAdapter {
         for (int enemyIndex = 0; enemyIndex < enemyCount; enemyIndex++) {
             int visualIndex = getEnemyCarVisualIndex(enemyIndex);
             CarVisual visual = getCarVisual(visualIndex);
-            RlPolicy enemyPolicy = getEnemyDriverPolicy(enemyIndex);
+            RlPolicy enemyPolicy =
+                    sandboxMode && playerPolicy != null
+                            ? playerPolicy
+                            : getEnemyDriverPolicy(enemyIndex);
             boolean modelControlledEnemy = enemyPolicy != null;
             addRosterTemplate(
                     getEnemyName(enemyIndex),
@@ -9308,7 +9309,7 @@ public class RatassGame extends ApplicationAdapter {
 
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
-            if (!car.active || car.body == null) {
+            if (!car.playerControlled || !car.active || car.body == null) {
                 continue;
             }
             fillSandboxRlObservation(car);
@@ -9514,7 +9515,7 @@ public class RatassGame extends ApplicationAdapter {
 
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
-            if (!car.active || car.body == null) {
+            if (!car.playerControlled || !car.active || car.body == null) {
                 continue;
             }
             fillSandboxRlObservation(car);
@@ -9579,8 +9580,6 @@ public class RatassGame extends ApplicationAdapter {
                     24,
                     RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE,
                     "roadFR");
-
-            drawSandboxObservationSummary(car, playfieldWidth, hudHeight);
         }
     }
 
@@ -9614,59 +9613,6 @@ public class RatassGame extends ApplicationAdapter {
                 observationIndex + " " + shortName + "=" + formatSandboxValue(value),
                 sandboxSensorProjection.x,
                 sandboxSensorProjection.y);
-    }
-
-    private void drawSandboxObservationSummary(Car car, float playfieldWidth, float hudHeight) {
-        Vector2 origin = car.getRenderPosition();
-        if (!projectSandboxWorldToHud(
-                origin.x,
-                origin.y + car.getHeight() * SANDBOX_SENSOR_LABEL_DISTANCE,
-                playfieldWidth,
-                hudHeight)) {
-            return;
-        }
-
-        float left = MathUtils.clamp(sandboxSensorProjection.x + 8f, 2f, Math.max(2f, playfieldWidth - 260f));
-        float top = MathUtils.clamp(sandboxSensorProjection.y + 54f, 48f, Math.max(48f, hudHeight - 6f));
-        String owner = car.playerControlled ? "YOU" : car.name;
-
-        labelFont.setColor(1f, 0.95f, 0.52f, 0.98f);
-        drawTextWithShadow(labelFont, owner + " RL sensors", left, top);
-        labelFont.setColor(0.90f, 0.96f, 1f, 0.96f);
-        int rowCount = (RL_OBSERVATION_SIZE + 3) / 4;
-        for (int row = 0; row < rowCount; row++) {
-            int first = row * 4;
-            drawSandboxObservationRow(
-                    left,
-                    top - SANDBOX_SENSOR_LABEL_STEP * (row + 1),
-                    first,
-                    first + 1 < RL_OBSERVATION_SIZE ? first + 1 : -1,
-                    first + 2 < RL_OBSERVATION_SIZE ? first + 2 : -1,
-                    first + 3 < RL_OBSERVATION_SIZE ? first + 3 : -1);
-        }
-    }
-
-    private void drawSandboxObservationRow(float left, float top, int first, int second, int third, int fourth) {
-        String text =
-                sandboxObservationText(first)
-                        + "  "
-                        + sandboxObservationText(second)
-                        + "  "
-                        + sandboxObservationText(third)
-                        + "  "
-                        + sandboxObservationText(fourth);
-        drawTextWithShadow(labelFont, text, left, top);
-    }
-
-    private String sandboxObservationText(int index) {
-        if (index < 0) {
-            return "";
-        }
-        if (!isSandboxObservationIndexAvailable(index)) {
-            return index + " n/a";
-        }
-        String name = index < RL_OBSERVATION_NAMES.length ? RL_OBSERVATION_NAMES[index] : "obs";
-        return index + " " + name + "=" + formatSandboxValue(sandboxRlObservation[index]);
     }
 
     private boolean projectSandboxWorldToHud(
