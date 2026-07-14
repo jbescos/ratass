@@ -50,6 +50,38 @@ class RestoreAlgorithmCheckpointTest(unittest.TestCase):
             algorithm.restore.assert_called_once_with(str(checkpoint_dir.resolve()))
 
 
+class SpawnConfigurationValidationTest(unittest.TestCase):
+    def test_fixed_full_laps_accepts_positive_targets_with_fixed_spawns(self):
+        args = SimpleNamespace(
+            random_race_spawns=False,
+            fixed_full_laps=True,
+            route_targets=5,
+            route_target_fraction=0.0,
+            controlled_agents=1,
+        )
+        parser = Mock()
+
+        train_rllib.validate_spawn_configuration(args, parser)
+
+        parser.error.assert_not_called()
+
+    def test_regular_route_targets_still_reject_fixed_spawns(self):
+        args = SimpleNamespace(
+            random_race_spawns=False,
+            fixed_full_laps=False,
+            route_targets=5,
+            route_target_fraction=0.0,
+            controlled_agents=1,
+        )
+        parser = Mock()
+        parser.error.side_effect = ValueError
+
+        with self.assertRaises(ValueError):
+            train_rllib.validate_spawn_configuration(args, parser)
+
+        parser.error.assert_called_once()
+
+
 class EstablishStageBaselineTest(unittest.TestCase):
     def test_evaluates_incoming_policy_without_comparing_installed_policy(self):
         with tempfile.TemporaryDirectory() as temp_dir:

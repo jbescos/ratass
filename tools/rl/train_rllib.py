@@ -1653,6 +1653,14 @@ def parse_args() -> argparse.Namespace:
         dest="random_race_spawns",
         help="use fixed map spawn points; required for full-lap training",
     )
+    parser.add_argument(
+        "--fixed-full-laps",
+        action="store_true",
+        help=(
+            "interpret positive --route-targets as complete laps from fixed map spawns; "
+            "used by multi-lap full-race stages"
+        ),
+    )
     parser.add_argument("--num-gpus", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
@@ -1842,7 +1850,16 @@ def apply_objective_defaults(args: argparse.Namespace) -> None:
 
 def validate_spawn_configuration(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if args.random_race_spawns is None:
-        args.random_race_spawns = args.route_targets > 0
+        args.random_race_spawns = args.route_targets > 0 and not args.fixed_full_laps
+
+    if args.fixed_full_laps:
+        if args.route_targets <= 0:
+            parser.error("--fixed-full-laps requires a positive --route-targets lap count")
+        if args.route_target_fraction > 0:
+            parser.error("--fixed-full-laps requires --route-target-fraction 0")
+        if args.random_race_spawns:
+            parser.error("--fixed-full-laps requires --fixed-race-spawns")
+        return
 
     if args.route_targets > 0:
         if args.controlled_agents > 1:

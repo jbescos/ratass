@@ -218,6 +218,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float PASSING_ASSIST_MODEL_STEERING_WEIGHT = 0.55f;
     private static final float PASSING_ASSIST_LATERAL_PREDICTION_SECONDS = 0.25f;
     private static final float PASSING_ASSIST_EDGE_TAPER_DISTANCE = Car.WIDTH * 1.2f;
+    private static final float PASSING_ASSIST_CONTACT_THROTTLE_CAP = 0.20f;
     private static final float PASSING_ASSIST_COMMIT_FORWARD_DISTANCE = Car.HEIGHT * 1.25f;
     private static final float PASSING_ASSIST_COMMIT_LATERAL_RATIO = 0.55f;
     private static final float PASSING_ASSIST_ROUTE_CHECK_INTERVAL = 0.12f;
@@ -10550,8 +10551,8 @@ public class RatassGame extends ApplicationAdapter {
             if (carA == null || carB == null) {
                 return;
             }
-            carA.beginCarContact();
-            carB.beginCarContact();
+            carA.beginCarContact(carB);
+            carB.beginCarContact(carA);
         }
 
         @Override
@@ -10561,8 +10562,8 @@ public class RatassGame extends ApplicationAdapter {
             if (carA == null || carB == null) {
                 return;
             }
-            carA.endCarContact();
-            carB.endCarContact();
+            carA.endCarContact(carB);
+            carB.endCarContact(carA);
         }
 
         @Override
@@ -10981,6 +10982,7 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 passingRouteTangent = new Vector2();
         private final float[] passingSelfRouteMargins = new float[4];
         private final float[] passingTargetRouteMargins = new float[4];
+        private final Array<Car> contactCars = new Array<Car>(false, 4);
 
         private Body body;
         private boolean active = true;
@@ -11270,7 +11272,8 @@ public class RatassGame extends ApplicationAdapter {
             boolean routeSteeringHasPriority = false;
             if (target != null) {
                 boolean newTarget = target != passingAssistTarget;
-                if (newTarget && passingAssistAcquireCooldown > 0f) {
+                boolean contactTarget = isForwardPassingContact(target);
+                if (newTarget && passingAssistAcquireCooldown > 0f && !contactTarget) {
                     adjustedThrottle =
                             limitPassingFollowThrottle(
                                     adjustedThrottle,
@@ -11286,6 +11289,12 @@ public class RatassGame extends ApplicationAdapter {
                 }
 
                 if (target != null) {
+                    if (contactTarget) {
+                        adjustedThrottle =
+                                limitPassingFollowThrottle(
+                                        adjustedThrottle,
+                                        target);
+                    }
                     int selectedDirection =
                             selectPassingAssistDirection(arenaMap, cars, target);
                     if (selectedDirection != 0) {
@@ -11388,6 +11397,10 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private Car findPassingAssistTarget(Array<Car> cars) {
+            Car contactTarget = findForwardPassingContact();
+            if (contactTarget != null) {
+                return contactTarget;
+            }
             if (isPassingAssistTargetCandidate(passingAssistTarget, true)) {
                 return passingAssistTarget;
             }
@@ -11409,6 +11422,59 @@ public class RatassGame extends ApplicationAdapter {
                 }
             }
             return nearest;
+        }
+
+        private Car findForwardPassingContact() {
+            Car nearest = null;
+            float nearestForwardDistance = Float.MAX_VALUE;
+            for (int i = 0; i < contactCars.size; i++) {
+                Car candidate = contactCars.get(i);
+                if (!isForwardPassingContact(candidate)) {
+                    continue;
+                }
+                float dx = candidate.slipstreamSnapshotX - slipstreamSnapshotX;
+                float dy = candidate.slipstreamSnapshotY - slipstreamSnapshotY;
+                float forwardDistance =
+                        dx * slipstreamSnapshotForwardX + dy * slipstreamSnapshotForwardY;
+                if (forwardDistance < nearestForwardDistance) {
+                    nearest = candidate;
+                    nearestForwardDistance = forwardDistance;
+                }
+            }
+            return nearest;
+        }
+
+        private boolean isForwardPassingContact(Car candidate) {
+            if (candidate == null
+                    || candidate == this
+                    || !candidate.active
+                    || candidate.body == null
+                    || !candidate.slipstreamSnapshotReady
+                    || !candidate.slipstreamSnapshotOnRoad
+                    || !contactCars.contains(candidate, true)) {
+                return false;
+            }
+            float minimumSpeed = getBaseForwardMaxSpeed() * PASSING_ASSIST_MIN_SPEED_RATIO;
+            if (slipstreamSnapshotForwardSpeed < minimumSpeed) {
+                return false;
+            }
+            float dx = candidate.slipstreamSnapshotX - slipstreamSnapshotX;
+            float dy = candidate.slipstreamSnapshotY - slipstreamSnapshotY;
+            float forwardDistance =
+                    dx * slipstreamSnapshotForwardX + dy * slipstreamSnapshotForwardY;
+            if (forwardDistance <= PASSING_ASSIST_MIN_FORWARD_DISTANCE * 0.25f) {
+                return false;
+            }
+            float lateralDistance =
+                    Math.abs(dx * slipstreamSnapshotSideX + dy * slipstreamSnapshotSideY);
+            if (lateralDistance > PASSING_ASSIST_HOLD_LATERAL_DISTANCE) {
+                return false;
+            }
+            float alignment =
+                    slipstreamSnapshotForwardX * candidate.slipstreamSnapshotForwardX
+                            + slipstreamSnapshotForwardY
+                                    * candidate.slipstreamSnapshotForwardY;
+            return alignment >= PASSING_ASSIST_MIN_ALIGNMENT;
         }
 
         private boolean isPassingAssistTargetCandidate(Car candidate, boolean heldTarget) {
@@ -11850,6 +11916,9 @@ public class RatassGame extends ApplicationAdapter {
                 Car target) {
             if (requestedThrottle <= 0f || target == null || target.body == null) {
                 return requestedThrottle;
+            }
+            if (isForwardPassingContact(target)) {
+                return Math.min(requestedThrottle, PASSING_ASSIST_CONTACT_THROTTLE_CAP);
             }
             float dx = target.slipstreamSnapshotX - slipstreamSnapshotX;
             float dy = target.slipstreamSnapshotY - slipstreamSnapshotY;
@@ -13057,12 +13126,18 @@ public class RatassGame extends ApplicationAdapter {
             carHitCount++;
         }
 
-        private void beginCarContact() {
+        private void beginCarContact(Car other) {
             carContactCount++;
+            if (other != null && !contactCars.contains(other, true)) {
+                contactCars.add(other);
+            }
         }
 
-        private void endCarContact() {
+        private void endCarContact(Car other) {
             carContactCount = Math.max(0, carContactCount - 1);
+            if (other != null) {
+                contactCars.removeValue(other, true);
+            }
         }
 
         private float getRamChargeTimeLeft() {
@@ -13098,6 +13173,7 @@ public class RatassGame extends ApplicationAdapter {
             contactAutoRecoveryThrottleSign = -1f;
             reverseDriveActive = false;
             carContactCount = 0;
+            contactCars.clear();
             lastThrottleCommand = 0f;
             lastTurnCommand = 0f;
             externalControlDecision.set(0f, 0f);

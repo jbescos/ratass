@@ -1272,6 +1272,9 @@ if is_true "${random_race_spawns}"; then
 else
   common_args+=(--fixed-race-spawns)
 fi
+if is_true "${RL_FIXED_FULL_LAPS:-0}"; then
+  common_args+=(--fixed-full-laps)
+fi
 if [[ "${no_reward_summary}" == "1" || "${no_reward_summary}" == "true" ]]; then
   common_args+=(--no-reward-summary)
 fi
