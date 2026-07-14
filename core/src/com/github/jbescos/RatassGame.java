@@ -8984,6 +8984,7 @@ public class RatassGame extends ApplicationAdapter {
             shapeRenderer.circle(growthPickupPosition.x, growthPickupPosition.y, pickupRadius, 18);
         }
 
+        Car cameraTarget = getCameraTargetCar();
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
             if (!car.active || car.body == null) {
@@ -8999,7 +9000,7 @@ public class RatassGame extends ApplicationAdapter {
             shapeRenderer.setColor(0.03f, 0.04f, 0.05f, 0.90f);
             shapeRenderer.circle(position.x, position.y, markerRadius + 1.2f / minimapScale, 20);
 
-            if (car.playerControlled) {
+            if (car == cameraTarget) {
                 shapeRenderer.setColor(1f, 0.95f, 0.62f, 0.92f);
                 shapeRenderer.circle(
                         position.x,
@@ -10932,7 +10933,7 @@ public class RatassGame extends ApplicationAdapter {
         private static final float TRACK_LIMIT_SLOW_MARGIN = 0.82f;
         private static final float TRACK_LIMIT_FORWARD_ACCELERATION_MULTIPLIER = 0.12f;
         private static final float ARENA_WALL_CONTACT_DURATION = 0.28f;
-        private static final float AUTO_RECOVERY_TRIGGER_SECONDS = 3f;
+        private static final float AUTO_RECOVERY_TRIGGER_SECONDS = 1.5f;
         private static final float CONTACT_AUTO_RECOVERY_RANGE_FACTOR = 0.58f;
         private static final float CONTACT_AUTO_RECOVERY_DISTANCE = HEIGHT;
         private static final float CONTACT_AUTO_RECOVERY_MAX_SECONDS = 2.4f;
