@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 
+import io
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from evaluate_policy import evaluation_score, make_stats, select_maps, summary_metrics
+from evaluate_policy import (
+    evaluation_score,
+    make_stats,
+    print_evaluation_tables,
+    select_maps,
+    summary_metrics,
+)
 
 
 class EvaluationMapLoadingTest(unittest.TestCase):
@@ -51,6 +59,14 @@ class EvaluationScoreTest(unittest.TestCase):
             summary_metrics(aligned)["avg_target_alignment"],
             summary_metrics(drifting)["avg_target_alignment"],
         )
+
+    def test_reward_table_includes_every_reward_bucket(self):
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            print_evaluation_tables(make_stats(), {})
+
+        self.assertIn("drift", output.getvalue())
 
 
 if __name__ == "__main__":

@@ -32,6 +32,8 @@ RL_STAGE_NUMBER_OF_CARS=1,1,1,1,1,1,1,4
 
 # Rewards.
 RL_REWARD_PROGRESS=0.25
+# Positive values reward sustained on-road drifting progress; 0 disables it.
+RL_REWARD_DRIFT=0.0
 RL_REWARD_OFF_ROAD_PENALTY=0.80
 RL_REWARD_CAR_PUSH_PENALTY=3.0
 RL_REWARD_STEERING_PENALTY=0.010

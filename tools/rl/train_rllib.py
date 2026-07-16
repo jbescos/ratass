@@ -290,6 +290,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withSeed(base_seed + worker_index * 1_000_003 + vector_index * 10_007)
         training_config.withStepPenalty(float(env_config.get("reward_step_penalty", 0.006)))
         training_config.withProgressReward(float(env_config.get("reward_progress", 0.25)))
+        training_config.withDriftReward(float(env_config.get("reward_drift", 0.0)))
         training_config.withRouteAlignmentReward(
             float(env_config.get("reward_route_alignment", 0.0))
         )
@@ -559,6 +560,7 @@ def build_algorithm(args):
         "reward_summary": not args.no_reward_summary,
         "reward_step_penalty": args.reward_step_penalty,
         "reward_progress": args.reward_progress,
+        "reward_drift": args.reward_drift,
         "reward_route_alignment": args.reward_route_alignment,
         "reward_steering_penalty": args.reward_steering_penalty,
         "reward_reverse_free_epsilon": args.reward_reverse_free_epsilon,
@@ -1087,6 +1089,8 @@ def run_policy_evaluation(
         str(args.reward_step_penalty),
         "--reward-progress",
         str(args.reward_progress),
+        "--reward-drift",
+        str(args.reward_drift),
         "--reward-route-alignment",
         str(args.reward_route_alignment),
         "--reward-steering-penalty",
@@ -1676,6 +1680,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--reward-step-penalty", type=float, default=0.006)
     parser.add_argument("--reward-progress", type=float, default=0.25)
+    parser.add_argument("--reward-drift", type=float, default=0.0)
     parser.add_argument("--reward-route-alignment", type=float, default=0.0)
     parser.add_argument("--reward-steering-penalty", type=float, default=0.010)
     parser.add_argument("--reward-reverse-free-epsilon", type=float, default=0.20)

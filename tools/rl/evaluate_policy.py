@@ -30,7 +30,13 @@ REWARD_BUCKETS = (
     "no_progress",
     "off_road_recovery",
     "off_road_failure",
+    "drift",
 )
+REWARD_TABLE_LABELS = {
+    "step_cost": "step",
+    "reverse_speed": "reverse",
+    "route_alignment": "align",
+}
 
 
 def start_jvm(jar_path: Path) -> None:
@@ -140,6 +146,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--reward-step-penalty", type=float, default=0.006)
     parser.add_argument("--reward-progress", type=float, default=0.25)
+    parser.add_argument("--reward-drift", type=float, default=0.0)
     parser.add_argument("--reward-route-alignment", type=float, default=0.0)
     parser.add_argument("--reward-steering-penalty", type=float, default=0.010)
     parser.add_argument("--reward-reverse-free-epsilon", type=float, default=0.20)
@@ -214,6 +221,7 @@ def make_stats():
         "no_progress": 0.0,
         "off_road_recovery": 0.0,
         "off_road_failure": 0.0,
+        "drift": 0.0,
         "lookahead_blocked_steps": 0,
         "off_road_steps": 0,
         "near_edge_steps": 0,
@@ -271,6 +279,7 @@ def build_config(
         .withSeed(args.seed)
         .withStepPenalty(float(args.reward_step_penalty))
         .withProgressReward(float(args.reward_progress))
+        .withDriftReward(float(args.reward_drift))
         .withRouteAlignmentReward(float(args.reward_route_alignment))
         .withSteeringPenalty(float(args.reward_steering_penalty))
         .withReverseSpeedPenalty(
@@ -306,6 +315,7 @@ def open_trace(
     trace_dir: str,
     map_id: str,
     episode: int,
+    reward_breakdown_names,
     observation_names,
     debug_trace_names,
 ):
@@ -319,16 +329,7 @@ def open_trace(
         [
             "step",
             "reward",
-            "route_progress",
-            "step_cost",
-            "off_road",
-            "steering",
-            "reverse_speed",
-            "car_push",
-            "route_alignment",
-            "no_progress",
-            "off_road_recovery",
-            "off_road_failure",
+            *reward_breakdown_names,
             "throttle",
             "turn",
             "effective_throttle",
@@ -340,7 +341,16 @@ def open_trace(
     return handle, writer
 
 
-def trace_step(writer, step, result, reward, throttle, turn, observation_size):
+def trace_step(
+    writer,
+    step,
+    result,
+    reward,
+    throttle,
+    turn,
+    reward_breakdown_size,
+    observation_size,
+):
     if writer is None:
         return
     observations = [float(value) for value in result.observations]
@@ -353,16 +363,12 @@ def trace_step(writer, step, result, reward, throttle, turn, observation_size):
         [
             step,
             f"{reward:.6f}",
-            f"{breakdown[0]:.6f}" if len(breakdown) > 0 else "0.000000",
-            f"{breakdown[1]:.6f}" if len(breakdown) > 1 else "0.000000",
-            f"{breakdown[2]:.6f}" if len(breakdown) > 2 else "0.000000",
-            f"{breakdown[3]:.6f}" if len(breakdown) > 3 else "0.000000",
-            f"{breakdown[4]:.6f}" if len(breakdown) > 4 else "0.000000",
-            f"{breakdown[5]:.6f}" if len(breakdown) > 5 else "0.000000",
-            f"{breakdown[6]:.6f}" if len(breakdown) > 6 else "0.000000",
-            f"{breakdown[7]:.6f}" if len(breakdown) > 7 else "0.000000",
-            f"{breakdown[8]:.6f}" if len(breakdown) > 8 else "0.000000",
-            f"{breakdown[9]:.6f}" if len(breakdown) > 9 else "0.000000",
+            *[
+                f"{breakdown[index]:.6f}"
+                if index < len(breakdown)
+                else "0.000000"
+                for index in range(reward_breakdown_size)
+            ],
             f"{throttle:.6f}",
             f"{turn:.6f}",
             f"{effective_throttle:.6f}",
@@ -485,6 +491,7 @@ def run_episode(
         args.trace_dir,
         map_id,
         episode,
+        reward_breakdown_names,
         observation_names,
         [str(value) for value in result.debugTraceNames],
     )
@@ -541,6 +548,7 @@ def run_episode(
                 step_reward,
                 throttle,
                 turn,
+                len(reward_breakdown_names),
                 env_observation_size,
             )
             update_observation_stats(
@@ -889,21 +897,9 @@ def print_evaluation_tables(total_stats, per_map) -> None:
     )
     print_table(
         "evaluation_rewards",
-        [
-            "scope",
-            "route_progress",
-            "step",
-            "off_road",
-            "steering",
-            "reverse",
-            "car_push",
-            "align",
-            "no_progress",
-            "off_road_recovery",
-            "off_road_failure",
-        ],
+        ["scope", *[REWARD_TABLE_LABELS.get(name, name) for name in REWARD_BUCKETS]],
         reward_rows,
-        right_aligned=set(range(1, 11)),
+        right_aligned=set(range(1, len(REWARD_BUCKETS) + 1)),
     )
 
 
