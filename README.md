@@ -1,6 +1,6 @@
-# ratass
+# Rogue Circuit
 
-Small LibGDX self-driving racing prototype.
+LibGDX roguelite racing game with self-driving opponents.
 
 ## Objective
 

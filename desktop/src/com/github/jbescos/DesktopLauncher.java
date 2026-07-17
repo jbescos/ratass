@@ -12,7 +12,7 @@ public class DesktopLauncher {
 		config.useVsync(true);
 		config.setFullscreenMode(Lwjgl3ApplicationConfiguration.getDisplayMode());
 		config.setResizable(true);
-		config.setTitle("ratass");
+		config.setTitle("Rogue Circuit");
 		new Lwjgl3Application(new RatassGame(), config);
 	}
 }

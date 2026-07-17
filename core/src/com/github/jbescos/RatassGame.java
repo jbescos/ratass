@@ -72,6 +72,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final String DRIVER_POLICY_PREF_KEY = DRIVER_POLICY_PROPERTY;
     private static final String RACE_LAPS_PROPERTY = "race.laps";
     private static final String RACE_LAPS_PREF_KEY = RACE_LAPS_PROPERTY;
+    private static final String MUSIC_VOLUME_PROPERTY = "audio.music.volume";
+    private static final String MUSIC_VOLUME_PREF_KEY = MUSIC_VOLUME_PROPERTY;
+    private static final String SOUND_EFFECTS_VOLUME_PROPERTY = "audio.sound.volume";
+    private static final String SOUND_EFFECTS_VOLUME_PREF_KEY = SOUND_EFFECTS_VOLUME_PROPERTY;
     private static final String SANDBOX_MAP_PREF_KEY = "sandbox.map.index";
     private static final String THEME_DIRECTORY = "theme";
     private static final String THEME_MANIFEST_PATH = "themes.txt";
@@ -143,7 +147,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final int OPTIONS_LAPS_SELECTION = 4;
     private static final int OPTIONS_CAMERA_SELECTION = 5;
     private static final int OPTIONS_ZOOM_SELECTION = 6;
-    private static final int OPTIONS_BACK_SELECTION = 7;
+    private static final int OPTIONS_MUSIC_SELECTION = 7;
+    private static final int OPTIONS_SOUND_EFFECTS_SELECTION = 8;
+    private static final int OPTIONS_BACK_SELECTION = 9;
     private static final int MAIN_MENU_NEW_GAME_SELECTION = 0;
     private static final int MAIN_MENU_SANDBOX_SELECTION = 1;
     private static final int MAIN_MENU_MAPS_SELECTION = 2;
@@ -521,6 +527,17 @@ public class RatassGame extends ApplicationAdapter {
     private static final float CAR_SPRITE_ROTATION_OFFSET_DEG = 180f;
     private static final float IMPACT_SOUND_COOLDOWN = 0.06f;
     private static final float DESTRUCTION_SOUND_COOLDOWN = 0.08f;
+    private static final float DEFAULT_MUSIC_VOLUME = 1f;
+    private static final float DEFAULT_SOUND_EFFECTS_VOLUME = 1f;
+    private static final float AUDIO_VOLUME_STEP = 0.10f;
+    private static final float THEME_MUSIC_BASE_VOLUME = 0.32f;
+    private static final float LOADING_PROGRESS_DISPLAY_SPEED = 2.4f;
+    private static final int LOADING_PREPARE_STAGE = 0;
+    private static final int LOADING_DRIVERS_STAGE = 1;
+    private static final int LOADING_MAP_STAGE = 2;
+    private static final int LOADING_WORLD_STAGE = 3;
+    private static final int LOADING_AUDIO_STAGE = 4;
+    private static final int LOADING_STAGE_COUNT = 5;
     private static final float ENGINE_SOUND_IDLE_PITCH = 0.64f;
     private static final float ENGINE_SOUND_MAX_PITCH = 1.58f;
     private static final float ENGINE_SOUND_IDLE_VOLUME = 0.12f;
@@ -843,6 +860,12 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle optionsZoomBounds = new Rectangle();
     private final Rectangle optionsZoomOutBounds = new Rectangle();
     private final Rectangle optionsZoomInBounds = new Rectangle();
+    private final Rectangle optionsMusicBounds = new Rectangle();
+    private final Rectangle optionsMusicDownBounds = new Rectangle();
+    private final Rectangle optionsMusicUpBounds = new Rectangle();
+    private final Rectangle optionsSoundEffectsBounds = new Rectangle();
+    private final Rectangle optionsSoundEffectsDownBounds = new Rectangle();
+    private final Rectangle optionsSoundEffectsUpBounds = new Rectangle();
     private final Rectangle optionsBackBounds = new Rectangle();
     private final Rectangle optionsCarSheetBounds = new Rectangle();
     private final Rectangle steerPadBounds = new Rectangle();
@@ -917,6 +940,7 @@ public class RatassGame extends ApplicationAdapter {
     private Texture arenaSurfaceTexture;
     private Texture themeCarsTexture;
     private Texture menuCarSheetTexture;
+    private Texture menuHeroCarTexture;
     private String preloadedNextArenaSurfaceKey;
     private CarPhysics sandboxPhysicsOverride = CarPhysics.DEFAULT;
 
@@ -951,6 +975,8 @@ public class RatassGame extends ApplicationAdapter {
     private float weatherGripMultiplier = 1f;
     private float sidebarTablesScrollOffset;
     private float sidebarTablesScrollbarGrabOffsetY;
+    private float loadingProgress;
+    private float loadingDisplayedProgress;
     private boolean touchRestartPressed;
     private boolean touchRestartJustPressed;
     private boolean touchControlsEnabled;
@@ -965,6 +991,9 @@ public class RatassGame extends ApplicationAdapter {
     private boolean roundStartSoundPlayed;
     private boolean sidebarTablesScrollbarDragging;
     private boolean sandboxMode;
+    private boolean loadingScreenPresented;
+    private boolean loadingCompletionPresented;
+    private boolean loadingSandboxMode;
     private boolean rlTrainingAllowSoloRound;
     private boolean rlTrainingDisablePickups;
     private boolean rlTrainingRandomSpawnLocations;
@@ -981,6 +1010,7 @@ public class RatassGame extends ApplicationAdapter {
     private int selectedDriverPolicyIndex = DEFAULT_DRIVER_POLICY_INDEX;
     private int selectedRaceLapCount = DEFAULT_RACE_LAPS;
     private int selectedSandboxMapIndex;
+    private int loadingStage;
     private int mainMenuSelection;
     private int pauseMenuSelection;
     private int optionsMenuSelection;
@@ -995,10 +1025,14 @@ public class RatassGame extends ApplicationAdapter {
     private String eventCalloutSubline = "";
     private String configuredThemeName = DEFAULT_THEME_NAME;
     private String menuCarSheetThemeName = "";
+    private String menuHeroCarKey = "";
+    private String loadingStatus = "";
     private String carPerformanceThemeName = "";
     private boolean followCameraBehind;
     private boolean optionsOpenedFromPause;
     private float cameraZoom = DEFAULT_CAMERA_ZOOM;
+    private float musicVolume = DEFAULT_MUSIC_VOLUME;
+    private float soundEffectsVolume = DEFAULT_SOUND_EFFECTS_VOLUME;
     private float mapScale = DEFAULT_MAP_SCALE;
 
     @Override
@@ -1050,37 +1084,80 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void startNewGame(boolean sandbox) {
-        sandboxMode = sandbox;
-        disposeRosterSpriteTextures();
-        disposeArenaSurfaceTextures();
-        disposeMenuCarPreview();
-        loadThemeEnemyNames();
-        loadThemeTextures();
-        int clampedPlayerCarIndex =
-                clampPlayerCarIndex(selectedPlayerCarIndex, getAvailableCarVisualCount());
-        if (clampedPlayerCarIndex != selectedPlayerCarIndex) {
-            selectedPlayerCarIndex = clampedPlayerCarIndex;
-            saveMenuSettings();
+        clearPlayerInput();
+        stopVehicleSounds();
+        if (themeMusic != null) {
+            themeMusic.stop();
         }
-        loadSounds();
-        rlEnemyPolicy = loadRlEnemyPolicy();
-        createRoster();
-        if (sandboxMode) {
-            resetSandboxPhysicsTuning();
-        }
-        loadCarSprites();
-        mapProgression = new MapProgression(createGameplayMapSet(sandbox));
+        loadingSandboxMode = sandbox;
+        loadingScreenPresented = false;
+        loadingCompletionPresented = false;
+        loadingStage = LOADING_PREPARE_STAGE;
+        loadingProgress = 0f;
+        loadingDisplayedProgress = 0f;
+        loadingStatus = "Preparing " + getCurrentTheme().displayName;
+        gameMode = GameMode.LOADING;
+    }
 
-        roundNumber = 0;
-        playerWins = 0;
-        accumulator = 0f;
-        roundOverTimer = 0f;
-        effectClock = 0f;
-        eventCalloutTimer = 0f;
-        cameraInitialized = false;
-        gameMode = GameMode.PLAYING;
-        resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        resetRound(false);
+    private void advancePendingGameLoading() {
+        switch (loadingStage) {
+            case LOADING_PREPARE_STAGE:
+                sandboxMode = loadingSandboxMode;
+                disposeGameSounds();
+                disposeRosterSpriteTextures();
+                disposeArenaSurfaceTextures();
+                disposeMenuCarPreview();
+                loadThemeEnemyNames();
+                loadThemeTextures();
+                int clampedPlayerCarIndex =
+                        clampPlayerCarIndex(
+                                selectedPlayerCarIndex,
+                                getAvailableCarVisualCount());
+                if (clampedPlayerCarIndex != selectedPlayerCarIndex) {
+                    selectedPlayerCarIndex = clampedPlayerCarIndex;
+                    saveMenuSettings();
+                }
+                completeLoadingStage(0.15f, "Loading drivers");
+                break;
+            case LOADING_DRIVERS_STAGE:
+                rlEnemyPolicy = loadRlEnemyPolicy();
+                createRoster();
+                if (sandboxMode) {
+                    resetSandboxPhysicsTuning();
+                }
+                loadCarSprites();
+                completeLoadingStage(0.40f, "Loading circuits");
+                break;
+            case LOADING_MAP_STAGE:
+                mapProgression =
+                        new MapProgression(createGameplayMapSet(loadingSandboxMode));
+                completeLoadingStage(0.70f, "Building starting grid");
+                break;
+            case LOADING_WORLD_STAGE:
+                roundNumber = 0;
+                playerWins = 0;
+                accumulator = 0f;
+                roundOverTimer = 0f;
+                effectClock = 0f;
+                eventCalloutTimer = 0f;
+                cameraInitialized = false;
+                resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+                resetRound(false);
+                completeLoadingStage(0.95f, "Starting engines");
+                break;
+            case LOADING_AUDIO_STAGE:
+                loadSounds();
+                completeLoadingStage(1f, "Ready");
+                break;
+            default:
+                return;
+        }
+        loadingStage++;
+    }
+
+    private void completeLoadingStage(float progress, String nextStatus) {
+        loadingProgress = MathUtils.clamp(progress, loadingProgress, 1f);
+        loadingStatus = nextStatus;
     }
 
     private Array<ArenaMap> createGameplayMapSet(boolean sandbox) {
@@ -1445,6 +1522,12 @@ public class RatassGame extends ApplicationAdapter {
         selectedDriverPolicyIndex =
                 findDriverPolicyIndex(loadConfiguredProperty(DRIVER_POLICY_PROPERTY));
         selectedRaceLapCount = loadConfiguredIntProperty(RACE_LAPS_PROPERTY, DEFAULT_RACE_LAPS);
+        musicVolume =
+                loadConfiguredFloatProperty(MUSIC_VOLUME_PROPERTY, DEFAULT_MUSIC_VOLUME);
+        soundEffectsVolume =
+                loadConfiguredFloatProperty(
+                        SOUND_EFFECTS_VOLUME_PROPERTY,
+                        DEFAULT_SOUND_EFFECTS_VOLUME);
         selectedSandboxMapIndex = 0;
 
         Preferences preferences = loadPreferences();
@@ -1463,6 +1546,11 @@ public class RatassGame extends ApplicationAdapter {
                                     DRIVER_POLICY_PREF_KEY,
                                     getSelectedDriverPolicyId()));
             selectedRaceLapCount = preferences.getInteger(RACE_LAPS_PREF_KEY, selectedRaceLapCount);
+            musicVolume = preferences.getFloat(MUSIC_VOLUME_PREF_KEY, musicVolume);
+            soundEffectsVolume =
+                    preferences.getFloat(
+                            SOUND_EFFECTS_VOLUME_PREF_KEY,
+                            soundEffectsVolume);
             selectedSandboxMapIndex =
                     preferences.getInteger(SANDBOX_MAP_PREF_KEY, selectedSandboxMapIndex);
         }
@@ -1475,6 +1563,8 @@ public class RatassGame extends ApplicationAdapter {
         selectedRaceLapCount = clampRaceLapCount(selectedRaceLapCount);
         selectedPlayerCarIndex = Math.max(0, selectedPlayerCarIndex);
         selectedDriverPolicyIndex = clampDriverPolicyIndex(selectedDriverPolicyIndex);
+        musicVolume = clampAudioVolume(musicVolume);
+        soundEffectsVolume = clampAudioVolume(soundEffectsVolume);
         selectedSandboxMapIndex = clampSandboxMapIndex(selectedSandboxMapIndex);
     }
 
@@ -1503,6 +1593,8 @@ public class RatassGame extends ApplicationAdapter {
         preferences.putInteger(PLAYER_CAR_PREF_KEY, selectedPlayerCarIndex);
         preferences.putString(DRIVER_POLICY_PREF_KEY, getSelectedDriverPolicyId());
         preferences.putInteger(RACE_LAPS_PREF_KEY, selectedRaceLapCount);
+        preferences.putFloat(MUSIC_VOLUME_PREF_KEY, musicVolume);
+        preferences.putFloat(SOUND_EFFECTS_VOLUME_PREF_KEY, soundEffectsVolume);
         preferences.putInteger(SANDBOX_MAP_PREF_KEY, selectedSandboxMapIndex);
         preferences.flush();
     }
@@ -1982,8 +2074,14 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
         themeMusic.setLooping(true);
-        themeMusic.setVolume(0.32f);
+        applyThemeMusicVolume();
         themeMusic.play();
+    }
+
+    private void applyThemeMusicVolume() {
+        if (themeMusic != null) {
+            themeMusic.setVolume(THEME_MUSIC_BASE_VOLUME * musicVolume);
+        }
     }
 
     private Sound loadSound(String path) {
@@ -2396,14 +2494,18 @@ public class RatassGame extends ApplicationAdapter {
                 1f);
         float volume = MathUtils.lerp(0.18f, 0.86f, normalizedStrength);
         float pitch = MathUtils.lerp(1.08f, 0.82f, normalizedStrength);
-        if (impactSound != null) {
-            impactSound.play(volume, pitch, 0f);
+        float adjustedVolume = volume * soundEffectsVolume;
+        if (impactSound != null && adjustedVolume > 0f) {
+            impactSound.play(adjustedVolume, pitch, 0f);
         }
         impactSoundCooldown = IMPACT_SOUND_COOLDOWN;
     }
 
     private void updateVehicleSounds(float delta) {
-        if (rlTrainingMode || gameMode != GameMode.PLAYING || isInGameMenuOpen()) {
+        if (rlTrainingMode
+                || gameMode != GameMode.PLAYING
+                || isInGameMenuOpen()
+                || soundEffectsVolume <= 0f) {
             stopVehicleSounds();
             return;
         }
@@ -2431,10 +2533,11 @@ public class RatassGame extends ApplicationAdapter {
         engineSoundVolume = MathUtils.lerp(engineSoundVolume, targetVolume, response);
 
         if (engineSound != null) {
+            float adjustedEngineVolume = engineSoundVolume * soundEffectsVolume;
             if (engineSoundId < 0L) {
-                engineSoundId = engineSound.loop(engineSoundVolume, engineSoundPitch, 0f);
+                engineSoundId = engineSound.loop(adjustedEngineVolume, engineSoundPitch, 0f);
             } else {
-                engineSound.setVolume(engineSoundId, engineSoundVolume);
+                engineSound.setVolume(engineSoundId, adjustedEngineVolume);
                 engineSound.setPitch(engineSoundId, engineSoundPitch);
             }
         }
@@ -2455,10 +2558,11 @@ public class RatassGame extends ApplicationAdapter {
         float slipVolume = MathUtils.lerp(0.12f, SLIP_SOUND_MAX_VOLUME, slipSeverity);
         float slipPitch = MathUtils.lerp(0.88f, 1.12f, slipSeverity);
         if (slipSound != null) {
+            float adjustedSlipVolume = slipVolume * soundEffectsVolume;
             if (slipSoundId < 0L) {
-                slipSoundId = slipSound.loop(slipVolume, slipPitch, 0f);
+                slipSoundId = slipSound.loop(adjustedSlipVolume, slipPitch, 0f);
             } else {
-                slipSound.setVolume(slipSoundId, slipVolume);
+                slipSound.setVolume(slipSoundId, adjustedSlipVolume);
                 slipSound.setPitch(slipSoundId, slipPitch);
             }
         }
@@ -2642,10 +2746,11 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void playSound(Sound sound, float volume) {
-        if (sound == null) {
+        float adjustedVolume = MathUtils.clamp(volume, 0f, 1f) * soundEffectsVolume;
+        if (sound == null || adjustedVolume <= 0f) {
             return;
         }
-        sound.play(MathUtils.clamp(volume, 0f, 1f));
+        sound.play(adjustedVolume);
     }
 
     @Override
@@ -2663,6 +2768,12 @@ public class RatassGame extends ApplicationAdapter {
         float delta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
         updateVehicleSounds(delta);
 
+        if (gameMode == GameMode.LOADING) {
+            effectClock += delta;
+            renderLoadingState(delta);
+            return;
+        }
+
         if (isInGameMenuOpen()) {
             effectClock += delta;
             updateMenuLayout(hudViewport.getWorldWidth(), hudViewport.getWorldHeight());
@@ -2671,6 +2782,9 @@ public class RatassGame extends ApplicationAdapter {
                 if (gameMode == GameMode.PLAYING) {
                     renderWorld();
                     renderHud();
+                } else if (gameMode == GameMode.LOADING) {
+                    renderLoadingScreen();
+                    loadingScreenPresented = true;
                 } else {
                     updateMenuLayout(hudViewport.getWorldWidth(), hudViewport.getWorldHeight());
                     renderMenu();
@@ -2687,7 +2801,12 @@ public class RatassGame extends ApplicationAdapter {
             effectClock += delta;
             updateMenuLayout(hudViewport.getWorldWidth(), hudViewport.getWorldHeight());
             handleMenuInput();
-            renderMenu();
+            if (gameMode == GameMode.LOADING) {
+                renderLoadingScreen();
+                loadingScreenPresented = true;
+            } else {
+                renderMenu();
+            }
             return;
         }
 
@@ -2709,6 +2828,39 @@ public class RatassGame extends ApplicationAdapter {
         frameTurnInput = readPlayerTurn();
 
         update(delta);
+        renderWorld();
+        renderHud();
+    }
+
+    private void renderLoadingState(float delta) {
+        loadingDisplayedProgress = Math.min(
+                loadingProgress,
+                loadingDisplayedProgress
+                        + Math.max(0f, delta) * LOADING_PROGRESS_DISPLAY_SPEED);
+        if (!loadingScreenPresented) {
+            renderLoadingScreen();
+            loadingScreenPresented = true;
+            return;
+        }
+
+        if (loadingDisplayedProgress + 0.001f < loadingProgress) {
+            renderLoadingScreen();
+            return;
+        }
+
+        if (loadingStage < LOADING_STAGE_COUNT) {
+            advancePendingGameLoading();
+            renderLoadingScreen();
+            return;
+        }
+
+        if (!loadingCompletionPresented) {
+            renderLoadingScreen();
+            loadingCompletionPresented = true;
+            return;
+        }
+
+        gameMode = GameMode.PLAYING;
         renderWorld();
         renderHud();
     }
@@ -3234,6 +3386,24 @@ public class RatassGame extends ApplicationAdapter {
                     || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
                 changeCameraZoom(1);
             }
+        } else if (optionsMenuSelection == OPTIONS_MUSIC_SELECTION) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
+                changeMusicVolume(-1);
+            }
+            if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
+                changeMusicVolume(1);
+            }
+        } else if (optionsMenuSelection == OPTIONS_SOUND_EFFECTS_SELECTION) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
+                changeSoundEffectsVolume(-1);
+            }
+            if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
+                changeSoundEffectsVolume(1);
+            }
         }
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)
@@ -3252,6 +3422,10 @@ public class RatassGame extends ApplicationAdapter {
                 toggleCameraMode();
             } else if (optionsMenuSelection == OPTIONS_ZOOM_SELECTION) {
                 changeCameraZoom(1);
+            } else if (optionsMenuSelection == OPTIONS_MUSIC_SELECTION) {
+                changeMusicVolume(1);
+            } else if (optionsMenuSelection == OPTIONS_SOUND_EFFECTS_SELECTION) {
+                changeSoundEffectsVolume(1);
             } else {
                 closeOptionsMenu();
             }
@@ -3354,6 +3528,8 @@ public class RatassGame extends ApplicationAdapter {
         return canChangeCarSetupOptions()
                 || selection == OPTIONS_CAMERA_SELECTION
                 || selection == OPTIONS_ZOOM_SELECTION
+                || selection == OPTIONS_MUSIC_SELECTION
+                || selection == OPTIONS_SOUND_EFFECTS_SELECTION
                 || selection == OPTIONS_BACK_SELECTION;
     }
 
@@ -3465,6 +3641,19 @@ public class RatassGame extends ApplicationAdapter {
         } else if (optionsZoomInBounds.contains(x, y) || optionsZoomBounds.contains(x, y)) {
             optionsMenuSelection = OPTIONS_ZOOM_SELECTION;
             changeCameraZoom(1);
+        } else if (optionsMusicDownBounds.contains(x, y)) {
+            optionsMenuSelection = OPTIONS_MUSIC_SELECTION;
+            changeMusicVolume(-1);
+        } else if (optionsMusicUpBounds.contains(x, y) || optionsMusicBounds.contains(x, y)) {
+            optionsMenuSelection = OPTIONS_MUSIC_SELECTION;
+            changeMusicVolume(1);
+        } else if (optionsSoundEffectsDownBounds.contains(x, y)) {
+            optionsMenuSelection = OPTIONS_SOUND_EFFECTS_SELECTION;
+            changeSoundEffectsVolume(-1);
+        } else if (optionsSoundEffectsUpBounds.contains(x, y)
+                || optionsSoundEffectsBounds.contains(x, y)) {
+            optionsMenuSelection = OPTIONS_SOUND_EFFECTS_SELECTION;
+            changeSoundEffectsVolume(1);
         } else if (optionsBackBounds.contains(x, y)) {
             optionsMenuSelection = OPTIONS_BACK_SELECTION;
             closeOptionsMenu();
@@ -3572,15 +3761,33 @@ public class RatassGame extends ApplicationAdapter {
                 menuButtonHeight);
 
         boolean showCarPreview =
-                gameMode == GameMode.OPTIONS_MENU && canChangeCarSetupOptions();
+                gameMode == GameMode.OPTIONS_MENU
+                        && canChangeCarSetupOptions()
+                        && height >= 520f;
         if (showCarPreview) {
             ensureMenuCarPreviewLoaded();
         }
 
-        float rowGap = Math.min(MENU_BUTTON_GAP, Math.max(8f, height * 0.025f));
-        float rowHeight = Math.min(MENU_OPTION_ROW_HEIGHT, Math.max(40f, height * 0.095f));
-        float rowsHeight = rowHeight * (OPTIONS_BACK_SELECTION + 1)
-                + rowGap * OPTIONS_BACK_SELECTION;
+        int rowCount = OPTIONS_BACK_SELECTION + 1;
+        float optionsTitleBand = Math.max(74f, height * 0.14f);
+        float preferredRowGap = Math.min(MENU_BUTTON_GAP, Math.max(6f, height * 0.025f));
+        boolean previewCanBeSideBySide =
+                showCarPreview && availableWidth >= 820f && height >= 520f;
+        float stackedPreviewSpace = showCarPreview && !previewCanBeSideBySide
+                ? Math.max(76f, height * 0.13f) + preferredRowGap
+                : 0f;
+        float availableRowsHeight = Math.max(
+                rowCount * 18f,
+                height - MENU_MIN_SIDE_MARGIN - optionsTitleBand - stackedPreviewSpace);
+        float rowGap = Math.min(
+                preferredRowGap,
+                Math.max(3f, availableRowsHeight * 0.018f));
+        float rowHeight = Math.min(
+                MENU_OPTION_ROW_HEIGHT,
+                Math.max(
+                        18f,
+                        (availableRowsHeight - rowGap * (rowCount - 1)) / rowCount));
+        float rowsHeight = rowHeight * rowCount + rowGap * (rowCount - 1);
         float rowWidth = Math.min(MENU_OPTION_ROW_WIDTH, availableWidth);
         float rowX = centerX - rowWidth * 0.5f;
         float rowTopY = Math.min(height * 0.67f, height - Math.max(74f, height * 0.14f));
@@ -3593,7 +3800,7 @@ public class RatassGame extends ApplicationAdapter {
 
         if (showCarPreview) {
             float previewAspect = getMenuCarSheetAspect();
-            sideBySide = availableWidth >= 820f && height >= 520f;
+            sideBySide = previewCanBeSideBySide;
             if (sideBySide) {
                 rowWidth = Math.min(420f, Math.max(320f, availableWidth * 0.42f));
                 previewWidth =
@@ -3720,9 +3927,39 @@ public class RatassGame extends ApplicationAdapter {
                 rowY - (rowHeight + rowGap) * 6f,
                 stepButtonWidth,
                 rowHeight);
-        optionsBackBounds.set(
+        optionsMusicBounds.set(
                 rowX,
                 rowY - (rowHeight + rowGap) * 7f,
+                rowWidth,
+                rowHeight);
+        optionsMusicDownBounds.set(
+                rowX,
+                rowY - (rowHeight + rowGap) * 7f,
+                stepButtonWidth,
+                rowHeight);
+        optionsMusicUpBounds.set(
+                rowX + rowWidth - stepButtonWidth,
+                rowY - (rowHeight + rowGap) * 7f,
+                stepButtonWidth,
+                rowHeight);
+        optionsSoundEffectsBounds.set(
+                rowX,
+                rowY - (rowHeight + rowGap) * 8f,
+                rowWidth,
+                rowHeight);
+        optionsSoundEffectsDownBounds.set(
+                rowX,
+                rowY - (rowHeight + rowGap) * 8f,
+                stepButtonWidth,
+                rowHeight);
+        optionsSoundEffectsUpBounds.set(
+                rowX + rowWidth - stepButtonWidth,
+                rowY - (rowHeight + rowGap) * 8f,
+                stepButtonWidth,
+                rowHeight);
+        optionsBackBounds.set(
+                rowX,
+                rowY - (rowHeight + rowGap) * 9f,
                 rowWidth,
                 rowHeight);
     }
@@ -3742,6 +3979,7 @@ public class RatassGame extends ApplicationAdapter {
         }
         configuredThemeName = themeChoices.get(selectedThemeIndex).name;
         disposeMenuCarPreview();
+        disposeMenuHeroCar();
         saveMenuSettings();
     }
 
@@ -3761,6 +3999,34 @@ public class RatassGame extends ApplicationAdapter {
         saveMenuSettings();
         cameraInitialized = false;
         updateWorldCamera();
+    }
+
+    private void changeMusicVolume(int direction) {
+        float nextVolume = stepAudioVolume(musicVolume, direction);
+        if (Math.abs(nextVolume - musicVolume) < 0.001f) {
+            return;
+        }
+        musicVolume = nextVolume;
+        applyThemeMusicVolume();
+        saveMenuSettings();
+    }
+
+    private void changeSoundEffectsVolume(int direction) {
+        float nextVolume = stepAudioVolume(soundEffectsVolume, direction);
+        if (Math.abs(nextVolume - soundEffectsVolume) < 0.001f) {
+            return;
+        }
+        soundEffectsVolume = nextVolume;
+        if (soundEffectsVolume <= 0f) {
+            stopVehicleSounds();
+        }
+        saveMenuSettings();
+    }
+
+    private static float stepAudioVolume(float volume, int direction) {
+        float steppedVolume = volume + Math.signum(direction) * AUDIO_VOLUME_STEP;
+        return Math.round(clampAudioVolume(steppedVolume) / AUDIO_VOLUME_STEP)
+                * AUDIO_VOLUME_STEP;
     }
 
     private void handleCameraTargetInput() {
@@ -3953,6 +4219,7 @@ public class RatassGame extends ApplicationAdapter {
         while (selectedPlayerCarIndex >= carCount) {
             selectedPlayerCarIndex -= carCount;
         }
+        disposeMenuHeroCar();
         saveMenuSettings();
     }
 
@@ -4042,6 +4309,53 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private void renderLoadingScreen() {
+        hudViewport.apply();
+        ScreenUtils.clear(0.045f, 0.055f, 0.065f, 1f);
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        spriteBatch.setProjectionMatrix(hudCamera.combined);
+
+        float hudWidth = hudViewport.getWorldWidth();
+        float hudHeight = hudViewport.getWorldHeight();
+        drawMenuBackdrop(hudWidth, hudHeight);
+
+        float trackWidth = Math.min(360f, Math.max(180f, hudWidth * 0.42f));
+        float trackHeight = Math.min(10f, Math.max(6f, hudHeight * 0.012f));
+        float trackX = (hudWidth - trackWidth) * 0.5f;
+        float trackY = hudHeight * 0.40f;
+        float filledWidth = trackWidth * MathUtils.clamp(loadingDisplayedProgress, 0f, 1f);
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0.12f, 0.15f, 0.18f, 1f);
+        shapeRenderer.rect(trackX, trackY, trackWidth, trackHeight);
+        if (filledWidth > 0f) {
+            shapeRenderer.setColor(0.95f, 0.74f, 0.27f, 1f);
+            shapeRenderer.rect(trackX, trackY, filledWidth, trackHeight);
+        }
+        shapeRenderer.end();
+
+        spriteBatch.begin();
+        titleFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+        drawTextCentered(
+                titleFont,
+                loadingSandboxMode ? "Loading Sandbox" : "Loading Race",
+                hudWidth * 0.5f,
+                hudHeight * 0.58f);
+        hudFont.setColor(0.72f, 0.78f, 0.82f, 1f);
+        drawTextCentered(
+                hudFont,
+                loadingStatus,
+                hudWidth * 0.5f,
+                hudHeight * 0.49f);
+        hudFont.setColor(0.98f, 0.92f, 0.76f, 1f);
+        drawTextCentered(
+                hudFont,
+                Math.round(loadingDisplayedProgress * 100f) + "%",
+                hudWidth * 0.5f,
+                trackY - Math.max(18f, hudHeight * 0.025f));
+        spriteBatch.end();
+    }
+
     private void renderInGameMenuOverlay() {
         hudViewport.apply();
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
@@ -4069,33 +4383,133 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void drawMenuBackdrop(float hudWidth, float hudHeight) {
+        boolean showHeroCar = gameMode == GameMode.MAIN_MENU;
+        if (showHeroCar) {
+            ensureMenuHeroCarLoaded();
+        }
+
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
         float pulse = 0.5f + 0.5f * MathUtils.sin(effectClock * 1.5f);
-        shapeRenderer.setColor(0.08f, 0.10f, 0.12f, 1f);
+        shapeRenderer.setColor(0.035f, 0.045f, 0.055f, 1f);
         shapeRenderer.rect(0f, 0f, hudWidth, hudHeight);
 
-        shapeRenderer.setColor(0.55f, 0.40f, 0.14f, 0.13f + pulse * 0.04f);
-        shapeRenderer.rect(0f, hudHeight * 0.66f, hudWidth, 3f);
-        shapeRenderer.rect(0f, hudHeight * 0.31f, hudWidth, 2f);
-        for (int i = 0; i < 9; i++) {
-            float x = (i + 0.5f) * hudWidth / 9f;
-            shapeRenderer.rect(x - 1f, hudHeight * 0.15f, 2f, hudHeight * 0.72f);
+        float roadAngle = 51f;
+        float roadLength = (float) Math.sqrt(hudWidth * hudWidth + hudHeight * hudHeight) * 1.18f;
+        float roadWidth = Math.max(hudWidth * 0.40f, hudHeight * 0.48f);
+        float roadCenterX = hudWidth * 0.58f;
+        float roadCenterY = hudHeight * 0.46f;
+        drawRotatedRect(
+                roadCenterX,
+                roadCenterY,
+                roadLength,
+                roadWidth + 24f,
+                roadAngle,
+                0.72f,
+                0.20f,
+                0.16f,
+                0.44f);
+        drawRotatedRect(
+                roadCenterX,
+                roadCenterY,
+                roadLength,
+                roadWidth,
+                roadAngle,
+                0.12f,
+                0.14f,
+                0.16f,
+                1f);
+
+        float roadCos = MathUtils.cosDeg(roadAngle);
+        float roadSin = MathUtils.sinDeg(roadAngle);
+        for (int i = -6; i <= 6; i++) {
+            float distance = i * roadLength / 11f;
+            drawRotatedRect(
+                    roadCenterX + roadCos * distance,
+                    roadCenterY + roadSin * distance,
+                    roadLength * 0.045f,
+                    4f,
+                    roadAngle,
+                    0.94f,
+                    0.77f,
+                    0.30f,
+                    0.24f + pulse * 0.08f);
         }
 
-        shapeRenderer.setColor(0.96f, 0.78f, 0.22f, 0.10f);
-        shapeRenderer.triangle(
-                hudWidth * 0.18f,
-                hudHeight * 0.18f,
-                hudWidth * 0.50f,
-                hudHeight * 0.74f,
-                hudWidth * 0.82f,
-                hudHeight * 0.18f);
+        for (int i = 0; i < 5; i++) {
+            float laneOffset = roadWidth * (0.60f + i * 0.10f);
+            drawRotatedRect(
+                    roadCenterX - roadSin * laneOffset,
+                    roadCenterY + roadCos * laneOffset,
+                    roadLength * (0.42f + i * 0.08f),
+                    2f,
+                    roadAngle,
+                    0.17f,
+                    0.70f,
+                    0.76f,
+                    0.09f + pulse * 0.03f);
+        }
+
+        shapeRenderer.setColor(0.015f, 0.020f, 0.026f, showHeroCar ? 0.20f : 0.34f);
+        shapeRenderer.rect(0f, 0f, hudWidth, hudHeight);
 
         shapeRenderer.end();
+
+        if (showHeroCar && menuHeroCarTexture != null) {
+            float carHeight = Math.min(330f, Math.max(150f, hudHeight * 0.34f));
+            float carWidth = carHeight
+                    * menuHeroCarTexture.getWidth()
+                    / Math.max(1f, menuHeroCarTexture.getHeight());
+            float carX = hudWidth * 0.80f - carWidth * 0.5f;
+            float carY = hudHeight * 0.28f - carHeight * 0.5f;
+
+            spriteBatch.begin();
+            spriteBatch.setColor(1f, 1f, 1f, 0.94f);
+            spriteBatch.draw(
+                    menuHeroCarTexture,
+                    carX,
+                    carY,
+                    carWidth * 0.5f,
+                    carHeight * 0.5f,
+                    carWidth,
+                    carHeight,
+                    1f,
+                    1f,
+                    CAR_SPRITE_ROTATION_OFFSET_DEG - 39f,
+                    0,
+                    0,
+                    menuHeroCarTexture.getWidth(),
+                    menuHeroCarTexture.getHeight(),
+                    false,
+                    false);
+            spriteBatch.setColor(1f, 1f, 1f, 1f);
+            spriteBatch.end();
+        }
+
         Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void ensureMenuHeroCarLoaded() {
+        int visualIndex = Math.max(0, selectedPlayerCarIndex);
+        String key = configuredThemeName + ":" + visualIndex;
+        if (key.equals(menuHeroCarKey)) {
+            return;
+        }
+
+        disposeMenuHeroCar();
+        menuHeroCarKey = key;
+        menuHeroCarTexture = loadTexture(buildThemeCarFilePath(visualIndex));
+        if (menuHeroCarTexture != null) {
+            menuHeroCarTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        }
+    }
+
+    private void disposeMenuHeroCar() {
+        disposeTexture(menuHeroCarTexture);
+        menuHeroCarTexture = null;
+        menuHeroCarKey = "";
     }
 
     private void drawMainMenu(float hudWidth, float hudHeight) {
@@ -4111,10 +4525,17 @@ public class RatassGame extends ApplicationAdapter {
 
         spriteBatch.begin();
         titleFont.setColor(0.98f, 0.92f, 0.76f, 1f);
-        drawTextCentered(titleFont, "RATASS", hudWidth * 0.5f, hudHeight * 0.73f);
+        drawTextCentered(titleFont, "ROGUE CIRCUIT", hudWidth * 0.5f, hudHeight * 0.73f);
 
         hudFont.setColor(0.76f, 0.84f, 0.88f, 1f);
-        drawTextCentered(hudFont, getCurrentTheme().displayName, hudWidth * 0.5f, hudHeight * 0.65f);
+        drawTextCentered(
+                hudFont,
+                truncateTextToWidth(
+                        hudFont,
+                        "ROGUELITE RACING  |  " + getCurrentTheme().displayName,
+                        Math.max(1f, hudWidth - MENU_MIN_SIDE_MARGIN * 2f)),
+                hudWidth * 0.5f,
+                hudHeight * 0.65f);
         hudFont.setColor(0.98f, 0.92f, 0.76f, 1f);
         drawTextCentered(
                 hudFont,
@@ -4644,6 +5065,11 @@ public class RatassGame extends ApplicationAdapter {
                 carSetupEnabled);
         drawOptionRow(optionsCameraBounds, optionsMenuSelection == OPTIONS_CAMERA_SELECTION, true);
         drawOptionRow(optionsZoomBounds, optionsMenuSelection == OPTIONS_ZOOM_SELECTION, true);
+        drawOptionRow(optionsMusicBounds, optionsMenuSelection == OPTIONS_MUSIC_SELECTION, true);
+        drawOptionRow(
+                optionsSoundEffectsBounds,
+                optionsMenuSelection == OPTIONS_SOUND_EFFECTS_SELECTION,
+                true);
         drawMenuButton(optionsBackBounds, "Back", optionsMenuSelection == OPTIONS_BACK_SELECTION);
 
         if (carSetupEnabled) {
@@ -4674,6 +5100,16 @@ public class RatassGame extends ApplicationAdapter {
         }
         drawMenuStepButton(optionsZoomOutBounds, "-", optionsMenuSelection == OPTIONS_ZOOM_SELECTION);
         drawMenuStepButton(optionsZoomInBounds, "+", optionsMenuSelection == OPTIONS_ZOOM_SELECTION);
+        drawMenuStepButton(optionsMusicDownBounds, "-", optionsMenuSelection == OPTIONS_MUSIC_SELECTION);
+        drawMenuStepButton(optionsMusicUpBounds, "+", optionsMenuSelection == OPTIONS_MUSIC_SELECTION);
+        drawMenuStepButton(
+                optionsSoundEffectsDownBounds,
+                "-",
+                optionsMenuSelection == OPTIONS_SOUND_EFFECTS_SELECTION);
+        drawMenuStepButton(
+                optionsSoundEffectsUpBounds,
+                "+",
+                optionsMenuSelection == OPTIONS_SOUND_EFFECTS_SELECTION);
 
         spriteBatch.begin();
         titleFont.setColor(0.98f, 0.92f, 0.76f, 1f);
@@ -4775,6 +5211,38 @@ public class RatassGame extends ApplicationAdapter {
                 buildCameraZoomMenuValue(),
                 optionsZoomBounds.x + optionsZoomBounds.width - optionsZoomInBounds.width - 18f,
                 optionsZoomBounds.y + optionsZoomBounds.height * 0.62f);
+
+        setOptionLabelColor(true);
+        hudFont.draw(
+                spriteBatch,
+                "Music",
+                optionsMusicBounds.x + optionsMusicDownBounds.width + 18f,
+                optionsMusicBounds.y + optionsMusicBounds.height * 0.62f);
+        setOptionValueColor(true);
+        drawTextRight(
+                hudFont,
+                buildAudioVolumeMenuValue(musicVolume),
+                optionsMusicBounds.x
+                        + optionsMusicBounds.width
+                        - optionsMusicUpBounds.width
+                        - 18f,
+                optionsMusicBounds.y + optionsMusicBounds.height * 0.62f);
+
+        setOptionLabelColor(true);
+        hudFont.draw(
+                spriteBatch,
+                "Sound FX",
+                optionsSoundEffectsBounds.x + optionsSoundEffectsDownBounds.width + 18f,
+                optionsSoundEffectsBounds.y + optionsSoundEffectsBounds.height * 0.62f);
+        setOptionValueColor(true);
+        drawTextRight(
+                hudFont,
+                buildAudioVolumeMenuValue(soundEffectsVolume),
+                optionsSoundEffectsBounds.x
+                        + optionsSoundEffectsBounds.width
+                        - optionsSoundEffectsUpBounds.width
+                        - 18f,
+                optionsSoundEffectsBounds.y + optionsSoundEffectsBounds.height * 0.62f);
         spriteBatch.end();
     }
 
@@ -4806,6 +5274,10 @@ public class RatassGame extends ApplicationAdapter {
 
     private String buildCameraZoomMenuValue() {
         return Math.round(cameraZoom * 100f) + "%";
+    }
+
+    private String buildAudioVolumeMenuValue(float volume) {
+        return Math.round(volume * 100f) + "%";
     }
 
     private void drawCarSheetPreview() {
@@ -8322,7 +8794,7 @@ public class RatassGame extends ApplicationAdapter {
         float topHudLineStep = Math.max(26f, hudFont.getLineHeight() + 4f);
 
         hudFont.setColor(0.96f, 0.92f, 0.82f, 1f);
-        hudFont.draw(spriteBatch, "RATASS GP", 22f, topHudLineY);
+        hudFont.draw(spriteBatch, "ROGUE CIRCUIT GP", 22f, topHudLineY);
 
         hudFont.setColor(0.82f, 0.88f, 0.93f, 1f);
         hudFont.draw(
@@ -10367,6 +10839,10 @@ public class RatassGame extends ApplicationAdapter {
         return MathUtils.clamp(zoom, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM);
     }
 
+    private static float clampAudioVolume(float volume) {
+        return MathUtils.clamp(volume, 0f, 1f);
+    }
+
     private static int clampPlayerCarIndex(int playerCarIndex, int carCount) {
         if (carCount <= 0) {
             return Math.max(0, playerCarIndex);
@@ -10500,6 +10976,7 @@ public class RatassGame extends ApplicationAdapter {
         disposeMapDebugMaskTextures();
         disposeTexture(themeCarsTexture);
         disposeMenuCarPreview();
+        disposeMenuHeroCar();
         if (shapeRenderer != null) {
             shapeRenderer.dispose();
         }
@@ -15318,6 +15795,7 @@ public class RatassGame extends ApplicationAdapter {
         MAPS_MENU,
         OPTIONS_MENU,
         PAUSE_MENU,
+        LOADING,
         PLAYING
     }
 
