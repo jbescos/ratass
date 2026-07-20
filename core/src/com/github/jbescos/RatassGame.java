@@ -41,6 +41,7 @@ import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.github.jbescos.ai.AiControlDecision;
+import com.github.jbescos.ai.rl.DriverProfileSelector;
 import com.github.jbescos.ai.rl.RlPolicy;
 import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MapProgression;
@@ -52,6 +53,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCardInventory;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
 import com.github.jbescos.gameplay.roguelite.RogueliteCarUpgrades;
 import com.github.jbescos.gameplay.roguelite.RogueliteRun;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -98,13 +100,16 @@ public class RatassGame extends ApplicationAdapter {
     private static final String MANUAL_DRIVER_POLICY_ID = "manual";
     private static final DriverPolicyChoice[] DRIVER_POLICY_CHOICES = new DriverPolicyChoice[] {
             new DriverPolicyChoice(MANUAL_DRIVER_POLICY_ID, "Manual"),
-            new DriverPolicyChoice("rookie", "Rookie"),
-            new DriverPolicyChoice("expert", "Expert"),
-            new DriverPolicyChoice("aggressive", "Aggressive"),
-            new DriverPolicyChoice("clean", "Clean"),
-            new DriverPolicyChoice("qualifier", "Qualifier"),
-            new DriverPolicyChoice("veteran", "Veteran"),
-            new DriverPolicyChoice("reckless", "Reckless")
+            new DriverPolicyChoice("profile00", "Profile 00"),
+            new DriverPolicyChoice("profile01", "Profile 01"),
+            new DriverPolicyChoice("profile02", "Profile 02"),
+            new DriverPolicyChoice("profile03", "Profile 03"),
+            new DriverPolicyChoice("profile04", "Profile 04"),
+            new DriverPolicyChoice("profile05", "Profile 05"),
+            new DriverPolicyChoice("profile06", "Profile 06"),
+            new DriverPolicyChoice("profile07", "Profile 07"),
+            new DriverPolicyChoice("profile08", "Profile 08"),
+            new DriverPolicyChoice("profile09", "Profile 09")
     };
     private static final ThemeChoice[] FALLBACK_THEME_CHOICES = new ThemeChoice[] {
             new ThemeChoice("gt3", "GT3")
@@ -794,8 +799,8 @@ public class RatassGame extends ApplicationAdapter {
             new CarPerformance[DEFAULT_CAR_PERFORMANCES.length];
     private final Array<Integer> sessionEnemyVisualIndices = new Array<Integer>();
     private final Array<Integer> sessionEnemyVisualPool = new Array<Integer>();
-    private final Array<String> sessionEnemyPolicyIds = new Array<String>();
-    private final Array<String> sessionEnemyPolicyPool = new Array<String>();
+    private final DriverProfileSelector roundDriverProfileSelector =
+            new DriverProfileSelector();
     private final RogueliteRun rogueliteRun = new RogueliteRun();
     private List<RogueliteCardOffer> rogueliteRewardChoices = Collections.emptyList();
     private List<RogueliteCardDefinition> ownedRogueliteCardTypes = Collections.emptyList();
@@ -810,11 +815,9 @@ public class RatassGame extends ApplicationAdapter {
     private final LinkedHashMap<String, Texture> mapDebugMaskTextureCache =
             new LinkedHashMap<String, Texture>();
     private final Random sessionEnemyVisualRandom = new Random();
-    private final Random sessionEnemyPolicyRandom = new Random();
     private final Random weatherRandom = new Random();
     private final GlyphLayout glyphLayout = new GlyphLayout();
     private int sessionEnemyVisualPaletteSize = -1;
-    private int sessionEnemyPolicyAvailableCount = -1;
     private final Color tint = new Color();
     private final Rectangle mapBounds = new Rectangle();
     private final Vector2 focusPoint = new Vector2();
@@ -1656,10 +1659,7 @@ public class RatassGame extends ApplicationAdapter {
         for (int enemyIndex = 0; enemyIndex < enemyCount; enemyIndex++) {
             int visualIndex = getEnemyCarVisualIndex(enemyIndex);
             CarVisual visual = getCarVisual(visualIndex);
-            RlPolicy enemyPolicy =
-                    sandboxMode && playerPolicy != null
-                            ? playerPolicy
-                            : getEnemyDriverPolicy(enemyIndex);
+            RlPolicy enemyPolicy = rlEnemyPolicy;
             boolean modelControlledEnemy = enemyPolicy != null;
             addRosterTemplate(
                     getEnemyName(enemyIndex),
@@ -1701,14 +1701,6 @@ public class RatassGame extends ApplicationAdapter {
         return enemyIndex + 1;
     }
 
-    private RlPolicy getEnemyDriverPolicy(int enemyIndex) {
-        ensureSessionEnemyPolicyIds(enemyIndex + 1);
-        if (enemyIndex >= 0 && enemyIndex < sessionEnemyPolicyIds.size) {
-            return getRlPolicyById(sessionEnemyPolicyIds.get(enemyIndex));
-        }
-        return rlEnemyPolicy;
-    }
-
     private void ensureSessionEnemyVisualIndices(int requiredCount) {
         int carVisualCount = getAvailableCarVisualCount();
         if (sessionEnemyVisualPaletteSize != carVisualCount) {
@@ -1748,46 +1740,46 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private void ensureSessionEnemyPolicyIds(int requiredCount) {
-        int availableCount = getAvailableDriverPolicyCount();
-        if (sessionEnemyPolicyAvailableCount != availableCount) {
-            sessionEnemyPolicyAvailableCount = availableCount;
-            sessionEnemyPolicyIds.clear();
-            sessionEnemyPolicyPool.clear();
+    private void randomizeRoundDriverPolicies() {
+        if (rlTrainingMode) {
+            return;
         }
 
-        while (sessionEnemyPolicyIds.size < requiredCount) {
-            if (sessionEnemyPolicyPool.size == 0) {
-                refillSessionEnemyPolicyPool();
+        List<String> availablePolicyIds = new ArrayList<String>();
+        String playerPolicyId = null;
+        int opponentCount = 0;
+        for (int i = 0; i < roster.size; i++) {
+            CarTemplate template = roster.get(i);
+            if (template.playerControlled && template.modelControlled) {
+                playerPolicyId = getSelectedDriverPolicyId();
+            } else if (!template.playerControlled && template.modelControlled) {
+                opponentCount++;
             }
-            if (sessionEnemyPolicyPool.size == 0) {
-                return;
-            }
-            sessionEnemyPolicyIds.add(sessionEnemyPolicyPool.pop());
         }
-    }
 
-    private int getAvailableDriverPolicyCount() {
-        int count = 0;
         for (int i = 0; i < DRIVER_POLICY_CHOICES.length; i++) {
             String policyId = DRIVER_POLICY_CHOICES[i].id;
             if (rlPolicies.containsKey(policyId)) {
-                count++;
+                availablePolicyIds.add(policyId);
             }
         }
-        return count;
-    }
 
-    private void refillSessionEnemyPolicyPool() {
-        sessionEnemyPolicyPool.clear();
-        for (int i = 0; i < DRIVER_POLICY_CHOICES.length; i++) {
-            String policyId = DRIVER_POLICY_CHOICES[i].id;
-            if (rlPolicies.containsKey(policyId)) {
-                sessionEnemyPolicyPool.add(policyId);
+        List<String> assignedPolicyIds =
+                roundDriverProfileSelector.selectUnique(
+                        availablePolicyIds, playerPolicyId, opponentCount);
+
+        int policyIndex = 0;
+        for (int i = 0; i < roster.size; i++) {
+            CarTemplate template = roster.get(i);
+            if (template.playerControlled || !template.modelControlled) {
+                continue;
             }
-        }
-        for (int i = sessionEnemyPolicyPool.size - 1; i > 0; i--) {
-            sessionEnemyPolicyPool.swap(i, sessionEnemyPolicyRandom.nextInt(i + 1));
+            if (policyIndex < assignedPolicyIds.size()) {
+                template.rlPolicy =
+                        getRlPolicyById(assignedPolicyIds.get(policyIndex++));
+            } else {
+                template.rlPolicy = rlEnemyPolicy;
+            }
         }
     }
 
@@ -6019,6 +6011,7 @@ public class RatassGame extends ApplicationAdapter {
         playerCar = null;
         finishPositionCounter = 0;
         roundNumber++;
+        randomizeRoundDriverPolicies();
         buildRoundSpawns(roster.size, roundSpawns);
         buildRoundGridOrder(roundGridOrder);
         int fixedRaceStartCheckpointIndex =
@@ -16808,7 +16801,7 @@ public class RatassGame extends ApplicationAdapter {
         private final String statsLabel;
         private final boolean externallyControlled;
         private final boolean modelControlled;
-        private final RlPolicy rlPolicy;
+        private RlPolicy rlPolicy;
         private final CarPhysics basePhysics;
         private CarPhysics physics;
         private Texture spriteTexture;

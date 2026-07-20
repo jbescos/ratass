@@ -1,12 +1,27 @@
 # RL Driver Profiles
 
-Each subdirectory is one trainable driving personality. The game loads models from
-`assets/ai/policies/<id>/rl_enemy_policy.json`. Only profiles with an available
-model are used for random enemy assignment.
+The ten trainable slots are named `profile00` through `profile09`. The game loads
+models from `assets/ai/policies/<id>/rl_enemy_policy.json`. At the start of every
+race it shuffles the available slots and gives each AI car a different profile.
 
 Use `profile.properties` to configure a personality. Profiles inherit
 `tools/rl/policies/default.properties` and can override any `RL_*` value.
 `default.properties` is a shared baseline config, not a trainable profile.
+
+The initial migration preserves the previous models as follows:
+
+| Profile | Initial model |
+| --- | --- |
+| `profile00` | aggressive |
+| `profile01` | clean |
+| `profile02` | expert |
+| `profile03` | qualifier |
+| `profile04` | reckless |
+| `profile05` | rookie |
+| `profile06` | veteran |
+| `profile07` | copy of profile00 |
+| `profile08` | copy of profile03 |
+| `profile09` | copy of profile05 |
 
 Common properties:
 
@@ -43,8 +58,8 @@ Recommended commands:
 
 ```bash
 bash tools/rl/train.sh
-bash tools/rl/train.sh aggressive
-bash tools/rl/train.sh --detach aggressive
+bash tools/rl/train.sh profile00
+bash tools/rl/train.sh --detach profile00
 bash tools/rl/train_docker.sh
-bash tools/rl/train_docker.sh aggressive
+bash tools/rl/train_docker.sh profile00
 ```

@@ -104,7 +104,7 @@ launcher refuses to overwrite that active log. Use `--detach` when you want to
 start it and return immediately:
 
 ```bash
-tools/rl/train.sh --detach aggressive
+tools/rl/train.sh --detach profile00
 ```
 
 Use `--foreground` only when debugging the trainer itself and you want it tied
@@ -116,7 +116,7 @@ or changing Wi-Fi/VPN interfaces does not break local worker RPC.
 Train one specific profile:
 
 ```bash
-tools/rl/train.sh aggressive
+tools/rl/train.sh profile00
 ```
 
 Check whether loaded checkpoint centers, checkpoint gates, and first route
@@ -137,7 +137,7 @@ Docker training uses the same profile system:
 
 ```bash
 tools/rl/train_docker.sh
-tools/rl/train_docker.sh aggressive
+tools/rl/train_docker.sh profile00
 ```
 
 Internal presets are still available through `train_forever.sh` when debugging
