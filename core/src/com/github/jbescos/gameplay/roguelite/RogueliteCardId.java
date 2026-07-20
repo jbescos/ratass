@@ -1,0 +1,16 @@
+package com.github.jbescos.gameplay.roguelite;
+
+public enum RogueliteCardId {
+    TURBOCHARGER,
+    AERODYNAMIC_KIT,
+    DRIFT_CAPACITOR,
+    COUNTERSTEER_SERVO,
+    DRAFT_RECEIVER,
+    OVERTAKE_INJECTOR,
+    REINFORCED_BUMPER,
+    KINETIC_RECYCLER,
+    STORM_TIRES,
+    STORM_DYNAMO,
+    CLEAN_MOMENTUM,
+    RECOVERY_DIFFERENTIAL
+}
