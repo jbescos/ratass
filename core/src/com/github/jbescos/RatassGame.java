@@ -1749,16 +1749,16 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
-        assignRandomOpponentDriverProfiles();
+        assignRandomDriverProfiles(true);
     }
 
-    private void assignRandomOpponentDriverProfiles() {
+    private void assignRandomDriverProfiles(boolean includePlayer) {
         List<String> availablePolicyIds = new ArrayList<String>();
-        int opponentCount = 0;
+        int driverCount = 0;
         for (int i = 0; i < roster.size; i++) {
             CarTemplate template = roster.get(i);
-            if (!template.playerControlled) {
-                opponentCount++;
+            if (includePlayer || !template.playerControlled) {
+                driverCount++;
             }
         }
 
@@ -1771,12 +1771,12 @@ public class RatassGame extends ApplicationAdapter {
 
         List<String> assignedPolicyIds =
                 roundDriverProfileSelector.selectUnique(
-                        availablePolicyIds, null, opponentCount);
+                        availablePolicyIds, null, driverCount);
 
         int policyIndex = 0;
         for (int i = 0; i < roster.size; i++) {
             CarTemplate template = roster.get(i);
-            if (template.playerControlled) {
+            if (!includePlayer && template.playerControlled) {
                 continue;
             }
             RlPolicy policy;
@@ -1803,7 +1803,7 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
         if (policy == null) {
-            assignRandomOpponentDriverProfiles();
+            assignRandomDriverProfiles(false);
         }
     }
 
