@@ -156,13 +156,12 @@ public class RatassGame extends ApplicationAdapter {
     private static final int OPTIONS_THEME_SELECTION = 0;
     private static final int OPTIONS_CARS_SELECTION = 1;
     private static final int OPTIONS_PLAYER_CAR_SELECTION = 2;
-    private static final int OPTIONS_DRIVER_POLICY_SELECTION = 3;
-    private static final int OPTIONS_LAPS_SELECTION = 4;
-    private static final int OPTIONS_CAMERA_SELECTION = 5;
-    private static final int OPTIONS_ZOOM_SELECTION = 6;
-    private static final int OPTIONS_MUSIC_SELECTION = 7;
-    private static final int OPTIONS_SOUND_EFFECTS_SELECTION = 8;
-    private static final int OPTIONS_BACK_SELECTION = 9;
+    private static final int OPTIONS_LAPS_SELECTION = 3;
+    private static final int OPTIONS_CAMERA_SELECTION = 4;
+    private static final int OPTIONS_ZOOM_SELECTION = 5;
+    private static final int OPTIONS_MUSIC_SELECTION = 6;
+    private static final int OPTIONS_SOUND_EFFECTS_SELECTION = 7;
+    private static final int OPTIONS_BACK_SELECTION = 8;
     private static final int MAIN_MENU_NEW_GAME_SELECTION = 0;
     private static final int MAIN_MENU_SANDBOX_SELECTION = 1;
     private static final int MAIN_MENU_MAPS_SELECTION = 2;
@@ -295,8 +294,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final int SANDBOX_PHYSICS_WHEEL_GRIP = 3;
     private static final int SANDBOX_PHYSICS_MASS_MULTIPLIER = 4;
     private static final int SANDBOX_PHYSICS_TUNER_COUNT = 5;
-    private static final int SANDBOX_TUNER_WEATHER_ROW = SANDBOX_PHYSICS_TUNER_COUNT;
-    private static final int SANDBOX_TUNER_ROW_COUNT = SANDBOX_PHYSICS_TUNER_COUNT + 1;
+    private static final int SANDBOX_TUNER_PROFILE_ROW = SANDBOX_PHYSICS_TUNER_COUNT;
+    private static final int SANDBOX_TUNER_WEATHER_ROW = SANDBOX_TUNER_PROFILE_ROW + 1;
+    private static final int SANDBOX_TUNER_ROW_COUNT = SANDBOX_PHYSICS_TUNER_COUNT + 2;
     private static final String[] SANDBOX_PHYSICS_TUNER_LABELS = {
             "horsepower",
             "brake",
@@ -869,9 +869,6 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle optionsPlayerCarBounds = new Rectangle();
     private final Rectangle optionsPlayerCarPrevBounds = new Rectangle();
     private final Rectangle optionsPlayerCarNextBounds = new Rectangle();
-    private final Rectangle optionsDriverPolicyBounds = new Rectangle();
-    private final Rectangle optionsDriverPolicyPrevBounds = new Rectangle();
-    private final Rectangle optionsDriverPolicyNextBounds = new Rectangle();
     private final Rectangle optionsLapsBounds = new Rectangle();
     private final Rectangle optionsLapsPrevBounds = new Rectangle();
     private final Rectangle optionsLapsNextBounds = new Rectangle();
@@ -905,6 +902,8 @@ public class RatassGame extends ApplicationAdapter {
             createRectangleArray(ROGUELITE_COLLECTION_MAX_CARDS_PER_PAGE);
     private final Rectangle sandboxPhysicsTunerBounds = new Rectangle();
     private final Rectangle sandboxPhysicsResetBounds = new Rectangle();
+    private final Rectangle sandboxProfilePrevBounds = new Rectangle();
+    private final Rectangle sandboxProfileNextBounds = new Rectangle();
     private final Rectangle sandboxWeatherPrevBounds = new Rectangle();
     private final Rectangle sandboxWeatherNextBounds = new Rectangle();
     private final Rectangle[] sandboxPhysicsDecreaseBounds =
@@ -1642,8 +1641,9 @@ public class RatassGame extends ApplicationAdapter {
         int playerVisualIndex =
                 clampPlayerCarIndex(selectedPlayerCarIndex, getAvailableCarVisualCount());
         CarVisual playerVisual = getCarVisual(playerVisualIndex);
-        RlPolicy playerPolicy = getRlPolicyById(getSelectedDriverPolicyId());
-        boolean playerAutopilot = playerPolicy != null;
+        RlPolicy sandboxPolicy =
+                sandboxMode ? getRlPolicyById(getSelectedDriverPolicyId()) : null;
+        boolean playerAutopilot = sandboxPolicy != null;
         addRosterTemplate(
                 "You",
                 true,
@@ -1652,14 +1652,14 @@ public class RatassGame extends ApplicationAdapter {
                 "player",
                 false,
                 playerAutopilot,
-                playerPolicy,
+                sandboxPolicy,
                 getCarPerformance(playerVisualIndex).physics);
 
         int enemyCount = getConfiguredEnemyCount();
         for (int enemyIndex = 0; enemyIndex < enemyCount; enemyIndex++) {
             int visualIndex = getEnemyCarVisualIndex(enemyIndex);
             CarVisual visual = getCarVisual(visualIndex);
-            RlPolicy enemyPolicy = rlEnemyPolicy;
+            RlPolicy enemyPolicy = sandboxPolicy == null ? rlEnemyPolicy : sandboxPolicy;
             boolean modelControlledEnemy = enemyPolicy != null;
             addRosterTemplate(
                     getEnemyName(enemyIndex),
@@ -1744,15 +1744,20 @@ public class RatassGame extends ApplicationAdapter {
         if (rlTrainingMode) {
             return;
         }
+        if (sandboxMode) {
+            applySelectedSandboxDriverProfile();
+            return;
+        }
 
+        assignRandomOpponentDriverProfiles();
+    }
+
+    private void assignRandomOpponentDriverProfiles() {
         List<String> availablePolicyIds = new ArrayList<String>();
-        String playerPolicyId = null;
         int opponentCount = 0;
         for (int i = 0; i < roster.size; i++) {
             CarTemplate template = roster.get(i);
-            if (template.playerControlled && template.modelControlled) {
-                playerPolicyId = getSelectedDriverPolicyId();
-            } else if (!template.playerControlled && template.modelControlled) {
+            if (!template.playerControlled) {
                 opponentCount++;
             }
         }
@@ -1766,20 +1771,50 @@ public class RatassGame extends ApplicationAdapter {
 
         List<String> assignedPolicyIds =
                 roundDriverProfileSelector.selectUnique(
-                        availablePolicyIds, playerPolicyId, opponentCount);
+                        availablePolicyIds, null, opponentCount);
 
         int policyIndex = 0;
         for (int i = 0; i < roster.size; i++) {
             CarTemplate template = roster.get(i);
-            if (template.playerControlled || !template.modelControlled) {
+            if (template.playerControlled) {
                 continue;
             }
+            RlPolicy policy;
             if (policyIndex < assignedPolicyIds.size()) {
-                template.rlPolicy =
-                        getRlPolicyById(assignedPolicyIds.get(policyIndex++));
+                policy = getRlPolicyById(assignedPolicyIds.get(policyIndex++));
             } else {
-                template.rlPolicy = rlEnemyPolicy;
+                policy = rlEnemyPolicy;
             }
+            setTemplateDriverPolicy(template, policy != null, policy);
+        }
+    }
+
+    private void applySelectedSandboxDriverProfile() {
+        if (!sandboxMode) {
+            return;
+        }
+        RlPolicy policy = getRlPolicyById(getSelectedDriverPolicyId());
+        for (int i = 0; i < roster.size; i++) {
+            CarTemplate template = roster.get(i);
+            if (template.playerControlled) {
+                setTemplateDriverPolicy(template, policy != null, policy);
+            } else if (policy != null) {
+                setTemplateDriverPolicy(template, true, policy);
+            }
+        }
+        if (policy == null) {
+            assignRandomOpponentDriverProfiles();
+        }
+    }
+
+    private void setTemplateDriverPolicy(
+            CarTemplate template,
+            boolean modelControlled,
+            RlPolicy policy) {
+        template.modelControlled = modelControlled;
+        template.rlPolicy = policy;
+        if (template.currentCar != null) {
+            template.currentCar.modelControlled = modelControlled;
         }
     }
 
@@ -3195,6 +3230,15 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
+        if (sandboxProfilePrevBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            changeSandboxDriverProfile(-1);
+            return;
+        }
+        if (sandboxProfileNextBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            changeSandboxDriverProfile(1);
+            return;
+        }
+
         if (sandboxWeatherPrevBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
             cycleSandboxWeather(-1);
             return;
@@ -3253,6 +3297,23 @@ public class RatassGame extends ApplicationAdapter {
                     buttonSize,
                     buttonSize);
         }
+        float profileRowY =
+                rowTop
+                        - (SANDBOX_TUNER_PROFILE_ROW + 1)
+                                * SANDBOX_PHYSICS_TUNER_ROW_HEIGHT;
+        float profileButtonY =
+                profileRowY
+                        + (SANDBOX_PHYSICS_TUNER_ROW_HEIGHT - buttonSize) * 0.5f;
+        sandboxProfilePrevBounds.set(
+                x + width - buttonSize * 2f - 17f,
+                profileButtonY,
+                buttonSize,
+                buttonSize);
+        sandboxProfileNextBounds.set(
+                x + width - buttonSize - 8f,
+                profileButtonY,
+                buttonSize,
+                buttonSize);
         float weatherRowY =
                 rowTop
                         - (SANDBOX_TUNER_WEATHER_ROW + 1)
@@ -3535,15 +3596,6 @@ public class RatassGame extends ApplicationAdapter {
                     || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
                 changePlayerCar(1);
             }
-        } else if (optionsMenuSelection == OPTIONS_DRIVER_POLICY_SELECTION && canChangeCarSetupOptions()) {
-            if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
-                    || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
-                changeDriverPolicy(-1);
-            }
-            if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)
-                    || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
-                changeDriverPolicy(1);
-            }
         } else if (optionsMenuSelection == OPTIONS_LAPS_SELECTION && canChangeCarSetupOptions()) {
             if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)
                     || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
@@ -3597,8 +3649,6 @@ public class RatassGame extends ApplicationAdapter {
                 changeCarCount(1);
             } else if (optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION && canChangeCarSetupOptions()) {
                 changePlayerCar(1);
-            } else if (optionsMenuSelection == OPTIONS_DRIVER_POLICY_SELECTION && canChangeCarSetupOptions()) {
-                changeDriverPolicy(1);
             } else if (optionsMenuSelection == OPTIONS_LAPS_SELECTION && canChangeCarSetupOptions()) {
                 changeRaceLapCount(1);
             } else if (optionsMenuSelection == OPTIONS_CAMERA_SELECTION) {
@@ -3805,14 +3855,6 @@ public class RatassGame extends ApplicationAdapter {
             changePlayerCar(1);
         } else if (carSetupEnabled && selectPlayerCarFromPreview(x, y)) {
             optionsMenuSelection = OPTIONS_PLAYER_CAR_SELECTION;
-        } else if (carSetupEnabled && optionsDriverPolicyPrevBounds.contains(x, y)) {
-            optionsMenuSelection = OPTIONS_DRIVER_POLICY_SELECTION;
-            changeDriverPolicy(-1);
-        } else if (carSetupEnabled
-                && (optionsDriverPolicyNextBounds.contains(x, y)
-                        || optionsDriverPolicyBounds.contains(x, y))) {
-            optionsMenuSelection = OPTIONS_DRIVER_POLICY_SELECTION;
-            changeDriverPolicy(1);
         } else if (carSetupEnabled && optionsLapsPrevBounds.contains(x, y)) {
             optionsMenuSelection = OPTIONS_LAPS_SELECTION;
             changeRaceLapCount(-1);
@@ -4064,89 +4106,74 @@ public class RatassGame extends ApplicationAdapter {
                 rowY - (rowHeight + rowGap) * 2f,
                 stepButtonWidth,
                 rowHeight);
-        optionsDriverPolicyBounds.set(
-                rowX,
-                rowY - (rowHeight + rowGap) * 3f,
-                rowWidth,
-                rowHeight);
-        optionsDriverPolicyPrevBounds.set(
-                rowX,
-                rowY - (rowHeight + rowGap) * 3f,
-                stepButtonWidth,
-                rowHeight);
-        optionsDriverPolicyNextBounds.set(
-                rowX + rowWidth - stepButtonWidth,
-                rowY - (rowHeight + rowGap) * 3f,
-                stepButtonWidth,
-                rowHeight);
         optionsLapsBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 4f,
+                rowY - (rowHeight + rowGap) * 3f,
                 rowWidth,
                 rowHeight);
         optionsLapsPrevBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 4f,
+                rowY - (rowHeight + rowGap) * 3f,
                 stepButtonWidth,
                 rowHeight);
         optionsLapsNextBounds.set(
                 rowX + rowWidth - stepButtonWidth,
-                rowY - (rowHeight + rowGap) * 4f,
+                rowY - (rowHeight + rowGap) * 3f,
                 stepButtonWidth,
                 rowHeight);
         optionsCameraBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 5f,
+                rowY - (rowHeight + rowGap) * 4f,
                 rowWidth,
                 rowHeight);
         optionsZoomBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 6f,
+                rowY - (rowHeight + rowGap) * 5f,
                 rowWidth,
                 rowHeight);
         optionsZoomOutBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 6f,
+                rowY - (rowHeight + rowGap) * 5f,
                 stepButtonWidth,
                 rowHeight);
         optionsZoomInBounds.set(
                 rowX + rowWidth - stepButtonWidth,
-                rowY - (rowHeight + rowGap) * 6f,
+                rowY - (rowHeight + rowGap) * 5f,
                 stepButtonWidth,
                 rowHeight);
         optionsMusicBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 7f,
+                rowY - (rowHeight + rowGap) * 6f,
                 rowWidth,
                 rowHeight);
         optionsMusicDownBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 7f,
+                rowY - (rowHeight + rowGap) * 6f,
                 stepButtonWidth,
                 rowHeight);
         optionsMusicUpBounds.set(
                 rowX + rowWidth - stepButtonWidth,
-                rowY - (rowHeight + rowGap) * 7f,
+                rowY - (rowHeight + rowGap) * 6f,
                 stepButtonWidth,
                 rowHeight);
         optionsSoundEffectsBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 8f,
+                rowY - (rowHeight + rowGap) * 7f,
                 rowWidth,
                 rowHeight);
         optionsSoundEffectsDownBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 8f,
+                rowY - (rowHeight + rowGap) * 7f,
                 stepButtonWidth,
                 rowHeight);
         optionsSoundEffectsUpBounds.set(
                 rowX + rowWidth - stepButtonWidth,
-                rowY - (rowHeight + rowGap) * 8f,
+                rowY - (rowHeight + rowGap) * 7f,
                 stepButtonWidth,
                 rowHeight);
         optionsBackBounds.set(
                 rowX,
-                rowY - (rowHeight + rowGap) * 9f,
+                rowY - (rowHeight + rowGap) * 8f,
                 rowWidth,
                 rowHeight);
     }
@@ -4410,7 +4437,7 @@ public class RatassGame extends ApplicationAdapter {
         saveMenuSettings();
     }
 
-    private void changeDriverPolicy(int delta) {
+    private void changeSandboxDriverProfile(int delta) {
         if (DRIVER_POLICY_CHOICES.length == 0) {
             selectedDriverPolicyIndex = DEFAULT_DRIVER_POLICY_INDEX;
             return;
@@ -4419,6 +4446,7 @@ public class RatassGame extends ApplicationAdapter {
         selectedDriverPolicyIndex =
                 (selectedDriverPolicyIndex + delta + DRIVER_POLICY_CHOICES.length)
                         % DRIVER_POLICY_CHOICES.length;
+        applySelectedSandboxDriverProfile();
         saveMenuSettings();
     }
 
@@ -5243,10 +5271,6 @@ public class RatassGame extends ApplicationAdapter {
                 optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION,
                 carSetupEnabled);
         drawOptionRow(
-                optionsDriverPolicyBounds,
-                optionsMenuSelection == OPTIONS_DRIVER_POLICY_SELECTION,
-                carSetupEnabled);
-        drawOptionRow(
                 optionsLapsBounds,
                 optionsMenuSelection == OPTIONS_LAPS_SELECTION,
                 carSetupEnabled);
@@ -5274,14 +5298,6 @@ public class RatassGame extends ApplicationAdapter {
                     optionsPlayerCarNextBounds,
                     ">",
                     optionsMenuSelection == OPTIONS_PLAYER_CAR_SELECTION);
-            drawMenuStepButton(
-                    optionsDriverPolicyPrevBounds,
-                    "<",
-                    optionsMenuSelection == OPTIONS_DRIVER_POLICY_SELECTION);
-            drawMenuStepButton(
-                    optionsDriverPolicyNextBounds,
-                    ">",
-                    optionsMenuSelection == OPTIONS_DRIVER_POLICY_SELECTION);
             drawMenuStepButton(optionsLapsPrevBounds, "<", optionsMenuSelection == OPTIONS_LAPS_SELECTION);
             drawMenuStepButton(optionsLapsNextBounds, ">", optionsMenuSelection == OPTIONS_LAPS_SELECTION);
         }
@@ -5343,22 +5359,6 @@ public class RatassGame extends ApplicationAdapter {
                         - optionsPlayerCarNextBounds.width
                         - 18f,
                 optionsPlayerCarBounds.y + optionsPlayerCarBounds.height * 0.62f);
-
-        setOptionLabelColor(carSetupEnabled);
-        hudFont.draw(
-                spriteBatch,
-                "Driver",
-                optionsDriverPolicyBounds.x + optionsDriverPolicyPrevBounds.width + 18f,
-                optionsDriverPolicyBounds.y + optionsDriverPolicyBounds.height * 0.62f);
-        setOptionValueColor(carSetupEnabled);
-        drawTextRight(
-                hudFont,
-                buildDriverPolicyMenuValue(),
-                optionsDriverPolicyBounds.x
-                        + optionsDriverPolicyBounds.width
-                        - optionsDriverPolicyNextBounds.width
-                        - 18f,
-                optionsDriverPolicyBounds.y + optionsDriverPolicyBounds.height * 0.62f);
 
         setOptionLabelColor(carSetupEnabled);
         hudFont.draw(
@@ -5448,10 +5448,6 @@ public class RatassGame extends ApplicationAdapter {
         }
         int displayIndex = clampPlayerCarIndex(selectedPlayerCarIndex, carCount) + 1;
         return displayIndex + "/" + carCount;
-    }
-
-    private String buildDriverPolicyMenuValue() {
-        return getSelectedDriverPolicyChoice().displayName;
     }
 
     private String buildRaceLapsMenuValue() {
@@ -9889,14 +9885,8 @@ public class RatassGame extends ApplicationAdapter {
                     rowY + 2f,
                     sandboxPhysicsTunerBounds.width - 14f,
                     SANDBOX_PHYSICS_TUNER_ROW_HEIGHT - 4f);
-            Rectangle decreaseBounds =
-                    i == SANDBOX_TUNER_WEATHER_ROW
-                            ? sandboxWeatherPrevBounds
-                            : sandboxPhysicsDecreaseBounds[i];
-            Rectangle increaseBounds =
-                    i == SANDBOX_TUNER_WEATHER_ROW
-                            ? sandboxWeatherNextBounds
-                            : sandboxPhysicsIncreaseBounds[i];
+            Rectangle decreaseBounds = getSandboxTunerDecreaseBounds(i);
+            Rectangle increaseBounds = getSandboxTunerIncreaseBounds(i);
             drawSandboxPhysicsTunerButtonShape(decreaseBounds, 0.12f, 0.16f, 0.20f);
             drawSandboxPhysicsTunerButtonShape(increaseBounds, 0.15f, 0.20f, 0.16f);
         }
@@ -9938,42 +9928,76 @@ public class RatassGame extends ApplicationAdapter {
             hudFont.setColor(0.82f, 0.88f, 0.91f, 1f);
             hudFont.draw(
                     spriteBatch,
-                    i == SANDBOX_TUNER_WEATHER_ROW
-                            ? "weather"
-                            : SANDBOX_PHYSICS_TUNER_LABELS[i],
+                    getSandboxTunerLabel(i),
                     sandboxPhysicsTunerBounds.x + 12f,
                     textY);
             hudFont.setColor(0.98f, 0.92f, 0.76f, 1f);
             drawTextCentered(
                     hudFont,
-                    i == SANDBOX_TUNER_WEATHER_ROW
-                            ? currentWeather.displayName
-                            : formatSandboxPhysicsTuningValue(i),
+                    getSandboxTunerValue(i),
                     sandboxPhysicsTunerBounds.x
                             + sandboxPhysicsTunerBounds.width
-                            - (i == SANDBOX_TUNER_WEATHER_ROW ? 118f : 72f),
+                            - (isSandboxTunerChoiceRow(i) ? 118f : 72f),
                     textY);
-            Rectangle decreaseBounds =
-                    i == SANDBOX_TUNER_WEATHER_ROW
-                            ? sandboxWeatherPrevBounds
-                            : sandboxPhysicsDecreaseBounds[i];
-            Rectangle increaseBounds =
-                    i == SANDBOX_TUNER_WEATHER_ROW
-                            ? sandboxWeatherNextBounds
-                            : sandboxPhysicsIncreaseBounds[i];
+            Rectangle decreaseBounds = getSandboxTunerDecreaseBounds(i);
+            Rectangle increaseBounds = getSandboxTunerIncreaseBounds(i);
             hudFont.setColor(0.94f, 0.96f, 0.98f, 1f);
             drawTextCentered(
                     hudFont,
-                    i == SANDBOX_TUNER_WEATHER_ROW ? "<" : "-",
+                    isSandboxTunerChoiceRow(i) ? "<" : "-",
                     decreaseBounds.x + decreaseBounds.width * 0.5f,
                     decreaseBounds.y + decreaseBounds.height * 0.70f);
             drawTextCentered(
                     hudFont,
-                    i == SANDBOX_TUNER_WEATHER_ROW ? ">" : "+",
+                    isSandboxTunerChoiceRow(i) ? ">" : "+",
                     increaseBounds.x + increaseBounds.width * 0.5f,
                     increaseBounds.y + increaseBounds.height * 0.70f);
         }
         spriteBatch.end();
+    }
+
+    private Rectangle getSandboxTunerDecreaseBounds(int row) {
+        if (row == SANDBOX_TUNER_PROFILE_ROW) {
+            return sandboxProfilePrevBounds;
+        }
+        if (row == SANDBOX_TUNER_WEATHER_ROW) {
+            return sandboxWeatherPrevBounds;
+        }
+        return sandboxPhysicsDecreaseBounds[row];
+    }
+
+    private Rectangle getSandboxTunerIncreaseBounds(int row) {
+        if (row == SANDBOX_TUNER_PROFILE_ROW) {
+            return sandboxProfileNextBounds;
+        }
+        if (row == SANDBOX_TUNER_WEATHER_ROW) {
+            return sandboxWeatherNextBounds;
+        }
+        return sandboxPhysicsIncreaseBounds[row];
+    }
+
+    private String getSandboxTunerLabel(int row) {
+        if (row == SANDBOX_TUNER_PROFILE_ROW) {
+            return "profile";
+        }
+        if (row == SANDBOX_TUNER_WEATHER_ROW) {
+            return "weather";
+        }
+        return SANDBOX_PHYSICS_TUNER_LABELS[row];
+    }
+
+    private String getSandboxTunerValue(int row) {
+        if (row == SANDBOX_TUNER_PROFILE_ROW) {
+            return getSelectedDriverPolicyChoice().displayName;
+        }
+        if (row == SANDBOX_TUNER_WEATHER_ROW) {
+            return currentWeather.displayName;
+        }
+        return formatSandboxPhysicsTuningValue(row);
+    }
+
+    private boolean isSandboxTunerChoiceRow(int row) {
+        return row == SANDBOX_TUNER_PROFILE_ROW || row == SANDBOX_TUNER_WEATHER_ROW;
     }
 
     private void drawSandboxPhysicsTunerButtonShape(
@@ -12435,7 +12459,7 @@ public class RatassGame extends ApplicationAdapter {
         private final String name;
         private final boolean playerControlled;
         private final boolean externallyControlled;
-        private final boolean modelControlled;
+        private boolean modelControlled;
         private final Color color;
         private final AiControlDecision externalControlDecision = new AiControlDecision();
         private final AiControlDecision rawExternalControlDecision = new AiControlDecision();
@@ -16800,7 +16824,7 @@ public class RatassGame extends ApplicationAdapter {
         private final CarVisual visual;
         private final String statsLabel;
         private final boolean externallyControlled;
-        private final boolean modelControlled;
+        private boolean modelControlled;
         private RlPolicy rlPolicy;
         private final CarPhysics basePhysics;
         private CarPhysics physics;
