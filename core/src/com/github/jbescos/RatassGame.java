@@ -12074,6 +12074,13 @@ public class RatassGame extends ApplicationAdapter {
 
         @Override
         public void preSolve(Contact contact, Manifold oldManifold) {
+            Car carA = contactCar(contact.getFixtureA());
+            Car carB = contactCar(contact.getFixtureB());
+            if (carA == null || carB == null) {
+                return;
+            }
+
+            contact.setFriction(Car.CAR_CONTACT_FRICTION);
         }
 
         @Override
@@ -12421,6 +12428,7 @@ public class RatassGame extends ApplicationAdapter {
         private static final float SOFT_SPEED_LIMIT_ACCEL = 7.5f;
         private static final float MIN_COLLISION_RESPONSE_IMPULSE = 4.4f;
         private static final float MIN_COLLISION_RESPONSE_SPEED = 1.0f;
+        private static final float CAR_CONTACT_FRICTION = 0.05f;
         private static final float IMPACT_STRENGTH_SPEED_FACTOR = 3.9f;
         private static final float INCOMING_SPEED_REBOUND_BOOST_FACTOR = 0.025f;
         private static final float MAX_INCOMING_SPEED_REBOUND_BOOST = 0.20f;
@@ -14282,7 +14290,7 @@ public class RatassGame extends ApplicationAdapter {
             if (reverseDriveActive) {
                 return true;
             }
-            if (body.getLinearVelocity().len() > REVERSE_ENGAGE_STOP_SPEED) {
+            if (Math.abs(signedForwardSpeed) > REVERSE_ENGAGE_STOP_SPEED) {
                 return false;
             }
 
