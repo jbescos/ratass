@@ -4,7 +4,12 @@ final class CleanMomentumEffect extends RogueliteUpgradeEffect {
     private float momentum;
 
     CleanMomentumEffect(int level) {
-        super(level);
+        super(RogueliteCardId.CLEAN_MOMENTUM, level);
+    }
+
+    @Override
+    boolean isActive() {
+        return momentum > 0.01f;
     }
 
     @Override

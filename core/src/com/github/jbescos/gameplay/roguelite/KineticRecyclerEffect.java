@@ -6,8 +6,18 @@ final class KineticRecyclerEffect extends RogueliteUpgradeEffect {
     private float recoveryStrength;
 
     KineticRecyclerEffect(int level, boolean synergy) {
-        super(level);
+        super(RogueliteCardId.KINETIC_RECYCLER, level);
         this.synergy = synergy;
+    }
+
+    @Override
+    boolean isActive() {
+        return recoveryTimer > 0f;
+    }
+
+    @Override
+    int activeDisplayPriority() {
+        return 2;
     }
 
     @Override

@@ -5,8 +5,18 @@ final class OvertakeInjectorEffect extends RogueliteUpgradeEffect {
     private float boostTimer;
 
     OvertakeInjectorEffect(int level, boolean synergy) {
-        super(level);
+        super(RogueliteCardId.OVERTAKE_INJECTOR, level);
         this.synergy = synergy;
+    }
+
+    @Override
+    boolean isActive() {
+        return boostTimer > 0f;
+    }
+
+    @Override
+    int activeDisplayPriority() {
+        return 2;
     }
 
     @Override

@@ -4,8 +4,18 @@ final class DraftReceiverEffect extends RogueliteUpgradeEffect {
     private final boolean synergy;
 
     DraftReceiverEffect(int level, boolean synergy) {
-        super(level);
+        super(RogueliteCardId.DRAFT_RECEIVER, level);
         this.synergy = synergy;
+    }
+
+    @Override
+    boolean isActive() {
+        return latestFrame != null && latestFrame.slipstreamBoost > 0.01f;
+    }
+
+    @Override
+    int activeDisplayPriority() {
+        return 1;
     }
 
     @Override

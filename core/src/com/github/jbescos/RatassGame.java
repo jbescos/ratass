@@ -49,6 +49,7 @@ import com.github.jbescos.gameplay.SpawnPoint;
 import com.github.jbescos.gameplay.maps.ArenaMaps;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardCatalog;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardDefinition;
+import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardInventory;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
 import com.github.jbescos.gameplay.roguelite.RogueliteCarUpgrades;
@@ -517,6 +518,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SIDEBAR_MINIMAP_MARKER_RADIUS = 3.2f;
     private static final float SIDEBAR_MINIMAP_PLAYER_RING_RADIUS = 6.2f;
     private static final float SIDEBAR_MINIMAP_BIG_CAR_RADIUS_BOOST = 1.4f;
+    private static final float SIDEBAR_TELEMETRY_CARD_HEIGHT = 154f;
     private static final float SIDEBAR_LEADERBOARD_COMPACT_ROW_STEP = 15.5f;
     private static final float SIDEBAR_CAMERA_TARGET_ICON_WIDTH = 18f;
     private static final float HUD_FONT_SCALE = 1f;
@@ -9139,7 +9141,9 @@ public class RatassGame extends ApplicationAdapter {
             drawSidebarMinimap(sidebarX, sidebarWidth, hudHeight, currentTheme());
         }
 
-        drawCarTelemetryBars(playfieldWidth, hudHeight);
+        if (sandboxMode) {
+            drawCarTelemetryBars(playfieldWidth, hudHeight);
+        }
         drawRogueliteCardsButton(playfieldWidth, hudHeight);
 
         spriteBatch.begin();
@@ -9165,7 +9169,7 @@ public class RatassGame extends ApplicationAdapter {
         drawSidebarSummary(sidebarX, sidebarWidth, hudHeight);
         drawSidebarTables(sidebarX, sidebarWidth, hudHeight);
         drawSidebarMinimapOverlay(sidebarX, sidebarWidth, hudHeight);
-        drawSidebarFooter(sidebarX, sidebarWidth);
+        drawSidebarTelemetry(sidebarX, sidebarWidth);
         drawCarLabels();
         if (sandboxMode) {
             drawSandboxRlSensorHudLabels(playfieldWidth, hudHeight);
@@ -10091,7 +10095,9 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.rect(sidebarX, 0f, 2f, hudHeight);
 
         float summaryCardHeight = getSidebarSummaryCardHeight();
-        boolean hasFooterCard = buildObjectiveText().length() > 0;
+        float telemetryX = sidebarX + SIDEBAR_CARD_MARGIN;
+        float telemetryWidth = sidebarWidth - SIDEBAR_CARD_MARGIN * 2f;
+        float telemetryHeight = getSidebarTelemetryCardHeight();
 
         shapeRenderer.setColor(0.10f, 0.13f, 0.17f, 0.95f);
         shapeRenderer.rect(
@@ -10099,13 +10105,27 @@ public class RatassGame extends ApplicationAdapter {
                 hudHeight - 22f - summaryCardHeight,
                 sidebarWidth - SIDEBAR_CARD_MARGIN * 2f,
                 summaryCardHeight);
-        if (hasFooterCard) {
-            shapeRenderer.rect(
-                    sidebarX + SIDEBAR_CARD_MARGIN,
-                    10f,
-                    sidebarWidth - SIDEBAR_CARD_MARGIN * 2f,
-                    getSidebarFooterCardHeight());
+        shapeRenderer.rect(telemetryX, 10f, telemetryWidth, telemetryHeight);
+
+        Car cameraTarget = getCameraTargetCar();
+        boolean cardEffectActive = cameraTarget != null
+                && !cameraTarget.rogueliteUpgrades.getActiveCardIds().isEmpty();
+        if (cardEffectActive) {
+            float pulse = 0.72f + MathUtils.sin(effectClock * 8f) * 0.18f;
+            shapeRenderer.setColor(0.98f, 0.72f, 0.22f, pulse);
+        } else if (cameraTarget != null && cameraTarget.template != null) {
+            Color targetColor = cameraTarget.template.color;
+            shapeRenderer.setColor(targetColor.r, targetColor.g, targetColor.b, 0.72f);
+        } else {
+            shapeRenderer.setColor(0.48f, 0.58f, 0.65f, 0.56f);
         }
+        shapeRenderer.rect(
+                telemetryX,
+                10f + telemetryHeight - 3f,
+                telemetryWidth,
+                3f);
+
+        shapeRenderer.setColor(0.10f, 0.13f, 0.17f, 0.95f);
         if (getSidebarMinimapBounds(sidebarX, sidebarWidth, hudHeight, sidebarMinimapBounds)) {
             shapeRenderer.rect(
                     sidebarMinimapBounds.x,
@@ -10533,25 +10553,156 @@ public class RatassGame extends ApplicationAdapter {
                 sidebarMinimapBounds.y + sidebarMinimapBounds.height - SIDEBAR_MINIMAP_PADDING);
     }
 
-    private void drawSidebarFooter(float sidebarX, float sidebarWidth) {
+    private void drawSidebarTelemetry(float sidebarX, float sidebarWidth) {
         if (sidebarWidth <= 0f) {
             return;
         }
 
-        String objectiveText = buildObjectiveText();
-        if (objectiveText.length() == 0) {
+        Car target = getCameraTargetCar();
+        if (target == null || target.template == null || target.body == null) {
             return;
         }
 
-        leaderboardFont.setColor(0.93f, 0.84f, 0.49f, 1f);
+        float x = sidebarX + SIDEBAR_CONTENT_MARGIN;
+        float contentWidth = sidebarWidth - SIDEBAR_CONTENT_MARGIN * 2f;
+        float columnWidth = contentWidth * 0.5f;
+        float top = 10f + getSidebarTelemetryCardHeight() - 12f;
+
+        labelFont.setColor(0.55f, 0.66f, 0.72f, 1f);
+        labelFont.draw(spriteBatch, "WATCHING", x, top);
+        leaderboardFont.setColor(0.96f, 0.93f, 0.84f, 1f);
+        String driverLabel = truncateTextToWidth(
+                leaderboardFont,
+                buildLeaderboardPlayerLabel(target.template),
+                contentWidth * 0.60f);
         leaderboardFont.draw(
                 spriteBatch,
-                objectiveText,
-                sidebarX + 18f,
-                10f + getSidebarFooterCardHeight() - 12f,
-                sidebarWidth - 36f,
+                driverLabel,
+                x,
+                top,
+                contentWidth,
+                Align.right,
+                false);
+
+        int speedKph = Math.round(target.body.getLinearVelocity().len() * 3.6f);
+        boolean onRoad = currentMap == null || currentMap.supports(target.body.getPosition());
+        hudFont.setColor(0.92f, 0.96f, 0.98f, 1f);
+        hudFont.draw(spriteBatch, speedKph + " km/h", x, top - 22f);
+        labelFont.setColor(
+                onRoad ? 0.48f : 1f,
+                onRoad ? 0.82f : 0.45f,
+                onRoad ? 0.60f : 0.34f,
+                1f);
+        labelFont.draw(
+                spriteBatch,
+                onRoad ? "ON ROAD" : "OFF ROAD",
+                x,
+                top - 22f,
+                contentWidth,
+                Align.right,
+                false);
+
+        float brake = target.getBrakeSignal();
+        float drive = MathUtils.clamp(Math.abs(target.lastThrottleCommand) - brake, 0f, 1f);
+        boolean reversing = target.reverseDriveActive && target.lastThrottleCommand < -0.001f;
+        drawSidebarTelemetryValue(
+                reversing ? "REV" : "THR",
+                Math.round(drive * 100f) + "%",
+                x,
+                top - 45f,
+                columnWidth);
+        drawSidebarTelemetryValue(
+                "BRK",
+                Math.round(brake * 100f) + "%",
+                x + columnWidth,
+                top - 45f,
+                columnWidth);
+
+        float steering = MathUtils.clamp(target.lastTurnCommand, -1f, 1f);
+        String steeringValue = Math.abs(steering) < 0.01f
+                ? "0%"
+                : (steering < 0f ? "L " : "R ")
+                        + Math.round(Math.abs(steering) * 100f)
+                        + "%";
+        drawSidebarTelemetryValue("STEER", steeringValue, x, top - 63f, columnWidth);
+        drawSidebarTelemetryValue(
+                "DRIFT",
+                Math.round(target.getLateralSlipSignal() * 100f) + "%",
+                x + columnWidth,
+                top - 63f,
+                columnWidth);
+
+        drawSidebarTelemetryValue(
+                "SLIPSTREAM",
+                Math.round(target.getSlipstreamBoost() * 100f) + "%",
+                x,
+                top - 81f,
+                contentWidth);
+
+        String objectiveText = buildObjectiveText();
+        labelFont.setColor(0.93f, 0.72f, 0.28f, 1f);
+        labelFont.draw(
+                spriteBatch,
+                objectiveText.length() > 0 ? "RACE STATUS" : "ACTIVE CARD EFFECTS",
+                x,
+                top - 103f);
+
+        String statusText = objectiveText.length() > 0
+                ? objectiveText
+                : buildActiveCardEffectsText(target, contentWidth);
+        boolean hasActiveCard = objectiveText.length() == 0
+                && !target.rogueliteUpgrades.getActiveCardIds().isEmpty();
+        leaderboardFont.setColor(
+                hasActiveCard ? 1f : 0.72f,
+                hasActiveCard ? 0.84f : 0.77f,
+                hasActiveCard ? 0.38f : 0.80f,
+                1f);
+        leaderboardFont.draw(
+                spriteBatch,
+                statusText,
+                x,
+                top - 121f,
+                contentWidth,
                 Align.left,
                 true);
+    }
+
+    private void drawSidebarTelemetryValue(
+            String label,
+            String value,
+            float x,
+            float y,
+            float width) {
+        labelFont.setColor(0.50f, 0.61f, 0.67f, 1f);
+        labelFont.draw(spriteBatch, label, x, y);
+        labelFont.setColor(0.88f, 0.92f, 0.94f, 1f);
+        labelFont.draw(spriteBatch, value, x, y, width - 6f, Align.right, false);
+    }
+
+    private String buildActiveCardEffectsText(Car target, float maxWidth) {
+        List<RogueliteCardId> activeCards = target.rogueliteUpgrades.getActiveCardIds();
+        if (activeCards.isEmpty()) {
+            return "No card effect active";
+        }
+
+        String text = RogueliteCardCatalog.get(activeCards.get(0)).getTitle();
+        for (int i = 1; i < activeCards.size(); i++) {
+            String remaining = i + 1 < activeCards.size()
+                    ? " +" + (activeCards.size() - i - 1)
+                    : "";
+            String candidate = text
+                    + "  /  "
+                    + RogueliteCardCatalog.get(activeCards.get(i)).getTitle();
+            glyphLayout.setText(leaderboardFont, candidate + remaining);
+            if (glyphLayout.width > maxWidth) {
+                return truncateTextToWidth(
+                        leaderboardFont,
+                        text + " +" + (activeCards.size() - i),
+                        maxWidth);
+            }
+            text = candidate;
+        }
+        return text;
     }
 
     private void drawCarTelemetryBars(float playfieldWidth, float hudHeight) {
@@ -11162,8 +11313,8 @@ public class RatassGame extends ApplicationAdapter {
         return Math.max(86f, hudFont.getLineHeight() + leaderboardFont.getLineHeight() * 5f);
     }
 
-    private float getSidebarFooterCardHeight() {
-        return Math.max(82f, leaderboardFont.getLineHeight() * 4.3f);
+    private float getSidebarTelemetryCardHeight() {
+        return Math.max(SIDEBAR_TELEMETRY_CARD_HEIGHT, leaderboardFont.getLineHeight() * 9.5f);
     }
 
     private float getSidebarLeaderboardStartY(float hudHeight) {
@@ -11423,10 +11574,8 @@ public class RatassGame extends ApplicationAdapter {
             float sidebarWidth,
             float hudHeight,
             Rectangle out) {
-        float footerReserve = buildObjectiveText().length() > 0
-                ? getSidebarFooterCardHeight() + SIDEBAR_MINIMAP_GAP
-                : 0f;
-        float bottom = 10f + footerReserve;
+        float telemetryReserve = getSidebarTelemetryCardHeight() + SIDEBAR_MINIMAP_GAP;
+        float bottom = 10f + telemetryReserve;
         float summaryBottom = hudHeight - 22f - getSidebarSummaryCardHeight();
         float availableHeight = summaryBottom - SIDEBAR_MINIMAP_GAP - bottom;
         if (sidebarWidth <= 0f
@@ -12606,6 +12755,7 @@ public class RatassGame extends ApplicationAdapter {
                     recentImpactTimer > 0f,
                     getLateralSlipSignal(),
                     speedRatio,
+                    slipstreamBoost,
                     routeProgress,
                     routeLength,
                     ROGUELITE_RECOVERY_MAX_ROUTE_GAIN);

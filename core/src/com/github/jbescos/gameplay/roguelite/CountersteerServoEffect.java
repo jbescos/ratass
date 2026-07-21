@@ -6,8 +6,18 @@ final class CountersteerServoEffect extends RogueliteUpgradeEffect {
     private boolean sliding;
 
     CountersteerServoEffect(int level, boolean synergy) {
-        super(level);
+        super(RogueliteCardId.COUNTERSTEER_SERVO, level);
         this.synergy = synergy;
+    }
+
+    @Override
+    boolean isActive() {
+        return sliding || exitGripTimer > 0f;
+    }
+
+    @Override
+    int activeDisplayPriority() {
+        return 2;
     }
 
     @Override

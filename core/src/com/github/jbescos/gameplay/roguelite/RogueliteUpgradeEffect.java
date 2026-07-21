@@ -1,10 +1,30 @@
 package com.github.jbescos.gameplay.roguelite;
 
 abstract class RogueliteUpgradeEffect {
+    private final RogueliteCardId cardId;
     protected final int level;
+    protected RogueliteDrivingFrame latestFrame;
 
-    RogueliteUpgradeEffect(int level) {
+    RogueliteUpgradeEffect(RogueliteCardId cardId, int level) {
+        this.cardId = cardId;
         this.level = level;
+    }
+
+    final void advance(float delta, float timerDelta, RogueliteDrivingFrame frame) {
+        latestFrame = frame;
+        update(delta, timerDelta, frame);
+    }
+
+    final RogueliteCardId getCardId() {
+        return cardId;
+    }
+
+    boolean isActive() {
+        return false;
+    }
+
+    int activeDisplayPriority() {
+        return 0;
     }
 
     void update(float delta, float timerDelta, RogueliteDrivingFrame frame) {

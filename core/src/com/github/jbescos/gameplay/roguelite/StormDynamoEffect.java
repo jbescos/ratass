@@ -6,8 +6,18 @@ final class StormDynamoEffect extends RogueliteUpgradeEffect {
     private float retentionTimer;
 
     StormDynamoEffect(int level, boolean synergy) {
-        super(level);
+        super(RogueliteCardId.STORM_DYNAMO, level);
         this.synergy = synergy;
+    }
+
+    @Override
+    boolean isActive() {
+        return charge > 0.01f;
+    }
+
+    @Override
+    int activeDisplayPriority() {
+        return 1;
     }
 
     @Override

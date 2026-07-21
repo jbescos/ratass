@@ -8,8 +8,18 @@ final class RecoveryDifferentialEffect extends RogueliteUpgradeEffect {
     private boolean wasOnRoad;
 
     RecoveryDifferentialEffect(int level, boolean synergy) {
-        super(level);
+        super(RogueliteCardId.RECOVERY_DIFFERENTIAL, level);
         this.synergy = synergy;
+    }
+
+    @Override
+    boolean isActive() {
+        return boostTimer > 0f;
+    }
+
+    @Override
+    int activeDisplayPriority() {
+        return 2;
     }
 
     @Override

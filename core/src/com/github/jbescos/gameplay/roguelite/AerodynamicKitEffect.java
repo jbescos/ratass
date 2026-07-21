@@ -2,7 +2,12 @@ package com.github.jbescos.gameplay.roguelite;
 
 final class AerodynamicKitEffect extends RogueliteUpgradeEffect {
     AerodynamicKitEffect(int level) {
-        super(level);
+        super(RogueliteCardId.AERODYNAMIC_KIT, level);
+    }
+
+    @Override
+    boolean isActive() {
+        return latestFrame != null && latestFrame.speedRatio > 0.05f;
     }
 
     @Override

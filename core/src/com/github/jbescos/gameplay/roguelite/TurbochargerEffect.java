@@ -5,8 +5,13 @@ final class TurbochargerEffect extends RogueliteUpgradeEffect {
     private float fullThrottleTimer;
 
     TurbochargerEffect(int level, boolean synergy) {
-        super(level);
+        super(RogueliteCardId.TURBOCHARGER, level);
         this.synergy = synergy;
+    }
+
+    @Override
+    boolean isActive() {
+        return latestFrame != null && latestFrame.onRoad && latestFrame.throttle > 0.05f;
     }
 
     @Override

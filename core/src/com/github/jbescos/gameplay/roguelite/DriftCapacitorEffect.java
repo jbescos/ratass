@@ -8,8 +8,18 @@ final class DriftCapacitorEffect extends RogueliteUpgradeEffect {
     private boolean drifting;
 
     DriftCapacitorEffect(int level, boolean synergy) {
-        super(level);
+        super(RogueliteCardId.DRIFT_CAPACITOR, level);
         this.synergy = synergy;
+    }
+
+    @Override
+    boolean isActive() {
+        return drifting || boostTimer > 0f;
+    }
+
+    @Override
+    int activeDisplayPriority() {
+        return 2;
     }
 
     @Override

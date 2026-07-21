@@ -7,6 +7,7 @@ final class RogueliteDrivingFrame {
     boolean recentlyImpacted;
     float slip;
     float speedRatio;
+    float slipstreamBoost;
     float routeProgress;
     float routeLength;
     float safeRecoveryRouteGain;
@@ -18,6 +19,7 @@ final class RogueliteDrivingFrame {
             boolean recentlyImpacted,
             float slip,
             float speedRatio,
+            float slipstreamBoost,
             float routeProgress,
             float routeLength,
             float safeRecoveryRouteGain) {
@@ -27,12 +29,13 @@ final class RogueliteDrivingFrame {
         this.recentlyImpacted = recentlyImpacted;
         this.slip = slip;
         this.speedRatio = speedRatio;
+        this.slipstreamBoost = slipstreamBoost;
         this.routeProgress = routeProgress;
         this.routeLength = routeLength;
         this.safeRecoveryRouteGain = safeRecoveryRouteGain;
     }
 
     void clear() {
-        set(0f, true, false, false, 0f, 0f, 0f, 0f, 0f);
+        set(0f, true, false, false, 0f, 0f, 0f, 0f, 0f, 0f);
     }
 }

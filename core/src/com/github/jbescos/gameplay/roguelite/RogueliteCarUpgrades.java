@@ -1,17 +1,23 @@
 package com.github.jbescos.gameplay.roguelite;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public final class RogueliteCarUpgrades {
     private final List<RogueliteUpgradeEffect> effects =
             new ArrayList<RogueliteUpgradeEffect>();
+    private final List<RogueliteCardId> activeCardIds =
+            new ArrayList<RogueliteCardId>();
+    private final List<RogueliteCardId> readOnlyActiveCardIds =
+            Collections.unmodifiableList(activeCardIds);
     private final RogueliteDrivingFrame frame = new RogueliteDrivingFrame();
     private float timedEffectDecay = 1f;
     private boolean overtakeInjectorEnabled;
 
     public void configure(RogueliteCardInventory inventory) {
         effects.clear();
+        activeCardIds.clear();
         frame.clear();
         timedEffectDecay = 1f;
         overtakeInjectorEnabled = false;
@@ -41,6 +47,10 @@ public final class RogueliteCarUpgrades {
         return overtakeInjectorEnabled;
     }
 
+    public List<RogueliteCardId> getActiveCardIds() {
+        return readOnlyActiveCardIds;
+    }
+
     public void update(
             float delta,
             float throttle,
@@ -49,6 +59,32 @@ public final class RogueliteCarUpgrades {
             boolean recentlyImpacted,
             float slip,
             float speedRatio,
+            float routeProgress,
+            float routeLength,
+            float safeRecoveryRouteGain) {
+        update(
+                delta,
+                throttle,
+                onRoad,
+                adverseWeather,
+                recentlyImpacted,
+                slip,
+                speedRatio,
+                0f,
+                routeProgress,
+                routeLength,
+                safeRecoveryRouteGain);
+    }
+
+    public void update(
+            float delta,
+            float throttle,
+            boolean onRoad,
+            boolean adverseWeather,
+            boolean recentlyImpacted,
+            float slip,
+            float speedRatio,
+            float slipstreamBoost,
             float routeProgress,
             float routeLength,
             float safeRecoveryRouteGain) {
@@ -62,13 +98,15 @@ public final class RogueliteCarUpgrades {
                 recentlyImpacted,
                 slip,
                 speedRatio,
+                slipstreamBoost,
                 routeProgress,
                 routeLength,
                 safeRecoveryRouteGain);
         float timerDelta = delta * timedEffectDecay;
         for (int i = 0; i < effects.size(); i++) {
-            effects.get(i).update(delta, timerDelta, frame);
+            effects.get(i).advance(delta, timerDelta, frame);
         }
+        refreshActiveCards();
     }
 
     public float adjustSurfaceGrip(float baseGripMultiplier) {
@@ -163,11 +201,29 @@ public final class RogueliteCarUpgrades {
         for (int i = 0; i < effects.size(); i++) {
             effects.get(i).onRacePositionImproved(positionsGained, slipstreamBoost);
         }
+        refreshActiveCards();
     }
 
     public void onCollision(float impactStrength) {
         for (int i = 0; i < effects.size(); i++) {
             effects.get(i).onCollision(impactStrength);
+        }
+        refreshActiveCards();
+    }
+
+    private void refreshActiveCards() {
+        activeCardIds.clear();
+        int highestPriority = 0;
+        for (int i = 0; i < effects.size(); i++) {
+            highestPriority = Math.max(highestPriority, effects.get(i).activeDisplayPriority());
+        }
+        for (int priority = highestPriority; priority >= 0; priority--) {
+            for (int i = 0; i < effects.size(); i++) {
+                RogueliteUpgradeEffect effect = effects.get(i);
+                if (effect.activeDisplayPriority() == priority && effect.isActive()) {
+                    activeCardIds.add(effect.getCardId());
+                }
+            }
         }
     }
 }

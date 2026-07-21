@@ -2,7 +2,17 @@ package com.github.jbescos.gameplay.roguelite;
 
 final class StormTiresEffect extends RogueliteUpgradeEffect {
     StormTiresEffect(int level) {
-        super(level);
+        super(RogueliteCardId.STORM_TIRES, level);
+    }
+
+    @Override
+    boolean isActive() {
+        return latestFrame != null && latestFrame.adverseWeather;
+    }
+
+    @Override
+    int activeDisplayPriority() {
+        return 1;
     }
 
     @Override

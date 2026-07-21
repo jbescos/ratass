@@ -20,6 +20,7 @@ public class RogueliteCarUpgradesTest {
         assertEquals(1f, upgrades.getMaxSpeedMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getDragMultiplier(), EPSILON);
         assertEquals(0.58f, upgrades.adjustSurfaceGrip(0.58f), EPSILON);
+        assertTrue(upgrades.getActiveCardIds().isEmpty());
     }
 
     @Test
@@ -82,6 +83,9 @@ public class RogueliteCarUpgradesTest {
         assertTrue(upgrades.hasOvertakeInjector());
         upgrades.onRacePositionImproved(1, 0f);
         assertEquals(1.07f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(
+                RogueliteCardId.OVERTAKE_INJECTOR,
+                upgrades.getActiveCardIds().get(0));
 
         upgrades.update(
                 1.1f,
@@ -95,6 +99,43 @@ public class RogueliteCarUpgradesTest {
                 100f,
                 2f);
         assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertTrue(upgrades.getActiveCardIds().isEmpty());
+    }
+
+    @Test
+    public void draftReceiverIsReportedOnlyWhileSlipstreamIsActive() {
+        RogueliteCardInventory inventory = new RogueliteCardInventory();
+        acquire(inventory, RogueliteCardId.DRAFT_RECEIVER, 1);
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+        upgrades.configure(inventory);
+
+        upgrades.update(
+                0.1f,
+                1f,
+                true,
+                false,
+                false,
+                0f,
+                0.8f,
+                0.45f,
+                0f,
+                100f,
+                2f);
+        assertEquals(RogueliteCardId.DRAFT_RECEIVER, upgrades.getActiveCardIds().get(0));
+
+        upgrades.update(
+                0.1f,
+                1f,
+                true,
+                false,
+                false,
+                0f,
+                0.8f,
+                0f,
+                0f,
+                100f,
+                2f);
+        assertTrue(upgrades.getActiveCardIds().isEmpty());
     }
 
     private static void acquire(
