@@ -781,16 +781,16 @@ public class RatassGame extends ApplicationAdapter {
     };
     // Theme property files override these values; they also keep missing or malformed assets safe.
     private static final CarPerformance[] DEFAULT_CAR_PERFORMANCES = new CarPerformance[] {
-            defaultCarPerformance("Car 1"),
-            defaultCarPerformance("Car 2"),
-            defaultCarPerformance("Car 3"),
-            defaultCarPerformance("Car 4"),
-            defaultCarPerformance("Car 5"),
-            defaultCarPerformance("Car 6"),
-            defaultCarPerformance("Car 7"),
-            defaultCarPerformance("Car 8"),
-            defaultCarPerformance("Car 9"),
-            defaultCarPerformance("Car 10")
+            new CarPerformance("Car 1", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 2", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 3", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 4", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 5", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 6", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 7", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 8", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 9", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
+            new CarPerformance("Car 10", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f)
     };
     private final Array<Car> cars = new Array<Car>();
     private final Array<CarTemplate> roster = new Array<CarTemplate>();
@@ -1926,18 +1926,6 @@ public class RatassGame extends ApplicationAdapter {
 
     private CarVisual getPlayerCarVisual() {
         return getCarVisual(selectedPlayerCarIndex);
-    }
-
-    private static CarPerformance defaultCarPerformance(String name) {
-        return new CarPerformance(
-                name,
-                550,
-                1300,
-                (int) CarLongitudinalModel.DEFAULT_TOP_SPEED_KPH,
-                620f,
-                64f,
-                1.18f,
-                CarLongitudinalModel.DEFAULT_AERO_DRAG);
     }
 
     private CarPerformance getCarPerformance(int visualIndex) {
@@ -10596,8 +10584,7 @@ public class RatassGame extends ApplicationAdapter {
                 Align.right,
                 false);
 
-        int speedKph = Math.round(
-                target.body.getLinearVelocity().len() * CarLongitudinalModel.KPH_PER_MPS);
+        int speedKph = Math.round(target.body.getLinearVelocity().len() * 3.6f);
         boolean onRoad = currentMap == null || currentMap.supports(target.body.getPosition());
         hudFont.setColor(0.92f, 0.96f, 0.98f, 1f);
         hudFont.draw(spriteBatch, speedKph + " km/h", x, top - 22f);
@@ -12374,7 +12361,7 @@ public class RatassGame extends ApplicationAdapter {
                             steeringTorque,
                             wheelGrip,
                             aeroDrag,
-                            topSpeedKph / CarLongitudinalModel.KPH_PER_MPS);
+                            topSpeedKph / 3.6f);
         }
 
     }
@@ -12394,20 +12381,21 @@ public class RatassGame extends ApplicationAdapter {
                         15.0f,
                         6.8f,
                         0.145f,
-                        CarLongitudinalModel.DEFAULT_AERO_DRAG,
-                        CarLongitudinalModel.DEFAULT_TOP_SPEED_KPH
-                                / CarLongitudinalModel.KPH_PER_MPS,
+                        0.028f,
+                        72.0f,
                         48.0f,
                         0.22f,
                         0.70f,
                         0.42f,
-                        CarLongitudinalModel.DEFAULT_LINEAR_DAMPING,
+                        0.18f,
                         1.45f,
                         1.30f,
                         0.42f,
                         0.025f,
                         0.12f,
                         4.8f);
+
+        private static final float HORSEPOWER_TO_FORCE = 0.70f;
 
         private final float massMultiplier;
         private final float horsePower;
@@ -12559,7 +12547,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private float engineForce() {
-            return CarLongitudinalModel.engineForce(horsePower);
+            return horsePower * HORSEPOWER_TO_FORCE;
         }
     }
 
@@ -12579,6 +12567,7 @@ public class RatassGame extends ApplicationAdapter {
         private static final float TIRE_SLIDE_SLIP_ANGLE = 0.72f;
         private static final float TIRE_SLIDE_GRIP_FRACTION = 0.58f;
         private static final float TIRE_SLIDE_SCRUB_DECELERATION_FRACTION = 0.35f;
+        private static final float DRIVE_TRACTION_MULTIPLIER = 1.18f;
         private static final float BRAKE_TRACTION_MULTIPLIER = 1.55f;
         private static final float BRAKE_COMBINED_SLIP_WEIGHT = 0.62f;
         private static final float ACCEL_COMBINED_SLIP_WEIGHT = 0.38f;
@@ -14368,7 +14357,7 @@ public class RatassGame extends ApplicationAdapter {
                                     throttle
                                             * physics.engineForce()
                                             * rogueliteUpgrades.getAccelerationMultiplier()
-                                            * CarLongitudinalModel.engineForceRatio(speedRatio)
+                                            * enginePowerCurve(speedRatio)
                                             * trackLimitForwardAccelerationMultiplier,
                                     physics,
                                     false);
@@ -14383,7 +14372,7 @@ public class RatassGame extends ApplicationAdapter {
                                     throttle
                                             * physics.engineForce()
                                             * physics.reversePowerMultiplier
-                                            * CarLongitudinalModel.engineForceRatio(speedRatio),
+                                            * enginePowerCurve(speedRatio),
                                     physics,
                                     false);
                 } else {
@@ -14552,17 +14541,12 @@ public class RatassGame extends ApplicationAdapter {
                 float requestedForce,
                 CarPhysics physics,
                 boolean braking) {
-            float maxForce = braking
-                    ? body.getMass()
+            float maxForce =
+                    body.getMass()
                             * physics.lateralGripPerSecond
                             * physics.wheelGrip
                             * surfaceGripMultiplier
-                            * BRAKE_TRACTION_MULTIPLIER
-                    : CarLongitudinalModel.driveTractionLimit(
-                            body.getMass(),
-                            physics.lateralGripPerSecond,
-                            physics.wheelGrip,
-                            surfaceGripMultiplier);
+                            * (braking ? BRAKE_TRACTION_MULTIPLIER : DRIVE_TRACTION_MULTIPLIER);
             return MathUtils.clamp(requestedForce, -maxForce, maxForce);
         }
 
@@ -14603,6 +14587,11 @@ public class RatassGame extends ApplicationAdapter {
 
         private float getReverseMaxSpeed() {
             return getForwardMaxSpeed() * physics().reverseSpeedMultiplier;
+        }
+
+        private float enginePowerCurve(float speedRatio) {
+            float clamped = MathUtils.clamp(speedRatio, 0f, 1f);
+            return Math.max(0f, 1f - (float) Math.pow(clamped, 2.35f));
         }
 
         private float getSteeringAuthority() {
