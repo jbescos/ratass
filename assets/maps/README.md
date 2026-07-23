@@ -21,17 +21,6 @@ the marker colors below.
 The mask controls the map's gameplay size and aspect ratio. Use wide roads and
 ordered checkpoint gates so race training has a clear route to learn.
 
-Game circuits currently use a `2x` logical world scale. Their mask roads are
-precompensated to half their original pixel width, which keeps the physical road
-width unchanged while doubling route lengths, corner radii, and straight lengths.
-To apply the same transform to unscaled source assets, write into a separate
-directory so an already compensated mask cannot be scaled twice:
-
-```bash
-.venv-rl/bin/python tools/scale_circuit_maps.py \
-  --source-dir path/to/unscaled/maps --output-dir /tmp/maps-x2 --scale 2
-```
-
 Mask colors:
 
 - white or near-white: race road

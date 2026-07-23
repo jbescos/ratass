@@ -36,10 +36,9 @@ final class ImageArenaMapLoader {
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
     private static final String CACHE_SUFFIX = ".json.gz";
-    private static final int CACHE_VERSION = 121;
+    private static final int CACHE_VERSION = 120;
     private static final boolean USE_ROUTE_LINE_MARKERS = false;
     private static final float BASE_WORLD_HEIGHT = 22f;
-    private static final float GAME_MAP_WORLD_SCALE = 2f;
     private static final String MAP005_ID = "map005";
     private static final float MAP005_WORLD_SCALE = 1.25f;
     private static final int MAX_SEQUENTIAL_MAP_SCAN = 1000;
@@ -347,7 +346,6 @@ final class ImageArenaMapLoader {
                             worldMinY,
                             worldWidth,
                             worldHeight);
-            clampRouteLineToPlayable(routeOrderingMap, routePoints);
             routePoints = smoothFinalRouteCenterline(routeOrderingMap, routePoints);
             alignRouteCenterlineWithSpawnDirection(routePoints, spawnPoints, averageSpawnForward(spawnPoints));
             ArenaMap.RouteMetadata routeMetadata =
@@ -518,23 +516,7 @@ final class ImageArenaMapLoader {
     }
 
     private static float worldScaleForMap(String baseName) {
-        if (!isGameMapId(baseName)) {
-            return 1f;
-        }
-        float originalScale = MAP005_ID.equals(baseName) ? MAP005_WORLD_SCALE : 1f;
-        return originalScale * GAME_MAP_WORLD_SCALE;
-    }
-
-    private static boolean isGameMapId(String baseName) {
-        if (baseName == null || baseName.length() != 6 || !baseName.startsWith("map")) {
-            return false;
-        }
-        for (int i = 3; i < baseName.length(); i++) {
-            if (!Character.isDigit(baseName.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
+        return MAP005_ID.equals(baseName) ? MAP005_WORLD_SCALE : 1f;
     }
 
     private static CachedMapData readCachedMap(
@@ -3850,7 +3832,7 @@ final class ImageArenaMapLoader {
                 float alpha = sample / (float) samples;
                 float x = start.x + (end.x - start.x) * alpha;
                 float y = start.y + (end.y - start.y) * alpha;
-                if (!routeMap.supports(x, y)
+                if (!routeMap.approximateSupports(x, y)
                         && !isInsideRouteHint(routeHints, x, y)) {
                     return new UnsafeRouteSample(i, x, y);
                 }
@@ -3883,7 +3865,7 @@ final class ImageArenaMapLoader {
             float alpha = sample / (float) samples;
             float x = start.x + (end.x - start.x) * alpha;
             float y = start.y + (end.y - start.y) * alpha;
-            if (!routeMap.supports(x, y)) {
+            if (!routeMap.approximateSupports(x, y)) {
                 return new UnsafeRouteSample(segmentIndex, x, y);
             }
         }
@@ -5349,8 +5331,8 @@ final class ImageArenaMapLoader {
     }
 
     private static boolean isRouteCenterlineSampleSafe(ArenaMap routeMap, float x, float y) {
-        return routeMap.supports(x, y)
-                && routeMap.distanceToHazard(x, y)
+        return routeMap.approximateSupports(x, y)
+                && routeMap.approximateDistanceToHazard(x, y)
                         >= ROUTE_CENTERLINE_SMOOTHING_MIN_CLEARANCE;
     }
 
@@ -5600,9 +5582,6 @@ final class ImageArenaMapLoader {
                 continue;
             }
             if (!centerRoutePointBetweenBorders(routeMap, scratch, -dirY, dirX)) {
-                continue;
-            }
-            if (!isRouteSegmentExactSafe(routeMap, current, scratch)) {
                 continue;
             }
             float actualDirX = scratch.x - current.x;
