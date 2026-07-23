@@ -781,16 +781,16 @@ public class RatassGame extends ApplicationAdapter {
     };
     // Theme property files override these values; they also keep missing or malformed assets safe.
     private static final CarPerformance[] DEFAULT_CAR_PERFORMANCES = new CarPerformance[] {
-            new CarPerformance("Car 1", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
-            new CarPerformance("Car 2", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
-            new CarPerformance("Car 3", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
-            new CarPerformance("Car 4", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
-            new CarPerformance("Car 5", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
-            new CarPerformance("Car 6", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
-            new CarPerformance("Car 7", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
-            new CarPerformance("Car 8", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
-            new CarPerformance("Car 9", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f),
-            new CarPerformance("Car 10", 550, 1300, 259, 620f, 64f, 1.18f, 0.028f)
+            new CarPerformance("Car 1", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Car 2", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Car 3", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Car 4", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Car 5", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Car 6", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Car 7", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Car 8", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Car 9", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Car 10", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f)
     };
     private final Array<Car> cars = new Array<Car>();
     private final Array<CarTemplate> roster = new Array<CarTemplate>();
@@ -12372,7 +12372,7 @@ public class RatassGame extends ApplicationAdapter {
                         1.25f,
                         550f,
                         0.42f,
-                        620f,
+                        700f,
                         0.50f,
                         64.0f,
                         1.10f,
@@ -12381,8 +12381,9 @@ public class RatassGame extends ApplicationAdapter {
                         15.0f,
                         6.8f,
                         0.145f,
-                        0.028f,
-                        72.0f,
+                        CarLongitudinalModel.DEFAULT_AERO_DRAG,
+                        CarLongitudinalModel.DEFAULT_TOP_SPEED_KPH
+                                / CarLongitudinalModel.KPH_PER_MPS,
                         48.0f,
                         0.22f,
                         0.70f,
@@ -12568,7 +12569,7 @@ public class RatassGame extends ApplicationAdapter {
         private static final float TIRE_SLIDE_GRIP_FRACTION = 0.58f;
         private static final float TIRE_SLIDE_SCRUB_DECELERATION_FRACTION = 0.35f;
         private static final float DRIVE_TRACTION_MULTIPLIER = 1.18f;
-        private static final float BRAKE_TRACTION_MULTIPLIER = 1.55f;
+        private static final float BRAKE_TRACTION_MULTIPLIER = 1.75f;
         private static final float BRAKE_COMBINED_SLIP_WEIGHT = 0.62f;
         private static final float ACCEL_COMBINED_SLIP_WEIGHT = 0.38f;
         private static final float MAX_LOW_SPEED_STEER_ANGLE = 0.58f;
@@ -12875,10 +12876,17 @@ public class RatassGame extends ApplicationAdapter {
                     turn = externalControlDecision.turn;
                 }
             }
+            boolean automaticControlAssistanceAllowed = !isManuallyControlled();
             boolean automaticOffRoadRecoveryAllowed =
-                    !trainingMode && allowControl && controlLockTimer <= 0f;
+                    automaticControlAssistanceAllowed
+                            && !trainingMode
+                            && allowControl
+                            && controlLockTimer <= 0f;
             boolean automaticContactRecoveryAllowed =
-                    !trainingMode && allowControl && controlLockTimer <= 0f;
+                    automaticControlAssistanceAllowed
+                            && !trainingMode
+                            && allowControl
+                            && controlLockTimer <= 0f;
             updateAutomaticRecoveryState(
                     delta,
                     arenaMap,
@@ -12897,7 +12905,7 @@ public class RatassGame extends ApplicationAdapter {
                 throttle = automaticRecoveryControlDecision.throttle;
                 turn = automaticRecoveryControlDecision.turn;
                 resetPassingAssist();
-            } else {
+            } else if (automaticControlAssistanceAllowed) {
                 applyPassingAssist(
                         delta,
                         arenaMap,
@@ -12907,6 +12915,8 @@ public class RatassGame extends ApplicationAdapter {
                         passingAssistControlDecision);
                 throttle = passingAssistControlDecision.throttle;
                 turn = passingAssistControlDecision.turn;
+            } else {
+                resetPassingAssist();
             }
             updateRogueliteUpgrades(
                     delta,
@@ -14590,8 +14600,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private float enginePowerCurve(float speedRatio) {
-            float clamped = MathUtils.clamp(speedRatio, 0f, 1f);
-            return Math.max(0f, 1f - (float) Math.pow(clamped, 2.35f));
+            return CarLongitudinalModel.engineForceRatio(speedRatio);
         }
 
         private float getSteeringAuthority() {
@@ -14995,6 +15004,10 @@ public class RatassGame extends ApplicationAdapter {
                 return "Player";
             }
             return "Idle";
+        }
+
+        private boolean isManuallyControlled() {
+            return playerControlled && !modelControlled;
         }
 
         public Body getBody() {
