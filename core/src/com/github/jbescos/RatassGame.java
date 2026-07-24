@@ -45,6 +45,7 @@ import com.github.jbescos.ai.rl.DriverProfileSelector;
 import com.github.jbescos.ai.rl.RlPolicy;
 import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MapProgression;
+import com.github.jbescos.gameplay.SkidMarkTrail;
 import com.github.jbescos.gameplay.SpawnPoint;
 import com.github.jbescos.gameplay.maps.ArenaMaps;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardCatalog;
@@ -519,6 +520,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SIDEBAR_MINIMAP_PLAYER_RING_RADIUS = 6.2f;
     private static final float SIDEBAR_MINIMAP_BIG_CAR_RADIUS_BOOST = 1.4f;
     private static final float SIDEBAR_TELEMETRY_CARD_HEIGHT = 154f;
+    private static final float SIDEBAR_TELEMETRY_BAR_HEIGHT = 5f;
+    private static final float SIDEBAR_TELEMETRY_BAR_PADDING = 1f;
     private static final float SIDEBAR_LEADERBOARD_COMPACT_ROW_STEP = 15.5f;
     private static final float SIDEBAR_CAMERA_TARGET_ICON_WIDTH = 18f;
     private static final float HUD_FONT_SCALE = 1f;
@@ -543,6 +546,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float CAR_SPRITE_WIDTH_SCALE = 1.16f;
     private static final float CAR_SPRITE_HEIGHT_SCALE = 1.14f;
     private static final float CAR_SPRITE_ROTATION_OFFSET_DEG = 180f;
+    private static final float CAR_SHADOW_OFFSET_X_RATIO = 0.09f;
+    private static final float CAR_SHADOW_OFFSET_Y_RATIO = -0.07f;
     private static final float IMPACT_SOUND_COOLDOWN = 0.06f;
     private static final float DESTRUCTION_SOUND_COOLDOWN = 0.08f;
     private static final float DEFAULT_MUSIC_VOLUME = 1f;
@@ -796,6 +801,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<CarTemplate> roster = new Array<CarTemplate>();
     private final Array<CarTemplate> leaderboardEntries = new Array<CarTemplate>();
     private final Array<DestructionEffect> destructionEffects = new Array<DestructionEffect>();
+    private final SkidMarkTrail skidMarkTrail = new SkidMarkTrail();
     private final Array<CarVisual> themeCarVisuals = new Array<CarVisual>();
     private final CarPerformance[] themeCarPerformances =
             new CarPerformance[DEFAULT_CAR_PERFORMANCES.length];
@@ -2548,6 +2554,9 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void playImpactSound(float impactStrength) {
+        if (!isPresentationEnabled()) {
+            return;
+        }
         if (impactSoundCooldown > 0f) {
             return;
         }
@@ -2667,6 +2676,9 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void announceEvent(String title, String subline, Color color) {
+        if (!isPresentationEnabled()) {
+            return;
+        }
         eventCalloutTitle = title == null ? "" : title;
         eventCalloutSubline = subline == null ? "" : subline;
         eventCalloutColor.set(color == null ? Color.WHITE : color);
@@ -5673,6 +5685,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private void update(float delta) {
         effectClock += delta;
+        skidMarkTrail.prune(effectClock);
         updatePresentationState(delta);
         updateWeather(delta);
         updateDestructionEffects(delta);
@@ -5707,6 +5720,13 @@ public class RatassGame extends ApplicationAdapter {
 
     private boolean shouldOfferRogueliteReward() {
         return !rlTrainingMode && !sandboxMode && playerCar != null;
+    }
+
+    /**
+     * Presentation work must never become part of the headless RL simulation cost.
+     */
+    private boolean isPresentationEnabled() {
+        return !rlTrainingMode;
     }
 
     private void openRogueliteRewardChoice() {
@@ -5873,10 +5893,15 @@ public class RatassGame extends ApplicationAdapter {
             freezeCarsForCountdown();
         }
 
-        for (int i = 0; i < cars.size; i++) {
-            cars.get(i).capturePreviousTransform();
+        if (isPresentationEnabled()) {
+            for (int i = 0; i < cars.size; i++) {
+                cars.get(i).capturePreviousTransform();
+            }
         }
         world.step(delta, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
+        if (isPresentationEnabled() && allowControl) {
+            updateSkidMarkEmission(delta);
+        }
         applyTrackLimitSlowdowns();
 
         if (!roundOver && allowControl && liveLapRace) {
@@ -5972,7 +5997,9 @@ public class RatassGame extends ApplicationAdapter {
         arenaSurfaceTexture = null;
         preloadedNextArenaSurfaceKey = null;
         cameraInitialized = false;
-        updateWorldCamera();
+        if (isPresentationEnabled()) {
+            updateWorldCamera();
+        }
 
         if (world != null) {
             world.dispose();
@@ -5982,6 +6009,7 @@ public class RatassGame extends ApplicationAdapter {
         world.setContactListener(impactContactListener);
         cars.clear();
         destructionEffects.clear();
+        skidMarkTrail.clear();
         accumulator = 0f;
         effectClock = 0f;
         growthPickupActive = false;
@@ -6055,10 +6083,12 @@ public class RatassGame extends ApplicationAdapter {
 
         applyOwnedRogueliteCardsToCars();
 
-        cameraInitialized = false;
-        resetCameraTargetToPlayer(false);
-        updateWorldCamera();
-        warmArenaSurfaceTextures();
+        if (isPresentationEnabled()) {
+            cameraInitialized = false;
+            resetCameraTargetToPlayer(false);
+            updateWorldCamera();
+            warmArenaSurfaceTextures();
+        }
         invalidateLeaderboard();
     }
 
@@ -6647,7 +6677,36 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    private void updateSkidMarkEmission(float delta) {
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null) {
+                skidMarkTrail.stopEmitter(car.template.vehicleId);
+                continue;
+            }
+
+            float speed = car.body.getLinearVelocity().len();
+            float speedRatio =
+                    speed / Math.max(1f, car.physics().maxForwardSpeed);
+            Vector2 position = car.body.getPosition();
+            skidMarkTrail.updateEmitter(
+                    car.template.vehicleId,
+                    delta,
+                    effectClock,
+                    position.x,
+                    position.y,
+                    car.body.getAngle(),
+                    car.getWidth(),
+                    car.getHeight(),
+                    speedRatio,
+                    car.getLateralSlipSignal());
+        }
+    }
+
     private void spawnDestructionEffect(Car car) {
+        if (!isPresentationEnabled()) {
+            return;
+        }
         DestructionEffect effect = new DestructionEffect();
         effect.position.set(car.body.getPosition());
         effect.color.set(car.color);
@@ -7631,6 +7690,7 @@ public class RatassGame extends ApplicationAdapter {
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawArenaOverlay(theme);
+        skidMarkTrail.draw(shapeRenderer, effectClock);
         if (sandboxMode) {
             drawSandboxRouteLine();
         }
@@ -7641,6 +7701,7 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.end();
 
         spriteBatch.begin();
+        drawCarSpriteShadows();
         drawCarSprites();
         spriteBatch.end();
 
@@ -8930,42 +8991,80 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private void drawCarSprites() {
-        spriteBatch.setColor(1f, 1f, 1f, 1f);
-
+    private void drawCarSpriteShadows() {
+        spriteBatch.setColor(0.01f, 0.015f, 0.02f, 0.10f);
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
             if (!car.active || car.body == null || car.template.spriteTexture == null) {
                 continue;
             }
-
-            Texture sprite = car.template.spriteTexture;
-            float angleDeg = car.getRenderAngleDeg();
-            float spriteAngleDeg = angleDeg + car.template.visual.spriteRotationOffsetDeg;
-            Vector2 renderPosition = car.getRenderPosition();
-            float centerX = renderPosition.x;
-            float centerY = renderPosition.y;
-            float spriteWidth = car.getWidth() * CAR_SPRITE_WIDTH_SCALE;
-            float spriteHeight = car.getHeight() * CAR_SPRITE_HEIGHT_SCALE;
-
-            spriteBatch.draw(
-                    sprite,
-                    centerX - spriteWidth * 0.5f,
-                    centerY - spriteHeight * 0.5f,
-                    spriteWidth * 0.5f,
-                    spriteHeight * 0.5f,
-                    spriteWidth,
-                    spriteHeight,
-                    1f,
-                    1f,
-                    spriteAngleDeg,
-                    car.template.spriteSourceX,
-                    car.template.spriteSourceY,
-                    car.template.spriteSourceWidth,
-                    car.template.spriteSourceHeight,
-                    false,
-                    false);
+            drawCarSpriteLayer(
+                    car,
+                    car.getWidth() * CAR_SHADOW_OFFSET_X_RATIO * 1.25f,
+                    car.getHeight() * CAR_SHADOW_OFFSET_Y_RATIO * 1.25f,
+                    1.12f,
+                    1.08f);
         }
+
+        spriteBatch.setColor(0.01f, 0.015f, 0.02f, 0.20f);
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null || car.template.spriteTexture == null) {
+                continue;
+            }
+            drawCarSpriteLayer(
+                    car,
+                    car.getWidth() * CAR_SHADOW_OFFSET_X_RATIO,
+                    car.getHeight() * CAR_SHADOW_OFFSET_Y_RATIO,
+                    1.06f,
+                    1.04f);
+        }
+        spriteBatch.setColor(1f, 1f, 1f, 1f);
+    }
+
+    private void drawCarSprites() {
+        spriteBatch.setColor(1f, 1f, 1f, 1f);
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!car.active || car.body == null || car.template.spriteTexture == null) {
+                continue;
+            }
+            drawCarSpriteLayer(car, 0f, 0f, 1f, 1f);
+        }
+    }
+
+    private void drawCarSpriteLayer(
+            Car car,
+            float offsetX,
+            float offsetY,
+            float widthScale,
+            float heightScale) {
+        Texture sprite = car.template.spriteTexture;
+        float angleDeg = car.getRenderAngleDeg();
+        float spriteAngleDeg = angleDeg + car.template.visual.spriteRotationOffsetDeg;
+        Vector2 renderPosition = car.getRenderPosition();
+        float centerX = renderPosition.x + offsetX;
+        float centerY = renderPosition.y + offsetY;
+        float spriteWidth = car.getWidth() * CAR_SPRITE_WIDTH_SCALE * widthScale;
+        float spriteHeight = car.getHeight() * CAR_SPRITE_HEIGHT_SCALE * heightScale;
+
+        spriteBatch.draw(
+                sprite,
+                centerX - spriteWidth * 0.5f,
+                centerY - spriteHeight * 0.5f,
+                spriteWidth * 0.5f,
+                spriteHeight * 0.5f,
+                spriteWidth,
+                spriteHeight,
+                1f,
+                1f,
+                spriteAngleDeg,
+                car.template.spriteSourceX,
+                car.template.spriteSourceY,
+                car.template.spriteSourceWidth,
+                car.template.spriteSourceHeight,
+                false,
+                false);
     }
 
     private void drawFallbackCarBody(
@@ -8976,6 +9075,27 @@ public class RatassGame extends ApplicationAdapter {
             float carHeight,
             float carScale,
             float angleDeg) {
+        drawRotatedRect(
+                centerX + carWidth * CAR_SHADOW_OFFSET_X_RATIO * 1.20f,
+                centerY + carHeight * CAR_SHADOW_OFFSET_Y_RATIO * 1.20f,
+                carWidth * 1.10f,
+                carHeight * 1.07f,
+                angleDeg,
+                0.01f,
+                0.015f,
+                0.02f,
+                0.16f);
+        drawRotatedRect(
+                centerX + carWidth * CAR_SHADOW_OFFSET_X_RATIO,
+                centerY + carHeight * CAR_SHADOW_OFFSET_Y_RATIO,
+                carWidth * 1.04f,
+                carHeight * 1.03f,
+                angleDeg,
+                0.01f,
+                0.015f,
+                0.02f,
+                0.24f);
+
         drawRotatedRect(
                 centerX,
                 centerY,
@@ -10124,6 +10244,7 @@ public class RatassGame extends ApplicationAdapter {
                 10f + telemetryHeight - 3f,
                 telemetryWidth,
                 3f);
+        drawSidebarTelemetrySignalBars(sidebarX, sidebarWidth);
 
         shapeRenderer.setColor(0.10f, 0.13f, 0.17f, 0.95f);
         if (getSidebarMinimapBounds(sidebarX, sidebarWidth, hudHeight, sidebarMinimapBounds)) {
@@ -10137,6 +10258,142 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.end();
 
         Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawSidebarTelemetrySignalBars(float sidebarX, float sidebarWidth) {
+        Car target = getCameraTargetCar();
+        if (sidebarWidth <= 0f
+                || target == null
+                || target.template == null
+                || target.body == null) {
+            return;
+        }
+
+        float x = sidebarX + SIDEBAR_CONTENT_MARGIN;
+        float contentWidth = sidebarWidth - SIDEBAR_CONTENT_MARGIN * 2f;
+        float columnWidth = contentWidth * 0.5f;
+        float top = 10f + getSidebarTelemetryCardHeight() - 12f;
+
+        float speed = target.body.getLinearVelocity().len();
+        float speedRatio =
+                MathUtils.clamp(speed / Math.max(1f, target.getForwardMaxSpeed()), 0f, 1f);
+        float speedLeftReserve = Math.min(94f, contentWidth * 0.34f);
+        float speedRightReserve = Math.min(78f, contentWidth * 0.28f);
+        drawSidebarTelemetryBar(
+                x + speedLeftReserve,
+                top - 22f - hudFont.getCapHeight() * 0.43f,
+                contentWidth - speedLeftReserve - speedRightReserve,
+                speedRatio,
+                false,
+                0.98f,
+                0.72f,
+                0.20f);
+
+        float brake = target.getBrakeSignal();
+        float drive = MathUtils.clamp(Math.abs(target.lastThrottleCommand) - brake, 0f, 1f);
+        float steering = MathUtils.clamp(target.lastTurnCommand, -1f, 1f);
+        float drift = MathUtils.clamp(target.getLateralSlipSignal(), 0f, 1f);
+        float slipstream = MathUtils.clamp(target.getSlipstreamBoost(), 0f, 1f);
+
+        float labelReserve = Math.min(48f, columnWidth * 0.38f);
+        float valueReserve = Math.min(46f, columnWidth * 0.34f);
+        float barWidth = columnWidth - labelReserve - valueReserve - 8f;
+        float firstColumnX = x + labelReserve;
+        float secondColumnX = x + columnWidth + labelReserve;
+        float firstRowCenter = top - 45f - labelFont.getCapHeight() * 0.43f;
+        float secondRowCenter = top - 63f - labelFont.getCapHeight() * 0.43f;
+
+        drawSidebarTelemetryBar(
+                firstColumnX,
+                firstRowCenter,
+                barWidth,
+                drive,
+                false,
+                0.20f,
+                0.82f,
+                0.48f);
+        drawSidebarTelemetryBar(
+                secondColumnX,
+                firstRowCenter,
+                barWidth,
+                brake,
+                false,
+                1f,
+                0.28f,
+                0.20f);
+        drawSidebarTelemetryBar(
+                firstColumnX,
+                secondRowCenter,
+                barWidth,
+                steering,
+                true,
+                0.34f,
+                0.74f,
+                1f);
+        drawSidebarTelemetryBar(
+                secondColumnX,
+                secondRowCenter,
+                barWidth,
+                drift,
+                false,
+                0.24f,
+                0.66f,
+                1f);
+
+        float slipstreamLabelReserve = Math.min(80f, contentWidth * 0.32f);
+        float slipstreamValueReserve = Math.min(46f, contentWidth * 0.20f);
+        drawSidebarTelemetryBar(
+                x + slipstreamLabelReserve,
+                top - 81f - labelFont.getCapHeight() * 0.43f,
+                contentWidth - slipstreamLabelReserve - slipstreamValueReserve - 6f,
+                slipstream,
+                false,
+                0.30f,
+                0.88f,
+                0.92f);
+    }
+
+    private void drawSidebarTelemetryBar(
+            float left,
+            float centerY,
+            float width,
+            float value,
+            boolean centered,
+            float red,
+            float green,
+            float blue) {
+        if (width < 8f) {
+            return;
+        }
+
+        float bottom = centerY - SIDEBAR_TELEMETRY_BAR_HEIGHT * 0.5f;
+        shapeRenderer.setColor(0.02f, 0.03f, 0.04f, 0.90f);
+        shapeRenderer.rect(left, bottom, width, SIDEBAR_TELEMETRY_BAR_HEIGHT);
+
+        float innerLeft = left + SIDEBAR_TELEMETRY_BAR_PADDING;
+        float innerBottom = bottom + SIDEBAR_TELEMETRY_BAR_PADDING;
+        float innerWidth = width - SIDEBAR_TELEMETRY_BAR_PADDING * 2f;
+        float innerHeight =
+                SIDEBAR_TELEMETRY_BAR_HEIGHT - SIDEBAR_TELEMETRY_BAR_PADDING * 2f;
+        shapeRenderer.setColor(red, green, blue, 0.90f);
+
+        if (centered) {
+            float center = innerLeft + innerWidth * 0.5f;
+            float fillWidth = innerWidth * 0.5f * MathUtils.clamp(Math.abs(value), 0f, 1f);
+            if (value < 0f) {
+                shapeRenderer.rect(center - fillWidth, innerBottom, fillWidth, innerHeight);
+            } else if (value > 0f) {
+                shapeRenderer.rect(center, innerBottom, fillWidth, innerHeight);
+            }
+            shapeRenderer.setColor(0.82f, 0.88f, 0.92f, 0.80f);
+            shapeRenderer.rect(center - 0.5f, bottom, 1f, SIDEBAR_TELEMETRY_BAR_HEIGHT);
+            return;
+        }
+
+        float fillWidth = innerWidth * MathUtils.clamp(value, 0f, 1f);
+        if (fillWidth > 0f) {
+            shapeRenderer.rect(innerLeft, innerBottom, fillWidth, innerHeight);
+        }
     }
 
     private void drawSidebarSummary(float sidebarX, float sidebarWidth, float hudHeight) {
