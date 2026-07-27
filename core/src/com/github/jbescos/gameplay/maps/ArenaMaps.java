@@ -23,6 +23,38 @@ public final class ArenaMaps {
         return ImageArenaMapLoader.loadDefaultMaps(mapScale);
     }
 
+    public static Array<ArenaMapCatalogEntry> createDefaultCatalog() {
+        return ImageArenaMapLoader.listDefaultMaps();
+    }
+
+    public static Array<ArenaMapCatalogEntry> createSandboxCatalog() {
+        Array<ArenaMapCatalogEntry> entries = createDefaultCatalog();
+        HashSet<String> ids = new HashSet<String>();
+        for (int i = 0; i < entries.size; i++) {
+            ids.add(entries.get(i).getId());
+        }
+
+        Array<ArenaMapCatalogEntry> trainingEntries =
+                ImageArenaMapLoader.listTrainingMaps();
+        for (int i = 0; i < trainingEntries.size; i++) {
+            ArenaMapCatalogEntry entry = trainingEntries.get(i);
+            if (ids.add(entry.getId())) {
+                entries.add(entry);
+            }
+        }
+        return entries;
+    }
+
+    public static ArenaMap loadCatalogMap(ArenaMapCatalogEntry entry, float mapScale) {
+        if (entry == null) {
+            throw new IllegalArgumentException("Map catalog entry is required.");
+        }
+        if (entry.getSource() == ArenaMapCatalogEntry.Source.TRAINING) {
+            return ImageArenaMapLoader.loadTrainingMap(entry.getId(), mapScale);
+        }
+        return ImageArenaMapLoader.loadDefaultMap(entry.getId(), mapScale);
+    }
+
     public static Array<ArenaMap> createHeadlessTrainingSet() {
         return createHeadlessTrainingSet(DEFAULT_MAP_SCALE);
     }

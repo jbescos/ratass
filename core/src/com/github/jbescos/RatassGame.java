@@ -47,6 +47,7 @@ import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.SkidMarkTrail;
 import com.github.jbescos.gameplay.SpawnPoint;
+import com.github.jbescos.gameplay.maps.ArenaMapCatalogEntry;
 import com.github.jbescos.gameplay.maps.ArenaMaps;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardCatalog;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardDefinition;
@@ -555,6 +556,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final float AUDIO_VOLUME_STEP = 0.10f;
     private static final float THEME_MUSIC_BASE_VOLUME = 0.32f;
     private static final float LOADING_PROGRESS_DISPLAY_SPEED = 2.4f;
+    private static final int STARTUP_LOADING_SETTINGS_STAGE = 0;
+    private static final int STARTUP_LOADING_LAYOUT_STAGE = 1;
+    private static final int STARTUP_LOADING_STAGE_COUNT = 2;
     private static final int LOADING_PREPARE_STAGE = 0;
     private static final int LOADING_DRIVERS_STAGE = 1;
     private static final int LOADING_MAP_STAGE = 2;
@@ -817,11 +821,8 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<Rectangle> menuCarSheetSourceBounds = new Array<Rectangle>();
     private final Array<ThemeChoice> themeChoices = new Array<ThemeChoice>();
     private final Array<String> themeEnemyNames = new Array<String>();
-    private final Array<ArenaMap> sandboxMenuMaps = new Array<ArenaMap>();
-    private final LinkedHashMap<String, Texture> arenaSurfaceTextureCache =
-            new LinkedHashMap<String, Texture>();
-    private final LinkedHashMap<String, Texture> mapDebugMaskTextureCache =
-            new LinkedHashMap<String, Texture>();
+    private final Array<ArenaMapCatalogEntry> sandboxMenuMaps =
+            new Array<ArenaMapCatalogEntry>();
     private final Random sessionEnemyVisualRandom = new Random();
     private final Random weatherRandom = new Random();
     private final GlyphLayout glyphLayout = new GlyphLayout();
@@ -973,13 +974,16 @@ public class RatassGame extends ApplicationAdapter {
     private Music themeMusic;
     private World world;
     private Texture arenaSurfaceTexture;
+    private Texture mapDebugMaskTexture;
     private Texture themeCarsTexture;
     private Texture menuCarSheetTexture;
     private Texture menuHeroCarTexture;
-    private String preloadedNextArenaSurfaceKey;
+    private ArenaMap sandboxMenuPreviewMap;
+    private String sandboxMenuPreviewMapId = "";
+    private String mapDebugMaskTexturePath = "";
     private CarPhysics sandboxPhysicsOverride = CarPhysics.DEFAULT;
 
-    private GameMode gameMode = GameMode.MAIN_MENU;
+    private GameMode gameMode = GameMode.STARTUP_LOADING;
     private MapProgression mapProgression;
     private ArenaMap currentMap;
     private float accumulator;
@@ -1026,6 +1030,7 @@ public class RatassGame extends ApplicationAdapter {
     private boolean roundStartSoundPlayed;
     private boolean sidebarTablesScrollbarDragging;
     private boolean sandboxMode;
+    private boolean arenaSurfaceTextureLoadAttempted;
     private boolean loadingScreenPresented;
     private boolean loadingCompletionPresented;
     private boolean loadingSandboxMode;
@@ -1103,7 +1108,6 @@ public class RatassGame extends ApplicationAdapter {
         labelFont.setUseIntegerPositions(true);
         labelFont.getData().setScale(LABEL_FONT_SCALE);
 
-        loadMenuSettings();
         Gdx.input.setCatchKey(Input.Keys.BACK, true);
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
@@ -1112,6 +1116,13 @@ public class RatassGame extends ApplicationAdapter {
             }
         });
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        loadingScreenPresented = false;
+        loadingCompletionPresented = false;
+        loadingStage = STARTUP_LOADING_SETTINGS_STAGE;
+        loadingProgress = 0f;
+        loadingDisplayedProgress = 0f;
+        loadingStatus = "Loading settings";
+        gameMode = GameMode.STARTUP_LOADING;
     }
 
     private void startNewGame() {
@@ -1151,6 +1162,7 @@ public class RatassGame extends ApplicationAdapter {
                 disposeGameSounds();
                 disposeRosterSpriteTextures();
                 disposeArenaSurfaceTextures();
+                releaseSandboxMenuPreview();
                 disposeMenuCarPreview();
                 loadThemeEnemyNames();
                 loadThemeTextures();
@@ -1174,8 +1186,8 @@ public class RatassGame extends ApplicationAdapter {
                 completeLoadingStage(0.40f, "Loading circuits");
                 break;
             case LOADING_MAP_STAGE:
-                mapProgression =
-                        new MapProgression(createGameplayMapSet(loadingSandboxMode));
+                releaseGameplayMaps();
+                mapProgression = createGameplayMapProgression(loadingSandboxMode);
                 completeLoadingStage(0.70f, "Building starting grid");
                 break;
             case LOADING_WORLD_STAGE:
@@ -1205,77 +1217,80 @@ public class RatassGame extends ApplicationAdapter {
         loadingStatus = nextStatus;
     }
 
-    private Array<ArenaMap> createGameplayMapSet(boolean sandbox) {
-        if (!sandbox) {
-            return ArenaMaps.createDefaultSet(mapScale);
+    private void advancePendingStartupLoading() {
+        switch (loadingStage) {
+            case STARTUP_LOADING_SETTINGS_STAGE:
+                loadMenuSettings();
+                completeLoadingStage(0.85f, "Preparing menu");
+                break;
+            case STARTUP_LOADING_LAYOUT_STAGE:
+                resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+                ensureMenuHeroCarLoaded();
+                completeLoadingStage(1f, "Ready");
+                break;
+            default:
+                return;
+        }
+        loadingStage++;
+    }
+
+    private MapProgression createGameplayMapProgression(boolean sandbox) {
+        Array<ArenaMapCatalogEntry> entries = new Array<ArenaMapCatalogEntry>();
+        if (sandbox) {
+            ArenaMapCatalogEntry selected = getSelectedSandboxMenuEntry();
+            if (selected != null) {
+                entries.add(selected);
+            }
+        } else {
+            entries.addAll(ArenaMaps.createDefaultCatalog());
         }
 
-        Array<ArenaMap> maps = createSandboxMapSet();
-        Array<ArenaMap> sandboxMaps = new Array<ArenaMap>();
-        if (maps.size > 0) {
-            selectedSandboxMapIndex = clampSandboxMapIndex(selectedSandboxMapIndex, maps.size);
-            sandboxMaps.add(maps.get(selectedSandboxMapIndex));
-            return sandboxMaps;
+        if (entries.size == 0) {
+            throw new IllegalStateException("No maps are available for gameplay.");
         }
 
-        Gdx.app.log("RatassGame", "No sandbox maps were found; using default maps.");
-        return maps;
+        final LinkedHashMap<String, ArenaMapCatalogEntry> entriesById =
+                new LinkedHashMap<String, ArenaMapCatalogEntry>();
+        Array<String> mapIds = new Array<String>();
+        for (int i = 0; i < entries.size; i++) {
+            ArenaMapCatalogEntry entry = entries.get(i);
+            entriesById.put(entry.getId(), entry);
+            mapIds.add(entry.getId());
+        }
+        final float progressionMapScale = mapScale;
+        return MapProgression.lazy(
+                mapIds,
+                new MapProgression.MapLoader() {
+                    @Override
+                    public ArenaMap load(String mapId) {
+                        ArenaMapCatalogEntry entry = entriesById.get(mapId);
+                        if (entry == null) {
+                            throw new IllegalArgumentException("Unknown gameplay map: " + mapId);
+                        }
+                        return ArenaMaps.loadCatalogMap(entry, progressionMapScale);
+                    }
+                });
+    }
+
+    private void releaseGameplayMaps() {
+        if (mapProgression != null) {
+            mapProgression.releaseLoadedMaps();
+        }
+        mapProgression = null;
+        currentMap = null;
     }
 
     private void refreshSandboxMenuMaps() {
+        releaseSandboxMenuPreview();
         sandboxMenuMaps.clear();
-        sandboxMenuMaps.addAll(createSandboxMapSet());
+        try {
+            sandboxMenuMaps.addAll(ArenaMaps.createSandboxCatalog());
+        } catch (RuntimeException exception) {
+            if (Gdx.app != null) {
+                Gdx.app.error("RatassGame", "Could not load sandbox map catalog.", exception);
+            }
+        }
         selectedSandboxMapIndex = clampSandboxMapIndex(selectedSandboxMapIndex);
-    }
-
-    private Array<ArenaMap> createSandboxMapSet() {
-        Array<ArenaMap> maps = new Array<ArenaMap>();
-        try {
-            addUniqueSandboxMaps(maps, ArenaMaps.createDefaultSet(mapScale));
-        } catch (RuntimeException exception) {
-            if (Gdx.app != null) {
-                Gdx.app.error("RatassGame", "Could not load sandbox game map list.", exception);
-            }
-        }
-        try {
-            addUniqueSandboxMaps(maps, ArenaMaps.createHeadlessTrainingSet(mapScale));
-        } catch (RuntimeException exception) {
-            if (Gdx.app != null) {
-                Gdx.app.error("RatassGame", "Could not load sandbox training map list.", exception);
-            }
-        }
-        return maps;
-    }
-
-    private void addUniqueSandboxMaps(Array<ArenaMap> target, Array<ArenaMap> source) {
-        if (source == null) {
-            return;
-        }
-        for (int i = 0; i < source.size; i++) {
-            ArenaMap candidate = source.get(i);
-            if (!hasSandboxMap(target, candidate)) {
-                target.add(candidate);
-            }
-        }
-    }
-
-    private boolean hasSandboxMap(Array<ArenaMap> maps, ArenaMap candidate) {
-        if (candidate == null) {
-            return true;
-        }
-        String candidateId = candidate.getId();
-        for (int i = 0; i < maps.size; i++) {
-            ArenaMap existing = maps.get(i);
-            if (existing == candidate) {
-                return true;
-            }
-            if (existing != null
-                    && candidateId != null
-                    && candidateId.equals(existing.getId())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private int clampSandboxMapIndex(int index) {
@@ -1289,7 +1304,7 @@ public class RatassGame extends ApplicationAdapter {
         return MathUtils.clamp(index, 0, mapCount - 1);
     }
 
-    private ArenaMap getSelectedSandboxMenuMap() {
+    private ArenaMapCatalogEntry getSelectedSandboxMenuEntry() {
         if (sandboxMenuMaps.size == 0) {
             refreshSandboxMenuMaps();
         }
@@ -1300,6 +1315,37 @@ public class RatassGame extends ApplicationAdapter {
         return sandboxMenuMaps.get(selectedSandboxMapIndex);
     }
 
+    private ArenaMap getSelectedSandboxMenuMap() {
+        ArenaMapCatalogEntry entry = getSelectedSandboxMenuEntry();
+        if (entry == null) {
+            releaseSandboxMenuPreview();
+            return null;
+        }
+        if (entry.getId().equals(sandboxMenuPreviewMapId)) {
+            return sandboxMenuPreviewMap;
+        }
+
+        releaseSandboxMenuPreview();
+        sandboxMenuPreviewMapId = entry.getId();
+        try {
+            sandboxMenuPreviewMap = ArenaMaps.loadCatalogMap(entry, mapScale);
+        } catch (RuntimeException exception) {
+            if (Gdx.app != null) {
+                Gdx.app.error(
+                        "RatassGame",
+                        "Could not load sandbox map preview " + entry.getId() + ".",
+                        exception);
+            }
+        }
+        return sandboxMenuPreviewMap;
+    }
+
+    private void releaseSandboxMenuPreview() {
+        sandboxMenuPreviewMap = null;
+        sandboxMenuPreviewMapId = "";
+        disposeMapDebugMaskTextures();
+    }
+
     private void changeSandboxMapSelection(int direction) {
         if (sandboxMenuMaps.size == 0) {
             refreshSandboxMenuMaps();
@@ -1308,17 +1354,18 @@ public class RatassGame extends ApplicationAdapter {
             selectedSandboxMapIndex = 0;
             return;
         }
+        releaseSandboxMenuPreview();
         selectedSandboxMapIndex =
                 (selectedSandboxMapIndex + direction + sandboxMenuMaps.size) % sandboxMenuMaps.size;
         saveMenuSettings();
     }
 
     private String buildSandboxMapMenuValue() {
-        ArenaMap map = getSelectedSandboxMenuMap();
-        if (map == null) {
+        ArenaMapCatalogEntry entry = getSelectedSandboxMenuEntry();
+        if (entry == null) {
             return "No maps";
         }
-        return map.getId() + "  " + map.getName();
+        return entry.getId() + "  " + entry.getName();
     }
 
     private RlPolicy loadRlEnemyPolicy() {
@@ -2842,6 +2889,13 @@ public class RatassGame extends ApplicationAdapter {
     @Override
     public void render() {
         float delta = Math.min(Gdx.graphics.getDeltaTime(), 1f / 30f);
+
+        if (gameMode == GameMode.STARTUP_LOADING) {
+            effectClock += delta;
+            renderStartupLoadingState(delta);
+            return;
+        }
+
         updateVehicleSounds(delta);
 
         if (gameMode == GameMode.LOADING) {
@@ -2933,6 +2987,38 @@ public class RatassGame extends ApplicationAdapter {
         update(delta);
         renderWorld();
         renderHud();
+    }
+
+    private void renderStartupLoadingState(float delta) {
+        loadingDisplayedProgress = Math.min(
+                loadingProgress,
+                loadingDisplayedProgress
+                        + Math.max(0f, delta) * LOADING_PROGRESS_DISPLAY_SPEED);
+        if (!loadingScreenPresented) {
+            renderLoadingScreen();
+            loadingScreenPresented = true;
+            return;
+        }
+
+        if (loadingDisplayedProgress + 0.001f < loadingProgress) {
+            renderLoadingScreen();
+            return;
+        }
+
+        if (loadingStage < STARTUP_LOADING_STAGE_COUNT) {
+            advancePendingStartupLoading();
+            renderLoadingScreen();
+            return;
+        }
+
+        if (!loadingCompletionPresented) {
+            renderLoadingScreen();
+            loadingCompletionPresented = true;
+            return;
+        }
+
+        gameMode = GameMode.MAIN_MENU;
+        renderMenu();
     }
 
     private void renderLoadingState(float delta) {
@@ -3461,8 +3547,7 @@ public class RatassGame extends ApplicationAdapter {
                 return;
             }
             if (gameMode == GameMode.MAPS_MENU) {
-                gameMode = GameMode.MAIN_MENU;
-                mainMenuSelection = MAIN_MENU_MAPS_SELECTION;
+                closeMapsMenu();
                 return;
             }
             if (gameMode == GameMode.PAUSE_MENU) {
@@ -3540,8 +3625,7 @@ public class RatassGame extends ApplicationAdapter {
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)
                 || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
-            gameMode = GameMode.MAIN_MENU;
-            mainMenuSelection = MAIN_MENU_MAPS_SELECTION;
+            closeMapsMenu();
         }
     }
 
@@ -3703,6 +3787,9 @@ public class RatassGame extends ApplicationAdapter {
         optionsOpenedFromPause = false;
         mainMenuSelection = MAIN_MENU_NEW_GAME_SELECTION;
         disposeGameSounds();
+        disposeArenaSurfaceTextures();
+        releaseGameplayMaps();
+        releaseSandboxMenuPreview();
         gameMode = GameMode.MAIN_MENU;
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     }
@@ -3718,6 +3805,12 @@ public class RatassGame extends ApplicationAdapter {
         optionsOpenedFromPause = false;
         mainMenuSelection = MAIN_MENU_MAPS_SELECTION;
         gameMode = GameMode.MAPS_MENU;
+    }
+
+    private void closeMapsMenu() {
+        releaseSandboxMenuPreview();
+        gameMode = GameMode.MAIN_MENU;
+        mainMenuSelection = MAIN_MENU_MAPS_SELECTION;
     }
 
     private void closeOptionsMenu() {
@@ -3821,8 +3914,7 @@ public class RatassGame extends ApplicationAdapter {
             } else if (mapDebugNextBounds.contains(x, y)) {
                 changeSandboxMapSelection(1);
             } else if (mapDebugBackBounds.contains(x, y)) {
-                gameMode = GameMode.MAIN_MENU;
-                mainMenuSelection = MAIN_MENU_MAPS_SELECTION;
+                closeMapsMenu();
             }
             return;
         }
@@ -4567,7 +4659,9 @@ public class RatassGame extends ApplicationAdapter {
         titleFont.setColor(0.98f, 0.92f, 0.76f, 1f);
         drawTextCentered(
                 titleFont,
-                loadingSandboxMode ? "Loading Sandbox" : "Loading Race",
+                gameMode == GameMode.STARTUP_LOADING
+                        ? "Loading Rogue Circuit"
+                        : loadingSandboxMode ? "Loading Sandbox" : "Loading Race",
                 hudWidth * 0.5f,
                 hudHeight * 0.58f);
         hudFont.setColor(0.72f, 0.78f, 0.82f, 1f);
@@ -4775,6 +4869,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void drawMapsMenu(float hudWidth, float hudHeight) {
+        ArenaMapCatalogEntry entry = getSelectedSandboxMenuEntry();
         ArenaMap map = getSelectedSandboxMenuMap();
         drawMapDebugPreview(map);
         drawMenuStepButton(mapDebugPrevBounds, "<", true);
@@ -4785,10 +4880,10 @@ public class RatassGame extends ApplicationAdapter {
         titleFont.setColor(0.98f, 0.92f, 0.76f, 1f);
         drawTextCentered(titleFont, "Maps", hudWidth * 0.5f, hudHeight - Math.max(30f, hudHeight * 0.045f));
         hudFont.setColor(0.78f, 0.86f, 0.90f, 1f);
-        String mapText = map == null
+        String mapText = entry == null
                 ? "No maps"
                 : (selectedSandboxMapIndex + 1) + "/" + Math.max(1, sandboxMenuMaps.size)
-                        + "  " + map.getId() + "  " + map.getName();
+                        + "  " + entry.getId() + "  " + entry.getName();
         drawTextCentered(
                 hudFont,
                 mapText,
@@ -4882,19 +4977,22 @@ public class RatassGame extends ApplicationAdapter {
         if (path == null || path.length() == 0) {
             return null;
         }
-        Texture texture = mapDebugMaskTextureCache.get(path);
-        if (texture != null) {
-            return texture;
+        if (path.equals(mapDebugMaskTexturePath)) {
+            return mapDebugMaskTexture;
         }
+        disposeMapDebugMaskTextures();
+        mapDebugMaskTexturePath = path;
+
         FileHandle handle = resolveMapMaskHandle(path, map.getId());
         if (handle == null || !handle.exists()) {
             return null;
         }
         try {
-            texture = new Texture(handle);
-            texture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-            mapDebugMaskTextureCache.put(path, texture);
-            return texture;
+            mapDebugMaskTexture = new Texture(handle);
+            mapDebugMaskTexture.setFilter(
+                    Texture.TextureFilter.Nearest,
+                    Texture.TextureFilter.Nearest);
+            return mapDebugMaskTexture;
         } catch (RuntimeException exception) {
             Gdx.app.error("RatassGame", "Could not load map debug mask " + handle.path(), exception);
             return null;
@@ -5692,9 +5790,6 @@ public class RatassGame extends ApplicationAdapter {
 
         if (roundOver) {
             roundOverTimer += delta;
-            if (roundOverTimer >= 0.15f) {
-                warmNextArenaSurfaceTexture();
-            }
             if (roundOverTimer >= AUTO_ADVANCE_DELAY) {
                 if (shouldOfferRogueliteReward()) {
                     openRogueliteRewardChoice();
@@ -5983,8 +6078,18 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void resetRound(boolean advanceMap) {
+        boolean changingPresentationMap =
+                advanceMap
+                        && mapProgression.getMapCount() > 1
+                        && isPresentationEnabled();
+        if (changingPresentationMap) {
+            disposeArenaSurfaceTextures();
+        }
         if (advanceMap) {
             mapProgression.advance();
+        }
+        if (changingPresentationMap) {
+            currentMap = null;
         }
 
         if (rlTrainingMode) {
@@ -5994,8 +6099,6 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         currentMap = mapProgression.getCurrentMap();
-        arenaSurfaceTexture = null;
-        preloadedNextArenaSurfaceKey = null;
         cameraInitialized = false;
         if (isPresentationEnabled()) {
             updateWorldCamera();
@@ -8186,69 +8289,27 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void ensureArenaSurfaceTexture() {
-        if (currentMap == null || arenaSurfaceTexture != null || Gdx.gl == null) {
+        if (currentMap == null
+                || arenaSurfaceTexture != null
+                || arenaSurfaceTextureLoadAttempted
+                || Gdx.gl == null) {
             return;
         }
 
-        arenaSurfaceTexture = arenaSurfaceTextureCache.get(buildArenaSurfaceCacheKey(currentMap));
+        arenaSurfaceTextureLoadAttempted = true;
+        arenaSurfaceTexture = buildArenaSurfaceTexture(currentMap, currentTheme());
     }
 
     private void warmArenaSurfaceTextures() {
-        if (currentMap == null || Gdx.gl == null) {
+        if (currentMap == null
+                || arenaSurfaceTexture != null
+                || arenaSurfaceTextureLoadAttempted
+                || Gdx.gl == null) {
             return;
         }
 
-        arenaSurfaceTexture = getOrCreateArenaSurfaceTexture(currentMap, currentTheme());
-    }
-
-    private void warmNextArenaSurfaceTexture() {
-        if (mapProgression == null || currentMap == null || Gdx.gl == null) {
-            return;
-        }
-        if (mapProgression.getMapCount() <= 1
-                || mapProgression.getCurrentMapNumber() >= mapProgression.getMapCount()) {
-            return;
-        }
-
-        ArenaMap nextMap = mapProgression.getNextMap();
-        if (nextMap == null) {
-            return;
-        }
-
-        String cacheKey = buildArenaSurfaceCacheKey(nextMap);
-        if (cacheKey.equals(preloadedNextArenaSurfaceKey)
-                || arenaSurfaceTextureCache.containsKey(cacheKey)) {
-            preloadedNextArenaSurfaceKey = cacheKey;
-            return;
-        }
-
-        if (getOrCreateArenaSurfaceTexture(nextMap, currentTheme()) != null) {
-            preloadedNextArenaSurfaceKey = cacheKey;
-        }
-    }
-
-    private Texture getOrCreateArenaSurfaceTexture(ArenaMap map, MapTheme theme) {
-        if (map == null || Gdx.gl == null) {
-            return null;
-        }
-
-        String cacheKey = buildArenaSurfaceCacheKey(map);
-        Texture texture = arenaSurfaceTextureCache.get(cacheKey);
-        if (texture != null) {
-            return texture;
-        }
-
-        texture = buildArenaSurfaceTexture(map, theme);
-        if (texture != null) {
-            arenaSurfaceTextureCache.put(cacheKey, texture);
-        }
-        return texture;
-    }
-
-    private String buildArenaSurfaceCacheKey(ArenaMap map) {
-        String mapId = map.getId();
-        String surfaceMode = sandboxMode ? "sandbox-mask" : configuredThemeName;
-        return surfaceMode + ":" + (mapId == null ? Integer.toHexString(map.hashCode()) : mapId);
+        arenaSurfaceTextureLoadAttempted = true;
+        arenaSurfaceTexture = buildArenaSurfaceTexture(currentMap, currentTheme());
     }
 
     private Texture buildArenaSurfaceTexture(ArenaMap map, MapTheme theme) {
@@ -12380,18 +12441,15 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void disposeArenaSurfaceTextures() {
-        for (Texture texture : arenaSurfaceTextureCache.values()) {
-            disposeTexture(texture);
-        }
-        arenaSurfaceTextureCache.clear();
+        disposeTexture(arenaSurfaceTexture);
         arenaSurfaceTexture = null;
+        arenaSurfaceTextureLoadAttempted = false;
     }
 
     private void disposeMapDebugMaskTextures() {
-        for (Texture texture : mapDebugMaskTextureCache.values()) {
-            disposeTexture(texture);
-        }
-        mapDebugMaskTextureCache.clear();
+        disposeTexture(mapDebugMaskTexture);
+        mapDebugMaskTexture = null;
+        mapDebugMaskTexturePath = "";
     }
 
     @Override
@@ -12402,6 +12460,11 @@ public class RatassGame extends ApplicationAdapter {
         disposeRosterSpriteTextures();
         disposeArenaSurfaceTextures();
         disposeMapDebugMaskTextures();
+        if (mapProgression != null) {
+            mapProgression.releaseLoadedMaps();
+        }
+        sandboxMenuPreviewMap = null;
+        sandboxMenuPreviewMapId = "";
         disposeTexture(themeCarsTexture);
         disposeMenuCarPreview();
         disposeMenuHeroCar();
@@ -17335,6 +17398,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private enum GameMode {
+        STARTUP_LOADING,
         MAIN_MENU,
         MAPS_MENU,
         OPTIONS_MENU,

@@ -156,6 +156,17 @@ final class ImageArenaMapLoader {
         return loadMapsFromDirectory(MAPS_DIRECTORY, mapScale, true);
     }
 
+    static Array<ArenaMapCatalogEntry> listDefaultMaps() {
+        return listMapsFromDirectory(
+                MAPS_DIRECTORY,
+                true,
+                ArenaMapCatalogEntry.Source.DEFAULT);
+    }
+
+    static ArenaMap loadDefaultMap(String mapId, float mapScale) {
+        return loadMapFromDirectory(MAPS_DIRECTORY, mapId, mapScale, true);
+    }
+
     static Array<ArenaMap> loadDefaultMaps(float mapScale, HashSet<String> selectedIds) {
         return loadMapsFromDirectory(MAPS_DIRECTORY, mapScale, true, selectedIds);
     }
@@ -164,8 +175,59 @@ final class ImageArenaMapLoader {
         return loadMapsFromDirectory(TRAINING_MAPS_DIRECTORY, mapScale, false);
     }
 
+    static Array<ArenaMapCatalogEntry> listTrainingMaps() {
+        return listMapsFromDirectory(
+                TRAINING_MAPS_DIRECTORY,
+                false,
+                ArenaMapCatalogEntry.Source.TRAINING);
+    }
+
+    static ArenaMap loadTrainingMap(String mapId, float mapScale) {
+        return loadMapFromDirectory(TRAINING_MAPS_DIRECTORY, mapId, mapScale, false);
+    }
+
     static Array<ArenaMap> loadTrainingMaps(float mapScale, HashSet<String> selectedIds) {
         return loadMapsFromDirectory(TRAINING_MAPS_DIRECTORY, mapScale, false, selectedIds);
+    }
+
+    private static Array<ArenaMapCatalogEntry> listMapsFromDirectory(
+            String directoryPath,
+            boolean requireMaps,
+            ArenaMapCatalogEntry.Source source) {
+        if (Gdx.files == null) {
+            throw new IllegalStateException("Picture maps require Gdx.files to be available.");
+        }
+
+        Array<FileHandle> maskFiles = findMaskFiles(directoryPath);
+        if (maskFiles.size == 0 && requireMaps) {
+            throw new IllegalStateException(
+                    "No picture map masks found. Add files like "
+                            + directoryPath
+                            + "/<name>_mask.png.");
+        }
+
+        Array<ArenaMapCatalogEntry> entries = new Array<ArenaMapCatalogEntry>();
+        for (int i = 0; i < maskFiles.size; i++) {
+            String fileName = maskFiles.get(i).name();
+            String mapId = fileName.substring(0, fileName.length() - MASK_SUFFIX.length());
+            entries.add(new ArenaMapCatalogEntry(mapId, displayName(mapId), source));
+        }
+        return entries;
+    }
+
+    private static ArenaMap loadMapFromDirectory(
+            String directoryPath,
+            String mapId,
+            float mapScale,
+            boolean requireMaps) {
+        HashSet<String> selectedIds = new HashSet<String>();
+        selectedIds.add(mapId);
+        Array<ArenaMap> maps =
+                loadMapsFromDirectory(directoryPath, mapScale, requireMaps, selectedIds);
+        if (maps.size == 0) {
+            throw new IllegalArgumentException("Unknown map id: " + mapId);
+        }
+        return maps.first();
     }
 
     private static Array<ArenaMap> loadMapsFromDirectory(
