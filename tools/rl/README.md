@@ -110,8 +110,10 @@ tools/rl/train.sh --detach profile00
 Use `--foreground` only when debugging the trainer itself and you want it tied
 directly to the terminal.
 
-Local Ray workers bind to `RL_RAY_NODE_IP=127.0.0.1` by default so unplugging
-or changing Wi-Fi/VPN interfaces does not break local worker RPC.
+Local Ray workers bind to `RL_RAY_NODE_IP=127.0.0.2` by default so unplugging
+or changing Wi-Fi/VPN interfaces does not break local worker RPC. Ray rewrites
+the special address `127.0.0.1` to a physical interface, so the trainer
+normalizes that value back to the stable `127.0.0.2` loopback address.
 
 Train one specific profile:
 

@@ -50,6 +50,8 @@ OBSERVATION_SIZE = 33
 ACTION_SIZE = 2
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
+DEFAULT_RAY_NODE_IP = "127.0.0.2"
+RAY_REWRITTEN_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 EXPORT_OBJECTIVES = {"race": "race-route-progress-v1"}
 INCOMPATIBLE_CHECKPOINT_PATTERNS = (
     "Error(s) in loading state_dict",
@@ -796,6 +798,13 @@ def configure_ray_output(checkpoint_dir: Path) -> None:
     ray_trainable.DEFAULT_STORAGE_PATH = storage_path
 
 
+def stable_ray_node_ip(node_ip: str) -> str:
+    """Keep a local Ray cluster independent from changing network interfaces."""
+    if node_ip in RAY_REWRITTEN_LOOPBACK_HOSTS:
+        return DEFAULT_RAY_NODE_IP
+    return node_ip
+
+
 def configure_ray_runtime(args: argparse.Namespace) -> None:
     init_kwargs = {
         "include_dashboard": False,
@@ -804,7 +813,13 @@ def configure_ray_runtime(args: argparse.Namespace) -> None:
     should_init = False
 
     if args.ray_node_ip:
-        init_kwargs["_node_ip_address"] = args.ray_node_ip
+        effective_node_ip = stable_ray_node_ip(args.ray_node_ip)
+        init_kwargs["_node_ip_address"] = effective_node_ip
+        if effective_node_ip != args.ray_node_ip:
+            print(
+                f"ray_node_ip_normalized requested={args.ray_node_ip} "
+                f"effective={effective_node_ip} reason=ray_rewrites_standard_loopback"
+            )
         should_init = True
     if args.ray_num_cpus > 0:
         init_kwargs["num_cpus"] = args.ray_num_cpus
@@ -1749,8 +1764,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--ray-node-ip",
-        default="127.0.0.1",
-        help="node IP used for local Ray worker RPC; 127.0.0.1 avoids network-interface disconnects",
+        default=DEFAULT_RAY_NODE_IP,
+        help=(
+            "node IP used for local Ray worker RPC; 127.0.0.2 remains on "
+            "loopback when network interfaces disconnect"
+        ),
     )
     parser.add_argument(
         "--sample-timeout-s",

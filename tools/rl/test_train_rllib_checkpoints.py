@@ -13,6 +13,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import train_rllib
 
 
+class RayRuntimeConfigurationTest(unittest.TestCase):
+    def test_standard_loopback_is_replaced_with_stable_loopback(self):
+        self.assertEqual(
+            "127.0.0.2",
+            train_rllib.stable_ray_node_ip("127.0.0.1"),
+        )
+        self.assertEqual(
+            "127.0.0.2",
+            train_rllib.stable_ray_node_ip("localhost"),
+        )
+
+    def test_explicit_nonstandard_address_is_preserved(self):
+        self.assertEqual(
+            "10.20.30.40",
+            train_rllib.stable_ray_node_ip("10.20.30.40"),
+        )
+
+
 class RestoreAlgorithmCheckpointTest(unittest.TestCase):
     def test_restores_learner_and_synchronizes_inference_workers(self):
         with tempfile.TemporaryDirectory() as temp_dir:
