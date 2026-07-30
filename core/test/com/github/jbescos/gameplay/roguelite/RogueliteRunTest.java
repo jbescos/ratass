@@ -81,4 +81,30 @@ public class RogueliteRunTest {
         assertEquals(0, run.getPlayerInventory().getSelectionCount());
         assertEquals(0, run.getRivalInventory(2).getSelectionCount());
     }
+
+    @Test
+    public void snapshotRestoresCardsRivalsAndOfferSequence() {
+        RogueliteRun original = new RogueliteRun(53L);
+        RogueliteCardDefinition turbo =
+                RogueliteCardCatalog.get(RogueliteCardId.TURBOCHARGER);
+        original.getPlayerInventory().acquire(turbo);
+        original.advanceRivals(Arrays.asList(Integer.valueOf(3), Integer.valueOf(8)));
+        original.createOffers(3);
+
+        RogueliteRun restored = new RogueliteRun(999L);
+        assertTrue(restored.restore(original.snapshot()));
+
+        assertEquals(0, restored.getPlayerInventory().getLevel(RogueliteCardId.TURBOCHARGER));
+        assertEquals(1, restored.getRivalInventory(3).getSelectionCount());
+        assertEquals(1, restored.getRivalInventory(8).getSelectionCount());
+        assertEquals(offerIds(original.createOffers(3)), offerIds(restored.createOffers(3)));
+    }
+
+    private static List<RogueliteCardId> offerIds(List<RogueliteCardOffer> offers) {
+        List<RogueliteCardId> ids = new java.util.ArrayList<RogueliteCardId>();
+        for (int i = 0; i < offers.size(); i++) {
+            ids.add(offers.get(i).getCard().getId());
+        }
+        return ids;
+    }
 }

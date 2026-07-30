@@ -31,6 +31,24 @@ resolve_android_sdk() {
     exit 1
 }
 
+required_variables=(
+    ANDROID_KEYSTORE
+    ANDROID_KEY_ALIAS
+    ANDROID_KEYSTORE_PASSWORD
+    ANDROID_KEY_PASSWORD
+)
+for variable in "${required_variables[@]}"; do
+    if [[ -z "${!variable:-}" ]]; then
+        echo "Required release signing variable is not set: $variable" >&2
+        exit 1
+    fi
+done
+
+if [[ ! -f "$ANDROID_KEYSTORE" ]]; then
+    echo "Android release keystore was not found: $ANDROID_KEYSTORE" >&2
+    exit 1
+fi
+
 resolve_android_sdk
 mkdir -p "$target_dir"
 
@@ -45,13 +63,13 @@ mkdir -p "$target_dir"
     -PbuildToolsVersion="$build_tools_version" \
     -PappVersionCode="$version_code" \
     -PappVersionName="$version_name" \
-    assembleDebug
+    bundleRelease
 
-mapfile -t apks < <(find "$module_dir/build/outputs/apk/debug" -maxdepth 1 -type f -name '*-debug.apk' | sort)
-if [[ ${#apks[@]} -ne 1 ]]; then
-    echo "Expected one Android debug APK, found ${#apks[@]}." >&2
+mapfile -t bundles < <(find "$module_dir/build/outputs/bundle/release" -maxdepth 1 -type f -name '*-release.aab' | sort)
+if [[ ${#bundles[@]} -ne 1 ]]; then
+    echo "Expected one Android release bundle, found ${#bundles[@]}." >&2
     exit 1
 fi
 
-cp "${apks[0]}" "$target_dir/${final_name}-debug.apk"
-echo "Built Android debug APK: $target_dir/${final_name}-debug.apk"
+cp "${bundles[0]}" "$target_dir/${final_name}-release.aab"
+echo "Built signed Android release AAB: $target_dir/${final_name}-release.aab"

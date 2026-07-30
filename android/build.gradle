@@ -1,0 +1,105 @@
+plugins {
+    id "com.android.application" version "9.2.0"
+}
+
+def gdxVersion = providers.gradleProperty("gdxVersion").getOrElse("1.14.2")
+def generatedJniDirectory = layout.buildDirectory.dir("generated/jniLibs")
+def generatedJniPath = file("build/generated/jniLibs")
+
+configurations {
+    nativesArmeabiV7a
+    nativesArm64V8a
+    nativesX86
+    nativesX86_64
+}
+
+android {
+    namespace = "com.github.jbescos.roguecircuit"
+    compileSdk = providers.gradleProperty("compileSdk").getOrElse("36").toInteger()
+    buildToolsVersion = providers.gradleProperty("buildToolsVersion").getOrElse("36.0.0")
+
+    defaultConfig {
+        applicationId = "com.github.jbescos.roguecircuit"
+        minSdk = providers.gradleProperty("minSdk").getOrElse("21").toInteger()
+        targetSdk = providers.gradleProperty("targetSdk").getOrElse("36").toInteger()
+        versionCode = providers.gradleProperty("appVersionCode").getOrElse("1").toInteger()
+        versionName = providers.gradleProperty("appVersionName").getOrElse("1.0")
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile("AndroidManifest.xml")
+            java.srcDirs = ["src", "../core/src"]
+            res.srcDirs = ["res"]
+            assets.srcDirs = ["../assets"]
+            jniLibs.srcDir(generatedJniPath)
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    signingConfigs {
+        release {
+            def keystore = providers.environmentVariable("ANDROID_KEYSTORE").orNull
+            if (keystore != null) {
+                storeFile = file(keystore)
+                storePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.release
+            minifyEnabled = false
+        }
+    }
+}
+
+dependencies {
+    implementation "com.badlogicgames.gdx:gdx:$gdxVersion"
+    implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
+    implementation "com.badlogicgames.gdx:gdx-box2d:$gdxVersion"
+
+    nativesArmeabiV7a "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
+    nativesArmeabiV7a "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-armeabi-v7a"
+    nativesArm64V8a "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
+    nativesArm64V8a "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-arm64-v8a"
+    nativesX86 "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86"
+    nativesX86 "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-x86"
+    nativesX86_64 "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86_64"
+    nativesX86_64 "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-x86_64"
+}
+
+def nativeConfigurations = [
+    "armeabi-v7a": configurations.nativesArmeabiV7a,
+    "arm64-v8a"  : configurations.nativesArm64V8a,
+    "x86"        : configurations.nativesX86,
+    "x86_64"     : configurations.nativesX86_64
+]
+
+tasks.register("copyAndroidNatives") {
+    inputs.files(nativeConfigurations.values())
+    outputs.dir(generatedJniDirectory)
+    doLast {
+        delete(generatedJniDirectory)
+        nativeConfigurations.each { abi, configuration ->
+            configuration.files.each { archive ->
+                copy {
+                    from(zipTree(archive))
+                    include("*.so")
+                    into(generatedJniDirectory.map { it.dir(abi) })
+                }
+            }
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(tasks.named("copyAndroidNatives"))
+}

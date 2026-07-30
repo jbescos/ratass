@@ -4,31 +4,21 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Files.FileType;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Pixmap;
-import com.badlogic.gdx.graphics.PixmapIO;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonWriter;
+import com.github.jbescos.TextFormat;
 import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.MaskArenaShape;
 import com.github.jbescos.gameplay.SpawnPoint;
-import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.Locale;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 final class ImageArenaMapLoader {
     private static final String MAPS_DIRECTORY = "maps";
@@ -147,7 +137,7 @@ final class ImageArenaMapLoader {
         {"111", "101", "101", "111", "001", "001", "111"}
     };
     private static final boolean DEBUG_CHECKPOINT_ORDER =
-            Boolean.getBoolean("ratass.debugCheckpointOrder");
+            MapCacheSupport.readBooleanSystemProperty("ratass.debugCheckpointOrder");
 
     private ImageArenaMapLoader() {
     }
@@ -448,24 +438,26 @@ final class ImageArenaMapLoader {
             builder.routeMetadata(routeMetadata);
 
             ArenaMap map = builder.build();
-            writeCachedMap(maskFile, buildCachedMapData(
-                    maskFile,
-                    baseName,
-                    surfacePath,
-                    mapScale,
-                    mask.getWidth(),
-                    mask.getHeight(),
-                    worldMinX,
-                    worldMinY,
-                    worldWidth,
-                    worldHeight,
-                    shape,
-                    spawnPoints,
-                    checkpoints,
-                    routePoints,
-                    routeMarkers,
-                    routeMetadata,
-                    recoveryPoints));
+            if (MapCacheSupport.isAvailable()) {
+                writeCachedMap(maskFile, buildCachedMapData(
+                        maskFile,
+                        baseName,
+                        surfacePath,
+                        mapScale,
+                        mask.getWidth(),
+                        mask.getHeight(),
+                        worldMinX,
+                        worldMinY,
+                        worldWidth,
+                        worldHeight,
+                        shape,
+                        spawnPoints,
+                        checkpoints,
+                        routePoints,
+                        routeMarkers,
+                        routeMetadata,
+                        recoveryPoints));
+            }
             return map;
         } finally {
             mask.dispose();
@@ -586,7 +578,10 @@ final class ImageArenaMapLoader {
             String baseName,
             String surfacePath,
             float mapScale) {
-        String maskSha256 = calculateFileSha256(maskFile);
+        if (!MapCacheSupport.isAvailable()) {
+            return null;
+        }
+        String maskSha256 = MapCacheSupport.calculateSha256(maskFile);
         if (maskSha256 == null) {
             return null;
         }
@@ -598,7 +593,7 @@ final class ImageArenaMapLoader {
             }
             Reader reader = null;
             try {
-                reader = openCachedMapReader(cacheFile);
+                reader = MapCacheSupport.openReader(cacheFile);
                 CachedMapData cached = createCacheJson().fromJson(CachedMapData.class, reader);
                 if (isCacheValid(cached, maskFile, baseName, surfacePath, mapScale, maskSha256)) {
                     return cached;
@@ -647,15 +642,16 @@ final class ImageArenaMapLoader {
     }
 
     private static void writeCachedMap(FileHandle maskFile, CachedMapData cached) {
+        if (!MapCacheSupport.isAvailable()) {
+            return;
+        }
         Array<FileHandle> cacheFiles = writableCacheFiles(maskFile, cached.baseName);
         for (int i = 0; i < cacheFiles.size; i++) {
             FileHandle cacheFile = cacheFiles.get(i);
             Writer writer = null;
             try {
                 cacheFile.parent().mkdirs();
-                writer = new OutputStreamWriter(
-                        new GZIPOutputStream(cacheFile.write(false)),
-                        StandardCharsets.UTF_8);
+                writer = MapCacheSupport.openWriter(cacheFile);
                 createCacheJson().toJson(cached, CachedMapData.class, writer);
                 return;
             } catch (RuntimeException ignored) {
@@ -895,16 +891,7 @@ final class ImageArenaMapLoader {
     }
 
     private static void writeMaskPng(FileHandle maskFile, Pixmap mask) {
-        PixmapIO.PNG writer = new PixmapIO.PNG(Math.max(1024, mask.getWidth() * mask.getHeight() * 4));
-        try {
-            writer.setFlipY(false);
-            writer.setCompression(9);
-            writer.write(maskFile, mask);
-        } catch (IOException ignored) {
-            // Some packaged/internal file handles are intentionally not writable.
-        } finally {
-            writer.dispose();
-        }
+        MapCacheSupport.writePng(maskFile, mask);
     }
 
     private static boolean canWriteMaskAnnotations(FileHandle maskFile) {
@@ -1109,45 +1096,6 @@ final class ImageArenaMapLoader {
         return json;
     }
 
-    private static Reader openCachedMapReader(FileHandle cacheFile) throws IOException {
-        return new InputStreamReader(new GZIPInputStream(cacheFile.read()), StandardCharsets.UTF_8);
-    }
-
-    private static String calculateFileSha256(FileHandle file) {
-        InputStream input = null;
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            input = new BufferedInputStream(file.read());
-            byte[] buffer = new byte[8192];
-            int count;
-            while ((count = input.read(buffer)) >= 0) {
-                if (count > 0) {
-                    digest.update(buffer, 0, count);
-                }
-            }
-            return toHex(digest.digest());
-        } catch (RuntimeException ignored) {
-            return null;
-        } catch (IOException ignored) {
-            return null;
-        } catch (NoSuchAlgorithmException ignored) {
-            return null;
-        } finally {
-            closeQuietly(input);
-        }
-    }
-
-    private static String toHex(byte[] bytes) {
-        char[] output = new char[bytes.length * 2];
-        char[] digits = "0123456789abcdef".toCharArray();
-        for (int i = 0; i < bytes.length; i++) {
-            int value = bytes[i] & 0xff;
-            output[i * 2] = digits[value >>> 4];
-            output[i * 2 + 1] = digits[value & 0x0f];
-        }
-        return new String(output);
-    }
-
     private static Array<FileHandle> readableCacheFiles(FileHandle maskFile, String baseName) {
         Array<FileHandle> cacheFiles = new Array<FileHandle>();
         HashSet<String> seenPaths = new HashSet<String>();
@@ -1209,16 +1157,6 @@ final class ImageArenaMapLoader {
         }
     }
 
-    private static void closeQuietly(InputStream input) {
-        if (input == null) {
-            return;
-        }
-        try {
-            input.close();
-        } catch (IOException ignored) {
-        }
-    }
-
     private static void closeQuietly(Reader reader) {
         if (reader == null) {
             return;
@@ -1264,7 +1202,7 @@ final class ImageArenaMapLoader {
         cached.mapScale = mapScale;
         cached.maskLastModified = maskFile.lastModified();
         cached.maskLength = maskFile.length();
-        cached.maskSha256 = calculateFileSha256(maskFile);
+        cached.maskSha256 = MapCacheSupport.calculateSha256(maskFile);
         cached.imageWidth = imageWidth;
         cached.imageHeight = imageHeight;
         cached.worldMinX = worldMinX;
@@ -3793,22 +3731,18 @@ final class ImageArenaMapLoader {
             assignNearestRouteLineMarkerConnection(unsafe, orderedMarkers);
         }
         if (unsafe.fromOrangeIndex > 0 && unsafe.toOrangeIndex > 0) {
-            System.out.printf(
-                    Locale.ROOT,
-                    "route_line_warning map=%s issue=intersects_offroad orange_from=%d orange_to=%d x=%.3f y=%.3f%n",
-                    routeLogMapId(routeMap),
-                    unsafe.fromOrangeIndex,
-                    unsafe.toOrangeIndex,
-                    unsafe.x,
-                    unsafe.y);
+            System.out.println(
+                    "route_line_warning map=" + routeLogMapId(routeMap)
+                            + " issue=intersects_offroad orange_from=" + unsafe.fromOrangeIndex
+                            + " orange_to=" + unsafe.toOrangeIndex
+                            + " x=" + TextFormat.fixed(unsafe.x, 3)
+                            + " y=" + TextFormat.fixed(unsafe.y, 3));
         } else {
-            System.out.printf(
-                    Locale.ROOT,
-                    "route_line_warning map=%s issue=intersects_offroad segment=%d x=%.3f y=%.3f%n",
-                    routeLogMapId(routeMap),
-                    unsafe.segmentIndex,
-                    unsafe.x,
-                    unsafe.y);
+            System.out.println(
+                    "route_line_warning map=" + routeLogMapId(routeMap)
+                            + " issue=intersects_offroad segment=" + unsafe.segmentIndex
+                            + " x=" + TextFormat.fixed(unsafe.x, 3)
+                            + " y=" + TextFormat.fixed(unsafe.y, 3));
         }
     }
 

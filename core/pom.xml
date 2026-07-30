@@ -20,24 +20,8 @@
             <artifactId>gdx</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.badlogicgames.gdx-controllers</groupId>
-            <artifactId>gdx-controllers-core</artifactId>
-        </dependency>
-        <dependency>
             <groupId>com.badlogicgames.gdx</groupId>
             <artifactId>gdx-box2d</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.badlogicgames.gdx</groupId>
-            <artifactId>gdx-ai</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.badlogicgames.ashley</groupId>
-            <artifactId>ashley</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.badlogicgames.box2dlights</groupId>
-            <artifactId>box2dlights</artifactId>
         </dependency>
         <dependency>
             <groupId>junit</groupId>

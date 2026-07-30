@@ -4,6 +4,9 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.utils.Array;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 public final class MapProgression {
@@ -100,6 +103,62 @@ public final class MapProgression {
 
     public int getMapCount() {
         return maps.size();
+    }
+
+    public String getCurrentMapId() {
+        return maps.get(currentIndex).mapId;
+    }
+
+    public List<String> getMapIdsInOrder() {
+        List<String> ids = new ArrayList<String>(maps.size());
+        for (int i = 0; i < maps.size(); i++) {
+            ids.add(maps.get(i).mapId);
+        }
+        return ids;
+    }
+
+    public boolean restoreOrder(List<String> orderedMapIds, String currentMapId) {
+        if (orderedMapIds == null
+                || orderedMapIds.isEmpty()
+                || currentMapId == null) {
+            return false;
+        }
+        Map<String, MapSlot> slotsById = new LinkedHashMap<String, MapSlot>();
+        for (int i = 0; i < maps.size(); i++) {
+            MapSlot slot = maps.get(i);
+            slotsById.put(slot.mapId, slot);
+        }
+
+        ArrayList<MapSlot> restored = new ArrayList<MapSlot>(maps.size());
+        Map<String, Boolean> savedIds = new LinkedHashMap<String, Boolean>();
+        int restoredCurrentIndex = -1;
+        for (int i = 0; i < orderedMapIds.size(); i++) {
+            String mapId = orderedMapIds.get(i);
+            if (mapId == null || savedIds.put(mapId, Boolean.TRUE) != null) {
+                return false;
+            }
+            MapSlot slot = slotsById.remove(mapId);
+            if (slot == null) {
+                if (mapId.equals(currentMapId)) {
+                    return false;
+                }
+                continue;
+            }
+            restored.add(slot);
+            if (mapId.equals(currentMapId)) {
+                restoredCurrentIndex = restored.size() - 1;
+            }
+        }
+        if (restoredCurrentIndex < 0) {
+            return false;
+        }
+        restored.addAll(slotsById.values());
+
+        maps.clear();
+        maps.addAll(restored);
+        currentIndex = restoredCurrentIndex;
+        releaseLoadedMaps();
+        return true;
     }
 
     public void releaseLoadedMaps() {

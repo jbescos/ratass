@@ -22,6 +22,10 @@
         </dependency>
         <dependency>
             <groupId>com.badlogicgames.gdx</groupId>
+            <artifactId>gdx</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.badlogicgames.gdx</groupId>
             <artifactId>gdx-backend-lwjgl3</artifactId>
         </dependency>
         <dependency>
@@ -29,10 +33,6 @@
             <artifactId>gdx-platform</artifactId>
             <version>${gdx.version}</version>
             <classifier>natives-desktop</classifier>
-        </dependency>
-        <dependency>
-            <groupId>com.badlogicgames.gdx-controllers</groupId>
-            <artifactId>gdx-controllers-desktop</artifactId>
         </dependency>
         <dependency>
             <groupId>com.badlogicgames.gdx</groupId>

@@ -64,4 +64,18 @@ public final class RogueliteCardInventory {
         }
         return eligible;
     }
+
+    void restoreLevel(RogueliteCardDefinition card, int level) {
+        if (card == null || level < 0 || level > card.getMaxLevel()) {
+            throw new IllegalArgumentException("Invalid roguelite card level.");
+        }
+        levels.put(card.getId(), Integer.valueOf(level));
+        selections += level + 1;
+    }
+
+    void copyFrom(RogueliteCardInventory source) {
+        clear();
+        levels.putAll(source.levels);
+        selections = source.selections;
+    }
 }

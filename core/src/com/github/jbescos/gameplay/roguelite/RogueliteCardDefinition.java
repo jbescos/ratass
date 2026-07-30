@@ -19,7 +19,10 @@ public final class RogueliteCardDefinition {
         this.id = id;
         this.title = title;
         this.description = description;
-        this.effectTexts = effectTexts.clone();
+        this.effectTexts = new String[effectTexts.length];
+        for (int i = 0; i < effectTexts.length; i++) {
+            this.effectTexts[i] = effectTexts[i];
+        }
         this.synergyCardId = synergyCardId;
     }
 
