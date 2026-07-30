@@ -11,7 +11,7 @@ public class RogueliteCarUpgradesTest {
     private static final float EPSILON = 0.0001f;
 
     @Test
-    public void nullInventoryKeepsEveryModifierNeutral() {
+    public void nullLoadoutKeepsEveryModifierNeutral() {
         RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
         upgrades.configure(null);
 
@@ -25,26 +25,22 @@ public class RogueliteCarUpgradesTest {
 
     @Test
     public void everyCatalogCardHasARuntimeEffectRegistration() {
-        RogueliteCardInventory inventory = new RogueliteCardInventory();
         List<RogueliteCardDefinition> cards = RogueliteCardCatalog.all();
         for (int i = 0; i < cards.size(); i++) {
-            assertTrue(inventory.acquire(cards.get(i)));
+            RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+            upgrades.configure(loadout(cards.get(i).getId()));
+            assertTrue(upgrades.isEnabled());
         }
-
-        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(inventory);
-
-        assertTrue(upgrades.isEnabled());
-        assertTrue(upgrades.hasOvertakeInjector());
     }
 
     @Test
     public void turboAndAerodynamicsSynergyRaisesRedlineAndReducesDrag() {
-        RogueliteCardInventory inventory = new RogueliteCardInventory();
-        acquire(inventory, RogueliteCardId.TURBOCHARGER, 3);
-        acquire(inventory, RogueliteCardId.AERODYNAMIC_KIT, 1);
+        RogueliteLoadout loadout =
+                loadout(
+                        RogueliteCardId.TURBOCHARGER,
+                        RogueliteCardId.AERODYNAMIC_KIT);
         RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(inventory);
+        upgrades.configure(loadout);
 
         upgrades.update(
                 1.6f,
@@ -58,37 +54,33 @@ public class RogueliteCarUpgradesTest {
                 100f,
                 2f);
 
-        assertEquals(1.14f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.10f, upgrades.getAccelerationMultiplier(), EPSILON);
         assertEquals(1.055f, upgrades.getMaxSpeedMultiplier(), EPSILON);
-        assertEquals(0.95f, upgrades.getDragMultiplier(), EPSILON);
+        assertEquals(0.91f, upgrades.getDragMultiplier(), EPSILON);
     }
 
     @Test
-    public void stormTiresRecoverPartOfWeatherGripLoss() {
-        RogueliteCardInventory inventory = new RogueliteCardInventory();
-        acquire(inventory, RogueliteCardId.STORM_TIRES, 1);
+    public void stormTiresRecoverHalfOfWeatherGripLoss() {
         RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(inventory);
+        upgrades.configure(loadout(RogueliteCardId.STORM_TIRES));
 
-        assertEquals(0.706f, upgrades.adjustSurfaceGrip(0.58f), EPSILON);
+        assertEquals(0.79f, upgrades.adjustSurfaceGrip(0.58f), EPSILON);
     }
 
     @Test
     public void overtakingCreatesThenExpiresAnAccelerationBurst() {
-        RogueliteCardInventory inventory = new RogueliteCardInventory();
-        acquire(inventory, RogueliteCardId.OVERTAKE_INJECTOR, 1);
         RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(inventory);
+        upgrades.configure(loadout(RogueliteCardId.OVERTAKE_INJECTOR));
 
         assertTrue(upgrades.hasOvertakeInjector());
         upgrades.onRacePositionImproved(1, 0f);
-        assertEquals(1.07f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.11f, upgrades.getAccelerationMultiplier(), EPSILON);
         assertEquals(
                 RogueliteCardId.OVERTAKE_INJECTOR,
                 upgrades.getActiveCardIds().get(0));
 
         upgrades.update(
-                1.1f,
+                1.4f,
                 1f,
                 true,
                 false,
@@ -104,10 +96,8 @@ public class RogueliteCarUpgradesTest {
 
     @Test
     public void draftReceiverIsReportedOnlyWhileSlipstreamIsActive() {
-        RogueliteCardInventory inventory = new RogueliteCardInventory();
-        acquire(inventory, RogueliteCardId.DRAFT_RECEIVER, 1);
         RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(inventory);
+        upgrades.configure(loadout(RogueliteCardId.DRAFT_RECEIVER));
 
         upgrades.update(
                 0.1f,
@@ -121,7 +111,9 @@ public class RogueliteCarUpgradesTest {
                 0f,
                 100f,
                 2f);
-        assertEquals(RogueliteCardId.DRAFT_RECEIVER, upgrades.getActiveCardIds().get(0));
+        assertEquals(
+                RogueliteCardId.DRAFT_RECEIVER,
+                upgrades.getActiveCardIds().get(0));
 
         upgrades.update(
                 0.1f,
@@ -138,13 +130,11 @@ public class RogueliteCarUpgradesTest {
         assertTrue(upgrades.getActiveCardIds().isEmpty());
     }
 
-    private static void acquire(
-            RogueliteCardInventory inventory,
-            RogueliteCardId id,
-            int copies) {
-        RogueliteCardDefinition card = RogueliteCardCatalog.get(id);
-        for (int i = 0; i < copies; i++) {
-            assertTrue(inventory.acquire(card));
+    private static RogueliteLoadout loadout(RogueliteCardId... cards) {
+        RogueliteLoadout loadout = new RogueliteLoadout("profile00");
+        for (int i = 0; i < cards.length; i++) {
+            assertTrue(loadout.equip(cards[i], -1));
         }
+        return loadout;
     }
 }

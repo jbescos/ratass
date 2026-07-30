@@ -4,8 +4,8 @@ final class OvertakeInjectorEffect extends RogueliteUpgradeEffect {
     private final boolean synergy;
     private float boostTimer;
 
-    OvertakeInjectorEffect(int level, boolean synergy) {
-        super(RogueliteCardId.OVERTAKE_INJECTOR, level);
+    OvertakeInjectorEffect(boolean synergy) {
+        super(RogueliteCardId.OVERTAKE_INJECTOR);
         this.synergy = synergy;
     }
 
@@ -34,9 +34,9 @@ final class OvertakeInjectorEffect extends RogueliteUpgradeEffect {
         if (positionsGained <= 0) {
             return;
         }
-        float duration = RogueliteEffectMath.levelValue(level, 1.0f, 1.3f, 1.6f);
-        if (level >= 2 && synergy && slipstreamBoost > 0.05f) {
-            duration *= 2f;
+        float duration = 1.3f;
+        if (synergy && slipstreamBoost > 0.05f) {
+            duration *= 1.6f;
         }
         boostTimer = Math.max(boostTimer, duration * Math.min(2, positionsGained));
     }
@@ -44,14 +44,14 @@ final class OvertakeInjectorEffect extends RogueliteUpgradeEffect {
     @Override
     float accelerationBonus() {
         return boostTimer > 0f
-                ? RogueliteEffectMath.levelValue(level, 0.07f, 0.11f, 0.15f)
+                ? 0.11f
                 : 0f;
     }
 
     @Override
     float maxSpeedBonus() {
         return boostTimer > 0f
-                ? RogueliteEffectMath.levelValue(level, 0.07f, 0.11f, 0.15f) * 0.45f
+                ? 0.11f * 0.45f
                 : 0f;
     }
 }

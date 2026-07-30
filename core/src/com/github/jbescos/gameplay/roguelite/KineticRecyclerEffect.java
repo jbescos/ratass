@@ -5,8 +5,8 @@ final class KineticRecyclerEffect extends RogueliteUpgradeEffect {
     private float recoveryTimer;
     private float recoveryStrength;
 
-    KineticRecyclerEffect(int level, boolean synergy) {
-        super(RogueliteCardId.KINETIC_RECYCLER, level);
+    KineticRecyclerEffect(boolean synergy) {
+        super(RogueliteCardId.KINETIC_RECYCLER);
         this.synergy = synergy;
     }
 
@@ -31,9 +31,7 @@ final class KineticRecyclerEffect extends RogueliteUpgradeEffect {
     @Override
     void onCollision(float impactStrength) {
         float impactFactor = RogueliteEffectMath.clamp(impactStrength / 18f, 0.35f, 1f);
-        float strength =
-                RogueliteEffectMath.levelValue(level, 0.06f, 0.10f, 0.14f)
-                        * impactFactor;
+        float strength = 0.10f * impactFactor;
         recoveryStrength = Math.max(
                 recoveryStrength,
                 strength * (synergy ? 1.25f : 1f));

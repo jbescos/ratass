@@ -225,6 +225,10 @@ rl_policy_run_batch() {
         && [[ -z "${RL_RETRAIN_COMPLETED:-}" ]]; then
         export RL_RETRAIN_COMPLETED=1
       fi
+      local driver_metadata_path
+      driver_metadata_path="$(dirname "${RL_BEST_OUTPUT}")/driver_metadata.json"
+      rm -f "${driver_metadata_path}"
+      echo "driver_metadata_invalidated policy=${policy_id} path=${driver_metadata_path}"
       mkdir -p "$(dirname "${RL_BEST_OUTPUT}")" "$(dirname "${RL_TRAIN_LOG}")" "$(dirname "${RL_POLICY_STATUS_FILE}")"
       if rl_policy_is_true "${RL_RETRAIN_COMPLETED:-0}" && [[ -n "${RL_POLICY_TRAINING_STATE:-}" ]]; then
         mkdir -p "$(dirname "${RL_POLICY_TRAINING_STATE}")"
@@ -273,6 +277,11 @@ rl_policy_run_batch() {
       echo "policy_training_start id=${policy_id} index=${policy_index}/${policy_total} script=${script_key} output=${RL_BEST_OUTPUT} checkpoint_dir=${RL_CURRICULUM_CHECKPOINT_DIR} config=${RL_POLICY_CONFIG_FILE}"
       local policy_exit_code=0
       if bash "${script_path}" "${script_args[@]}"; then
+        if ! rl_policy_is_false "${RL_GENERATE_DRIVER_METADATA:-1}"; then
+          if ! bash tools/rl/generate_driver_metadata.sh "${policy_id}"; then
+            echo "driver_metadata_generation_failed policy=${policy_id}" >&2
+          fi
+        fi
         {
           printf 'status=done\n'
           printf 'completed_profile=1\n'

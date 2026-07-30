@@ -4,26 +4,29 @@ public final class RogueliteCardDefinition {
     private final RogueliteCardId id;
     private final String title;
     private final String description;
-    private final String[] effectTexts;
+    private final String effectText;
     private final RogueliteCardId synergyCardId;
+    private final int tier;
 
     RogueliteCardDefinition(
             RogueliteCardId id,
             String title,
             String description,
-            String[] effectTexts,
-            RogueliteCardId synergyCardId) {
-        if (effectTexts == null || effectTexts.length == 0) {
-            throw new IllegalArgumentException("A card requires at least one level");
+            String effectText,
+            RogueliteCardId synergyCardId,
+            int tier) {
+        if (effectText == null || effectText.length() == 0) {
+            throw new IllegalArgumentException("A card requires an effect.");
+        }
+        if (tier < 1 || tier > DriverProfileCatalog.MAX_TIER) {
+            throw new IllegalArgumentException("Card tier is out of range.");
         }
         this.id = id;
         this.title = title;
         this.description = description;
-        this.effectTexts = new String[effectTexts.length];
-        for (int i = 0; i < effectTexts.length; i++) {
-            this.effectTexts[i] = effectTexts[i];
-        }
+        this.effectText = effectText;
         this.synergyCardId = synergyCardId;
+        this.tier = tier;
     }
 
     public RogueliteCardId getId() {
@@ -38,16 +41,15 @@ public final class RogueliteCardDefinition {
         return description;
     }
 
-    public int getMaxLevel() {
-        return effectTexts.length - 1;
-    }
-
-    public String getEffectText(int level) {
-        int clampedLevel = Math.max(0, Math.min(level, getMaxLevel()));
-        return effectTexts[clampedLevel];
+    public String getEffectText() {
+        return effectText;
     }
 
     public RogueliteCardId getSynergyCardId() {
         return synergyCardId;
+    }
+
+    public int getTier() {
+        return tier;
     }
 }

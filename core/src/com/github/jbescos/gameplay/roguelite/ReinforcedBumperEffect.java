@@ -4,8 +4,8 @@ final class ReinforcedBumperEffect extends RogueliteUpgradeEffect {
     private static final float ACTIVATION_SECONDS = 0.75f;
     private float activationTimer;
 
-    ReinforcedBumperEffect(int level) {
-        super(RogueliteCardId.REINFORCED_BUMPER, level);
+    ReinforcedBumperEffect() {
+        super(RogueliteCardId.REINFORCED_BUMPER);
     }
 
     @Override
@@ -32,11 +32,11 @@ final class ReinforcedBumperEffect extends RogueliteUpgradeEffect {
 
     @Override
     float frontCollisionRecoilMultiplier() {
-        return 1f - RogueliteEffectMath.levelValue(level, 0.15f, 0.25f, 0.35f);
+        return 0.75f;
     }
 
     @Override
     float frontCollisionPushMultiplier() {
-        return 1f + RogueliteEffectMath.levelValue(level, 0.10f, 0.18f, 0.26f);
+        return 1.18f;
     }
 }

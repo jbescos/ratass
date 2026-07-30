@@ -15,123 +15,87 @@ public final class RogueliteCardCatalog {
         cards.add(card(
                 RogueliteCardId.TURBOCHARGER,
                 "Turbocharger",
-                "More engine force, with a redline bonus at maximum level.",
-                new String[] {
-                        "+6% acceleration",
-                        "+10% acceleration",
-                        "+14% acceleration; redline adds speed"
-                },
-                RogueliteCardId.AERODYNAMIC_KIT));
+                "Builds speed quickly and rewards sustained full throttle.",
+                "+10% acceleration; redline adds speed",
+                RogueliteCardId.AERODYNAMIC_KIT,
+                1));
         cards.add(card(
                 RogueliteCardId.AERODYNAMIC_KIT,
                 "Aerodynamic Kit",
                 "Reduces drag and preserves temporary speed effects.",
-                new String[] {
-                        "5% less drag",
-                        "9% less drag",
-                        "13% less drag; boosts fade slower"
-                },
-                RogueliteCardId.TURBOCHARGER));
+                "9% less drag; boosts fade slower",
+                RogueliteCardId.TURBOCHARGER,
+                2));
         cards.add(card(
                 RogueliteCardId.DRIFT_CAPACITOR,
                 "Drift Capacitor",
                 "Sustained on-road slip charges acceleration for the corner exit.",
-                new String[] {
-                        "Drift exit: up to +6% acceleration",
-                        "Drift exit: up to +10% acceleration",
-                        "Drift exit: up to +14% acceleration"
-                },
-                RogueliteCardId.COUNTERSTEER_SERVO));
+                "Drift exit: up to +10% acceleration",
+                RogueliteCardId.COUNTERSTEER_SERVO,
+                3));
         cards.add(card(
                 RogueliteCardId.COUNTERSTEER_SERVO,
                 "Countersteer Servo",
                 "Adds steering authority and traction while the car is sliding.",
-                new String[] {
-                        "+8% control during slides",
-                        "+13% control during slides",
-                        "+18% control; extra exit traction"
-                },
-                RogueliteCardId.DRIFT_CAPACITOR));
+                "+13% control during slides; extra exit traction",
+                RogueliteCardId.DRIFT_CAPACITOR,
+                1));
         cards.add(card(
                 RogueliteCardId.DRAFT_RECEIVER,
                 "Draft Receiver",
                 "Expands and strengthens the useful wake behind other cars.",
-                new String[] {
-                        "+10% slipstream range and strength",
-                        "+20% slipstream range and strength",
-                        "+30% strength; wake lingers"
-                },
-                RogueliteCardId.OVERTAKE_INJECTOR));
+                "+20% slipstream range and strength",
+                RogueliteCardId.OVERTAKE_INJECTOR,
+                3));
         cards.add(card(
                 RogueliteCardId.OVERTAKE_INJECTOR,
                 "Overtake Injector",
                 "Improving race position triggers a short acceleration burst.",
-                new String[] {
-                        "Pass: +7% acceleration for 1.0s",
-                        "Pass: +11% acceleration for 1.3s",
-                        "Pass: +15%; drafting doubles duration"
-                },
-                RogueliteCardId.DRAFT_RECEIVER));
+                "Pass: +11% acceleration; drafting extends the burst",
+                RogueliteCardId.DRAFT_RECEIVER,
+                5));
         cards.add(card(
                 RogueliteCardId.REINFORCED_BUMPER,
                 "Reinforced Bumper",
                 "Reduces your collision recoil while pushing rivals harder.",
-                new String[] {
-                        "-15% recoil; +10% push",
-                        "-25% recoil; +18% push",
-                        "-35% recoil; +26% push"
-                },
-                RogueliteCardId.KINETIC_RECYCLER));
+                "-25% recoil; +18% push",
+                RogueliteCardId.KINETIC_RECYCLER,
+                2));
         cards.add(card(
                 RogueliteCardId.KINETIC_RECYCLER,
                 "Kinetic Recycler",
                 "Restores acceleration briefly after a collision.",
-                new String[] {
-                        "Recover 6% impact energy",
-                        "Recover 10% impact energy",
-                        "Recover 14%; bumper synergy adds more"
-                },
-                RogueliteCardId.REINFORCED_BUMPER));
+                "Recover 10% impact energy",
+                RogueliteCardId.REINFORCED_BUMPER,
+                4));
         cards.add(card(
                 RogueliteCardId.STORM_TIRES,
                 "Storm Tires",
                 "Retains more tire grip in rain and snow.",
-                new String[] {
-                        "Retain 30% of weather grip loss",
-                        "Retain 50% of weather grip loss",
-                        "Retain 70% of weather grip loss"
-                },
-                RogueliteCardId.STORM_DYNAMO));
+                "Retain 50% of weather grip loss",
+                RogueliteCardId.STORM_DYNAMO,
+                2));
         cards.add(card(
                 RogueliteCardId.STORM_DYNAMO,
                 "Storm Dynamo",
                 "Bad weather gradually charges additional acceleration.",
-                new String[] {
-                        "Weather charge: up to +5% acceleration",
-                        "Weather charge: up to +8% acceleration",
-                        "Weather charge: up to +12%; lingers"
-                },
-                RogueliteCardId.STORM_TIRES));
+                "Weather charge: up to +8% acceleration; charge lingers",
+                RogueliteCardId.STORM_TIRES,
+                5));
         cards.add(card(
                 RogueliteCardId.CLEAN_MOMENTUM,
                 "Clean Momentum",
                 "Clean on-road driving gradually raises maximum speed.",
-                new String[] {
-                        "Clean driving: up to +3% speed",
-                        "Clean driving: up to +5% speed",
-                        "Clean driving: up to +7%; resists impacts"
-                },
-                RogueliteCardId.RECOVERY_DIFFERENTIAL));
+                "Clean driving: up to +5% speed",
+                RogueliteCardId.RECOVERY_DIFFERENTIAL,
+                4));
         cards.add(card(
                 RogueliteCardId.RECOVERY_DIFFERENTIAL,
                 "Recovery Differential",
                 "A safe return to the road grants temporary traction and acceleration.",
-                new String[] {
-                        "Safe re-entry: +8% traction",
-                        "Safe re-entry: +12% traction and power",
-                        "Safe re-entry: +16%; stronger when slow"
-                },
-                RogueliteCardId.CLEAN_MOMENTUM));
+                "Safe re-entry: +12% traction and +6% power",
+                RogueliteCardId.CLEAN_MOMENTUM,
+                1));
 
         Map<RogueliteCardId, RogueliteCardDefinition> cardsById =
                 new EnumMap<RogueliteCardId, RogueliteCardDefinition>(RogueliteCardId.class);
@@ -184,13 +148,15 @@ public final class RogueliteCardCatalog {
             RogueliteCardId id,
             String title,
             String description,
-            String[] effectTexts,
-            RogueliteCardId synergyCardId) {
+            String effectText,
+            RogueliteCardId synergyCardId,
+            int tier) {
         return new RogueliteCardDefinition(
                 id,
                 title,
                 description,
-                effectTexts,
-                synergyCardId);
+                effectText,
+                synergyCardId,
+                tier);
     }
 }

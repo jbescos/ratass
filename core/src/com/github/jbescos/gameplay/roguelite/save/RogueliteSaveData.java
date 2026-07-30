@@ -5,10 +5,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class RogueliteSaveData {
-    public static final int CURRENT_VERSION = 1;
+    public static final int CURRENT_VERSION = 3;
     public static final String PHASE_RACE = "race";
     public static final String PHASE_RESULT = "result";
     public static final String PHASE_REWARD = "reward";
+    public static final String PHASE_END = "end";
 
     public int version = CURRENT_VERSION;
     public String phase = PHASE_RACE;
@@ -20,6 +21,11 @@ public final class RogueliteSaveData {
     public int carCount = 1;
     public int playerCarIndex;
     public int raceLaps = 1;
+    public boolean championshipTransitionPending;
+    public List<Integer> pendingEliminatedVehicleIds =
+            new ArrayList<Integer>();
+    public boolean runEnded;
+    public boolean playerWonRun;
     public RogueliteRun.Snapshot run = new RogueliteRun.Snapshot();
     public List<RosterEntry> roster = new ArrayList<RosterEntry>();
     public List<String> rewardCardIds = new ArrayList<String>();
@@ -41,8 +47,17 @@ public final class RogueliteSaveData {
                 || raceLaps < 1
                 || run == null
                 || roster == null
+                || pendingEliminatedVehicleIds == null
                 || rewardCardIds == null) {
             return false;
+        }
+        for (int i = 0; i < pendingEliminatedVehicleIds.size(); i++) {
+            Integer vehicleId = pendingEliminatedVehicleIds.get(i);
+            if (vehicleId == null
+                    || vehicleId.intValue() < 0
+                    || pendingEliminatedVehicleIds.indexOf(vehicleId) != i) {
+                return false;
+            }
         }
         if (PHASE_REWARD.equals(phase) && rewardCardIds.isEmpty()) {
             return false;
@@ -59,7 +74,8 @@ public final class RogueliteSaveData {
     private static boolean isKnownPhase(String value) {
         return PHASE_RACE.equals(value)
                 || PHASE_RESULT.equals(value)
-                || PHASE_REWARD.equals(value);
+                || PHASE_REWARD.equals(value)
+                || PHASE_END.equals(value);
     }
 
     public static final class RosterEntry {

@@ -5,8 +5,8 @@ final class CountersteerServoEffect extends RogueliteUpgradeEffect {
     private float exitGripTimer;
     private boolean sliding;
 
-    CountersteerServoEffect(int level, boolean synergy) {
-        super(RogueliteCardId.COUNTERSTEER_SERVO, level);
+    CountersteerServoEffect(boolean synergy) {
+        super(RogueliteCardId.COUNTERSTEER_SERVO);
         this.synergy = synergy;
     }
 
@@ -23,9 +23,6 @@ final class CountersteerServoEffect extends RogueliteUpgradeEffect {
     @Override
     void update(float delta, float timerDelta, RogueliteDrivingFrame frame) {
         exitGripTimer = Math.max(0f, exitGripTimer - timerDelta);
-        if (level < 2) {
-            return;
-        }
         if (frame.onRoad
                 && frame.speedRatio >= RogueliteEffectTuning.DRIFT_MIN_SPEED_RATIO
                 && frame.slip >= RogueliteEffectTuning.DRIFT_START_SLIP) {
@@ -45,7 +42,7 @@ final class CountersteerServoEffect extends RogueliteUpgradeEffect {
     float gripBonus(float slip) {
         float bonus = 0f;
         if (slip >= RogueliteEffectTuning.DRIFT_END_SLIP) {
-            bonus += RogueliteEffectMath.levelValue(level, 0.08f, 0.13f, 0.18f);
+            bonus += 0.13f;
             if (synergy) {
                 bonus += 0.03f;
             }
@@ -61,7 +58,6 @@ final class CountersteerServoEffect extends RogueliteUpgradeEffect {
         if (slip < RogueliteEffectTuning.DRIFT_END_SLIP) {
             return 0f;
         }
-        return RogueliteEffectMath.levelValue(level, 0.08f, 0.13f, 0.18f)
-                + (synergy ? 0.03f : 0f);
+        return 0.13f + (synergy ? 0.03f : 0f);
     }
 }

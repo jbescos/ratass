@@ -7,8 +7,8 @@ final class RecoveryDifferentialEffect extends RogueliteUpgradeEffect {
     private boolean roadStateInitialized;
     private boolean wasOnRoad;
 
-    RecoveryDifferentialEffect(int level, boolean synergy) {
-        super(RogueliteCardId.RECOVERY_DIFFERENTIAL, level);
+    RecoveryDifferentialEffect(boolean synergy) {
+        super(RogueliteCardId.RECOVERY_DIFFERENTIAL);
         this.synergy = synergy;
     }
 
@@ -42,10 +42,9 @@ final class RecoveryDifferentialEffect extends RogueliteUpgradeEffect {
                             frame.routeProgress,
                             frame.routeLength);
             if (Math.abs(routeGain) <= frame.safeRecoveryRouteGain) {
-                float duration =
-                        RogueliteEffectMath.levelValue(level, 0.8f, 1.1f, 1.4f);
-                if (level >= 2 && frame.speedRatio < 0.18f) {
-                    duration *= 1.5f;
+                float duration = 1.1f;
+                if (frame.speedRatio < 0.18f) {
+                    duration *= 1.25f;
                 }
                 boostTimer = Math.max(boostTimer, duration);
             }
@@ -56,7 +55,7 @@ final class RecoveryDifferentialEffect extends RogueliteUpgradeEffect {
     @Override
     float accelerationBonus() {
         return boostTimer > 0f
-                ? RogueliteEffectMath.levelValue(level, 0f, 0.06f, 0.10f)
+                ? 0.06f
                 : 0f;
     }
 
@@ -68,7 +67,7 @@ final class RecoveryDifferentialEffect extends RogueliteUpgradeEffect {
     @Override
     float gripBonus(float slip) {
         return boostTimer > 0f
-                ? RogueliteEffectMath.levelValue(level, 0.08f, 0.12f, 0.16f)
+                ? 0.12f
                 : 0f;
     }
 }

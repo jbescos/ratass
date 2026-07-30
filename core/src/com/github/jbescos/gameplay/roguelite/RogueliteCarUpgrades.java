@@ -15,24 +15,22 @@ public final class RogueliteCarUpgrades {
     private float timedEffectDecay = 1f;
     private boolean overtakeInjectorEnabled;
 
-    public void configure(RogueliteCardInventory inventory) {
+    public void configure(RogueliteLoadout loadout) {
         effects.clear();
         activeCardIds.clear();
         frame.clear();
         timedEffectDecay = 1f;
         overtakeInjectorEnabled = false;
-        if (inventory == null || inventory.getSelectionCount() == 0) {
+        if (loadout == null || loadout.getModifications().isEmpty()) {
             return;
         }
 
-        List<RogueliteCardDefinition> cards = inventory.getOwnedCards();
-        for (int i = 0; i < cards.size(); i++) {
-            RogueliteCardDefinition card = cards.get(i);
+        List<RogueliteCardId> cardIds = loadout.getModifications();
+        for (int i = 0; i < cardIds.size(); i++) {
             RogueliteUpgradeEffect effect =
                     RogueliteEffectFactory.create(
-                            card.getId(),
-                            inventory.getLevel(card.getId()),
-                            inventory);
+                            cardIds.get(i),
+                            loadout);
             effects.add(effect);
             timedEffectDecay = Math.min(timedEffectDecay, effect.timedEffectDecay());
             overtakeInjectorEnabled |= effect.tracksRacePosition();

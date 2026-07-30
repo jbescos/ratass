@@ -7,6 +7,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.github.jbescos.gameplay.roguelite.RogueliteRun;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.Test;
@@ -64,6 +65,25 @@ public class RogueliteSaveRepositoryTest {
         repository.delete();
 
         assertNull(repository.load());
+    }
+
+    @Test
+    public void pendingBottomTwoEliminationsSurviveSaveAndLoad() {
+        MemoryStore store = new MemoryStore();
+        RogueliteSaveRepository repository = new RogueliteSaveRepository(store);
+        RogueliteSaveData data = saveData(18);
+        data.championshipTransitionPending = true;
+        data.pendingEliminatedVehicleIds.add(Integer.valueOf(8));
+        data.pendingEliminatedVehicleIds.add(Integer.valueOf(9));
+
+        assertTrue(repository.save(data));
+
+        RogueliteSaveData loaded = repository.load();
+        assertNotNull(loaded);
+        assertTrue(loaded.championshipTransitionPending);
+        assertEquals(
+                Arrays.asList(Integer.valueOf(8), Integer.valueOf(9)),
+                loaded.pendingEliminatedVehicleIds);
     }
 
     private static RogueliteSaveData saveData(int round) {

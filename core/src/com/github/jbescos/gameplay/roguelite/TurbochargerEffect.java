@@ -4,8 +4,8 @@ final class TurbochargerEffect extends RogueliteUpgradeEffect {
     private final boolean synergy;
     private float fullThrottleTimer;
 
-    TurbochargerEffect(int level, boolean synergy) {
-        super(RogueliteCardId.TURBOCHARGER, level);
+    TurbochargerEffect(boolean synergy) {
+        super(RogueliteCardId.TURBOCHARGER);
         this.synergy = synergy;
     }
 
@@ -25,12 +25,12 @@ final class TurbochargerEffect extends RogueliteUpgradeEffect {
 
     @Override
     float accelerationBonus() {
-        return RogueliteEffectMath.levelValue(level, 0.06f, 0.10f, 0.14f);
+        return 0.10f;
     }
 
     @Override
     float maxSpeedBonus() {
-        if (level < 2 || fullThrottleTimer < 1.5f) {
+        if (fullThrottleTimer < 1.5f) {
             return 0f;
         }
         return synergy ? 0.055f : 0.04f;

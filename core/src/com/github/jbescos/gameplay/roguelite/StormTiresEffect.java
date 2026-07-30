@@ -1,8 +1,8 @@
 package com.github.jbescos.gameplay.roguelite;
 
 final class StormTiresEffect extends RogueliteUpgradeEffect {
-    StormTiresEffect(int level) {
-        super(RogueliteCardId.STORM_TIRES, level);
+    StormTiresEffect() {
+        super(RogueliteCardId.STORM_TIRES);
     }
 
     @Override
@@ -20,8 +20,7 @@ final class StormTiresEffect extends RogueliteUpgradeEffect {
         if (baseGripMultiplier >= 1f) {
             return baseGripMultiplier;
         }
-        float retainedLoss =
-                RogueliteEffectMath.levelValue(level, 0.30f, 0.50f, 0.70f);
+        float retainedLoss = 0.50f;
         return 1f - (1f - baseGripMultiplier) * (1f - retainedLoss);
     }
 }

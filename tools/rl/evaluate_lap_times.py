@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import configparser
+import hashlib
+import json
 import os
 import sys
 import time
@@ -19,6 +21,9 @@ DEFAULT_POLICY_ROOT = REPO_ROOT / "assets" / "ai" / "policies"
 DEFAULT_PROFILE_ROOT = REPO_ROOT / "tools" / "rl" / "policies"
 DEFAULT_CAR_PROPERTIES_ROOT = REPO_ROOT / "assets" / "theme" / "gt3" / "cars"
 POLICY_FILE_NAME = "rl_enemy_policy.json"
+DRIVER_METADATA_FILE_NAME = "driver_metadata.json"
+DRIVER_METADATA_SCHEMA_VERSION = 1
+DRIVER_BENCHMARK_VERSION = "lap-game-v1"
 PHYSICS_STEP_SECONDS = 1.0 / 60.0
 jpype = None
 
@@ -146,6 +151,21 @@ def parse_args() -> argparse.Namespace:
         "--overall-profile-averages",
         action="store_true",
         help="append averages for each profile across all selected maps",
+    )
+    parser.add_argument(
+        "--write-driver-metadata",
+        action="store_true",
+        help="write benchmark metadata beside each evaluated policy",
+    )
+    parser.add_argument(
+        "--force-driver-metadata",
+        action="store_true",
+        help="regenerate driver metadata even when it already exists",
+    )
+    parser.add_argument(
+        "--metadata-only",
+        action="store_true",
+        help="suppress timing tables; intended with --write-driver-metadata",
     )
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
@@ -790,6 +810,114 @@ def overall_profile_averages(rows: Iterable[TimedRun]) -> list[OverallProfileAve
     return averages
 
 
+def driver_metadata(
+    profile: str,
+    profile_rows: Iterable[TimedRun],
+    policy_path: Path,
+    *,
+    laps: int,
+    action_repeat: int,
+    seed: int,
+    map_source: str,
+) -> dict[str, object]:
+    rows = [row for row in profile_rows if not row.is_car_average]
+    expected_runs = len(rows)
+    complete_rows = [row for row in rows if row.complete]
+    finish_rate = len(complete_rows) / expected_runs if expected_runs else 0.0
+    fastest_values = [
+        float(row.fastest_lap)
+        for row in rows
+        if not row.error and row.fastest_lap is not None
+    ]
+    average_values = [
+        float(row.avg_lap)
+        for row in rows
+        if not row.error and row.avg_lap is not None
+    ]
+    completed_laps = sum(max(0, row.completed_laps) for row in rows)
+    off_road_per_lap = (
+        sum(float(row.off_road_actions or 0.0) for row in rows) / completed_laps
+        if completed_laps
+        else 0.0
+    )
+    average_fastest = (
+        sum(fastest_values) / len(fastest_values) if fastest_values else 0.0
+    )
+    average_lap = (
+        sum(average_values) / len(average_values) if average_values else 0.0
+    )
+
+    completion_factor = 0.70 + 0.30 * finish_rate
+    raw_pace = 100.0 - max(0.0, average_lap - 25.0) * 2.5
+    pace = clamp_rating(raw_pace * completion_factor) if average_lap > 0.0 else 0.0
+    control = clamp_rating(100.0 - off_road_per_lap * 4.0)
+    if average_lap > 0.0 and average_fastest > 0.0:
+        lap_gap_ratio = max(0.0, average_lap - average_fastest) / average_lap
+        gap_score = clamp_rating(100.0 - lap_gap_ratio * 800.0)
+    else:
+        gap_score = 0.0
+    consistency = clamp_rating(gap_score * 0.40 + finish_rate * 60.0)
+    overall = clamp_rating(pace * 0.45 + control * 0.30 + consistency * 0.25)
+    policy_sha256 = hashlib.sha256(policy_path.read_bytes()).hexdigest()
+    benchmark_version = (
+        f"{DRIVER_BENCHMARK_VERSION}:source={map_source},maps={expected_runs},"
+        f"laps={laps},repeat={action_repeat},seed={seed}"
+    )
+    return {
+        "schemaVersion": DRIVER_METADATA_SCHEMA_VERSION,
+        "profileId": profile,
+        "policySha256": policy_sha256,
+        "benchmarkVersion": benchmark_version,
+        "overallRating": round(overall, 3),
+        "paceRating": round(pace, 3),
+        "controlRating": round(control, 3),
+        "consistencyRating": round(consistency, 3),
+        "finishRate": round(finish_rate, 5),
+        "averageFastestLapSeconds": round(average_fastest, 5),
+        "averageLapSeconds": round(average_lap, 5),
+        "averageOffRoadActions": round(off_road_per_lap, 5),
+    }
+
+
+def clamp_rating(value: float) -> float:
+    return max(0.0, min(100.0, value))
+
+
+def write_driver_metadata(
+    rows: Iterable[TimedRun],
+    profiles: Iterable[str],
+    policy_root: Path,
+    args: argparse.Namespace,
+) -> None:
+    rows_by_profile: dict[str, list[TimedRun]] = {}
+    for row in rows:
+        rows_by_profile.setdefault(row.profile, []).append(row)
+    for profile in profiles:
+        policy_path = policy_root / profile / POLICY_FILE_NAME
+        if not policy_path.exists():
+            continue
+        output = policy_path.parent / DRIVER_METADATA_FILE_NAME
+        metadata = driver_metadata(
+            profile,
+            rows_by_profile.get(profile, []),
+            policy_path,
+            laps=args.laps,
+            action_repeat=args.action_repeat,
+            seed=args.seed,
+            map_source=args.map_source,
+        )
+        output.write_text(
+            json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(
+            f"driver_metadata_written profile={profile} output={output} "
+            f"overall={metadata['overallRating']}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
 def print_overall_profile_averages(rows: Iterable[TimedRun]) -> None:
     averages = overall_profile_averages(rows)
 
@@ -897,11 +1025,20 @@ def main() -> None:
     start_jvm(Path(args.jar).resolve())
     ratass_game = jpype.JClass("com.github.jbescos.RatassGame")
     profiles = profile_ids(Path(args.profile_root), args.profiles)
+    policy_root = Path(args.policy_root)
+    if args.write_driver_metadata and not args.force_driver_metadata:
+        profiles = [
+            profile
+            for profile in profiles
+            if not (policy_root / profile / DRIVER_METADATA_FILE_NAME).exists()
+        ]
+        if not profiles:
+            print("driver_metadata_up_to_date=1", file=sys.stderr)
+            return
     maps = selected_maps(args.map_source, args.map_ids)
     car_count = int(ratass_game.getCarPerformanceCount())
     car_names = load_car_names(Path(args.car_properties_root), car_count)
     cars = selected_cars(args.cars, car_count, car_names)
-    policy_root = Path(args.policy_root)
     rows: list[TimedRun] = []
 
     for arena_map in maps:
@@ -988,16 +1125,19 @@ def main() -> None:
             print()
             sys.stdout.flush()
 
-    if not args.stream_map_tables:
+    if not args.metadata_only and not args.stream_map_tables:
         print_table(rows, args.group_by_map)
 
-    if args.overall_car_averages:
+    if not args.metadata_only and args.overall_car_averages:
         print()
         print_overall_car_averages(rows)
 
-    if args.overall_profile_averages:
+    if not args.metadata_only and args.overall_profile_averages:
         print()
         print_overall_profile_averages(rows)
+
+    if args.write_driver_metadata:
+        write_driver_metadata(rows, profiles, policy_root, args)
 
 
 if __name__ == "__main__":

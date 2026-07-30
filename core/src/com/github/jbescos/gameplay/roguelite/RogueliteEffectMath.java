@@ -4,23 +4,6 @@ final class RogueliteEffectMath {
     private RogueliteEffectMath() {
     }
 
-    static float levelValue(
-            int level,
-            float levelZero,
-            float levelOne,
-            float levelTwo) {
-        switch (level) {
-            case 0:
-                return levelZero;
-            case 1:
-                return levelOne;
-            case 2:
-                return levelTwo;
-            default:
-                return 0f;
-        }
-    }
-
     static float circularDelta(float from, float to, float length) {
         float delta = to - from;
         if (length <= 0f) {

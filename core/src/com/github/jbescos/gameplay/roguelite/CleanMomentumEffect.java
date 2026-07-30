@@ -3,8 +3,8 @@ package com.github.jbescos.gameplay.roguelite;
 final class CleanMomentumEffect extends RogueliteUpgradeEffect {
     private float momentum;
 
-    CleanMomentumEffect(int level) {
-        super(RogueliteCardId.CLEAN_MOMENTUM, level);
+    CleanMomentumEffect() {
+        super(RogueliteCardId.CLEAN_MOMENTUM);
     }
 
     @Override
@@ -28,11 +28,11 @@ final class CleanMomentumEffect extends RogueliteUpgradeEffect {
 
     @Override
     void onCollision(float impactStrength) {
-        momentum = level >= 2 ? momentum * 0.65f : 0f;
+        momentum = 0f;
     }
 
     @Override
     float maxSpeedBonus() {
-        return RogueliteEffectMath.levelValue(level, 0.03f, 0.05f, 0.07f) * momentum;
+        return 0.05f * momentum;
     }
 }

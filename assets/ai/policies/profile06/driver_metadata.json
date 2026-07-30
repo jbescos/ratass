@@ -1,0 +1,14 @@
+{
+  "averageFastestLapSeconds": 34.57407,
+  "averageLapSeconds": 35.24938,
+  "averageOffRoadActions": 17.44444,
+  "benchmarkVersion": "lap-game-v1:source=game,maps=18,laps=3,repeat=4,seed=20260531",
+  "consistencyRating": 93.869,
+  "controlRating": 30.222,
+  "finishRate": 1.0,
+  "overallRating": 66.003,
+  "paceRating": 74.377,
+  "policySha256": "c753159f42c36ab1139c2530bc1715cbe0fd758fce14f6e044caf98ba1e272ec",
+  "profileId": "profile06",
+  "schemaVersion": 1
+}

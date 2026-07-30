@@ -7,8 +7,8 @@ final class DriftCapacitorEffect extends RogueliteUpgradeEffect {
     private float boostStrength;
     private boolean drifting;
 
-    DriftCapacitorEffect(int level, boolean synergy) {
-        super(RogueliteCardId.DRIFT_CAPACITOR, level);
+    DriftCapacitorEffect(boolean synergy) {
+        super(RogueliteCardId.DRIFT_CAPACITOR);
         this.synergy = synergy;
     }
 
@@ -50,9 +50,7 @@ final class DriftCapacitorEffect extends RogueliteUpgradeEffect {
                                 0f,
                                 1f);
                 boostStrength =
-                        normalizedCharge
-                                * RogueliteEffectMath.levelValue(
-                                        level, 0.06f, 0.10f, 0.14f);
+                        normalizedCharge * 0.10f;
                 boostTimer =
                         Math.max(
                                 boostTimer,

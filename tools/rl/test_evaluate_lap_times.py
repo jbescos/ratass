@@ -15,6 +15,7 @@ from evaluate_lap_times import (
     TimedRun,
     best_times,
     car_average_row,
+    driver_metadata,
     format_cell,
     highlight,
     load_car_names,
@@ -185,6 +186,55 @@ class CarSelectionTest(unittest.TestCase):
             selected_cars("all", 3, names),
             [("Falcon GT", 0), ("Comet RS", 1), ("3", 2)],
         )
+
+
+class DriverMetadataTest(unittest.TestCase):
+    def test_builds_stable_ratings_and_policy_hash_from_benchmark_rows(self):
+        rows = [
+            TimedRun(
+                "map000",
+                "profile03",
+                "default",
+                30.0,
+                31.0,
+                93.0,
+                3,
+                3,
+                off_road_actions=6,
+            ),
+            TimedRun(
+                "map001",
+                "profile03",
+                "default",
+                34.0,
+                35.0,
+                None,
+                2,
+                3,
+                off_road_actions=4,
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            policy = Path(directory) / "rl_enemy_policy.json"
+            policy.write_text('{"policy":"test"}', encoding="utf-8")
+
+            metadata = driver_metadata(
+                "profile03",
+                rows,
+                policy,
+                laps=3,
+                action_repeat=4,
+                seed=7,
+                map_source="game",
+            )
+
+        self.assertEqual(metadata["schemaVersion"], 1)
+        self.assertEqual(metadata["profileId"], "profile03")
+        self.assertEqual(metadata["finishRate"], 0.5)
+        self.assertEqual(metadata["averageOffRoadActions"], 2.0)
+        self.assertEqual(len(metadata["policySha256"]), 64)
+        self.assertGreater(metadata["overallRating"], 0.0)
+        self.assertLessEqual(metadata["overallRating"], 100.0)
 
 
 class CarAverageTest(unittest.TestCase):

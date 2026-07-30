@@ -1,8 +1,8 @@
 package com.github.jbescos.gameplay.roguelite;
 
 final class AerodynamicKitEffect extends RogueliteUpgradeEffect {
-    AerodynamicKitEffect(int level) {
-        super(RogueliteCardId.AERODYNAMIC_KIT, level);
+    AerodynamicKitEffect() {
+        super(RogueliteCardId.AERODYNAMIC_KIT);
     }
 
     @Override
@@ -12,11 +12,11 @@ final class AerodynamicKitEffect extends RogueliteUpgradeEffect {
 
     @Override
     float timedEffectDecay() {
-        return level >= 2 ? 0.75f : 1f;
+        return 0.82f;
     }
 
     @Override
     float dragMultiplier() {
-        return RogueliteEffectMath.levelValue(level, 0.95f, 0.91f, 0.87f);
+        return 0.91f;
     }
 }
