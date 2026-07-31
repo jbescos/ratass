@@ -8,8 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class DriverProfileCatalog {
-    public static final int MAX_TIER = 5;
-    private static final int DRIVERS_PER_TIER = 2;
+    public static final int MAX_TIER = 3;
     private static final String[] FALLBACK_PROFILE_IDS = {
             "profile00",
             "profile01",
@@ -30,13 +29,16 @@ public final class DriverProfileCatalog {
         if (metadata == null || metadata.isEmpty()) {
             throw new IllegalArgumentException("At least one driver profile is required.");
         }
-        List<DriverProfileMetadata> sorted =
-                new ArrayList<DriverProfileMetadata>(metadata);
+        List<DriverProfileMetadata> sorted = normalizeAverageLapScores(metadata);
         Collections.sort(sorted, new Comparator<DriverProfileMetadata>() {
             @Override
             public int compare(
                     DriverProfileMetadata left,
                     DriverProfileMetadata right) {
+                int averageLap = compareAverageLapForTier(left, right);
+                if (averageLap != 0) {
+                    return averageLap;
+                }
                 int rating =
                         Float.compare(
                                 left.getOverallRating(),
@@ -58,6 +60,60 @@ public final class DriverProfileCatalog {
         }
         profiles = Collections.unmodifiableList(sorted);
         profilesById = Collections.unmodifiableMap(byId);
+    }
+
+    private static int compareAverageLapForTier(
+            DriverProfileMetadata left,
+            DriverProfileMetadata right) {
+        boolean leftValid = isValidAverageLap(left.getAverageLapSeconds());
+        boolean rightValid = isValidAverageLap(right.getAverageLapSeconds());
+        if (leftValid != rightValid) {
+            return leftValid ? 1 : -1;
+        }
+        if (!leftValid) {
+            return 0;
+        }
+        // Slower drivers come first so tier 1 and the default contain the
+        // highest average lap times. The fastest drivers land in the final tier.
+        return Float.compare(
+                right.getAverageLapSeconds(),
+                left.getAverageLapSeconds());
+    }
+
+    private static List<DriverProfileMetadata> normalizeAverageLapScores(
+            List<DriverProfileMetadata> metadata) {
+        float bestAverageLap = Float.POSITIVE_INFINITY;
+        for (int i = 0; i < metadata.size(); i++) {
+            DriverProfileMetadata profile = metadata.get(i);
+            float averageLap = profile.getAverageLapSeconds();
+            if (isValidAverageLap(averageLap)) {
+                bestAverageLap = Math.min(bestAverageLap, averageLap);
+            }
+        }
+
+        List<DriverProfileMetadata> normalized =
+                new ArrayList<DriverProfileMetadata>(metadata.size());
+        if (Float.isInfinite(bestAverageLap)) {
+            normalized.addAll(metadata);
+            return normalized;
+        }
+
+        for (int i = 0; i < metadata.size(); i++) {
+            DriverProfileMetadata profile = metadata.get(i);
+            float averageLap = profile.getAverageLapSeconds();
+            float score =
+                    isValidAverageLap(averageLap)
+                            ? bestAverageLap / averageLap * 100f
+                            : 0f;
+            normalized.add(profile.withOverallRating(score));
+        }
+        return normalized;
+    }
+
+    private static boolean isValidAverageLap(float averageLap) {
+        return averageLap > 0f
+                && !Float.isNaN(averageLap)
+                && !Float.isInfinite(averageLap);
     }
 
     public static DriverProfileCatalog fallback() {
@@ -84,7 +140,9 @@ public final class DriverProfileCatalog {
     public int getTier(String profileId) {
         for (int i = 0; i < profiles.size(); i++) {
             if (profiles.get(i).getProfileId().equals(profileId)) {
-                return Math.min(MAX_TIER, 1 + i / DRIVERS_PER_TIER);
+                return Math.min(
+                        MAX_TIER,
+                        1 + i * MAX_TIER / profiles.size());
             }
         }
         return MAX_TIER;

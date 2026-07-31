@@ -11,6 +11,11 @@ final class RogueliteDrivingFrame {
     float routeProgress;
     float routeLength;
     float safeRecoveryRouteGain;
+    float cornerSeverity;
+    float nextCornerDistance;
+    float nextCornerSeverity;
+    float opponentAheadProximity;
+    float nearbyOpponentProximity;
 
     void set(
             float throttle,
@@ -22,7 +27,12 @@ final class RogueliteDrivingFrame {
             float slipstreamBoost,
             float routeProgress,
             float routeLength,
-            float safeRecoveryRouteGain) {
+            float safeRecoveryRouteGain,
+            float cornerSeverity,
+            float nextCornerDistance,
+            float nextCornerSeverity,
+            float opponentAheadProximity,
+            float nearbyOpponentProximity) {
         this.throttle = throttle;
         this.onRoad = onRoad;
         this.adverseWeather = adverseWeather;
@@ -33,9 +43,29 @@ final class RogueliteDrivingFrame {
         this.routeProgress = routeProgress;
         this.routeLength = routeLength;
         this.safeRecoveryRouteGain = safeRecoveryRouteGain;
+        this.cornerSeverity = cornerSeverity;
+        this.nextCornerDistance = nextCornerDistance;
+        this.nextCornerSeverity = nextCornerSeverity;
+        this.opponentAheadProximity = opponentAheadProximity;
+        this.nearbyOpponentProximity = nearbyOpponentProximity;
     }
 
     void clear() {
-        set(0f, true, false, false, 0f, 0f, 0f, 0f, 0f, 0f);
+        set(
+                0f,
+                true,
+                false,
+                false,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                1f,
+                0f,
+                0f,
+                0f);
     }
 }

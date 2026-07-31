@@ -11,14 +11,14 @@ import org.junit.Test;
 
 public class RogueliteTournamentTest {
     @Test
-    public void bottomTwoLeaveEachOfTheFirstFourChampionships() {
+    public void bottomThreeLeaveEachOfTheFirstTwoChampionships() {
         RogueliteTournament tournament = new RogueliteTournament();
         List<Integer> survivingVehicleIds =
                 new ArrayList<Integer>(
                         Arrays.asList(
                                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
 
-        for (int championship = 1; championship <= 4; championship++) {
+        for (int championship = 1; championship <= 2; championship++) {
             RogueliteTournament.Outcome outcome =
                     tournament.resolve(
                             championship,
@@ -38,11 +38,11 @@ public class RogueliteTournamentTest {
                     survivingVehicleIds.size());
         }
 
-        assertEquals(Arrays.asList(0, 1), survivingVehicleIds);
+        assertEquals(Arrays.asList(0, 1, 2, 3), survivingVehicleIds);
     }
 
     @Test
-    public void championshipFiveAwardsTheLeaderInsteadOfEliminating() {
+    public void championshipThreeAwardsTheLeaderInsteadOfEliminating() {
         RogueliteTournament tournament = new RogueliteTournament();
         List<RogueliteTournament.Standing> standings =
                 Arrays.asList(
@@ -50,7 +50,7 @@ public class RogueliteTournamentTest {
                         new RogueliteTournament.Standing(3, 40, 1));
 
         RogueliteTournament.Outcome outcome =
-                tournament.resolve(5, standings);
+                tournament.resolve(3, standings);
 
         assertTrue(outcome.isFinalChampionship());
         assertEquals(3, outcome.getWinningVehicleId());
@@ -65,13 +65,19 @@ public class RogueliteTournamentTest {
                         new RogueliteTournament.Standing(4, 20, 2),
                         new RogueliteTournament.Standing(2, 20, 1),
                         new RogueliteTournament.Standing(8, 10, 3),
-                        new RogueliteTournament.Standing(6, 10, 4));
+                        new RogueliteTournament.Standing(6, 10, 4),
+                        new RogueliteTournament.Standing(9, 5, 5),
+                        new RogueliteTournament.Standing(10, 4, 6),
+                        new RogueliteTournament.Standing(11, 3, 7));
 
         RogueliteTournament.Outcome outcome =
                 tournament.resolve(1, standings);
 
         assertEquals(
-                Arrays.asList(Integer.valueOf(6), Integer.valueOf(8)),
+                Arrays.asList(
+                        Integer.valueOf(11),
+                        Integer.valueOf(10),
+                        Integer.valueOf(9)),
                 outcome.getEliminatedVehicleIds());
     }
 

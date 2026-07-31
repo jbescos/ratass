@@ -10,6 +10,7 @@ public final class RogueliteCompetitorProgress {
     private int level = 1;
     private int experience;
     private int pendingRewards;
+    private int rewardDeferredUntilLevel;
 
     RogueliteCompetitorProgress(String defaultDriverProfileId) {
         loadout = new RogueliteLoadout(defaultDriverProfileId);
@@ -39,10 +40,19 @@ public final class RogueliteCompetitorProgress {
         return pendingRewards > 0;
     }
 
+    public boolean hasOfferableReward() {
+        return pendingRewards > 0 && rewardDeferredUntilLevel == 0;
+    }
+
+    int getRewardDeferredUntilLevel() {
+        return rewardDeferredUntilLevel;
+    }
+
     boolean isPristine() {
         return level == 1
                 && experience == 0
                 && pendingRewards == 0
+                && rewardDeferredUntilLevel == 0
                 && loadout.getModifications().isEmpty();
     }
 
@@ -53,8 +63,20 @@ public final class RogueliteCompetitorProgress {
             experience -= getExperienceForNextLevel();
             level++;
             pendingRewards++;
+            if (rewardDeferredUntilLevel > 0
+                    && level >= rewardDeferredUntilLevel) {
+                rewardDeferredUntilLevel = 0;
+            }
         }
         return gained;
+    }
+
+    boolean deferRewardsUntilNextLevel() {
+        if (!hasOfferableReward()) {
+            return false;
+        }
+        rewardDeferredUntilLevel = level + 1;
+        return true;
     }
 
     boolean consumePendingReward() {
@@ -62,19 +84,32 @@ public final class RogueliteCompetitorProgress {
             return false;
         }
         pendingRewards--;
+        if (pendingRewards == 0) {
+            rewardDeferredUntilLevel = 0;
+        }
         return true;
     }
 
-    void restore(int restoredLevel, int restoredExperience, int restoredPendingRewards) {
+    void restore(
+            int restoredLevel,
+            int restoredExperience,
+            int restoredPendingRewards,
+            int restoredRewardDeferredUntilLevel) {
         if (restoredLevel < 1
                 || restoredExperience < 0
                 || restoredExperience >= experienceForLevel(restoredLevel)
-                || restoredPendingRewards < 0) {
+                || restoredPendingRewards < 0
+                || restoredRewardDeferredUntilLevel < 0
+                || (restoredRewardDeferredUntilLevel > 0
+                        && (restoredPendingRewards == 0
+                                || restoredRewardDeferredUntilLevel
+                                        <= restoredLevel))) {
             throw new IllegalArgumentException("Invalid roguelite competitor progress.");
         }
         level = restoredLevel;
         experience = restoredExperience;
         pendingRewards = restoredPendingRewards;
+        rewardDeferredUntilLevel = restoredRewardDeferredUntilLevel;
     }
 
     static int experienceForPosition(int position, int fieldSize) {

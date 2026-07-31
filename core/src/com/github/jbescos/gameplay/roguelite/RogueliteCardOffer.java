@@ -56,6 +56,12 @@ public final class RogueliteCardOffer {
         return tier;
     }
 
+    public RogueliteSlotType getSlotType() {
+        return isDriver()
+                ? RogueliteSlotType.DRIVER
+                : card.getSlotType();
+    }
+
     public String getOfferId() {
         return isDriver()
                 ? "driver:" + driver.getProfileId()

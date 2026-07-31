@@ -2,12 +2,17 @@ package com.github.jbescos.gameplay.roguelite;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 public final class RogueliteLoadout {
-    public static final int MODIFICATION_SLOT_COUNT = 3;
+    public static final int MODIFICATION_SLOT_COUNT =
+            RogueliteSlotType.modificationSlots().size();
 
     private String driverProfileId;
+    private final Map<RogueliteSlotType, RogueliteCardId> modificationsBySlot =
+            new EnumMap<RogueliteSlotType, RogueliteCardId>(RogueliteSlotType.class);
     private final List<RogueliteCardId> modifications =
             new ArrayList<RogueliteCardId>(MODIFICATION_SLOT_COUNT);
     private final List<RogueliteCardId> readOnlyModifications =
@@ -36,30 +41,69 @@ public final class RogueliteLoadout {
         return modifications.contains(cardId);
     }
 
-    public boolean isFull() {
-        return modifications.size() >= MODIFICATION_SLOT_COUNT;
+    public RogueliteCardId get(RogueliteSlotType slotType) {
+        if (slotType == null || slotType.isDriver()) {
+            return null;
+        }
+        return modificationsBySlot.get(slotType);
     }
 
-    public boolean equip(RogueliteCardId cardId, int replacementSlot) {
+    public boolean hasCardIn(RogueliteSlotType slotType) {
+        return get(slotType) != null;
+    }
+
+    public boolean isFull() {
+        return modificationsBySlot.size() >= MODIFICATION_SLOT_COUNT;
+    }
+
+    public boolean equip(RogueliteCardId cardId) {
         if (cardId == null || has(cardId)) {
             return false;
         }
-        if (!isFull()) {
-            modifications.add(cardId);
-            return true;
-        }
-        if (replacementSlot < 0 || replacementSlot >= modifications.size()) {
+        RogueliteSlotType slotType =
+                RogueliteCardCatalog.get(cardId).getSlotType();
+        modificationsBySlot.put(slotType, cardId);
+        rebuildModificationList();
+        return true;
+    }
+
+    public boolean unequip(RogueliteSlotType slotType) {
+        if (slotType == null || slotType.isDriver()) {
             return false;
         }
-        modifications.set(replacementSlot, cardId);
+        if (modificationsBySlot.remove(slotType) == null) {
+            return false;
+        }
+        rebuildModificationList();
         return true;
     }
 
     void restoreModification(RogueliteCardId cardId) {
-        if (cardId == null || has(cardId) || isFull()) {
+        if (cardId == null) {
             throw new IllegalArgumentException("Invalid roguelite modification.");
         }
-        modifications.add(cardId);
+        RogueliteCardDefinition incoming =
+                RogueliteCardCatalog.get(cardId);
+        RogueliteCardId existingId =
+                modificationsBySlot.get(incoming.getSlotType());
+        if (existingId != null
+                && RogueliteCardCatalog.get(existingId).getTier()
+                        > incoming.getTier()) {
+            return;
+        }
+        modificationsBySlot.put(incoming.getSlotType(), cardId);
+        rebuildModificationList();
     }
 
+    private void rebuildModificationList() {
+        modifications.clear();
+        List<RogueliteSlotType> slots =
+                RogueliteSlotType.modificationSlots();
+        for (int i = 0; i < slots.size(); i++) {
+            RogueliteCardId cardId = modificationsBySlot.get(slots.get(i));
+            if (cardId != null) {
+                modifications.add(cardId);
+            }
+        }
+    }
 }

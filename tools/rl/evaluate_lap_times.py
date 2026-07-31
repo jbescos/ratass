@@ -7,6 +7,7 @@ import argparse
 import configparser
 import hashlib
 import json
+import math
 import os
 import sys
 import time
@@ -22,9 +23,10 @@ DEFAULT_PROFILE_ROOT = REPO_ROOT / "tools" / "rl" / "policies"
 DEFAULT_CAR_PROPERTIES_ROOT = REPO_ROOT / "assets" / "theme" / "gt3" / "cars"
 POLICY_FILE_NAME = "rl_enemy_policy.json"
 DRIVER_METADATA_FILE_NAME = "driver_metadata.json"
-DRIVER_METADATA_SCHEMA_VERSION = 1
-DRIVER_BENCHMARK_VERSION = "lap-game-v1"
+DRIVER_METADATA_SCHEMA_VERSION = 2
+DRIVER_BENCHMARK_VERSION = "lap-game-v2"
 PHYSICS_STEP_SECONDS = 1.0 / 60.0
+KPH_PER_MPS = 3.6
 jpype = None
 
 
@@ -41,6 +43,11 @@ class TimedRun:
     error: str = ""
     is_car_average: bool = False
     off_road_actions: int | float | None = 0
+    average_drift_percent: float = 0.0
+    maximum_speed_kph: float = 0.0
+    off_road_samples: int = 0
+    driving_samples: int = 0
+    drift_samples: int = 0
 
     @property
     def complete(self) -> bool:
@@ -319,7 +326,7 @@ def make_environment(
         .withRandomRaceSpawns(bool(args.random_race_spawns))
         .withRewardBreakdownEnabled(True)
         .withStepDetailsEnabled(True)
-        .withDebugTraceEnabled(False)
+        .withDebugTraceEnabled(bool(getattr(args, "write_driver_metadata", False)))
         .withSeed(args.seed)
     )
     if car_index is not None:
@@ -347,6 +354,12 @@ def run_lap_timing(
     total_time = 0.0
     last_lap_time = 0.0
     off_road_actions = 0
+    drift_percent_total = 0.0
+    drift_samples = 0
+    maximum_speed_kph = 0.0
+    off_road_samples = 0
+    driving_samples = 0
+    debug_trace_indices: dict[str, int] | None = None
     timed_out = False
     try:
         result = env.reset()
@@ -398,6 +411,37 @@ def run_lap_timing(
                 and float(result.rewardBreakdown[off_road_reward_index]) < 0.0
             ):
                 off_road_actions += 1
+            debug_trace = getattr(result, "debugTrace", ())
+            if len(debug_trace) > 0:
+                if debug_trace_indices is None:
+                    debug_trace_indices = {
+                        str(name): index
+                        for index, name in enumerate(
+                            getattr(result, "debugTraceNames", ())
+                        )
+                    }
+                speed_index = debug_trace_indices.get("speed", -1)
+                lateral_index = debug_trace_indices.get("lateral_speed", -1)
+                off_road_index = debug_trace_indices.get("off_road", -1)
+                if speed_index >= 0:
+                    speed = abs(float(debug_trace[speed_index]))
+                    maximum_speed_kph = max(
+                        maximum_speed_kph,
+                        speed * KPH_PER_MPS,
+                    )
+                if off_road_index >= 0:
+                    off_road = float(debug_trace[off_road_index])
+                    driving_samples += 1
+                    if off_road >= 0.5:
+                        off_road_samples += 1
+                if min(speed_index, lateral_index, off_road_index) >= 0:
+                    if speed >= 2.0 and off_road < 0.5:
+                        lateral_speed = abs(float(debug_trace[lateral_index]))
+                        drift_percent_total += min(
+                            100.0,
+                            lateral_speed / max(speed, 0.001) * 100.0,
+                        )
+                        drift_samples += 1
             total_time = int(result.actionStep) * max(1, args.action_repeat) * PHYSICS_STEP_SECONDS
             reached = int(result.routeTargetsReached[0]) if len(result.routeTargetsReached) > 0 else 0
             while len(lap_times) < args.laps and reached >= (len(lap_times) + 1):
@@ -418,6 +462,13 @@ def run_lap_timing(
             args.laps,
             "timedout" if timed_out else "",
             off_road_actions=off_road_actions,
+            average_drift_percent=(
+                drift_percent_total / drift_samples if drift_samples else 0.0
+            ),
+            maximum_speed_kph=maximum_speed_kph,
+            off_road_samples=off_road_samples,
+            driving_samples=driving_samples,
+            drift_samples=drift_samples,
         )
     fastest = min(lap_times)
     average = sum(lap_times) / len(lap_times)
@@ -432,6 +483,13 @@ def run_lap_timing(
         len(lap_times),
         args.laps,
         off_road_actions=off_road_actions,
+        average_drift_percent=(
+            drift_percent_total / drift_samples if drift_samples else 0.0
+        ),
+        maximum_speed_kph=maximum_speed_kph,
+        off_road_samples=off_road_samples,
+        driving_samples=driving_samples,
+        drift_samples=drift_samples,
     )
 
 
@@ -840,6 +898,28 @@ def driver_metadata(
         if completed_laps
         else 0.0
     )
+    driving_samples = sum(max(0, row.driving_samples) for row in rows)
+    average_off_road_percent = (
+        sum(max(0, row.off_road_samples) for row in rows)
+        / driving_samples
+        * 100.0
+        if driving_samples
+        else 0.0
+    )
+    drift_samples = sum(max(0, row.drift_samples) for row in rows)
+    average_drift_percent = (
+        sum(
+            float(row.average_drift_percent) * max(0, row.drift_samples)
+            for row in rows
+        )
+        / drift_samples
+        if drift_samples
+        else 0.0
+    )
+    maximum_speed_kph = max(
+        (float(row.maximum_speed_kph) for row in rows),
+        default=0.0,
+    )
     average_fastest = (
         sum(fastest_values) / len(fastest_values) if fastest_values else 0.0
     )
@@ -857,7 +937,7 @@ def driver_metadata(
     else:
         gap_score = 0.0
     consistency = clamp_rating(gap_score * 0.40 + finish_rate * 60.0)
-    overall = clamp_rating(pace * 0.45 + control * 0.30 + consistency * 0.25)
+    overall = driver_average_lap_score(average_lap, average_lap)
     policy_sha256 = hashlib.sha256(policy_path.read_bytes()).hexdigest()
     benchmark_version = (
         f"{DRIVER_BENCHMARK_VERSION}:source={map_source},maps={expected_runs},"
@@ -876,11 +956,66 @@ def driver_metadata(
         "averageFastestLapSeconds": round(average_fastest, 5),
         "averageLapSeconds": round(average_lap, 5),
         "averageOffRoadActions": round(off_road_per_lap, 5),
+        "averageOffRoadPercent": round(average_off_road_percent, 5),
+        "averageDriftPercent": round(average_drift_percent, 5),
+        "maximumSpeedKph": round(maximum_speed_kph, 3),
     }
 
 
 def clamp_rating(value: float) -> float:
     return max(0.0, min(100.0, value))
+
+
+def driver_average_lap_score(average_lap: float, best_average_lap: float) -> float:
+    if (
+        not math.isfinite(average_lap)
+        or not math.isfinite(best_average_lap)
+        or average_lap <= 0.0
+        or best_average_lap <= 0.0
+    ):
+        return 0.0
+    return clamp_rating(best_average_lap / average_lap * 100.0)
+
+
+def normalize_driver_metadata_scores(policy_root: Path) -> dict[str, float]:
+    metadata_files: list[tuple[Path, dict[str, object], float]] = []
+    for output in sorted(policy_root.glob(f"*/{DRIVER_METADATA_FILE_NAME}")):
+        try:
+            metadata = json.loads(output.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (
+            not isinstance(metadata, dict)
+            or metadata.get("schemaVersion") != DRIVER_METADATA_SCHEMA_VERSION
+            or metadata.get("profileId") != output.parent.name
+        ):
+            continue
+        try:
+            average_lap = float(metadata.get("averageLapSeconds", 0.0))
+        except (ValueError, TypeError):
+            continue
+        metadata_files.append((output, metadata, average_lap))
+
+    valid_average_laps = [
+        average_lap
+        for _, _, average_lap in metadata_files
+        if math.isfinite(average_lap) and average_lap > 0.0
+    ]
+    best_average_lap = min(valid_average_laps) if valid_average_laps else 0.0
+    scores: dict[str, float] = {}
+    for output, metadata, average_lap in metadata_files:
+        score = round(
+            driver_average_lap_score(average_lap, best_average_lap),
+            3,
+        )
+        if metadata.get("overallRating") != score:
+            metadata["overallRating"] = score
+            output.write_text(
+                json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        scores[output.parent.name] = score
+    return scores
 
 
 def write_driver_metadata(
@@ -890,6 +1025,7 @@ def write_driver_metadata(
     args: argparse.Namespace,
 ) -> None:
     rows_by_profile: dict[str, list[TimedRun]] = {}
+    written_profiles: list[tuple[str, Path]] = []
     for row in rows:
         rows_by_profile.setdefault(row.profile, []).append(row)
     for profile in profiles:
@@ -910,9 +1046,13 @@ def write_driver_metadata(
             json.dumps(metadata, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        written_profiles.append((profile, output))
+
+    scores = normalize_driver_metadata_scores(policy_root)
+    for profile, output in written_profiles:
         print(
             f"driver_metadata_written profile={profile} output={output} "
-            f"overall={metadata['overallRating']}",
+            f"score={scores.get(profile, 0.0)}",
             file=sys.stderr,
             flush=True,
         )

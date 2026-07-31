@@ -53,6 +53,7 @@
             <plugin>
                 <artifactId>maven-jar-plugin</artifactId>
                 <configuration>
+                    <outputDirectory>${project.build.directory}/maven-artifact</outputDirectory>
                     <archive>
                         <manifest>
                             <mainClass>${main.class.desktop}</mainClass>
@@ -75,6 +76,30 @@
                                     <mainClass>${main.class.desktop}</mainClass>
                                 </transformer>
                             </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>publish-desktop-executable</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <copy
+                                    file="${project.build.directory}/maven-artifact/${project.build.finalName}.jar"
+                                    tofile="${project.build.directory}/${project.build.finalName}.jar.next"
+                                    overwrite="true"/>
+                                <move
+                                    file="${project.build.directory}/${project.build.finalName}.jar.next"
+                                    tofile="${project.build.directory}/${project.build.finalName}.jar"
+                                    overwrite="true"/>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>

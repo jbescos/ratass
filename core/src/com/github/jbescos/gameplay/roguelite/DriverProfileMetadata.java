@@ -1,7 +1,8 @@
 package com.github.jbescos.gameplay.roguelite;
 
 public final class DriverProfileMetadata {
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
+    private static final float REFERENCE_TOP_SPEED_KPH = 300f;
 
     private final String profileId;
     private final String policySha256;
@@ -14,6 +15,9 @@ public final class DriverProfileMetadata {
     private final float averageFastestLapSeconds;
     private final float averageLapSeconds;
     private final float averageOffRoadActions;
+    private final float averageOffRoadPercent;
+    private final float averageDriftPercent;
+    private final float maximumSpeedKph;
 
     public DriverProfileMetadata(
             String profileId,
@@ -27,6 +31,68 @@ public final class DriverProfileMetadata {
             float averageFastestLapSeconds,
             float averageLapSeconds,
             float averageOffRoadActions) {
+        this(
+                profileId,
+                policySha256,
+                benchmarkVersion,
+                overallRating,
+                paceRating,
+                controlRating,
+                consistencyRating,
+                finishRate,
+                averageFastestLapSeconds,
+                averageLapSeconds,
+                averageOffRoadActions,
+                0f,
+                0f,
+                0f);
+    }
+
+    public DriverProfileMetadata(
+            String profileId,
+            String policySha256,
+            String benchmarkVersion,
+            float overallRating,
+            float paceRating,
+            float controlRating,
+            float consistencyRating,
+            float finishRate,
+            float averageFastestLapSeconds,
+            float averageLapSeconds,
+            float averageOffRoadActions,
+            float averageDriftPercent) {
+        this(
+                profileId,
+                policySha256,
+                benchmarkVersion,
+                overallRating,
+                paceRating,
+                controlRating,
+                consistencyRating,
+                finishRate,
+                averageFastestLapSeconds,
+                averageLapSeconds,
+                averageOffRoadActions,
+                0f,
+                averageDriftPercent,
+                0f);
+    }
+
+    public DriverProfileMetadata(
+            String profileId,
+            String policySha256,
+            String benchmarkVersion,
+            float overallRating,
+            float paceRating,
+            float controlRating,
+            float consistencyRating,
+            float finishRate,
+            float averageFastestLapSeconds,
+            float averageLapSeconds,
+            float averageOffRoadActions,
+            float averageOffRoadPercent,
+            float averageDriftPercent,
+            float maximumSpeedKph) {
         if (profileId == null || profileId.trim().length() == 0) {
             throw new IllegalArgumentException("Driver profile ID is required.");
         }
@@ -41,6 +107,9 @@ public final class DriverProfileMetadata {
         this.averageFastestLapSeconds = Math.max(0f, averageFastestLapSeconds);
         this.averageLapSeconds = Math.max(0f, averageLapSeconds);
         this.averageOffRoadActions = Math.max(0f, averageOffRoadActions);
+        this.averageOffRoadPercent = clampRating(averageOffRoadPercent);
+        this.averageDriftPercent = clampRating(averageDriftPercent);
+        this.maximumSpeedKph = Math.max(0f, maximumSpeedKph);
     }
 
     public String getProfileId() {
@@ -87,6 +156,48 @@ public final class DriverProfileMetadata {
         return averageOffRoadActions;
     }
 
+    public float getAverageDriftPercent() {
+        return averageDriftPercent;
+    }
+
+    public float getAverageOffRoadPercent() {
+        return averageOffRoadPercent;
+    }
+
+    public float getMaximumSpeedKph() {
+        return maximumSpeedKph;
+    }
+
+    public float getOffRoadRating() {
+        return clampRating(100f - averageOffRoadPercent * 10f);
+    }
+
+    public float getDriftRating() {
+        return clampRating(averageDriftPercent * 5f);
+    }
+
+    public float getMaximumSpeedRating() {
+        return clampRating(maximumSpeedKph / REFERENCE_TOP_SPEED_KPH * 100f);
+    }
+
+    DriverProfileMetadata withOverallRating(float rating) {
+        return new DriverProfileMetadata(
+                profileId,
+                policySha256,
+                benchmarkVersion,
+                rating,
+                paceRating,
+                controlRating,
+                consistencyRating,
+                finishRate,
+                averageFastestLapSeconds,
+                averageLapSeconds,
+                averageOffRoadActions,
+                averageOffRoadPercent,
+                averageDriftPercent,
+                maximumSpeedKph);
+    }
+
     public static DriverProfileMetadata fromData(Data data, String expectedProfileId) {
         if (data == null
                 || data.schemaVersion != SCHEMA_VERSION
@@ -105,7 +216,10 @@ public final class DriverProfileMetadata {
                 data.finishRate,
                 data.averageFastestLapSeconds,
                 data.averageLapSeconds,
-                data.averageOffRoadActions);
+                data.averageOffRoadActions,
+                data.averageOffRoadPercent,
+                data.averageDriftPercent,
+                data.maximumSpeedKph);
     }
 
     static DriverProfileMetadata fallback(String profileId, int order) {
@@ -145,5 +259,8 @@ public final class DriverProfileMetadata {
         public float averageFastestLapSeconds;
         public float averageLapSeconds;
         public float averageOffRoadActions;
+        public float averageOffRoadPercent;
+        public float averageDriftPercent;
+        public float maximumSpeedKph;
     }
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -12,14 +13,17 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from evaluate_lap_times import (
+    DRIVER_METADATA_SCHEMA_VERSION,
     TimedRun,
     best_times,
     car_average_row,
+    driver_average_lap_score,
     driver_metadata,
     format_cell,
     highlight,
     load_car_names,
     make_environment,
+    normalize_driver_metadata_scores,
     overall_car_averages,
     overall_profile_averages,
     print_overall_car_averages,
@@ -201,6 +205,11 @@ class DriverMetadataTest(unittest.TestCase):
                 3,
                 3,
                 off_road_actions=6,
+                average_drift_percent=12.0,
+                maximum_speed_kph=241.5,
+                off_road_samples=10,
+                driving_samples=100,
+                drift_samples=20,
             ),
             TimedRun(
                 "map001",
@@ -212,6 +221,11 @@ class DriverMetadataTest(unittest.TestCase):
                 2,
                 3,
                 off_road_actions=4,
+                average_drift_percent=8.0,
+                maximum_speed_kph=263.25,
+                off_road_samples=20,
+                driving_samples=300,
+                drift_samples=60,
             ),
         ]
         with tempfile.TemporaryDirectory() as directory:
@@ -228,13 +242,57 @@ class DriverMetadataTest(unittest.TestCase):
                 map_source="game",
             )
 
-        self.assertEqual(metadata["schemaVersion"], 1)
+        self.assertEqual(metadata["schemaVersion"], DRIVER_METADATA_SCHEMA_VERSION)
         self.assertEqual(metadata["profileId"], "profile03")
         self.assertEqual(metadata["finishRate"], 0.5)
         self.assertEqual(metadata["averageOffRoadActions"], 2.0)
+        self.assertEqual(metadata["averageOffRoadPercent"], 7.5)
+        self.assertEqual(metadata["averageDriftPercent"], 9.0)
+        self.assertEqual(metadata["maximumSpeedKph"], 263.25)
         self.assertEqual(len(metadata["policySha256"]), 64)
-        self.assertGreater(metadata["overallRating"], 0.0)
-        self.assertLessEqual(metadata["overallRating"], 100.0)
+        self.assertEqual(metadata["overallRating"], 100.0)
+
+    def test_scores_every_profile_against_the_best_average_lap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            policy_root = Path(directory)
+            for profile, average_lap, old_score in (
+                ("profile00", 30.0, 10.0),
+                ("profile01", 36.0, 99.0),
+                ("profile02", 45.0, 50.0),
+            ):
+                profile_root = policy_root / profile
+                profile_root.mkdir()
+                (profile_root / "driver_metadata.json").write_text(
+                    json.dumps(
+                        {
+                            "schemaVersion": DRIVER_METADATA_SCHEMA_VERSION,
+                            "profileId": profile,
+                            "averageLapSeconds": average_lap,
+                            "overallRating": old_score,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            scores = normalize_driver_metadata_scores(policy_root)
+
+            self.assertEqual(scores["profile00"], 100.0)
+            self.assertEqual(scores["profile01"], 83.333)
+            self.assertEqual(scores["profile02"], 66.667)
+            profile01 = json.loads(
+                (policy_root / "profile01" / "driver_metadata.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(profile01["overallRating"], 83.333)
+
+    def test_average_lap_score_rejects_missing_times(self):
+        self.assertEqual(driver_average_lap_score(0.0, 30.0), 0.0)
+        self.assertAlmostEqual(
+            driver_average_lap_score(36.0, 30.0),
+            83.333333,
+            places=6,
+        )
 
 
 class CarAverageTest(unittest.TestCase):

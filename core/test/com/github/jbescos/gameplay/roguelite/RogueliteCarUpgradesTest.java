@@ -4,7 +4,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.junit.Test;
 
 public class RogueliteCarUpgradesTest {
@@ -19,121 +22,289 @@ public class RogueliteCarUpgradesTest {
         assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getMaxSpeedMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getDragMultiplier(), EPSILON);
+        assertEquals(1f, upgrades.getMassMultiplier(), EPSILON);
         assertEquals(0.58f, upgrades.adjustSurfaceGrip(0.58f), EPSILON);
+        assertFalse(upgrades.isGadgetReady());
         assertTrue(upgrades.getActiveCardIds().isEmpty());
+        assertEquals(0f, upgrades.consumeForwardLaunchSpeedRatio(), EPSILON);
     }
 
     @Test
-    public void everyCatalogCardHasARuntimeEffectRegistration() {
+    public void everyCatalogCardHasAnEffectAndUniqueArtwork() {
         List<RogueliteCardDefinition> cards = RogueliteCardCatalog.all();
+        Set<Integer> artworkIndexes = new HashSet<Integer>();
         for (int i = 0; i < cards.size(); i++) {
+            RogueliteCardDefinition card = cards.get(i);
             RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-            upgrades.configure(loadout(cards.get(i).getId()));
+            upgrades.configure(loadout(card.getId()));
             assertTrue(upgrades.isEnabled());
+            assertTrue(artworkIndexes.add(Integer.valueOf(card.getArtworkIndex())));
         }
+        assertEquals(cards.size(), artworkIndexes.size());
     }
 
     @Test
-    public void turboAndAerodynamicsSynergyRaisesRedlineAndReducesDrag() {
-        RogueliteLoadout loadout =
-                loadout(
-                        RogueliteCardId.TURBOCHARGER,
-                        RogueliteCardId.AERODYNAMIC_KIT);
-        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(loadout);
+    public void tuningCardsExposeDistinctMassAndAerodynamicSetups() {
+        RogueliteCarUpgrades lightweight = configured(RogueliteCardId.SPORT_TUNE);
+        RogueliteCarUpgrades heavyweight = configured(RogueliteCardId.HEAVYWEIGHT_TUNE);
+        RogueliteCarUpgrades aero = configured(RogueliteCardId.CHAMPIONSHIP_TUNE);
 
-        upgrades.update(
-                1.6f,
-                1f,
-                true,
-                false,
-                false,
-                0f,
-                0.8f,
-                0f,
-                100f,
-                2f);
-
-        assertEquals(1.10f, upgrades.getAccelerationMultiplier(), EPSILON);
-        assertEquals(1.055f, upgrades.getMaxSpeedMultiplier(), EPSILON);
-        assertEquals(0.91f, upgrades.getDragMultiplier(), EPSILON);
+        assertEquals(0.92f, lightweight.getMassMultiplier(), EPSILON);
+        assertEquals(1.16f, heavyweight.getMassMultiplier(), EPSILON);
+        assertTrue(heavyweight.getFrontCollisionPushMultiplier() > 1f);
+        assertEquals(1f, aero.getMassMultiplier(), EPSILON);
+        assertEquals(0.90f, aero.getDragMultiplier(), EPSILON);
+        assertTrue(aero.getMaxSpeedMultiplier() > heavyweight.getMaxSpeedMultiplier());
     }
 
     @Test
-    public void stormTiresRecoverHalfOfWeatherGripLoss() {
-        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(loadout(RogueliteCardId.STORM_TIRES));
+    public void cornerExitTriggersOnlyAfterLeavingAnOnRoadCorner() {
+        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.CORNER_EXIT);
 
-        assertEquals(0.79f, upgrades.adjustSurfaceGrip(0.58f), EPSILON);
+        update(upgrades, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0.20f, 0.2f, 0.2f, 0f, 0f);
+        assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
+
+        update(upgrades, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0f, 0.8f, 0f, 0f, 0f);
+        assertEquals(1.12f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_EXIT));
+    }
+
+    @Test
+    public void cleanMomentumBuildsOnRoadAndResetsOffRoad() {
+        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.CLEAN_MOMENTUM);
+        for (int i = 0; i < 60; i++) {
+            update(upgrades, 0.1f, 1f, true, 0.01f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
+        }
+        assertEquals(1.07f, upgrades.getMaxSpeedMultiplier(), EPSILON);
+
+        update(upgrades, 0.1f, 1f, false, 0.01f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertEquals(1f, upgrades.getMaxSpeedMultiplier(), EPSILON);
     }
 
     @Test
     public void overtakingCreatesThenExpiresAnAccelerationBurst() {
-        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(loadout(RogueliteCardId.OVERTAKE_INJECTOR));
+        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.OVERTAKE_SURGE);
 
         assertTrue(upgrades.hasOvertakeInjector());
         upgrades.onRacePositionImproved(1, 0f);
-        assertEquals(1.11f, upgrades.getAccelerationMultiplier(), EPSILON);
-        assertEquals(
-                RogueliteCardId.OVERTAKE_INJECTOR,
-                upgrades.getActiveCardIds().get(0));
+        assertEquals(1.24f, upgrades.getAccelerationMultiplier(), EPSILON);
 
-        upgrades.update(
-                1.4f,
-                1f,
-                true,
-                false,
-                false,
-                0f,
-                0.8f,
-                0f,
-                100f,
-                2f);
+        update(upgrades, 2.1f, 1f, true, 0f, 0.8f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
-        assertTrue(upgrades.getActiveCardIds().isEmpty());
     }
 
     @Test
-    public void draftReceiverIsReportedOnlyWhileSlipstreamIsActive() {
+    public void nitroWaitsForAUsableStraightAndThenEntersCooldown() {
+        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.NITRO_PULSE);
+
+        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0.25f, 0.1f, 0.3f, 0f, 0f);
+        for (int i = 0; i < 30; i++) {
+            update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0.25f, 0.1f, 0.3f, 0f, 0f);
+        }
+        assertTrue(upgrades.isGadgetReady());
+        assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
+
+        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 0.8f, 0f, 0f, 0f);
+        assertEquals(RogueliteCardId.NITRO_PULSE, upgrades.getActiveGadgetCardId());
+        assertEquals(1.20f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(0.18f, upgrades.consumeForwardLaunchSpeedRatio(), EPSILON);
+        assertEquals(0f, upgrades.consumeForwardLaunchSpeedRatio(), EPSILON);
+
+        update(upgrades, 1.5f, 1f, true, 0f, 0.65f, 0f, 0f, 0.8f, 0f, 0f, 0f);
+        assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertFalse(upgrades.isGadgetReady());
+        assertTrue(upgrades.getGadgetReadiness() > 0f);
+    }
+
+    @Test
+    public void straightLineLaunchesScaleByGadgetTierWithoutReplacingStatBuffs() {
+        RogueliteCarUpgrades nitro = activateStraightGadget(RogueliteCardId.NITRO_PULSE);
+        RogueliteCarUpgrades rocket = activateStraightGadget(RogueliteCardId.ROCKET_EXHAUST);
+        RogueliteCarUpgrades hyperdrive = activateStraightGadget(RogueliteCardId.HYPERDRIVE);
+
+        float nitroLaunch = nitro.consumeForwardLaunchSpeedRatio();
+        float rocketLaunch = rocket.consumeForwardLaunchSpeedRatio();
+        float hyperdriveLaunch = hyperdrive.consumeForwardLaunchSpeedRatio();
+
+        assertEquals(0.18f, nitroLaunch, EPSILON);
+        assertEquals(0.27f, rocketLaunch, EPSILON);
+        assertEquals(0.40f, hyperdriveLaunch, EPSILON);
+        assertTrue(rocketLaunch > nitroLaunch);
+        assertTrue(hyperdriveLaunch > rocketLaunch);
+        assertEquals(1.20f, nitro.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.28f, rocket.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.38f, hyperdrive.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.06f, nitro.getMaxSpeedMultiplier(), EPSILON);
+        assertEquals(1.09f, rocket.getMaxSpeedMultiplier(), EPSILON);
+        assertEquals(1.15f, hyperdrive.getMaxSpeedMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void ramArmsNearARivalAndCannotRearmDuringCooldown() {
+        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.RAM_REACTOR);
+
+        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        for (int i = 0; i < 30; i++) {
+            update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        }
+        assertTrue(upgrades.isGadgetReady());
+        assertFalse(upgrades.isRamGadgetActive());
+
+        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0.8f, 0.8f);
+        assertTrue(upgrades.isRamGadgetActive());
+        upgrades.consumeRamGadgetCharge();
+        assertFalse(upgrades.isRamGadgetActive());
+
+        for (int i = 0; i < 20; i++) {
+            update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0.8f, 0.8f);
+        }
+        assertFalse(upgrades.isRamGadgetActive());
+    }
+
+    @Test
+    public void everyCardCombinationRemainsStableThroughASimulatedRace() {
+        List<RogueliteCardDefinition> tuning = cardsForSlot(RogueliteSlotType.TUNING);
+        List<RogueliteCardDefinition> techniques = cardsForSlot(RogueliteSlotType.TECHNIQUE);
+        List<RogueliteCardDefinition> gadgets = cardsForSlot(RogueliteSlotType.GADGET);
+
+        for (int t = 0; t < tuning.size(); t++) {
+            for (int technique = 0; technique < techniques.size(); technique++) {
+                for (int gadget = 0; gadget < gadgets.size(); gadget++) {
+                    RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+                    upgrades.configure(
+                            loadout(
+                                    tuning.get(t).getId(),
+                                    techniques.get(technique).getId(),
+                                    gadgets.get(gadget).getId()),
+                            (t * 100 + technique * 10 + gadget) / 499f);
+                    simulateRace(upgrades);
+                }
+            }
+        }
+    }
+
+    private static void simulateRace(RogueliteCarUpgrades upgrades) {
+        for (int step = 0; step < 240; step++) {
+            int phase = step % 120;
+            float cornerSeverity = phase < 40 ? 0f : phase < 85 ? 0.30f : 0.04f;
+            float nextCornerDistance = phase < 30 ? 0.80f : phase < 70 ? 0.18f : 0.65f;
+            float nextCornerSeverity = phase < 70 ? 0.32f : 0.04f;
+            boolean onRoad = step % 137 != 0;
+            float slip = phase >= 50 && phase < 80 ? 0.24f : 0.03f;
+            float opponentAhead = phase < 35 ? 0.72f : 0f;
+            float opponentNearby = phase < 20 ? 0.65f : 0f;
+
+            upgrades.update(
+                    1f / 30f,
+                    1f,
+                    onRoad,
+                    step % 181 < 30,
+                    step % 89 == 0,
+                    slip,
+                    0.65f,
+                    phase < 20 ? 0.35f : 0f,
+                    step,
+                    360f,
+                    2f,
+                    cornerSeverity,
+                    nextCornerDistance,
+                    nextCornerSeverity,
+                    opponentAhead,
+                    opponentNearby);
+            if (step % 89 == 0) {
+                upgrades.onCollision(12f);
+            }
+            if (step % 101 == 0) {
+                upgrades.onRacePositionImproved(1, 0.35f);
+            }
+
+            assertMultiplier(upgrades.getAccelerationMultiplier(), 1f, 1.85f);
+            assertMultiplier(upgrades.getMassMultiplier(), 0.75f, 1.35f);
+            assertMultiplier(upgrades.getMaxSpeedMultiplier(), 1f, 1.35f);
+            assertMultiplier(upgrades.getDragMultiplier(), 0.50f, 1.50f);
+            assertMultiplier(upgrades.getGripMultiplier(slip), 1f, 2f);
+            assertMultiplier(upgrades.getSteeringMultiplier(slip), 1f, 2f);
+            assertMultiplier(upgrades.getSlipstreamRangeMultiplier(), 1f, 2f);
+            assertMultiplier(upgrades.getSlipstreamStrengthMultiplier(), 1f, 2f);
+            assertMultiplier(upgrades.getFrontCollisionRecoilMultiplier(), 0f, 1f);
+            assertMultiplier(upgrades.getFrontCollisionPushMultiplier(), 1f, 3f);
+            assertMultiplier(upgrades.adjustSurfaceGrip(0.58f), 0f, 1f);
+            assertMultiplier(upgrades.getGadgetReadiness(), 0f, 1f);
+        }
+    }
+
+    private static RogueliteCarUpgrades configured(RogueliteCardId cardId) {
         RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(loadout(RogueliteCardId.DRAFT_RECEIVER));
+        upgrades.configure(loadout(cardId));
+        return upgrades;
+    }
 
-        upgrades.update(
-                0.1f,
-                1f,
-                true,
-                false,
-                false,
-                0f,
-                0.8f,
-                0.45f,
-                0f,
-                100f,
-                2f);
-        assertEquals(
-                RogueliteCardId.DRAFT_RECEIVER,
-                upgrades.getActiveCardIds().get(0));
+    private static RogueliteCarUpgrades activateStraightGadget(RogueliteCardId cardId) {
+        RogueliteCarUpgrades upgrades = configured(cardId);
+        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 0.8f, 0f, 0f, 0f);
+        for (int i = 0; i < 50 && !upgrades.isGadgetReady(); i++) {
+            update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0.25f, 0.1f, 0.3f, 0f, 0f);
+        }
+        assertTrue(upgrades.isGadgetReady());
+        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 0.8f, 0f, 0f, 0f);
+        return upgrades;
+    }
 
+    private static void update(
+            RogueliteCarUpgrades upgrades,
+            float delta,
+            float throttle,
+            boolean onRoad,
+            float slip,
+            float speedRatio,
+            float slipstreamBoost,
+            float cornerSeverity,
+            float nextCornerDistance,
+            float nextCornerSeverity,
+            float opponentAhead,
+            float opponentNearby) {
         upgrades.update(
-                0.1f,
-                1f,
-                true,
+                delta,
+                throttle,
+                onRoad,
                 false,
                 false,
-                0f,
-                0.8f,
-                0f,
-                0f,
+                slip,
+                speedRatio,
+                slipstreamBoost,
+                10f,
                 100f,
-                2f);
-        assertTrue(upgrades.getActiveCardIds().isEmpty());
+                2f,
+                cornerSeverity,
+                nextCornerDistance,
+                nextCornerSeverity,
+                opponentAhead,
+                opponentNearby);
+    }
+
+    private static List<RogueliteCardDefinition> cardsForSlot(
+            RogueliteSlotType slotType) {
+        List<RogueliteCardDefinition> matches = new ArrayList<RogueliteCardDefinition>();
+        List<RogueliteCardDefinition> cards = RogueliteCardCatalog.all();
+        for (int i = 0; i < cards.size(); i++) {
+            if (cards.get(i).getSlotType() == slotType) {
+                matches.add(cards.get(i));
+            }
+        }
+        return matches;
+    }
+
+    private static void assertMultiplier(float value, float minimum, float maximum) {
+        assertFalse(Float.isNaN(value));
+        assertFalse(Float.isInfinite(value));
+        assertTrue(value >= minimum - EPSILON);
+        assertTrue(value <= maximum + EPSILON);
     }
 
     private static RogueliteLoadout loadout(RogueliteCardId... cards) {
         RogueliteLoadout loadout = new RogueliteLoadout("profile00");
         for (int i = 0; i < cards.length; i++) {
-            assertTrue(loadout.equip(cards[i], -1));
+            assertTrue(loadout.equip(cards[i]));
         }
         return loadout;
     }

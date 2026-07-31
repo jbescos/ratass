@@ -13,6 +13,7 @@ public final class RogueliteRun {
             new LinkedHashMap<Integer, RogueliteCompetitorProgress>();
     private final RogueliteRandom random;
     private int championshipNumber = 1;
+    private int startingTier = 1;
 
     public RogueliteRun() {
         this(new RogueliteRandom(), DriverProfileCatalog.fallback());
@@ -44,9 +45,18 @@ public final class RogueliteRun {
     }
 
     public void reset() {
+        reset(1);
+    }
+
+    public void reset(int selectedStartingTier) {
+        if (selectedStartingTier < 1
+                || selectedStartingTier > DriverProfileCatalog.MAX_TIER) {
+            throw new IllegalArgumentException("Starting tier is out of range.");
+        }
         player = newProgress();
         rivals.clear();
         championshipNumber = 1;
+        startingTier = selectedStartingTier;
     }
 
     public RogueliteCompetitorProgress getPlayerProgress() {
@@ -91,10 +101,14 @@ public final class RogueliteRun {
         return championshipNumber;
     }
 
+    public int getStartingTier() {
+        return startingTier;
+    }
+
     public int getUnlockedTier() {
         return Math.min(
                 DriverProfileCatalog.MAX_TIER,
-                championshipNumber);
+                startingTier + championshipNumber - 1);
     }
 
     public int advanceChampionship() {
@@ -115,28 +129,18 @@ public final class RogueliteRun {
     }
 
     public List<RogueliteCardOffer> createOffers(int count) {
-        if (!player.hasPendingReward()) {
+        if (!player.hasOfferableReward()) {
             return Collections.emptyList();
         }
         return createOffersFor(player, count);
     }
 
-    public boolean needsReplacement(RogueliteCardOffer offer) {
-        return offer != null
-                && !offer.isDriver()
-                && player.getLoadout().isFull();
-    }
-
     public boolean select(RogueliteCardOffer offer) {
-        return select(offer, -1);
+        return applyOffer(player, offer);
     }
 
-    public boolean select(RogueliteCardOffer offer, int replacementSlot) {
-        return applyOffer(player, offer, replacementSlot);
-    }
-
-    public boolean skipPlayerReward() {
-        return player.consumePendingReward();
+    public boolean deferPlayerRewardsUntilNextLevel() {
+        return player.deferRewardsUntilNextLevel();
     }
 
     public void resolveRivalRewards(Iterable<Integer> vehicleIds) {
@@ -155,12 +159,9 @@ public final class RogueliteRun {
                     rival.consumePendingReward();
                     continue;
                 }
-                RogueliteCardOffer offer = offers.get(random.nextInt(offers.size()));
-                int replacementSlot =
-                        !offer.isDriver() && rival.getLoadout().isFull()
-                                ? random.nextInt(RogueliteLoadout.MODIFICATION_SLOT_COUNT)
-                                : -1;
-                if (!applyOffer(rival, offer, replacementSlot)) {
+                RogueliteCardOffer offer =
+                        chooseRivalOffer(rival, offers);
+                if (!applyOffer(rival, offer)) {
                     rival.consumePendingReward();
                 }
             }
@@ -171,6 +172,7 @@ public final class RogueliteRun {
         Snapshot snapshot = new Snapshot();
         snapshot.randomState = random.getState();
         snapshot.championshipNumber = championshipNumber;
+        snapshot.startingTier = startingTier;
         snapshot.player = snapshotProgress(player);
         for (Map.Entry<Integer, RogueliteCompetitorProgress> entry : rivals.entrySet()) {
             RivalSnapshot rival = new RivalSnapshot();
@@ -184,7 +186,9 @@ public final class RogueliteRun {
     public boolean restore(Snapshot snapshot) {
         if (snapshot == null
                 || snapshot.player == null
-                || snapshot.championshipNumber < 1) {
+                || snapshot.championshipNumber < 1
+                || snapshot.startingTier < 1
+                || snapshot.startingTier > DriverProfileCatalog.MAX_TIER) {
             return false;
         }
 
@@ -217,12 +221,13 @@ public final class RogueliteRun {
         rivals.clear();
         rivals.putAll(restoredRivals);
         championshipNumber = snapshot.championshipNumber;
+        startingTier = snapshot.startingTier;
         random.setState(snapshot.randomState);
         return true;
     }
 
     public List<RogueliteCardOffer> restoreOffers(Iterable<String> offerIds) {
-        if (offerIds == null || !player.hasPendingReward()) {
+        if (offerIds == null || !player.hasOfferableReward()) {
             return Collections.emptyList();
         }
         List<RogueliteCardOffer> offers = new ArrayList<RogueliteCardOffer>();
@@ -249,7 +254,8 @@ public final class RogueliteRun {
                 driverCatalog.eligibleThroughTier(unlockedTier);
         for (int i = 0; i < eligibleDrivers.size(); i++) {
             DriverProfileMetadata driver = eligibleDrivers.get(i);
-            if (!driver.getProfileId().equals(
+            if (driverCatalog.getTier(driver.getProfileId()) == unlockedTier
+                    && !driver.getProfileId().equals(
                     progress.getLoadout().getDriverProfileId())) {
                 driverOffers.add(
                         RogueliteCardOffer.driver(
@@ -263,7 +269,7 @@ public final class RogueliteRun {
         List<RogueliteCardDefinition> cards = RogueliteCardCatalog.all();
         for (int i = 0; i < cards.size(); i++) {
             RogueliteCardDefinition card = cards.get(i);
-            if (card.getTier() <= unlockedTier
+            if (card.getTier() == unlockedTier
                     && !progress.getLoadout().has(card.getId())) {
                 modificationOffers.add(RogueliteCardOffer.modification(card));
             }
@@ -275,7 +281,11 @@ public final class RogueliteRun {
             selected.add(takeRandom(driverOffers));
         }
         while (selected.size() < count && !modificationOffers.isEmpty()) {
-            selected.add(takeRandom(modificationOffers));
+            selected.add(
+                    takePreferredModification(
+                            progress.getLoadout(),
+                            modificationOffers,
+                            selected));
         }
         while (selected.size() < count && !driverOffers.isEmpty()) {
             selected.add(takeRandom(driverOffers));
@@ -286,9 +296,8 @@ public final class RogueliteRun {
 
     private boolean applyOffer(
             RogueliteCompetitorProgress progress,
-            RogueliteCardOffer offer,
-            int replacementSlot) {
-        if (!progress.hasPendingReward() || !isEligible(progress, offer)) {
+            RogueliteCardOffer offer) {
+        if (!progress.hasOfferableReward() || !isEligible(progress, offer)) {
             return false;
         }
         boolean applied;
@@ -299,8 +308,7 @@ public final class RogueliteRun {
         } else {
             applied =
                     progress.getLoadout().equip(
-                            offer.getCard().getId(),
-                            replacementSlot);
+                            offer.getCard().getId());
         }
         return applied && progress.consumePendingReward();
     }
@@ -308,7 +316,7 @@ public final class RogueliteRun {
     private boolean isEligible(
             RogueliteCompetitorProgress progress,
             RogueliteCardOffer offer) {
-        if (offer == null || offer.getTier() > getUnlockedTier()) {
+        if (offer == null || offer.getTier() != getUnlockedTier()) {
             return false;
         }
         if (offer.isDriver()) {
@@ -337,10 +345,14 @@ public final class RogueliteRun {
             return null;
         }
         try {
+            RogueliteCardId cardId =
+                    RogueliteCardCatalog.resolveSavedId(
+                            offerId.substring("card:".length()));
+            if (cardId == null) {
+                return null;
+            }
             return RogueliteCardOffer.modification(
-                    RogueliteCardCatalog.get(
-                            RogueliteCardId.valueOf(
-                                    offerId.substring("card:".length()))));
+                    RogueliteCardCatalog.get(cardId));
         } catch (RuntimeException exception) {
             return null;
         }
@@ -353,6 +365,8 @@ public final class RogueliteRun {
         snapshot.level = progress.getLevel();
         snapshot.experience = progress.getExperience();
         snapshot.pendingRewards = progress.getPendingRewards();
+        snapshot.rewardDeferredUntilLevel =
+                progress.getRewardDeferredUntilLevel();
         List<RogueliteCardId> modifications =
                 progress.getLoadout().getModifications();
         for (int i = 0; i < modifications.size(); i++) {
@@ -372,14 +386,19 @@ public final class RogueliteRun {
             RogueliteCompetitorProgress progress =
                     new RogueliteCompetitorProgress(snapshot.driverProfileId);
             for (int i = 0; i < snapshot.modificationCardIds.size(); i++) {
-                progress.getLoadout().restoreModification(
-                        RogueliteCardId.valueOf(
-                                snapshot.modificationCardIds.get(i)));
+                RogueliteCardId cardId =
+                        RogueliteCardCatalog.resolveSavedId(
+                                snapshot.modificationCardIds.get(i));
+                if (cardId == null) {
+                    return null;
+                }
+                progress.getLoadout().restoreModification(cardId);
             }
             progress.restore(
                     snapshot.level,
                     snapshot.experience,
-                    snapshot.pendingRewards);
+                    snapshot.pendingRewards,
+                    snapshot.rewardDeferredUntilLevel);
             return progress;
         } catch (RuntimeException exception) {
             return null;
@@ -417,6 +436,106 @@ public final class RogueliteRun {
         return offers.remove(random.nextInt(offers.size()));
     }
 
+    private RogueliteCardOffer takePreferredModification(
+            RogueliteLoadout loadout,
+            List<RogueliteCardOffer> offers,
+            List<RogueliteCardOffer> selected) {
+        List<RogueliteCardOffer> preferred =
+                new ArrayList<RogueliteCardOffer>();
+        for (int i = 0; i < offers.size(); i++) {
+            RogueliteCardOffer offer = offers.get(i);
+            if (!loadout.hasCardIn(offer.getSlotType())
+                    && !containsSlot(selected, offer.getSlotType())) {
+                preferred.add(offer);
+            }
+        }
+        if (preferred.isEmpty()) {
+            for (int i = 0; i < offers.size(); i++) {
+                RogueliteCardOffer offer = offers.get(i);
+                if (!containsSlot(selected, offer.getSlotType())) {
+                    preferred.add(offer);
+                }
+            }
+        }
+        RogueliteCardOffer chosen =
+                preferred.isEmpty()
+                        ? offers.get(random.nextInt(offers.size()))
+                        : preferred.get(random.nextInt(preferred.size()));
+        offers.remove(chosen);
+        return chosen;
+    }
+
+    private RogueliteCardOffer chooseRivalOffer(
+            RogueliteCompetitorProgress progress,
+            List<RogueliteCardOffer> offers) {
+        RogueliteCardOffer best = offers.get(0);
+        float bestScore = rivalOfferScore(progress, best);
+        for (int i = 1; i < offers.size(); i++) {
+            RogueliteCardOffer candidate = offers.get(i);
+            float score = rivalOfferScore(progress, candidate);
+            if (score > bestScore) {
+                best = candidate;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    private float rivalOfferScore(
+            RogueliteCompetitorProgress progress,
+            RogueliteCardOffer offer) {
+        RogueliteLoadout loadout = progress.getLoadout();
+        int currentTier;
+        float qualityGain = 0f;
+        if (offer.isDriver()) {
+            DriverProfileMetadata current =
+                    driverCatalog.get(loadout.getDriverProfileId());
+            currentTier =
+                    current == null
+                            ? 0
+                            : driverCatalog.getTier(current.getProfileId());
+            qualityGain =
+                    current == null
+                            ? offer.getDriver().getOverallRating()
+                            : offer.getDriver().getOverallRating()
+                                    - current.getOverallRating();
+            if (offer.getTier() <= currentTier && qualityGain <= 0f) {
+                return -100000f + qualityGain;
+            }
+        } else {
+            RogueliteCardId equippedId = loadout.get(offer.getSlotType());
+            currentTier =
+                    equippedId == null
+                            ? 0
+                            : RogueliteCardCatalog.get(equippedId).getTier();
+        }
+
+        int tierGain = offer.getTier() - currentTier;
+        if (tierGain < 0) {
+            return -100000f + tierGain * 1000f;
+        }
+
+        // Tier gain is the primary objective. When gains tie, improve the
+        // weakest slot first so a rival cannot spend every level swapping
+        // drivers while the rest of its loadout remains under-tiered.
+        float weakestSlotPriority =
+                (DriverProfileCatalog.MAX_TIER - currentTier) * 100f;
+        return tierGain * 10000f
+                + weakestSlotPriority
+                + Math.max(0f, qualityGain);
+    }
+
+    private static boolean containsSlot(
+            List<RogueliteCardOffer> offers,
+            RogueliteSlotType slotType) {
+        for (int i = 0; i < offers.size(); i++) {
+            if (offers.get(i).getSlotType() == slotType) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void shuffle(List<RogueliteCardOffer> offers) {
         for (int i = offers.size() - 1; i > 0; i--) {
             int swapIndex = random.nextInt(i + 1);
@@ -437,6 +556,7 @@ public final class RogueliteRun {
     public static final class Snapshot {
         public int randomState;
         public int championshipNumber = 1;
+        public int startingTier = 1;
         public ProgressSnapshot player = new ProgressSnapshot();
         public List<RivalSnapshot> rivals = new ArrayList<RivalSnapshot>();
     }
@@ -446,6 +566,7 @@ public final class RogueliteRun {
         public int level = 1;
         public int experience;
         public int pendingRewards;
+        public int rewardDeferredUntilLevel;
         public List<String> modificationCardIds = new ArrayList<String>();
     }
 

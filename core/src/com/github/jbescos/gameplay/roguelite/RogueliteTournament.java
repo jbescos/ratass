@@ -8,9 +8,9 @@ import java.util.List;
 import java.util.Set;
 
 public final class RogueliteTournament {
-    public static final int CHAMPIONSHIP_COUNT = 5;
-    public static final int ELIMINATIONS_PER_CHAMPIONSHIP = 2;
-    public static final int FINALIST_COUNT = 2;
+    public static final int CHAMPIONSHIP_COUNT = 3;
+    public static final int ELIMINATIONS_PER_CHAMPIONSHIP = 3;
+    public static final int FINALIST_COUNT = 4;
 
     public Outcome resolve(
             int championshipNumber,

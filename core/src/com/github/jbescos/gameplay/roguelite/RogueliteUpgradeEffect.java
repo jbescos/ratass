@@ -21,6 +21,14 @@ abstract class RogueliteUpgradeEffect {
         return false;
     }
 
+    boolean isReady() {
+        return false;
+    }
+
+    float readiness() {
+        return 0f;
+    }
+
     int activeDisplayPriority() {
         return 0;
     }
@@ -52,6 +60,10 @@ abstract class RogueliteUpgradeEffect {
         return 1f;
     }
 
+    float massMultiplier() {
+        return 1f;
+    }
+
     float gripBonus(float slip) {
         return 0f;
     }
@@ -78,6 +90,17 @@ abstract class RogueliteUpgradeEffect {
 
     float frontCollisionPushMultiplier() {
         return 1f;
+    }
+
+    float consumeForwardLaunchSpeedRatio() {
+        return 0f;
+    }
+
+    boolean isRamChargeActive() {
+        return false;
+    }
+
+    void consumeRamCharge() {
     }
 
     void onRacePositionImproved(int positionsGained, float slipstreamBoost) {
