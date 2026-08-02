@@ -58,10 +58,12 @@ still runs on CPU.
 - The shell training presets stage route learning through `5%`, `10%`, `25%`,
   `50%`, and `75%` route targets. Add `_real`, for example `5%_real`, to run
   that route-target stage on `assets/maps`. Full-lap stages are `lap_easy`
-  route-only masks, `lap_training` on `tools/rl/trainingMaps`, and `lap_real`
-  on `assets/maps`. `RL_STAGE_NUMBER_OF_CARS` controls how many cars are used in
-  each stage. Route-target stages must stay single-car; lap stages can train
-  with traffic.
+  route-only masks, `lap_training` on `tools/rl/trainingMaps`, and `lap_real`,
+  `lap_real3`, or `lap_real5` for one, three, or five laps on `assets/maps`.
+  `RL_TRAIN_LAP_BATCH_SIZE` overrides `RL_TRAIN_BATCH_SIZE` only for those
+  real-map lap stages. `RL_STAGE_NUMBER_OF_CARS` controls how many cars are
+  used in each stage. Route-target stages must stay single-car; lap stages can
+  train with traffic.
 - Route-target stages use saved random spawn seeds. By default each
   `tools/rl/train.sh` invocation creates a new spawn-seed session, so spawns
   are stable during that run but different on the next run. Set

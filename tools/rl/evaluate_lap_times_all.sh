@@ -21,7 +21,7 @@ fi
 exec "${python_bin}" "${script_dir}/evaluate_lap_times.py" \
   --profiles "${profiles}" \
   --map-source game \
-  --laps 5 \
+  --laps "${RL_LAP_EVAL_LAPS:-3}" \
   --steps 0 \
   --timeout-seconds "${RL_LAP_EVAL_TIMEOUT_SECONDS:-10}" \
   --include-missing \

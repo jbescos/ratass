@@ -233,6 +233,7 @@ run_curriculum_phase() {
   local phase_route_target_fraction="${route_target_fraction:-0}"
   local phase_fixed_full_laps=0
   local phase_evaluate_all_checkpoint_candidates=0
+  local phase_train_batch_size="${RL_TRAIN_BATCH_SIZE:-4096}"
   local phase_map_ids="${RL_MAP_IDS:-}"
   local phase_best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS:-}"
   if [[ "${phase_route_targets}" == "-2" ]]; then
@@ -249,12 +250,21 @@ run_curriculum_phase() {
     phase_route_targets="-1"
     phase_route_target_fraction="0"
     phase_evaluate_all_checkpoint_candidates=1
+    phase_train_batch_size="${RL_TRAIN_LAP_BATCH_SIZE:-${phase_train_batch_size}}"
     phase_map_ids="${RL_LAP_REAL_MAP_IDS:-auto-game}"
     phase_best_eval_map_ids="${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
   elif [[ "${phase_route_targets}" == "-5" ]]; then
     phase_route_targets="${RL_LAP_REAL_TARGETS:-5}"
     phase_route_target_fraction="0"
     phase_fixed_full_laps=1
+    phase_train_batch_size="${RL_TRAIN_LAP_BATCH_SIZE:-${phase_train_batch_size}}"
+    phase_map_ids="${RL_LAP_REAL_MAP_IDS:-auto-game}"
+    phase_best_eval_map_ids="${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
+  elif [[ "${phase_route_targets}" == "-6" ]]; then
+    phase_route_targets="3"
+    phase_route_target_fraction="0"
+    phase_fixed_full_laps=1
+    phase_train_batch_size="${RL_TRAIN_LAP_BATCH_SIZE:-${phase_train_batch_size}}"
     phase_map_ids="${RL_LAP_REAL_MAP_IDS:-auto-game}"
     phase_best_eval_map_ids="${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
   fi
@@ -267,8 +277,12 @@ run_curriculum_phase() {
     phase_best_eval_map_ids="${stage_map_ids}"
   fi
   if [[ "${iterations}" -le 0 ]]; then
-    echo "curriculum_phase_skip policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} iterations=${iterations} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all}"
+    echo "curriculum_phase_skip policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} iterations=${iterations} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} train_batch_size=${phase_train_batch_size} maps=${phase_map_ids:-all}"
     return
+  fi
+  if [[ ! "${phase_train_batch_size}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "invalid_train_batch_size=${phase_train_batch_size} phase=${phase} expected=positive_integer" >&2
+    exit 2
   fi
   if [[ -z "${best_eval_min_route_targets}" ]]; then
     if [[ "${phase_route_targets}" =~ ^[1-9][0-9]*$ ]]; then
@@ -312,6 +326,7 @@ run_curriculum_phase() {
       printf 'current_phase=%s\n' "${phase}"
       printf 'preset=%s\n' "${preset}"
       printf 'phase_iterations=%s\n' "${iterations}"
+      printf 'train_batch_size=%s\n' "${phase_train_batch_size}"
       printf 'route_targets=%s\n' "${phase_route_targets}"
       printf 'route_target_fraction=%s\n' "${phase_route_target_fraction}"
       printf 'map_ids=%s\n' "${phase_map_ids:-}"
@@ -339,6 +354,7 @@ run_curriculum_phase() {
     "current_phase=${phase}" \
     "preset=${preset}" \
     "phase_iterations=${iterations}" \
+    "train_batch_size=${phase_train_batch_size}" \
     "max_cycles=${max_cycles}" \
     "route_targets=${phase_route_targets}" \
     "route_target_fraction=${phase_route_target_fraction}" \
@@ -362,12 +378,13 @@ run_curriculum_phase() {
   echo "CURRENT_TRAINING_STAGE=${phase} stage=${stage_index}/${stage_total} stage_progress=$(progress_percent "${stage_index}" "${stage_total}")"
   echo "CURRENT_TRAINING_PROFILE_PROGRESS=${profile_stage_index}/${profile_stage_total} $(progress_percent "${profile_stage_index}" "${profile_stage_total}")"
   echo "CURRENT_TRAINING_OVERALL_PROGRESS=${overall_stage_index}/${overall_stage_total} $(progress_percent "${overall_stage_index}" "${overall_stage_total}")"
-  echo "CURRENT_TRAINING_DETAILS preset=${preset} iterations=${iterations} cars=${phase_controlled_agents} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} seed_file=${phase_spawn_seed_file:-none} seed_run=${RL_ROUTE_SPAWN_RUN_ID:-none}"
+  echo "CURRENT_TRAINING_DETAILS preset=${preset} iterations=${iterations} train_batch_size=${phase_train_batch_size} cars=${phase_controlled_agents} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} seed_file=${phase_spawn_seed_file:-none} seed_run=${RL_ROUTE_SPAWN_RUN_ID:-none}"
   echo "============================================================"
-  echo "curriculum_phase=${phase} policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} preset=${preset} iterations=${iterations} max_cycles=${max_cycles} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} checkpoint_dir=${checkpoint_dir} best_eval_state=${best_eval_state} best_output=${phase_best_output} init_policy=${init_policy:-none}"
+  echo "curriculum_phase=${phase} policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} preset=${preset} iterations=${iterations} train_batch_size=${phase_train_batch_size} max_cycles=${max_cycles} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} checkpoint_dir=${checkpoint_dir} best_eval_state=${best_eval_state} best_output=${phase_best_output} init_policy=${init_policy:-none}"
   env \
     RL_CHECKPOINT_DIR="${checkpoint_dir}" \
     RL_FOREVER_ITERATIONS="${iterations}" \
+    RL_TRAIN_BATCH_SIZE="${phase_train_batch_size}" \
     RL_MAX_CYCLES="${max_cycles}" \
     RL_CONTROLLED_AGENTS="${phase_controlled_agents}" \
     RL_FIELD_SIZE="${phase_controlled_agents}" \
@@ -405,6 +422,7 @@ route_stage_label() {
     -3) printf '%s\n' "lap_training" ;;
     -4) printf '%s\n' "lap_real" ;;
     -5) printf '%s\n' "lap_real5" ;;
+    -6) printf '%s\n' "lap_real3" ;;
     -1) printf '%s\n' "lap" ;;
     *)
       if [[ "${targets}" =~ ^[1-9][0-9]*$ && "${target_fraction}" != "0" && "${target_fraction}" != "0.0" ]]; then
@@ -492,6 +510,7 @@ normalize_route_stage() {
     "lap_training"|"lap_train"|"training_lap"|"training-lap") printf '%s\n' "-3" ;;
     "lap_real"|"real_lap"|"real-lap"|"game_lap"|"game-lap") printf '%s\n' "-4" ;;
     "lap_real5"|"real_lap5"|"real-lap5"|"game_lap5"|"game-lap5"|"lap-real5") printf '%s\n' "-5" ;;
+    "lap_real3"|"real_lap3"|"real-lap3"|"game_lap3"|"game-lap3"|"lap-real3") printf '%s\n' "-6" ;;
     "lap"|"full"|"-1") printf '%s\n' "-1" ;;
     "")
       echo "empty_route_stage=1" >&2
@@ -589,6 +608,7 @@ route_stage_label_from_spec() {
     "lap_training"|"lap_train"|"training_lap"|"training-lap") printf '%s\n' "lap_training" ;;
     "lap_real"|"real_lap"|"real-lap"|"game_lap"|"game-lap") printf '%s\n' "lap_real" ;;
     "lap_real5"|"real_lap5"|"real-lap5"|"game_lap5"|"game-lap5"|"lap-real5") printf '%s\n' "lap_real5" ;;
+    "lap_real3"|"real_lap3"|"real-lap3"|"game_lap3"|"game-lap3"|"lap-real3") printf '%s\n' "lap_real3" ;;
     "lap"|"full"|"-1") printf '%s\n' "lap" ;;
     *%)
       local percent="${spec%\%}"
@@ -1217,7 +1237,7 @@ fi
 
 checkpoint_file="${checkpoint_dir}/rllib_checkpoint.json"
 
-echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} spawn_mode=${race_spawn_mode} random_race_spawns=${random_race_spawns} seed=${seed} spawn_seed_file=${route_spawn_seed_file:-none} route_targets=${route_targets} route_target_fraction=${route_target_fraction} max_action_steps=${max_action_steps} no_progress_max_action_steps=${no_progress_max_action_steps} off_road_failure_max_action_steps=${off_road_failure_max_action_steps} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} epochs=${num_epochs} grad_clip=${grad_clip} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} jvm_heap=${jvm_max_heap} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all} evaluate_all_checkpoint_candidates=${evaluate_all_checkpoint_candidates}"
+echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} spawn_mode=${race_spawn_mode} random_race_spawns=${random_race_spawns} seed=${seed} spawn_seed_file=${route_spawn_seed_file:-none} route_targets=${route_targets} route_target_fraction=${route_target_fraction} max_action_steps=${max_action_steps} no_progress_max_action_steps=${no_progress_max_action_steps} off_road_failure_max_action_steps=${off_road_failure_max_action_steps} train_batch_size=${train_batch_size} minibatch_size=${minibatch_size} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} epochs=${num_epochs} grad_clip=${grad_clip} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} jvm_heap=${jvm_max_heap} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all} evaluate_all_checkpoint_candidates=${evaluate_all_checkpoint_candidates}"
 
 export RATASS_RL_JVM_MAX_HEAP="${jvm_max_heap}"
 
