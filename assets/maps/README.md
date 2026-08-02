@@ -4,7 +4,7 @@ The current roguelite/race prototype uses mask-only maps. The game can still
 load a decorated image beside a mask when one exists, but for now the mask is
 also used as the visible surface.
 
-- `*_mask.png`: road mask, race checkpoints, car starts, and start directions
+- `*_mask.png`: road mask, race checkpoints, and start-grid anchors
 - `*.json.gz`: compressed generated gameplay metadata for the parsed mask
 
 The `.json.gz` file is a compressed generated cache. It stores only gameplay data
@@ -25,17 +25,26 @@ Mask colors:
 
 - white or near-white: race road
 - black or near-black: off-road/outside-road space
-- red dots: car spawn positions
-- blue dots: car facing direction, paired with the nearest red spawn
-- green lines: ordered race checkpoint gates, perpendicular to the road
+- red dots: the two side-by-side anchors for the first start-grid row
+- green lines: ordered race checkpoint gates, perpendicular to the road; the
+  start/finish line also defines the grid's forward direction
 
-Race-mode car spawns are separate mask markers. The current generator draws 20
-spawn positions as two parallel F1-style start lines.
+Race-mode car spawns are separate mask markers. The loader expands the two red
+anchors behind the start/finish line into 20 positions on two parallel
+F1-style grid columns.
 
 Regenerate the current circuit masks:
 
 ```bash
 python3 tools/generate_f1_circuit_masks.py
+```
+
+`map018` is a dedicated high-speed training circuit with long straights,
+hairpins in both directions, chicanes, and broad return corners. Regenerate its
+mask and matching presentation image with:
+
+```bash
+python3 tools/generate_map018.py
 ```
 
 The generated masks are deliberately simple and high-contrast so training can

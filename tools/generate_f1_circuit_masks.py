@@ -16,7 +16,6 @@ Point = Tuple[float, float]
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (225, 28, 34)
-BLUE = (28, 86, 230)
 GREEN = (36, 210, 76)
 START_GRID_ROWS = 10
 
@@ -200,13 +199,12 @@ def draw_road(
         draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill)
 
 
-def spawn_grid_layout(track_width: int) -> Tuple[int, int, int, int, int]:
+def spawn_grid_layout(track_width: int) -> Tuple[int, int, int, int]:
     row_spacing = max(64, int(track_width * 0.30))
     column_spacing = max(68, int(track_width * 0.34))
     first_back_offset = max(76, int(track_width * 0.36))
     spawn_radius = max(8, track_width // 28)
-    direction_radius = max(5, track_width // 52)
-    return row_spacing, column_spacing, first_back_offset, spawn_radius, direction_radius
+    return row_spacing, column_spacing, first_back_offset, spawn_radius
 
 
 def draw_checkpoint_gate(
@@ -255,29 +253,17 @@ def draw_spawn_grid(
         draw: ImageDraw.ImageDraw,
         points: Sequence[Point],
         total_length: float,
-        track_width: int,
-        direction_offset: int,
-        rows: int = START_GRID_ROWS) -> None:
-    row_spacing, column_spacing, first_back_offset, spawn_radius, direction_radius = (
-        spawn_grid_layout(track_width)
-    )
-
-    for row in range(rows):
-        center, tangent = sample_path(points, total_length - first_back_offset - row * row_spacing)
-        normal = (-tangent[1], tangent[0])
-        for column in range(2):
-            side = (-0.5 if column == 0 else 0.5) * column_spacing
-            point = (
-                center[0] + normal[0] * side,
-                center[1] + normal[1] * side,
-            )
-            draw_marker(draw, point, spawn_radius, RED)
-
-            blue_point = (
-                point[0] + tangent[0] * direction_offset,
-                point[1] + tangent[1] * direction_offset,
-            )
-            draw_marker(draw, blue_point, direction_radius, BLUE)
+        track_width: int) -> None:
+    _, column_spacing, first_back_offset, spawn_radius = spawn_grid_layout(track_width)
+    center, tangent = sample_path(points, total_length - first_back_offset)
+    normal = (-tangent[1], tangent[0])
+    for column in range(2):
+        side = (-0.5 if column == 0 else 0.5) * column_spacing
+        point = (
+            center[0] + normal[0] * side,
+            center[1] + normal[1] * side,
+        )
+        draw_marker(draw, point, spawn_radius, RED)
 
 
 def render_circuit(
@@ -285,8 +271,7 @@ def render_circuit(
         output_dir: Path,
         size: Tuple[int, int],
         checkpoints: int,
-        track_width: int,
-        direction_offset: int) -> None:
+        track_width: int) -> None:
     width, height = size
     image = Image.new("RGB", size, BLACK)
     road_mask = Image.new("L", size, 0)
@@ -297,7 +282,7 @@ def render_circuit(
     draw_road(road_draw, smoothed, track_width, 255)
 
     _, total = path_lengths(smoothed)
-    row_spacing, _, first_back_offset, spawn_radius, _ = spawn_grid_layout(track_width)
+    row_spacing, _, first_back_offset, spawn_radius = spawn_grid_layout(track_width)
     reserved_back = first_back_offset + row_spacing * (START_GRID_ROWS - 1) + spawn_radius + track_width * 0.28
     reserved_forward = max(track_width * 0.8, 210)
     available_start = min(reserved_forward, total * 0.18)
@@ -311,7 +296,7 @@ def render_circuit(
     for distance in checkpoint_distances:
         point, tangent = sample_path(smoothed, distance)
         draw_checkpoint_gate(image, road_mask, point, tangent, track_width)
-    draw_spawn_grid(draw, smoothed, total, track_width, direction_offset)
+    draw_spawn_grid(draw, smoothed, total, track_width)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / f"map{spec.file_index:03d}_mask.png"
@@ -329,7 +314,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--height", type=int, default=1500)
     parser.add_argument("--checkpoints", type=int, default=20)
     parser.add_argument("--track-width", type=int, default=260)
-    parser.add_argument("--direction-offset", type=int, default=32)
     parser.add_argument(
         "--all",
         action="store_true",
@@ -355,7 +339,6 @@ def main() -> None:
             (args.width, args.height),
             args.checkpoints,
             args.track_width,
-            args.direction_offset,
         )
 
 
