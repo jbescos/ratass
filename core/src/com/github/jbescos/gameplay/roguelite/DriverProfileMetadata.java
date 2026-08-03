@@ -1,13 +1,12 @@
 package com.github.jbescos.gameplay.roguelite;
 
 public final class DriverProfileMetadata {
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 3;
     private static final float REFERENCE_TOP_SPEED_KPH = 300f;
 
     private final String profileId;
     private final String policySha256;
     private final String benchmarkVersion;
-    private final float overallRating;
     private final float paceRating;
     private final float controlRating;
     private final float consistencyRating;
@@ -23,7 +22,6 @@ public final class DriverProfileMetadata {
             String profileId,
             String policySha256,
             String benchmarkVersion,
-            float overallRating,
             float paceRating,
             float controlRating,
             float consistencyRating,
@@ -35,7 +33,6 @@ public final class DriverProfileMetadata {
                 profileId,
                 policySha256,
                 benchmarkVersion,
-                overallRating,
                 paceRating,
                 controlRating,
                 consistencyRating,
@@ -52,7 +49,6 @@ public final class DriverProfileMetadata {
             String profileId,
             String policySha256,
             String benchmarkVersion,
-            float overallRating,
             float paceRating,
             float controlRating,
             float consistencyRating,
@@ -65,7 +61,6 @@ public final class DriverProfileMetadata {
                 profileId,
                 policySha256,
                 benchmarkVersion,
-                overallRating,
                 paceRating,
                 controlRating,
                 consistencyRating,
@@ -82,7 +77,6 @@ public final class DriverProfileMetadata {
             String profileId,
             String policySha256,
             String benchmarkVersion,
-            float overallRating,
             float paceRating,
             float controlRating,
             float consistencyRating,
@@ -99,7 +93,6 @@ public final class DriverProfileMetadata {
         this.profileId = profileId.trim();
         this.policySha256 = policySha256 == null ? "" : policySha256;
         this.benchmarkVersion = benchmarkVersion == null ? "" : benchmarkVersion;
-        this.overallRating = clampRating(overallRating);
         this.paceRating = clampRating(paceRating);
         this.controlRating = clampRating(controlRating);
         this.consistencyRating = clampRating(consistencyRating);
@@ -122,10 +115,6 @@ public final class DriverProfileMetadata {
 
     public String getBenchmarkVersion() {
         return benchmarkVersion;
-    }
-
-    public float getOverallRating() {
-        return overallRating;
     }
 
     public float getPaceRating() {
@@ -180,24 +169,6 @@ public final class DriverProfileMetadata {
         return clampRating(maximumSpeedKph / REFERENCE_TOP_SPEED_KPH * 100f);
     }
 
-    DriverProfileMetadata withOverallRating(float rating) {
-        return new DriverProfileMetadata(
-                profileId,
-                policySha256,
-                benchmarkVersion,
-                rating,
-                paceRating,
-                controlRating,
-                consistencyRating,
-                finishRate,
-                averageFastestLapSeconds,
-                averageLapSeconds,
-                averageOffRoadActions,
-                averageOffRoadPercent,
-                averageDriftPercent,
-                maximumSpeedKph);
-    }
-
     public static DriverProfileMetadata fromData(Data data, String expectedProfileId) {
         if (data == null
                 || data.schemaVersion != SCHEMA_VERSION
@@ -209,7 +180,6 @@ public final class DriverProfileMetadata {
                 data.profileId,
                 data.policySha256,
                 data.benchmarkVersion,
-                data.overallRating,
                 data.paceRating,
                 data.controlRating,
                 data.consistencyRating,
@@ -228,7 +198,6 @@ public final class DriverProfileMetadata {
                 profileId,
                 "",
                 "unrated",
-                rating,
                 rating,
                 rating,
                 rating,
@@ -251,7 +220,6 @@ public final class DriverProfileMetadata {
         public String profileId = "";
         public String policySha256 = "";
         public String benchmarkVersion = "";
-        public float overallRating;
         public float paceRating;
         public float controlRating;
         public float consistencyRating;

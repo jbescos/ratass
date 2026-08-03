@@ -354,8 +354,7 @@ public class RogueliteRunTest {
         RogueliteRun run = new RogueliteRun(573L);
         run.reset(3);
         RogueliteLoadout loadout = run.getRivalLoadout(2);
-        float defaultRating =
-                run.getDriver(loadout.getDriverProfileId()).getOverallRating();
+        String defaultDriver = loadout.getDriverProfileId();
 
         for (int race = 0; race < 18; race++) {
             run.awardRivalRacePosition(2, 1, 10);
@@ -369,9 +368,7 @@ public class RogueliteRunTest {
                     3,
                     RogueliteCardCatalog.get(loadout.getModifications().get(i)).getTier());
         }
-        assertTrue(
-                run.getDriver(loadout.getDriverProfileId()).getOverallRating()
-                        > defaultRating);
+        assertFalse(defaultDriver.equals(loadout.getDriverProfileId()));
     }
 
     @Test
@@ -515,7 +512,6 @@ public class RogueliteRunTest {
                 id,
                 "",
                 "test",
-                50f,
                 50f,
                 50f,
                 50f,

@@ -9,9 +9,8 @@
   "controlRating": 67.298,
   "finishRate": 1.0,
   "maximumSpeedKph": 228.471,
-  "overallRating": 96.536,
   "paceRating": 72.088,
   "policySha256": "5fd5b1d782a364292c8c2260465f5df40a3ad7029d3aa7db6ceeb3b2886a1765",
   "profileId": "profile00",
-  "schemaVersion": 2
+  "schemaVersion": 3
 }

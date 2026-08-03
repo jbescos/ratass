@@ -277,11 +277,28 @@ rl_policy_run_batch() {
       echo "policy_training_start id=${policy_id} index=${policy_index}/${policy_total} script=${script_key} output=${RL_BEST_OUTPUT} checkpoint_dir=${RL_CURRICULUM_CHECKPOINT_DIR} config=${RL_POLICY_CONFIG_FILE}"
       local policy_exit_code=0
       if bash "${script_path}" "${script_args[@]}"; then
-        if ! rl_policy_is_false "${RL_GENERATE_DRIVER_METADATA:-1}"; then
-          if ! bash tools/rl/generate_driver_metadata.sh "${policy_id}"; then
-            echo "driver_metadata_generation_failed policy=${policy_id}" >&2
-          fi
+        policy_exit_code=0
+      else
+        policy_exit_code="$?"
+      fi
+      if ! rl_policy_is_false "${RL_GENERATE_DRIVER_METADATA:-1}"; then
+        local metadata_reason="training_completed"
+        if [[ "${policy_exit_code}" -eq 130 || "${policy_exit_code}" -eq 143 ]]; then
+          metadata_reason="training_interrupted"
+        elif [[ "${policy_exit_code}" -ne 0 ]]; then
+          metadata_reason="training_failed"
         fi
+        if [[ -f "${RL_BEST_OUTPUT}" ]]; then
+          local metadata_generator="${RL_DRIVER_METADATA_GENERATOR:-tools/rl/generate_driver_metadata.sh}"
+          echo "driver_metadata_generation_start policy=${policy_id} reason=${metadata_reason} output=${RL_BEST_OUTPUT}"
+          if ! bash "${metadata_generator}" "${policy_id}"; then
+            echo "driver_metadata_generation_failed policy=${policy_id} reason=${metadata_reason}" >&2
+          fi
+        else
+          echo "driver_metadata_generation_skipped policy=${policy_id} reason=missing_policy output=${RL_BEST_OUTPUT}" >&2
+        fi
+      fi
+      if [[ "${policy_exit_code}" -eq 0 ]]; then
         {
           printf 'status=done\n'
           printf 'completed_profile=1\n'
@@ -306,7 +323,6 @@ rl_policy_run_batch() {
         echo "PROFILE_TRAINING_FINISHED id=${policy_id} profile=${policy_index}/${policy_total} output=${RL_BEST_OUTPUT}"
         echo "policy_training_done id=${policy_id} index=${policy_index}/${policy_total} output=${RL_BEST_OUTPUT}"
       else
-        policy_exit_code="$?"
         {
           printf 'status=failed_early\n'
           printf 'completed_profile=0\n'

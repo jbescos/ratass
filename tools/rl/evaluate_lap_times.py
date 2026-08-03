@@ -23,7 +23,7 @@ DEFAULT_PROFILE_ROOT = REPO_ROOT / "tools" / "rl" / "policies"
 DEFAULT_CAR_PROPERTIES_ROOT = REPO_ROOT / "assets" / "theme" / "gt3" / "cars"
 POLICY_FILE_NAME = "rl_enemy_policy.json"
 DRIVER_METADATA_FILE_NAME = "driver_metadata.json"
-DRIVER_METADATA_SCHEMA_VERSION = 2
+DRIVER_METADATA_SCHEMA_VERSION = 3
 DRIVER_BENCHMARK_VERSION = "lap-game-v2"
 PHYSICS_STEP_SECONDS = 1.0 / 60.0
 KPH_PER_MPS = 3.6
@@ -937,7 +937,6 @@ def driver_metadata(
     else:
         gap_score = 0.0
     consistency = clamp_rating(gap_score * 0.40 + finish_rate * 60.0)
-    overall = driver_average_lap_score(average_lap, average_lap)
     policy_sha256 = hashlib.sha256(policy_path.read_bytes()).hexdigest()
     benchmark_version = (
         f"{DRIVER_BENCHMARK_VERSION}:source={map_source},maps={expected_runs},"
@@ -948,7 +947,6 @@ def driver_metadata(
         "profileId": profile,
         "policySha256": policy_sha256,
         "benchmarkVersion": benchmark_version,
-        "overallRating": round(overall, 3),
         "paceRating": round(pace, 3),
         "controlRating": round(control, 3),
         "consistencyRating": round(consistency, 3),
@@ -964,58 +962,6 @@ def driver_metadata(
 
 def clamp_rating(value: float) -> float:
     return max(0.0, min(100.0, value))
-
-
-def driver_average_lap_score(average_lap: float, best_average_lap: float) -> float:
-    if (
-        not math.isfinite(average_lap)
-        or not math.isfinite(best_average_lap)
-        or average_lap <= 0.0
-        or best_average_lap <= 0.0
-    ):
-        return 0.0
-    return clamp_rating(best_average_lap / average_lap * 100.0)
-
-
-def normalize_driver_metadata_scores(policy_root: Path) -> dict[str, float]:
-    metadata_files: list[tuple[Path, dict[str, object], float]] = []
-    for output in sorted(policy_root.glob(f"*/{DRIVER_METADATA_FILE_NAME}")):
-        try:
-            metadata = json.loads(output.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if (
-            not isinstance(metadata, dict)
-            or metadata.get("schemaVersion") != DRIVER_METADATA_SCHEMA_VERSION
-            or metadata.get("profileId") != output.parent.name
-        ):
-            continue
-        try:
-            average_lap = float(metadata.get("averageLapSeconds", 0.0))
-        except (ValueError, TypeError):
-            continue
-        metadata_files.append((output, metadata, average_lap))
-
-    valid_average_laps = [
-        average_lap
-        for _, _, average_lap in metadata_files
-        if math.isfinite(average_lap) and average_lap > 0.0
-    ]
-    best_average_lap = min(valid_average_laps) if valid_average_laps else 0.0
-    scores: dict[str, float] = {}
-    for output, metadata, average_lap in metadata_files:
-        score = round(
-            driver_average_lap_score(average_lap, best_average_lap),
-            3,
-        )
-        if metadata.get("overallRating") != score:
-            metadata["overallRating"] = score
-            output.write_text(
-                json.dumps(metadata, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-        scores[output.parent.name] = score
-    return scores
 
 
 def write_driver_metadata(
@@ -1048,11 +994,9 @@ def write_driver_metadata(
         )
         written_profiles.append((profile, output))
 
-    scores = normalize_driver_metadata_scores(policy_root)
     for profile, output in written_profiles:
         print(
-            f"driver_metadata_written profile={profile} output={output} "
-            f"score={scores.get(profile, 0.0)}",
+            f"driver_metadata_written profile={profile} output={output}",
             file=sys.stderr,
             flush=True,
         )

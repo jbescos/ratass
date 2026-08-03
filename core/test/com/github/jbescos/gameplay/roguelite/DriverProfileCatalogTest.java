@@ -7,16 +7,16 @@ import org.junit.Test;
 
 public class DriverProfileCatalogTest {
     @Test
-    public void scoresDriversRelativeToTheBestAverageLapOnly() {
+    public void sortsDriversBestToWorstByAverageLapOnly() {
         DriverProfileCatalog catalog =
                 new DriverProfileCatalog(Arrays.asList(
-                        metadata("fast", 5f, 30f),
-                        metadata("middle", 99f, 36f),
-                        metadata("slow", 50f, 45f)));
+                        metadata("fast", 30f),
+                        metadata("middle", 36f),
+                        metadata("slow", 45f)));
 
-        assertEquals(100f, catalog.get("fast").getOverallRating(), 0.001f);
-        assertEquals(83.333f, catalog.get("middle").getOverallRating(), 0.001f);
-        assertEquals(66.667f, catalog.get("slow").getOverallRating(), 0.001f);
+        assertEquals("fast", catalog.all().get(0).getProfileId());
+        assertEquals("middle", catalog.all().get(1).getProfileId());
+        assertEquals("slow", catalog.all().get(2).getProfileId());
         assertEquals("slow", catalog.getWorst().getProfileId());
         assertEquals(1, catalog.getTier("slow"));
         assertEquals(2, catalog.getTier("middle"));
@@ -30,7 +30,6 @@ public class DriverProfileCatalogTest {
                         "profile",
                         "hash",
                         "benchmark",
-                        88f,
                         0f,
                         0f,
                         0f,
@@ -49,22 +48,20 @@ public class DriverProfileCatalogTest {
     }
 
     @Test
-    public void keepsFallbackRatingsWhenNoDriverHasBenchmarkTimes() {
+    public void keepsProfileZeroAsFallbackWorstDriver() {
         DriverProfileCatalog catalog = DriverProfileCatalog.fallback();
 
-        assertEquals(5f, catalog.get("profile00").getOverallRating(), 0.001f);
+        assertEquals("profile09", catalog.all().get(0).getProfileId());
         assertEquals("profile00", catalog.getWorst().getProfileId());
     }
 
     private static DriverProfileMetadata metadata(
             String profileId,
-            float oldOverallRating,
             float averageLapSeconds) {
         return new DriverProfileMetadata(
                 profileId,
                 "hash",
                 "benchmark",
-                oldOverallRating,
                 50f,
                 50f,
                 50f,

@@ -29,23 +29,18 @@ public final class DriverProfileCatalog {
         if (metadata == null || metadata.isEmpty()) {
             throw new IllegalArgumentException("At least one driver profile is required.");
         }
-        List<DriverProfileMetadata> sorted = normalizeAverageLapScores(metadata);
+        List<DriverProfileMetadata> sorted =
+                new ArrayList<DriverProfileMetadata>(metadata);
         Collections.sort(sorted, new Comparator<DriverProfileMetadata>() {
             @Override
             public int compare(
                     DriverProfileMetadata left,
                     DriverProfileMetadata right) {
-                int averageLap = compareAverageLapForTier(left, right);
+                int averageLap = compareAverageLapForQuality(left, right);
                 if (averageLap != 0) {
                     return averageLap;
                 }
-                int rating =
-                        Float.compare(
-                                left.getOverallRating(),
-                                right.getOverallRating());
-                return rating != 0
-                        ? rating
-                        : left.getProfileId().compareTo(right.getProfileId());
+                return right.getProfileId().compareTo(left.getProfileId());
             }
         });
 
@@ -62,52 +57,20 @@ public final class DriverProfileCatalog {
         profilesById = Collections.unmodifiableMap(byId);
     }
 
-    private static int compareAverageLapForTier(
+    private static int compareAverageLapForQuality(
             DriverProfileMetadata left,
             DriverProfileMetadata right) {
         boolean leftValid = isValidAverageLap(left.getAverageLapSeconds());
         boolean rightValid = isValidAverageLap(right.getAverageLapSeconds());
         if (leftValid != rightValid) {
-            return leftValid ? 1 : -1;
+            return leftValid ? -1 : 1;
         }
         if (!leftValid) {
             return 0;
         }
-        // Slower drivers come first so tier 1 and the default contain the
-        // highest average lap times. The fastest drivers land in the final tier.
         return Float.compare(
-                right.getAverageLapSeconds(),
-                left.getAverageLapSeconds());
-    }
-
-    private static List<DriverProfileMetadata> normalizeAverageLapScores(
-            List<DriverProfileMetadata> metadata) {
-        float bestAverageLap = Float.POSITIVE_INFINITY;
-        for (int i = 0; i < metadata.size(); i++) {
-            DriverProfileMetadata profile = metadata.get(i);
-            float averageLap = profile.getAverageLapSeconds();
-            if (isValidAverageLap(averageLap)) {
-                bestAverageLap = Math.min(bestAverageLap, averageLap);
-            }
-        }
-
-        List<DriverProfileMetadata> normalized =
-                new ArrayList<DriverProfileMetadata>(metadata.size());
-        if (Float.isInfinite(bestAverageLap)) {
-            normalized.addAll(metadata);
-            return normalized;
-        }
-
-        for (int i = 0; i < metadata.size(); i++) {
-            DriverProfileMetadata profile = metadata.get(i);
-            float averageLap = profile.getAverageLapSeconds();
-            float score =
-                    isValidAverageLap(averageLap)
-                            ? bestAverageLap / averageLap * 100f
-                            : 0f;
-            normalized.add(profile.withOverallRating(score));
-        }
-        return normalized;
+                left.getAverageLapSeconds(),
+                right.getAverageLapSeconds());
     }
 
     private static boolean isValidAverageLap(float averageLap) {
@@ -134,15 +97,16 @@ public final class DriverProfileCatalog {
     }
 
     public DriverProfileMetadata getWorst() {
-        return profiles.get(0);
+        return profiles.get(profiles.size() - 1);
     }
 
     public int getTier(String profileId) {
         for (int i = 0; i < profiles.size(); i++) {
             if (profiles.get(i).getProfileId().equals(profileId)) {
+                int rankFromWorst = profiles.size() - 1 - i;
                 return Math.min(
                         MAX_TIER,
-                        1 + i * MAX_TIER / profiles.size());
+                        1 + rankFromWorst * MAX_TIER / profiles.size());
             }
         }
         return MAX_TIER;

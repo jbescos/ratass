@@ -1655,7 +1655,6 @@ public class RatassGame extends ApplicationAdapter {
                 0f,
                 0f,
                 0f,
-                0f,
                 0f);
     }
 
@@ -12337,7 +12336,7 @@ public class RatassGame extends ApplicationAdapter {
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        drawRogueliteDriverStatCellBackground(bounds, 0, driver.getOverallRating());
+        drawRogueliteDriverStatCellBackground(bounds, 0, driver.getPaceRating());
         drawRogueliteDriverStatCellBackground(bounds, 1, driver.getMaximumSpeedRating());
         drawRogueliteDriverStatCellBackground(bounds, 2, driver.getOffRoadRating());
         drawRogueliteDriverStatCellBackground(bounds, 3, driver.getDriftRating());

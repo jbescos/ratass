@@ -494,11 +494,7 @@ public final class RogueliteRun {
                     current == null
                             ? 0
                             : driverCatalog.getTier(current.getProfileId());
-            qualityGain =
-                    current == null
-                            ? offer.getDriver().getOverallRating()
-                            : offer.getDriver().getOverallRating()
-                                    - current.getOverallRating();
+            qualityGain = driverQualityGain(current, offer.getDriver());
             if (offer.getTier() <= currentTier && qualityGain <= 0f) {
                 return -100000f + qualityGain;
             }
@@ -523,6 +519,32 @@ public final class RogueliteRun {
         return tierGain * 10000f
                 + weakestSlotPriority
                 + Math.max(0f, qualityGain);
+    }
+
+    private static float driverQualityGain(
+            DriverProfileMetadata current,
+            DriverProfileMetadata offered) {
+        float offeredLap = offered == null ? 0f : offered.getAverageLapSeconds();
+        boolean offeredValid = isValidAverageLap(offeredLap);
+        if (current == null) {
+            return offeredValid ? 1f / offeredLap : 0f;
+        }
+
+        float currentLap = current.getAverageLapSeconds();
+        boolean currentValid = isValidAverageLap(currentLap);
+        if (currentValid && offeredValid) {
+            return currentLap - offeredLap;
+        }
+        if (offeredValid) {
+            return 1f;
+        }
+        return currentValid ? -1f : 0f;
+    }
+
+    private static boolean isValidAverageLap(float averageLap) {
+        return averageLap > 0f
+                && !Float.isNaN(averageLap)
+                && !Float.isInfinite(averageLap);
     }
 
     private static boolean containsSlot(

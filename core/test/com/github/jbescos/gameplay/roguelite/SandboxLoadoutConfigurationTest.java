@@ -33,8 +33,7 @@ public final class SandboxLoadoutConfigurationTest {
         DriverProfileCatalog drivers = DriverProfileCatalog.fallback();
         SandboxLoadoutConfiguration configuration =
                 new SandboxLoadoutConfiguration(drivers);
-        DriverProfileMetadata fastest =
-                drivers.all().get(drivers.all().size() - 1);
+        DriverProfileMetadata fastest = drivers.all().get(0);
         RogueliteCardOffer offer = findDriver(configuration, fastest.getProfileId());
 
         assertTrue(configuration.select(offer));
@@ -67,8 +66,7 @@ public final class SandboxLoadoutConfigurationTest {
         DriverProfileCatalog drivers = DriverProfileCatalog.fallback();
         SandboxLoadoutConfiguration configuration =
                 new SandboxLoadoutConfiguration(drivers);
-        DriverProfileMetadata replacementDriver =
-                drivers.all().get(drivers.all().size() - 1);
+        DriverProfileMetadata replacementDriver = drivers.all().get(0);
 
         assertTrue(
                 configuration.select(
