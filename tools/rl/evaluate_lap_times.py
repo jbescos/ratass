@@ -122,6 +122,11 @@ def parse_args() -> argparse.Namespace:
         help="maximum RL actions per map/profile; 0 means no practical step limit",
     )
     parser.add_argument("--action-repeat", type=int, default=4)
+    parser.add_argument(
+        "--tuning-card",
+        default="",
+        help="optional RogueliteCardId tuning card for isolated balance benchmarks",
+    )
     parser.add_argument("--seed", type=int, default=20260531)
     parser.add_argument(
         "--timeout-seconds",
@@ -204,7 +209,11 @@ def ensure_jpype() -> None:
     except ModuleNotFoundError as exc:
         venv_python = REPO_ROOT / ".venv-rl" / "bin" / "python"
         if venv_python.exists() and Path(sys.executable) != venv_python:
-            os.execv(os.fspath(venv_python), [os.fspath(venv_python), __file__, *sys.argv[1:]])
+            entrypoint = Path(sys.argv[0]).resolve()
+            os.execv(
+                os.fspath(venv_python),
+                [os.fspath(venv_python), os.fspath(entrypoint), *sys.argv[1:]],
+            )
         raise ModuleNotFoundError(
             "jpype is not available. Run with `.venv-rl/bin/python "
             "tools/rl/evaluate_lap_times.py ...`."
@@ -331,6 +340,9 @@ def make_environment(
     )
     if car_index is not None:
         config.withCarPerformanceIndex(car_index)
+    tuning_card = str(getattr(args, "tuning_card", "")).strip()
+    if tuning_card:
+        config.withBenchmarkTuningCard(tuning_card)
     config.addMap(arena_map)
     return ratass_game.RlTrainingEnvironment(config)
 

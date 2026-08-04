@@ -62,6 +62,7 @@ class LapTimingEnvironmentTest(unittest.TestCase):
             action_repeat=4,
             random_race_spawns=False,
             seed=1,
+            tuning_card="AERO_TRIM",
         )
 
         config = make_environment(args, ratass_game, object(), 5, None)
@@ -69,6 +70,7 @@ class LapTimingEnvironmentTest(unittest.TestCase):
         self.assertEqual(config.values["withNoProgressMaxActionSteps"], 0)
         self.assertEqual(config.values["withOffRoadFailureMaxActionSteps"], 0)
         self.assertTrue(config.values["withRewardBreakdownEnabled"])
+        self.assertEqual(config.values["withBenchmarkTuningCard"], "AERO_TRIM")
 
     def test_wall_timeout_preserves_completed_laps(self):
         class FakeEnvironment:

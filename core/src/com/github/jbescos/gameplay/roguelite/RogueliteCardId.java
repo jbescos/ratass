@@ -3,9 +3,16 @@ package com.github.jbescos.gameplay.roguelite;
 public enum RogueliteCardId {
     CLUB_TUNE,
     SPORT_TUNE,
+    AERO_TRIM,
+    SHORT_GEARING,
     RACE_TUNE,
     HEAVYWEIGHT_TUNE,
+    LOW_DRAG_BODY,
+    DRIFT_DIFFERENTIAL,
     CHAMPIONSHIP_TUNE,
+    GROUND_EFFECT,
+    VELOCITY_SHELL,
+    TORQUE_VECTORING,
 
     CORNER_EXIT,
     DRAFT_HUNTER,

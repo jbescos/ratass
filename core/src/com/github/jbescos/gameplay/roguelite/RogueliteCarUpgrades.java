@@ -232,7 +232,7 @@ public final class RogueliteCarUpgrades {
         for (int i = 0; i < effects.size(); i++) {
             bonus += effects.get(i).accelerationBonus();
         }
-        return RogueliteEffectMath.clamp(1f + bonus, 1f, 1.85f);
+        return RogueliteEffectMath.clamp(1f + bonus, 0.80f, 1.85f);
     }
 
     public float getMaxSpeedMultiplier() {
@@ -240,7 +240,7 @@ public final class RogueliteCarUpgrades {
         for (int i = 0; i < effects.size(); i++) {
             bonus += effects.get(i).maxSpeedBonus();
         }
-        return RogueliteEffectMath.clamp(1f + bonus, 1f, 1.35f);
+        return RogueliteEffectMath.clamp(1f + bonus, 0.80f, 1.35f);
     }
 
     public float getDragMultiplier() {
@@ -264,7 +264,7 @@ public final class RogueliteCarUpgrades {
         for (int i = 0; i < effects.size(); i++) {
             bonus += effects.get(i).gripBonus(slip);
         }
-        return 1f + bonus;
+        return RogueliteEffectMath.clamp(1f + bonus, 0.65f, 2f);
     }
 
     public float getSteeringMultiplier(float slip) {
@@ -272,7 +272,7 @@ public final class RogueliteCarUpgrades {
         for (int i = 0; i < effects.size(); i++) {
             bonus += effects.get(i).steeringBonus(slip);
         }
-        return 1f + bonus;
+        return RogueliteEffectMath.clamp(1f + bonus, 0.70f, 2f);
     }
 
     public float getSlipstreamRangeMultiplier() {

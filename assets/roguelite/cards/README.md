@@ -1,15 +1,19 @@
 # Card Artwork Atlas
 
-`card_art_atlas.png` is a 5 by 5 atlas. Cells are addressed in row-major order
+`card_art_atlas_v2.png` is the active 6 by 6 atlas. Cells are addressed in row-major order
 by `RogueliteCardDefinition.artworkIndex`.
 
-| Row | Column 1 | Column 2 | Column 3 | Column 4 | Column 5 |
-| --- | --- | --- | --- | --- | --- |
-| 1 | Club Tune | Corner Exit | Draft Hunter | Nitro Pulse | Grip Fan |
-| 2 | Sport Tune | Clean Momentum | Recovery Launch | Ram Reactor | Draft Magnet |
-| 3 | Race Tune | Drift Slingshot | Slipstream Slingshot | Phase Shield | Rocket Exhaust |
-| 4 | Heavyweight Tune | Overtake Surge | Apex Slingshot | Gravity Well | Overdrive Coil |
-| 5 | Championship Tune | Perfect Lap | Racecraft Mastery | Hyperdrive | Crown Engine |
+The legacy `card_art_atlas.png` is retained as the original 5 by 5 artwork
+reference.
+
+| Row | Column 1 | Column 2 | Column 3 | Column 4 | Column 5 | Column 6 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Club Tune | Corner Exit | Draft Hunter | Nitro Pulse | Grip Fan | Sport Tune |
+| 2 | Clean Momentum | Recovery Launch | Ram Reactor | Draft Magnet | Race Tune | Drift Slingshot |
+| 3 | Slipstream Slingshot | Phase Shield | Rocket Exhaust | Heavyweight Tune | Overtake Surge | Apex Slingshot |
+| 4 | Gravity Well | Overdrive Coil | Championship Tune | Perfect Lap | Racecraft Mastery | Hyperdrive |
+| 5 | Crown Engine | Streamline Kit | Short-Ratio Gearbox | Le Mans Body | Drift Differential | Ground Effect |
+| 6 | Velocity Shell | Drift Vectoring | unused | unused | unused | unused |
 
 Keep every cell square and free of text or logos.
 

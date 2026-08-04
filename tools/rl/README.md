@@ -6,6 +6,15 @@ uses JPype to step that environment and RLlib PPO to train a policy.
 The old scripted driving AI, behavior/evolution tuning, combat objective, and
 navigation compatibility path have been removed from the training flow.
 
+To compare passive tuning cards with one fixed policy without changing RL
+training, run:
+
+```bash
+tools/rl/evaluate_tuning_cards.py --profile profile04 --laps 3
+```
+
+The benchmark equips one tuning card at a time in the headless lap evaluator.
+
 ## Build
 
 ```bash

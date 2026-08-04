@@ -57,6 +57,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCardDefinition;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
 import com.github.jbescos.gameplay.roguelite.RogueliteCarUpgrades;
+import com.github.jbescos.gameplay.roguelite.RogueliteCarStatSnapshot;
 import com.github.jbescos.gameplay.roguelite.RogueliteCompetitorProgress;
 import com.github.jbescos.gameplay.roguelite.RogueliteGadgetVisualStyle;
 import com.github.jbescos.gameplay.roguelite.RogueliteLoadout;
@@ -206,15 +207,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final int ROGUELITE_LOADOUT_SLOT_COUNT = 4;
     private static final int ROGUELITE_COLLECTION_MAX_CARDS_PER_PAGE = 4;
     private static final String ROGUELITE_CARD_ARTWORK_PATH =
-            "roguelite/cards/card_art_atlas.png";
+            "roguelite/cards/card_art_atlas_v2.png";
     private static final String ROGUELITE_DRIVER_ARTWORK_PATH =
             "roguelite/cards/driver_art_atlas.png";
     private static final String ROGUELITE_CARD_SHELL_PATH =
             "roguelite/cards/card_shell_atlas_v2.png";
     private static final String MENU_BACKGROUND_PATH = "game_menu.png";
     private static final String MENU_BUTTON_SKIN_PATH = "ui/button_skin_atlas.png";
-    private static final int ROGUELITE_CARD_ARTWORK_COLUMNS = 5;
-    private static final int ROGUELITE_CARD_ARTWORK_ROWS = 5;
+    private static final int ROGUELITE_CARD_ARTWORK_COLUMNS = 6;
+    private static final int ROGUELITE_CARD_ARTWORK_ROWS = 6;
     private static final float ROGUELITE_CARD_GAP = 24f;
     private static final float ROGUELITE_CARD_ASPECT = 4f / 3f;
     private static final float ROGUELITE_CARD_MIN_TEXT_SCALE = 0.62f;
@@ -993,6 +994,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle rogueliteRewardAcceptBounds = new Rectangle();
     private final Rectangle rogueliteRewardCancelBounds = new Rectangle();
     private final Rectangle rogueliteRewardLaterBounds = new Rectangle();
+    private final Rectangle rogueliteCarStatsBounds = new Rectangle();
     private final Rectangle[] rogueliteRewardCardBounds =
             createRectangleArray(ROGUELITE_REWARD_CARD_COUNT);
     private final Rectangle[] rogueliteRewardLoadoutBounds =
@@ -11397,7 +11399,8 @@ public class RatassGame extends ApplicationAdapter {
 
         float loadoutY = buttonY + buttonHeight + 18f;
         float rowGap = MathUtils.clamp(hudHeight * 0.048f, 32f, 48f);
-        float rowsTop = hudHeight - MathUtils.clamp(hudHeight * 0.135f, 92f, 112f);
+        updateRogueliteCarStatsBounds(hudWidth, hudHeight);
+        float rowsTop = rogueliteCarStatsBounds.y - 10f;
         float availableRowsHeight = Math.max(180f, rowsTop - loadoutY - rowGap);
         float desiredCardHeight = cardWidth * ROGUELITE_CARD_ASPECT;
         float rowScale = Math.min(
@@ -11427,6 +11430,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void updateRogueliteCollectionLayout(float hudWidth, float hudHeight) {
+        updateRogueliteCarStatsBounds(hudWidth, hudHeight);
         float closeSize = MathUtils.clamp(hudHeight * 0.065f, 40f, 52f);
         float closeInset = MathUtils.clamp(hudHeight * 0.028f, 14f, 24f);
         rogueliteCollectionCloseBounds.set(
@@ -11492,6 +11496,7 @@ public class RatassGame extends ApplicationAdapter {
     private void updateSandboxCardConfigurationLayout(
             float hudWidth,
             float hudHeight) {
+        updateRogueliteCarStatsBounds(hudWidth, hudHeight);
         float closeSize = MathUtils.clamp(hudHeight * 0.065f, 40f, 52f);
         float closeInset = MathUtils.clamp(hudHeight * 0.028f, 14f, 24f);
         rogueliteCollectionCloseBounds.set(
@@ -11520,8 +11525,7 @@ public class RatassGame extends ApplicationAdapter {
                 Math.min(
                         290f,
                         availableWidth / ROGUELITE_LOADOUT_SLOT_COUNT);
-        float rowsTop =
-                hudHeight - MathUtils.clamp(hudHeight * 0.15f, 106f, 126f);
+        float rowsTop = rogueliteCarStatsBounds.y - 10f;
         float loadoutY = MathUtils.clamp(hudHeight * 0.022f, 10f, 22f);
         float rowGap = MathUtils.clamp(hudHeight * 0.050f, 34f, 54f);
         float availableRowsHeight =
@@ -11579,6 +11583,94 @@ public class RatassGame extends ApplicationAdapter {
                 navigationSize);
     }
 
+    private void updateRogueliteCarStatsBounds(float hudWidth, float hudHeight) {
+        float horizontalMargin = MathUtils.clamp(hudWidth * 0.08f, 18f, 110f);
+        float height = hudWidth < 760f ? 66f : 42f;
+        float top = hudHeight - MathUtils.clamp(hudHeight * 0.105f, 100f, 116f);
+        rogueliteCarStatsBounds.set(
+                horizontalMargin,
+                top - height,
+                Math.max(1f, hudWidth - horizontalMargin * 2f),
+                height);
+    }
+
+    private void drawRogueliteCarStats(
+            Rectangle bounds,
+            RogueliteCarStatSnapshot stats) {
+        if (stats == null || bounds.width <= 0f || bounds.height <= 0f) {
+            return;
+        }
+        int columns = bounds.width < 620f ? 3 : 6;
+        int rows = columns == 3 ? 2 : 1;
+        float cellWidth = bounds.width / columns;
+        float cellHeight = bounds.height / rows;
+        float[] values = {
+            stats.getAccelerationMultiplier(),
+            stats.getMaxSpeedMultiplier(),
+            stats.getGripMultiplier(),
+            stats.getSteeringMultiplier(),
+            stats.getMassMultiplier(),
+            stats.getAerodynamicEfficiency()
+        };
+        String[] labels = {
+            "POWER", "TOP SPEED", "GRIP", "STEERING", "MASS", "AERO"
+        };
+
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0.025f, 0.035f, 0.045f, 0.96f);
+        shapeRenderer.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+        for (int i = 0; i < values.length; i++) {
+            int column = i % columns;
+            int row = i / columns;
+            float cellX = bounds.x + column * cellWidth;
+            float cellY = bounds.y + bounds.height - (row + 1) * cellHeight;
+            float padding = MathUtils.clamp(cellWidth * 0.055f, 4f, 9f);
+            float barX = cellX + padding;
+            float barWidth = Math.max(1f, cellWidth - padding * 2f);
+            float barHeight = MathUtils.clamp(cellHeight * 0.14f, 4f, 6f);
+            float barY = cellY + MathUtils.clamp(cellHeight * 0.14f, 4f, 7f);
+            float normalized = MathUtils.clamp((values[i] - 0.70f) / 0.90f, 0f, 1f);
+            shapeRenderer.setColor(0.10f, 0.13f, 0.16f, 1f);
+            shapeRenderer.rect(barX, barY, barWidth, barHeight);
+            shapeRenderer.setColor(0.24f, 0.72f, 0.58f, 1f);
+            shapeRenderer.rect(barX, barY, barWidth * normalized, barHeight);
+            if (column > 0) {
+                shapeRenderer.setColor(0.18f, 0.22f, 0.25f, 0.80f);
+                shapeRenderer.rect(cellX, cellY + 4f, 1f, cellHeight - 8f);
+            }
+        }
+        shapeRenderer.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        spriteBatch.begin();
+        for (int i = 0; i < values.length; i++) {
+            int column = i % columns;
+            int row = i / columns;
+            float cellX = bounds.x + column * cellWidth;
+            float cellY = bounds.y + bounds.height - (row + 1) * cellHeight;
+            float padding = MathUtils.clamp(cellWidth * 0.055f, 4f, 9f);
+            leaderboardFont.setColor(0.78f, 0.84f, 0.88f, 1f);
+            String text =
+                    labels[i]
+                            + "  "
+                            + Math.round(values[i] * 100f)
+                            + "%";
+            drawRogueliteFittedText(
+                    leaderboardFont,
+                    text,
+                    cellX + padding,
+                    cellY + cellHeight - MathUtils.clamp(cellHeight * 0.22f, 7f, 10f),
+                    Math.max(1f, cellWidth - padding * 2f),
+                    Math.max(1f, cellHeight * 0.48f),
+                    Align.center,
+                    false);
+        }
+        spriteBatch.end();
+    }
+
     private void renderRogueliteRewardOverlay() {
         float hudWidth = hudViewport.getWorldWidth();
         float hudHeight = hudViewport.getWorldHeight();
@@ -11594,6 +11686,15 @@ public class RatassGame extends ApplicationAdapter {
                 offerSlots);
         drawRogueliteLoadoutBackgrounds();
         drawRogueliteRewardActionButtons();
+        RogueliteCardId previewCard =
+                roguelitePendingOffer != null && !roguelitePendingOffer.isDriver()
+                        ? roguelitePendingOffer.getCard().getId()
+                        : null;
+        drawRogueliteCarStats(
+                rogueliteCarStatsBounds,
+                RogueliteCarStatSnapshot.from(
+                        rogueliteRun.getPlayerLoadout(),
+                        previewCard));
         for (int i = 0; i < choiceCount; i++) {
             RogueliteCardOffer offer = rogueliteRewardChoices.get(i);
             if (offer.isDriver()) {
@@ -11799,6 +11900,9 @@ public class RatassGame extends ApplicationAdapter {
                 visibleSlots);
         drawRogueliteCollectionCloseButton();
         drawRogueliteCollectionNavigation();
+        drawRogueliteCarStats(
+                rogueliteCarStatsBounds,
+                RogueliteCarStatSnapshot.from(displayedLoadout, null));
         for (int i = 0; i < visibleCount; i++) {
             if (visibleSlots[i] == RogueliteSlotType.DRIVER) {
                 drawRogueliteDriverStatBars(
@@ -11882,6 +11986,9 @@ public class RatassGame extends ApplicationAdapter {
                 ROGUELITE_LOADOUT_SLOT_TYPES);
         drawRogueliteCollectionCloseButton();
         drawRogueliteCollectionNavigation();
+        drawRogueliteCarStats(
+                rogueliteCarStatsBounds,
+                RogueliteCarStatSnapshot.from(loadout, null));
         for (int i = 0; i < visibleCount; i++) {
             RogueliteCardOffer choice = getSandboxCollectionChoice(i);
             if (choice != null && choice.isDriver()) {
@@ -19837,7 +19944,8 @@ public class RatassGame extends ApplicationAdapter {
 
             float speedRatio =
                     MathUtils.clamp(
-                            Math.abs(signedForwardSpeed) / Math.max(1f, getForwardMaxSpeed()),
+                            Math.abs(signedForwardSpeed)
+                                    / Math.max(1f, getDrivingReferenceMaxSpeed()),
                             0f,
                             1f);
             float maxSteerAngle =
@@ -19952,6 +20060,12 @@ public class RatassGame extends ApplicationAdapter {
                     * rogueliteUpgrades.getMaxSpeedMultiplier();
         }
 
+        private float getDrivingReferenceMaxSpeed() {
+            return physics().maxForwardSpeed
+                    * (growthBoosted ? MAX_GROWTH_SPEED_MULTIPLIER : 1f)
+                    * (1f + SLIPSTREAM_MAX_SPEED_BONUS * slipstreamBoost);
+        }
+
         private float getSlipstreamBoost() {
             return slipstreamBoost;
         }
@@ -20027,7 +20141,9 @@ public class RatassGame extends ApplicationAdapter {
                     0f,
                     physics.lateralGripPerSecond
                             * physics.wheelGrip
-                            * surfaceGripMultiplier);
+                            * surfaceGripMultiplier
+                            * rogueliteUpgrades.getGripMultiplier(
+                                    getLateralSlipSignal()));
         }
 
         private void applyTrackLimitSlowdown(ArenaMap arenaMap) {
@@ -20599,7 +20715,8 @@ public class RatassGame extends ApplicationAdapter {
                                 / (MathUtils.PI * 0.5f),
                         -1f,
                         1f);
-        float maxForwardSpeed = Math.max(0.001f, car.getForwardMaxSpeed());
+        float maxForwardSpeed =
+                Math.max(0.001f, car.getDrivingReferenceMaxSpeed());
         boolean offRoad = Car.isTrackLimitSlowdownActive(arenaMap, position);
         float offRoadDistance = offRoad ? Car.getTrackLimitPenaltyDistance(arenaMap, position) : 0f;
         float trajectoryDirectionX = velocity.len2() > 0.25f ? velocity.x : observationForward.x;
@@ -20813,6 +20930,7 @@ public class RatassGame extends ApplicationAdapter {
                 RL_DEFAULT_OFF_ROAD_FAILURE_MAX_ACTION_STEPS;
         public int routeTargets = RL_DEFAULT_ROUTE_TARGETS;
         public int carPerformanceIndex = -1;
+        public RogueliteCardId benchmarkTuningCard;
         public float routeTargetFraction;
         public long seed = 1L;
         public boolean skipCountdown = true;
@@ -20889,6 +21007,22 @@ public class RatassGame extends ApplicationAdapter {
                                     carPerformanceIndex,
                                     0,
                                     getCarPerformanceCount() - 1);
+            return this;
+        }
+
+        /** Applies one tuning card for headless lap benchmarking only. */
+        public RlTrainingConfig withBenchmarkTuningCard(String cardId) {
+            if (cardId == null || cardId.trim().length() == 0) {
+                benchmarkTuningCard = null;
+                return this;
+            }
+            RogueliteCardId parsed = RogueliteCardId.valueOf(cardId.trim());
+            if (RogueliteCardCatalog.get(parsed).getSlotType()
+                    != RogueliteSlotType.TUNING) {
+                throw new IllegalArgumentException(
+                        "Benchmark card is not a tuning card: " + cardId);
+            }
+            benchmarkTuningCard = parsed;
             return this;
         }
 
@@ -21205,6 +21339,7 @@ public class RatassGame extends ApplicationAdapter {
             game.roundNumber = 0;
             game.playerWins = 0;
             game.resetRound(false);
+            configureBenchmarkTuningCard();
             if (config.skipCountdown) {
                 game.preRoundCountdownTimer = 0f;
                 game.countdownCueSecond = 0;
@@ -21314,6 +21449,20 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             game.invalidateLeaderboard();
+        }
+
+        private void configureBenchmarkTuningCard() {
+            if (config.benchmarkTuningCard == null) {
+                return;
+            }
+            RogueliteLoadout loadout = new RogueliteLoadout("benchmark");
+            loadout.equip(config.benchmarkTuningCard);
+            for (int i = 0; i < getControlledAgentCount(); i++) {
+                Car car = getControlledCar(i);
+                if (car != null) {
+                    car.configureRogueliteCards(loadout, false);
+                }
+            }
         }
 
         private int getMaxActionSteps() {

@@ -2,8 +2,11 @@ package com.github.jbescos.gameplay.roguelite;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
+import com.github.jbescos.RatassGame;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -48,13 +51,110 @@ public class RogueliteCarUpgradesTest {
         RogueliteCarUpgrades lightweight = configured(RogueliteCardId.SPORT_TUNE);
         RogueliteCarUpgrades heavyweight = configured(RogueliteCardId.HEAVYWEIGHT_TUNE);
         RogueliteCarUpgrades aero = configured(RogueliteCardId.CHAMPIONSHIP_TUNE);
+        RogueliteCarUpgrades streamline = configured(RogueliteCardId.AERO_TRIM);
+        RogueliteCarUpgrades drift = configured(RogueliteCardId.DRIFT_DIFFERENTIAL);
 
-        assertEquals(0.92f, lightweight.getMassMultiplier(), EPSILON);
+        assertEquals(0.98f, lightweight.getMassMultiplier(), EPSILON);
         assertEquals(1.16f, heavyweight.getMassMultiplier(), EPSILON);
         assertTrue(heavyweight.getFrontCollisionPushMultiplier() > 1f);
-        assertEquals(1f, aero.getMassMultiplier(), EPSILON);
-        assertEquals(0.90f, aero.getDragMultiplier(), EPSILON);
+        assertEquals(1.10f, aero.getMassMultiplier(), EPSILON);
+        assertEquals(0.80f, aero.getDragMultiplier(), EPSILON);
         assertTrue(aero.getMaxSpeedMultiplier() > heavyweight.getMaxSpeedMultiplier());
+        assertTrue(streamline.getDragMultiplier() < 1f);
+        assertTrue(streamline.getGripMultiplier(0f) > 1f);
+        assertTrue(drift.getGripMultiplier(0f) > streamline.getGripMultiplier(0f));
+        assertTrue(drift.getGripMultiplier(0.50f) < drift.getGripMultiplier(0f));
+        assertTrue(drift.getSteeringMultiplier(0f) > 1f);
+    }
+
+    @Test
+    public void everyTierHasFourTuningChoices() {
+        int[] counts = new int[4];
+        for (RogueliteCardDefinition card : cardsForSlot(RogueliteSlotType.TUNING)) {
+            counts[card.getTier()]++;
+        }
+
+        assertEquals(4, counts[1]);
+        assertEquals(4, counts[2]);
+        assertEquals(4, counts[3]);
+    }
+
+    @Test
+    public void carStatPreviewUsesTheOfferedCardAsASlotReplacement() {
+        RogueliteLoadout loadout = loadout(RogueliteCardId.CLUB_TUNE);
+
+        RogueliteCarStatSnapshot equipped =
+                RogueliteCarStatSnapshot.from(loadout, null);
+        RogueliteCarStatSnapshot preview =
+                RogueliteCarStatSnapshot.from(
+                        loadout,
+                        RogueliteCardId.LOW_DRAG_BODY);
+
+        assertEquals(1.06f, equipped.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.38f, preview.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f / 0.78f, preview.getAerodynamicEfficiency(), EPSILON);
+        assertTrue(preview.getMaxSpeedMultiplier() > equipped.getMaxSpeedMultiplier());
+    }
+
+    @Test
+    public void conditionalCardsDoNotMisrepresentPassiveCarStats() {
+        RogueliteLoadout loadout = loadout(RogueliteCardId.AERO_TRIM);
+
+        RogueliteCarStatSnapshot tuning =
+                RogueliteCarStatSnapshot.from(loadout, null);
+        RogueliteCarStatSnapshot withTechniquePreview =
+                RogueliteCarStatSnapshot.from(
+                        loadout,
+                        RogueliteCardId.DRIFT_SLINGSHOT);
+
+        assertEquals(
+                tuning.getAccelerationMultiplier(),
+                withTechniquePreview.getAccelerationMultiplier(),
+                EPSILON);
+        assertEquals(
+                tuning.getAerodynamicEfficiency(),
+                withTechniquePreview.getAerodynamicEfficiency(),
+                EPSILON);
+    }
+
+    @Test
+    public void tuningAndTechniqueEffectsComposeWithoutPairSpecificRules() {
+        RogueliteCarUpgrades streamlinedDraft = configured(
+                RogueliteCardId.AERO_TRIM,
+                RogueliteCardId.DRAFT_HUNTER);
+        RogueliteCarUpgrades driftRelease = configured(
+                RogueliteCardId.DRIFT_DIFFERENTIAL,
+                RogueliteCardId.DRIFT_SLINGSHOT);
+
+        update(streamlinedDraft, 0.1f, 1f, true, 0.02f, 0.7f, 0.4f, 0f, 1f, 0f, 0.8f, 0f);
+        assertEquals(0.92f, streamlinedDraft.getDragMultiplier(), EPSILON);
+        assertEquals(1.25f, streamlinedDraft.getSlipstreamStrengthMultiplier(), EPSILON);
+
+        for (int i = 0; i < 15; i++) {
+            update(driftRelease, 0.1f, 1f, true, 0.24f, 0.7f, 0f, 0.2f, 0.2f, 0.2f, 0f, 0f);
+        }
+        update(driftRelease, 0.1f, 1f, true, 0.05f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertTrue(driftRelease.getAccelerationMultiplier() > 1.20f);
+        assertEquals(1.20f, driftRelease.getGripMultiplier(0.05f), EPSILON);
+        assertEquals(1.16f, driftRelease.getGripMultiplier(0.50f), EPSILON);
+    }
+
+    @Test
+    public void rlBenchmarkHookAcceptsOnlyTuningCards() {
+        RatassGame.RlTrainingConfig config = new RatassGame.RlTrainingConfig();
+
+        assertNull(config.benchmarkTuningCard);
+        config.withBenchmarkTuningCard("AERO_TRIM");
+        assertEquals(RogueliteCardId.AERO_TRIM, config.benchmarkTuningCard);
+        config.withBenchmarkTuningCard("");
+        assertNull(config.benchmarkTuningCard);
+
+        try {
+            config.withBenchmarkTuningCard("NITRO_PULSE");
+            fail("A non-tuning card must not be accepted by the tuning benchmark hook");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("not a tuning card"));
+        }
     }
 
     @Test
@@ -247,12 +347,12 @@ public class RogueliteCarUpgradesTest {
                 upgrades.onRacePositionImproved(1, 0.35f);
             }
 
-            assertMultiplier(upgrades.getAccelerationMultiplier(), 1f, 1.85f);
+            assertMultiplier(upgrades.getAccelerationMultiplier(), 0.80f, 1.85f);
             assertMultiplier(upgrades.getMassMultiplier(), 0.75f, 1.35f);
-            assertMultiplier(upgrades.getMaxSpeedMultiplier(), 1f, 1.35f);
+            assertMultiplier(upgrades.getMaxSpeedMultiplier(), 0.80f, 1.35f);
             assertMultiplier(upgrades.getDragMultiplier(), 0.50f, 1.50f);
-            assertMultiplier(upgrades.getGripMultiplier(slip), 1f, 2f);
-            assertMultiplier(upgrades.getSteeringMultiplier(slip), 1f, 2f);
+            assertMultiplier(upgrades.getGripMultiplier(slip), 0.65f, 2f);
+            assertMultiplier(upgrades.getSteeringMultiplier(slip), 0.70f, 2f);
             assertMultiplier(upgrades.getSlipstreamRangeMultiplier(), 1f, 2f);
             assertMultiplier(upgrades.getSlipstreamStrengthMultiplier(), 1f, 2f);
             assertMultiplier(upgrades.getFrontCollisionRecoilMultiplier(), 0f, 1f);
@@ -263,8 +363,12 @@ public class RogueliteCarUpgradesTest {
     }
 
     private static RogueliteCarUpgrades configured(RogueliteCardId cardId) {
+        return configured(new RogueliteCardId[] {cardId});
+    }
+
+    private static RogueliteCarUpgrades configured(RogueliteCardId... cardIds) {
         RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(loadout(cardId));
+        upgrades.configure(loadout(cardIds));
         return upgrades;
     }
 

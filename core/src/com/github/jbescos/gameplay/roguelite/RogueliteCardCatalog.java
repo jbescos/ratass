@@ -17,35 +17,84 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.CLUB_TUNE,
                 "Club Tune",
                 "A dependable first race setup with more power, speed and tire grip.",
-                "+5% power, +2% top speed, +4% grip",
+                "+6% power, +2% top speed, +4% grip",
                 1,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.SPORT_TUNE,
                 "Lightweight Tune",
-                "A stripped chassis changes direction quickly while keeping enough power and grip for racing.",
-                "-8% mass, +7% power, +3% top speed, +5% grip",
+                "A stripped chassis accelerates and changes direction quickly, but gives up tire stability.",
+                "-2% mass, +8% power, +3% speed, +4% steering, +2% grip",
+                1,
+                RogueliteSlotType.TUNING));
+        cards.add(card(
+                RogueliteCardId.AERO_TRIM,
+                "Streamline Kit",
+                "A clean low-drag body carries speed on open road at the cost of cornering confidence.",
+                "-8% drag, +7% top speed, +6% power, +2% grip",
+                1,
+                RogueliteSlotType.TUNING));
+        cards.add(card(
+                RogueliteCardId.SHORT_GEARING,
+                "Short-Ratio Gearbox",
+                "Close gearing launches hard between corners but reaches its limit earlier on long straights.",
+                "+12% power, +6% grip, +4% steering, -4% top speed",
                 1,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.RACE_TUNE,
                 "Race Tune",
                 "Sharper race hardware combines sustained power with high-speed stability.",
-                "+14% power, +6% top speed, +10% grip",
+                "+34% power, +14% top speed, +16% grip, +6% mass, -7% drag",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.HEAVYWEIGHT_TUNE,
                 "Ballast Powertrain",
                 "A reinforced, heavier car carries extra power and grip so contact no longer ruins its pace.",
-                "+16% mass, +24% power, +8% speed, +14% grip; stronger contact",
+                "+16% mass, +40% power, +14% speed, +18% grip; stronger contact",
+                2,
+                RogueliteSlotType.TUNING));
+        cards.add(card(
+                RogueliteCardId.LOW_DRAG_BODY,
+                "Le Mans Body",
+                "Extreme drag reduction rewards committed high-speed driving without sacrificing basic stability.",
+                "-22% drag, +20% speed, +38% power, +16% grip, +8% mass",
+                2,
+                RogueliteSlotType.TUNING));
+        cards.add(card(
+                RogueliteCardId.DRIFT_DIFFERENTIAL,
+                "Drift Differential",
+                "An aggressive differential makes sustained rotation easy and straightens with strong drive.",
+                "+48% power, +20% speed, +20% grip, +12% mass; high slip frees the rear",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.CHAMPIONSHIP_TUNE,
                 "Aero Prototype",
                 "A low-drag body and high-speed downforce turn open road into a decisive advantage.",
-                "-10% drag, +27% power, +12% speed, +18% grip",
+                "-20% drag, +56% power, +24% speed, +22% grip, +10% mass",
+                3,
+                RogueliteSlotType.TUNING));
+        cards.add(card(
+                RogueliteCardId.GROUND_EFFECT,
+                "Ground Effect",
+                "A sealed floor creates exceptional cornering force while adding weight and aerodynamic resistance.",
+                "+24% grip, +6% steering, +62% power, +24% speed, +14% mass",
+                3,
+                RogueliteSlotType.TUNING));
+        cards.add(card(
+                RogueliteCardId.VELOCITY_SHELL,
+                "Velocity Shell",
+                "A radical long-tail body sheds air resistance for huge straight-line pace with modest cornering support.",
+                "-32% drag, +32% speed, +68% power, +18% grip, +10% mass",
+                3,
+                RogueliteSlotType.TUNING));
+        cards.add(card(
+                RogueliteCardId.TORQUE_VECTORING,
+                "Torque Vectoring",
+                "Active torque distribution combines long-tail speed with stable rotation and stronger contact.",
+                "+68% power, +32% speed, +18% grip, +10% mass, -32% drag",
                 3,
                 RogueliteSlotType.TUNING));
 
@@ -193,7 +242,8 @@ public final class RogueliteCardCatalog {
 
         Map<RogueliteCardId, RogueliteCardDefinition> cardsById =
                 new EnumMap<RogueliteCardId, RogueliteCardDefinition>(RogueliteCardId.class);
-        boolean[] assignedArtwork = new boolean[25];
+        boolean[] assignedArtwork =
+                new boolean[RogueliteCardDefinition.ARTWORK_CAPACITY];
         for (int i = 0; i < cards.size(); i++) {
             RogueliteCardDefinition definition = cards.get(i);
             if (cardsById.put(definition.getId(), definition) != null) {
@@ -379,6 +429,20 @@ public final class RogueliteCardCatalog {
                 return 23;
             case CROWN_ENGINE:
                 return 24;
+            case AERO_TRIM:
+                return 25;
+            case SHORT_GEARING:
+                return 26;
+            case LOW_DRAG_BODY:
+                return 27;
+            case DRIFT_DIFFERENTIAL:
+                return 28;
+            case GROUND_EFFECT:
+                return 29;
+            case VELOCITY_SHELL:
+                return 30;
+            case TORQUE_VECTORING:
+                return 31;
             default:
                 throw new IllegalArgumentException("No artwork index for " + id);
         }

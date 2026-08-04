@@ -1,6 +1,7 @@
 package com.github.jbescos.gameplay.roguelite;
 
 public final class RogueliteCardDefinition {
+    public static final int ARTWORK_CAPACITY = 36;
     private final RogueliteCardId id;
     private final String title;
     private final String description;
@@ -31,7 +32,7 @@ public final class RogueliteCardDefinition {
         if ((slotType == RogueliteSlotType.GADGET) != (gadgetVisualStyle != null)) {
             throw new IllegalArgumentException("Only gadget cards require a visual style.");
         }
-        if (artworkIndex < 0 || artworkIndex >= 25) {
+        if (artworkIndex < 0 || artworkIndex >= ARTWORK_CAPACITY) {
             throw new IllegalArgumentException("Card artwork index is out of range.");
         }
         this.id = id;
