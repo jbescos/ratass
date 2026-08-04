@@ -135,6 +135,19 @@ public final class SkidMarkTrail {
             }
 
             float alpha = 0.58f * segment.intensity * remaining * remaining;
+            renderer.setColor(0f, 0f, 0f, alpha * 0.22f);
+            renderer.rectLine(
+                    segment.leftStartX,
+                    segment.leftStartY,
+                    segment.leftEndX,
+                    segment.leftEndY,
+                    segment.width * 1.55f);
+            renderer.rectLine(
+                    segment.rightStartX,
+                    segment.rightStartY,
+                    segment.rightEndX,
+                    segment.rightEndY,
+                    segment.width * 1.55f);
             renderer.setColor(0.01f, 0.012f, 0.014f, alpha);
             renderer.rectLine(
                     segment.leftStartX,

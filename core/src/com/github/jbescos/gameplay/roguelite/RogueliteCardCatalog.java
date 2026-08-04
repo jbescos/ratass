@@ -144,8 +144,8 @@ public final class RogueliteCardCatalog {
         cards.add(gadget(
                 RogueliteCardId.DRAFT_MAGNET,
                 "Draft Magnet",
-                "A pulsing field expands when a rival is ahead and pulls more speed from their wake.",
-                "Rival ahead; 8s cooldown: +50% draft reach and +35% strength",
+                "A pulsing field blasts nearby rivals toward the outside of the circuit.",
+                "Close rival; 8s cooldown: outward pulse and stronger drafting",
                 1,
                 RogueliteGadgetVisualStyle.DRAFT));
         cards.add(gadget(

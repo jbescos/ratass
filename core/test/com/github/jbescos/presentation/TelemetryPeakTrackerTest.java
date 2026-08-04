@@ -38,6 +38,23 @@ public class TelemetryPeakTrackerTest {
     }
 
     @Test
+    public void retainsTheMeasuredSpeedForTheLatestPeakMarker() {
+        TelemetryPeakTracker tracker = new TelemetryPeakTracker();
+
+        tracker.update(0.72f, 214f, 0f, 0f, 0f, 0f);
+        tracker.update(0.50f, 149f, 0f, 0f, 0f, 0f);
+
+        assertEquals(0.72f, tracker.getSpeedRatio(), EPSILON);
+        assertEquals(214f, tracker.getSpeedKph(), EPSILON);
+
+        tracker.update(0.64f, 191f, 0f, 0f, 0f, 0f);
+        tracker.update(0.40f, 119f, 0f, 0f, 0f, 0f);
+
+        assertEquals(0.64f, tracker.getSpeedRatio(), EPSILON);
+        assertEquals(191f, tracker.getSpeedKph(), EPSILON);
+    }
+
+    @Test
     public void ignoresSmallSignalNoiseWhenDetectingReversals() {
         TelemetryPeakTracker tracker = new TelemetryPeakTracker();
 
@@ -45,6 +62,7 @@ public class TelemetryPeakTrackerTest {
         tracker.update(0.497f, 0f, 0f, 0f, 0f);
 
         assertEquals(0f, tracker.getSpeedRatio(), EPSILON);
+        assertEquals(0f, tracker.getSpeedKph(), EPSILON);
 
         tracker.update(0.49f, 0f, 0f, 0f, 0f);
 
@@ -73,6 +91,7 @@ public class TelemetryPeakTrackerTest {
         tracker.reset();
 
         assertEquals(0f, tracker.getSpeedRatio(), EPSILON);
+        assertEquals(0f, tracker.getSpeedKph(), EPSILON);
         assertEquals(0f, tracker.getDrive(), EPSILON);
         assertEquals(0f, tracker.getBrake(), EPSILON);
         assertEquals(0f, tracker.getDrift(), EPSILON);

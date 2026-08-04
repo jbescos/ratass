@@ -96,6 +96,10 @@ abstract class RogueliteUpgradeEffect {
         return 0f;
     }
 
+    boolean consumeDraftMagnetPulse() {
+        return false;
+    }
+
     boolean isRamChargeActive() {
         return false;
     }

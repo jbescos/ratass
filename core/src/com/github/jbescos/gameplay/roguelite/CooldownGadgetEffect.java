@@ -17,6 +17,7 @@ final class CooldownGadgetEffect extends RogueliteUpgradeEffect {
     private float cooldownTimer;
     private float activeTimer;
     private float pendingForwardLaunchSpeedRatio;
+    private boolean pendingDraftMagnetPulse;
     private boolean raceStarted;
 
     CooldownGadgetEffect(RogueliteCardId cardId, float cycleOffset) {
@@ -187,10 +188,14 @@ final class CooldownGadgetEffect extends RogueliteUpgradeEffect {
             activeTimer = durationSeconds;
             cooldownTimer = cooldownSeconds;
             pendingForwardLaunchSpeedRatio = forwardLaunchSpeedRatio;
+            pendingDraftMagnetPulse = getCardId() == RogueliteCardId.DRAFT_MAGNET;
         }
     }
 
     private boolean shouldActivate(RogueliteDrivingFrame frame) {
+        if (getCardId() == RogueliteCardId.DRAFT_MAGNET) {
+            return frame.nearbyOpponentProximity >= 0.20f;
+        }
         if (!frame.onRoad || frame.throttle <= 0.05f) {
             return false;
         }
@@ -214,10 +219,6 @@ final class CooldownGadgetEffect extends RogueliteUpgradeEffect {
             case RAM_REACTOR:
                 return frame.speedRatio >= 0.12f
                         && frame.opponentAheadProximity >= 0.42f;
-            case DRAFT_MAGNET:
-                return frame.speedRatio >= 0.18f
-                        && (frame.opponentAheadProximity >= 0.10f
-                                || frame.slipstreamBoost >= 0.01f);
             case PHASE_SHIELD:
                 return frame.nearbyOpponentProximity >= 0.35f
                         || frame.recentlyImpacted;
@@ -267,6 +268,13 @@ final class CooldownGadgetEffect extends RogueliteUpgradeEffect {
         float launchSpeedRatio = pendingForwardLaunchSpeedRatio;
         pendingForwardLaunchSpeedRatio = 0f;
         return launchSpeedRatio;
+    }
+
+    @Override
+    boolean consumeDraftMagnetPulse() {
+        boolean pulse = pendingDraftMagnetPulse;
+        pendingDraftMagnetPulse = false;
+        return pulse;
     }
 
     @Override

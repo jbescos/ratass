@@ -140,6 +140,35 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
+    public void draftMagnetPulsesOnceWhenAnyRivalIsCloseThenWaitsForCooldown() {
+        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.DRAFT_MAGNET);
+
+        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        for (int i = 0; i < 30; i++) {
+            update(upgrades, 0.1f, 0f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        }
+        assertTrue(upgrades.isGadgetReady());
+        assertFalse(upgrades.consumeDraftMagnetPulse());
+
+        update(upgrades, 0.1f, 0f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0.80f);
+        assertEquals(RogueliteCardId.DRAFT_MAGNET, upgrades.getActiveGadgetCardId());
+        assertTrue(upgrades.consumeDraftMagnetPulse());
+        assertFalse(upgrades.consumeDraftMagnetPulse());
+
+        for (int i = 0; i < 30; i++) {
+            update(upgrades, 0.1f, 0f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0.80f);
+            assertFalse(upgrades.consumeDraftMagnetPulse());
+        }
+
+        boolean pulsedAgain = false;
+        for (int i = 0; i < 80; i++) {
+            update(upgrades, 0.1f, 0f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0.80f);
+            pulsedAgain |= upgrades.consumeDraftMagnetPulse();
+        }
+        assertTrue(pulsedAgain);
+    }
+
+    @Test
     public void ramArmsNearARivalAndCannotRearmDuringCooldown() {
         RogueliteCarUpgrades upgrades = configured(RogueliteCardId.RAM_REACTOR);
 

@@ -70,6 +70,7 @@ import com.github.jbescos.gameplay.roguelite.save.RogueliteSaveRepository;
 import com.github.jbescos.presentation.DriverArtworkAtlas;
 import com.github.jbescos.presentation.GadgetActivationVisual;
 import com.github.jbescos.presentation.MenuButtonSkinAtlas;
+import com.github.jbescos.presentation.RaceParticleEffects;
 import com.github.jbescos.presentation.RogueliteCardSkinAtlas;
 import com.github.jbescos.presentation.TelemetryPeakTracker;
 import com.github.jbescos.presentation.VictoryFireworks;
@@ -278,6 +279,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SLIPSTREAM_ENGINE_FORCE_BONUS = 0.20f;
     private static final float SLIPSTREAM_ATTACK_LERP = 9.0f;
     private static final float SLIPSTREAM_RELEASE_LERP = 6.0f;
+    private static final float DRAFT_MAGNET_REPULSION_RANGE = Car.HEIGHT * 3.0f;
+    private static final float DRAFT_MAGNET_REPULSION_SPEED_RATIO = 0.14f;
+    private static final float DRAFT_MAGNET_MIN_DISTANCE_STRENGTH = 0.55f;
+    private static final float DRAFT_MAGNET_CENTERLINE_EPSILON = Car.WIDTH * 0.10f;
     private static final float PASSING_ASSIST_RANGE = Car.HEIGHT * 7.0f;
     private static final float PASSING_ASSIST_MIN_FORWARD_DISTANCE = Car.HEIGHT * 0.45f;
     private static final float PASSING_ASSIST_RELEASE_BEHIND_DISTANCE = Car.HEIGHT * 1.15f;
@@ -587,6 +592,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SIDEBAR_TELEMETRY_BAR_HEIGHT = 14f;
     private static final float SIDEBAR_TELEMETRY_BAR_PADDING = 1f;
     private static final float SIDEBAR_TELEMETRY_COLUMN_GAP = 6f;
+    private static final float SIDEBAR_TELEMETRY_PEAK_WIDTH = 50f;
+    private static final float SIDEBAR_TELEMETRY_PEAK_GAP = 5f;
     private static final float SIDEBAR_LEADERBOARD_COMPACT_ROW_STEP = 15.5f;
     private static final float SIDEBAR_CAMERA_TARGET_ICON_WIDTH = 18f;
     private static final float HUD_FONT_SCALE = 1f;
@@ -618,7 +625,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float DEFAULT_MUSIC_VOLUME = 1f;
     private static final float DEFAULT_SOUND_EFFECTS_VOLUME = 1f;
     private static final float AUDIO_VOLUME_STEP = 0.10f;
-    private static final float THEME_MUSIC_BASE_VOLUME = 0.32f;
+    private static final float THEME_MUSIC_BASE_VOLUME = 0.45f;
+    private static final String MENU_MUSIC_PATH = "audio/menu_music.ogg";
     private static final float LOADING_PROGRESS_DISPLAY_SPEED = 2.4f;
     private static final int STARTUP_LOADING_SETTINGS_STAGE = 0;
     private static final int STARTUP_LOADING_LAYOUT_STAGE = 1;
@@ -870,6 +878,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<CarTemplate> leaderboardEntries = new Array<CarTemplate>();
     private final Array<DestructionEffect> destructionEffects = new Array<DestructionEffect>();
     private final SkidMarkTrail skidMarkTrail = new SkidMarkTrail();
+    private final RaceParticleEffects raceParticleEffects = new RaceParticleEffects();
     private final Array<CarVisual> themeCarVisuals = new Array<CarVisual>();
     private final CarPerformance[] themeCarPerformances =
             new CarPerformance[DEFAULT_CAR_PERFORMANCES.length];
@@ -906,6 +915,10 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector2 raceSecondTargetPosition = new Vector2();
     private final Vector2 racePreviousTargetPosition = new Vector2();
     private final Vector2 raceRouteDirection = new Vector2();
+    private final Vector2 draftMagnetPreferredDirection = new Vector2();
+    private final Vector2 draftMagnetRoutePoint = new Vector2();
+    private final Vector2 draftMagnetRouteTangent = new Vector2();
+    private final Vector2 draftMagnetImpulse = new Vector2();
     private final Vector2 sandboxSensorForward = new Vector2();
     private final Vector2 sandboxSensorSide = new Vector2();
     private final Vector2 sandboxSensorDirection = new Vector2();
@@ -1053,7 +1066,8 @@ public class RatassGame extends ApplicationAdapter {
     private Sound roundStartSound;
     private Sound engineSound;
     private Sound slipSound;
-    private Music themeMusic;
+    private Music menuMusic;
+    private Music circuitMusic;
     private Music victoryMusic;
     private Music defeatMusic;
     private World world;
@@ -1069,6 +1083,7 @@ public class RatassGame extends ApplicationAdapter {
     private Texture menuButtonSkinTexture;
     private boolean menuBackgroundLoadAttempted;
     private String menuBackgroundThemeName = "";
+    private String menuMusicThemeName = "";
     private boolean rogueliteCardArtworkLoadAttempted;
     private boolean rogueliteDriverArtworkLoadAttempted;
     private boolean rogueliteCardShellLoadAttempted;
@@ -1293,15 +1308,7 @@ public class RatassGame extends ApplicationAdapter {
         rogueliteCollectionReturnMode = GameMode.PLAYING;
         pendingContinueSave = save;
         loadingCompletionMode = GameMode.PLAYING;
-        if (themeMusic != null) {
-            themeMusic.stop();
-        }
-        if (victoryMusic != null) {
-            victoryMusic.stop();
-        }
-        if (defeatMusic != null) {
-            defeatMusic.stop();
-        }
+        stopAllMusic();
         loadingSandboxMode = sandbox;
         loadingPreserveSandboxConfiguration = sandbox && preserveSandboxConfiguration;
         loadingScreenPresented = false;
@@ -1317,7 +1324,7 @@ public class RatassGame extends ApplicationAdapter {
         switch (loadingStage) {
             case LOADING_PREPARE_STAGE:
                 sandboxMode = loadingSandboxMode;
-                disposeGameSounds();
+                disposeRaceSounds();
                 disposeRosterSpriteTextures();
                 disposeArenaSurfaceTextures();
                 releaseSandboxMenuPreview();
@@ -1410,7 +1417,7 @@ public class RatassGame extends ApplicationAdapter {
                 completeLoadingStage(0.95f, "Starting engines");
                 break;
             case LOADING_AUDIO_STAGE:
-                loadSounds();
+                loadRaceSounds();
                 completeLoadingStage(1f, "Ready");
                 break;
             default:
@@ -1430,6 +1437,7 @@ public class RatassGame extends ApplicationAdapter {
                 loadMenuSettings();
                 applyConfiguredDisplayMode();
                 refreshContinueAvailability();
+                loadMenuMusic();
                 completeLoadingStage(0.85f, "Preparing menu");
                 break;
             case STARTUP_LOADING_LAYOUT_STAGE:
@@ -2393,8 +2401,8 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private void loadSounds() {
-        disposeGameSounds();
+    private void loadRaceSounds() {
+        disposeRaceSounds();
         impactSound = loadSound("audio/impact.wav");
         pickupSound = loadSound("audio/pickup.wav");
         destructionSound = loadSound("audio/destroy.wav");
@@ -2402,15 +2410,26 @@ public class RatassGame extends ApplicationAdapter {
         roundStartSound = loadSound("audio/start.wav");
         engineSound = loadSound("audio/engine.wav");
         slipSound = loadSound("audio/slip.wav");
-        themeMusic = loadMusic("audio/music.wav");
+        circuitMusic = loadMusic("audio/music.wav");
         victoryMusic = loadMusic("audio/victory_music.wav");
         defeatMusic = loadMusic("audio/defeat_music.wav");
-        playThemeMusic();
+        applyMusicVolume();
     }
 
     private void disposeGameSounds() {
+        disposeMenuMusic();
+        disposeRaceSounds();
+    }
+
+    private void disposeMenuMusic() {
+        disposeMusic(menuMusic);
+        menuMusic = null;
+        menuMusicThemeName = "";
+    }
+
+    private void disposeRaceSounds() {
         stopVehicleSounds();
-        disposeMusic(themeMusic);
+        disposeMusic(circuitMusic);
         disposeMusic(victoryMusic);
         disposeMusic(defeatMusic);
         disposeSound(impactSound);
@@ -2420,7 +2439,7 @@ public class RatassGame extends ApplicationAdapter {
         disposeSound(roundStartSound);
         disposeSound(engineSound);
         disposeSound(slipSound);
-        themeMusic = null;
+        circuitMusic = null;
         victoryMusic = null;
         defeatMusic = null;
         impactSound = null;
@@ -2432,18 +2451,75 @@ public class RatassGame extends ApplicationAdapter {
         slipSound = null;
     }
 
-    private void playThemeMusic() {
-        if (themeMusic == null) {
+    private void loadMenuMusic() {
+        if (!isPresentationEnabled()) {
             return;
         }
-        themeMusic.setLooping(true);
-        applyThemeMusicVolume();
-        themeMusic.play();
+        if (menuMusic == null || !configuredThemeName.equals(menuMusicThemeName)) {
+            disposeMenuMusic();
+            menuMusic = loadMusic(MENU_MUSIC_PATH);
+            menuMusicThemeName = configuredThemeName;
+        }
+        playMenuMusic();
     }
 
-    private void applyThemeMusicVolume() {
-        if (themeMusic != null) {
-            themeMusic.setVolume(THEME_MUSIC_BASE_VOLUME * musicVolume);
+    private void playMenuMusic() {
+        if (!isPresentationEnabled() || menuMusic == null) {
+            return;
+        }
+        stopCircuitMusic();
+        stopOutcomeMusic();
+        menuMusic.setLooping(true);
+        applyMusicVolume();
+        if (!menuMusic.isPlaying()) {
+            menuMusic.play();
+        }
+    }
+
+    private void playCircuitMusic() {
+        if (!isPresentationEnabled() || circuitMusic == null) {
+            return;
+        }
+        if (menuMusic != null) {
+            menuMusic.stop();
+        }
+        stopOutcomeMusic();
+        circuitMusic.setLooping(true);
+        applyMusicVolume();
+        if (!circuitMusic.isPlaying()) {
+            circuitMusic.play();
+        }
+    }
+
+    private void stopCircuitMusic() {
+        if (circuitMusic != null) {
+            circuitMusic.stop();
+        }
+    }
+
+    private void stopOutcomeMusic() {
+        if (victoryMusic != null) {
+            victoryMusic.stop();
+        }
+        if (defeatMusic != null) {
+            defeatMusic.stop();
+        }
+    }
+
+    private void stopAllMusic() {
+        if (menuMusic != null) {
+            menuMusic.stop();
+        }
+        stopCircuitMusic();
+        stopOutcomeMusic();
+    }
+
+    private void applyMusicVolume() {
+        if (menuMusic != null) {
+            menuMusic.setVolume(THEME_MUSIC_BASE_VOLUME * musicVolume);
+        }
+        if (circuitMusic != null) {
+            circuitMusic.setVolume(THEME_MUSIC_BASE_VOLUME * musicVolume);
         }
         if (victoryMusic != null) {
             victoryMusic.setVolume(THEME_MUSIC_BASE_VOLUME * musicVolume);
@@ -3333,6 +3409,8 @@ public class RatassGame extends ApplicationAdapter {
         gameMode = loadingCompletionMode;
         if (gameMode == GameMode.ROGUELITE_END) {
             startRogueliteEndPresentation();
+        } else {
+            playCircuitMusic();
         }
         renderWorld();
         renderHud();
@@ -4297,6 +4375,7 @@ public class RatassGame extends ApplicationAdapter {
         releaseGameplayMaps();
         releaseSandboxMenuPreview();
         gameMode = GameMode.MAIN_MENU;
+        loadMenuMusic();
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     }
 
@@ -4832,6 +4911,7 @@ public class RatassGame extends ApplicationAdapter {
         configuredThemeName = themeChoices.get(selectedThemeIndex).name;
         disposeMenuCarPreview();
         disposeMenuHeroCar();
+        loadMenuMusic();
         saveMenuSettings();
     }
 
@@ -4911,7 +4991,7 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
         musicVolume = nextVolume;
-        applyThemeMusicVolume();
+        applyMusicVolume();
         saveMenuSettings();
     }
 
@@ -6429,11 +6509,14 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void update(float delta) {
-        effectClock += delta;
-        skidMarkTrail.prune(effectClock);
-        updatePresentationState(delta);
+        if (isPresentationEnabled()) {
+            effectClock += delta;
+            skidMarkTrail.prune(effectClock);
+            raceParticleEffects.update(delta);
+            updatePresentationState(delta);
+            updateDestructionEffects(delta);
+        }
         updateWeather(delta);
-        updateDestructionEffects(delta);
 
         if (roundOver) {
             roundOverTimer += delta;
@@ -6635,20 +6718,21 @@ public class RatassGame extends ApplicationAdapter {
         if (!isPresentationEnabled()) {
             return;
         }
-        if (themeMusic != null) {
-            themeMusic.stop();
+        if (menuMusic != null) {
+            menuMusic.stop();
         }
+        stopCircuitMusic();
         Music selectedMusic = playerWonRogueliteRun ? victoryMusic : defeatMusic;
         Music otherMusic = playerWonRogueliteRun ? defeatMusic : victoryMusic;
         if (otherMusic != null) {
             otherMusic.stop();
         }
         if (selectedMusic == null) {
-            playThemeMusic();
+            playCircuitMusic();
             return;
         }
         selectedMusic.setLooping(true);
-        applyThemeMusicVolume();
+        applyMusicVolume();
         selectedMusic.play();
     }
 
@@ -6969,6 +7053,9 @@ public class RatassGame extends ApplicationAdapter {
                     surfaceGripMultiplier,
                     rlTrainingMode);
         }
+        if (!rlTrainingMode && allowControl) {
+            applyDraftMagnetRepulsions();
+        }
         if (!allowControl && !roundOver) {
             freezeCarsForCountdown();
         }
@@ -7007,6 +7094,113 @@ public class RatassGame extends ApplicationAdapter {
         }
         for (int i = 0; i < cars.size; i++) {
             cars.get(i).prepareSlipstreamSnapshot(currentMap);
+        }
+    }
+
+    private void applyDraftMagnetRepulsions() {
+        float rangeSquared = DRAFT_MAGNET_REPULSION_RANGE * DRAFT_MAGNET_REPULSION_RANGE;
+        for (int sourceIndex = 0; sourceIndex < cars.size; sourceIndex++) {
+            Car source = cars.get(sourceIndex);
+            if (!source.active
+                    || source.body == null
+                    || !source.rogueliteUpgrades.consumeDraftMagnetPulse()) {
+                continue;
+            }
+
+            Vector2 sourcePosition = source.body.getPosition();
+            for (int targetIndex = 0; targetIndex < cars.size; targetIndex++) {
+                Car target = cars.get(targetIndex);
+                if (target == source || !target.active || target.body == null) {
+                    continue;
+                }
+
+                Vector2 targetPosition = target.body.getPosition();
+                float relativeX = targetPosition.x - sourcePosition.x;
+                float relativeY = targetPosition.y - sourcePosition.y;
+                float distanceSquared = relativeX * relativeX + relativeY * relativeY;
+                if (distanceSquared >= rangeSquared) {
+                    continue;
+                }
+
+                float distance = (float) Math.sqrt(Math.max(0f, distanceSquared));
+                float directionX = relativeX;
+                float directionY = relativeY;
+                if (currentMap != null && currentMap.hasRoute()) {
+                    float targetAngle = target.body.getAngle();
+                    draftMagnetPreferredDirection.set(
+                            -MathUtils.sin(targetAngle),
+                            MathUtils.cos(targetAngle));
+                    float referenceProgress = target.template == null
+                            ? 0f
+                            : target.template.roundRaceLastRouteProgress;
+                    float routeProgress =
+                            currentMap.findRouteProgressNear(
+                                    targetPosition,
+                                    draftMagnetPreferredDirection,
+                                    referenceProgress);
+                    currentMap.findRoutePoint(routeProgress, draftMagnetRoutePoint);
+                    currentMap.findRouteTangent(routeProgress, draftMagnetRouteTangent);
+
+                    float normalX = -draftMagnetRouteTangent.y;
+                    float normalY = draftMagnetRouteTangent.x;
+                    float lateralOffset =
+                            (targetPosition.x - draftMagnetRoutePoint.x) * normalX
+                                    + (targetPosition.y - draftMagnetRoutePoint.y) * normalY;
+                    float outwardSign;
+                    if (Math.abs(lateralOffset) > DRAFT_MAGNET_CENTERLINE_EPSILON) {
+                        outwardSign = Math.signum(lateralOffset);
+                    } else {
+                        float leftMargin =
+                                currentMap.getRouteLeftClearance(routeProgress) - lateralOffset;
+                        float rightMargin =
+                                currentMap.getRouteRightClearance(routeProgress) + lateralOffset;
+                        if (Math.abs(leftMargin - rightMargin)
+                                > DRAFT_MAGNET_CENTERLINE_EPSILON) {
+                            outwardSign = leftMargin < rightMargin ? 1f : -1f;
+                        } else {
+                            float awayFromSource = relativeX * normalX + relativeY * normalY;
+                            if (Math.abs(awayFromSource)
+                                    > DRAFT_MAGNET_CENTERLINE_EPSILON) {
+                                outwardSign = Math.signum(awayFromSource);
+                            } else {
+                                outwardSign =
+                                        target.template.vehicleId < source.template.vehicleId
+                                                ? -1f
+                                                : 1f;
+                            }
+                        }
+                    }
+                    directionX = normalX * outwardSign;
+                    directionY = normalY * outwardSign;
+                } else if (distance > 0.0001f) {
+                    directionX /= distance;
+                    directionY /= distance;
+                } else {
+                    directionX = target.template.vehicleId < source.template.vehicleId ? -1f : 1f;
+                    directionY = 0f;
+                }
+
+                float distanceStrength =
+                        MathUtils.lerp(
+                                1f,
+                                DRAFT_MAGNET_MIN_DISTANCE_STRENGTH,
+                                MathUtils.clamp(
+                                        distance / DRAFT_MAGNET_REPULSION_RANGE,
+                                        0f,
+                                        1f));
+                float lateralSpeed =
+                        target.getForwardMaxSpeed()
+                                * DRAFT_MAGNET_REPULSION_SPEED_RATIO
+                                * distanceStrength;
+                draftMagnetImpulse
+                        .set(directionX, directionY)
+                        .nor()
+                        .scl(target.body.getMass() * lateralSpeed);
+                target.body.applyLinearImpulse(
+                        draftMagnetImpulse,
+                        target.body.getWorldCenter(),
+                        true);
+            }
         }
     }
 
@@ -7094,6 +7288,9 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         currentMap = mapProgression.getCurrentMap();
+        if (isPresentationEnabled() && gameMode != GameMode.LOADING) {
+            playCircuitMusic();
+        }
         cameraInitialized = false;
         if (isPresentationEnabled()) {
             updateWorldCamera();
@@ -7108,6 +7305,9 @@ public class RatassGame extends ApplicationAdapter {
         cars.clear();
         destructionEffects.clear();
         skidMarkTrail.clear();
+        if (isPresentationEnabled()) {
+            raceParticleEffects.reset();
+        }
         accumulator = 0f;
         effectClock = 0f;
         growthPickupActive = false;
@@ -7882,6 +8082,7 @@ public class RatassGame extends ApplicationAdapter {
             Car car = cars.get(i);
             if (!car.active || car.body == null) {
                 skidMarkTrail.stopEmitter(car.template.vehicleId);
+                raceParticleEffects.stopEmitter(car.template.vehicleId);
                 continue;
             }
 
@@ -7898,6 +8099,19 @@ public class RatassGame extends ApplicationAdapter {
                     car.body.getAngle(),
                     car.getWidth(),
                     car.getHeight(),
+                    speedRatio,
+                    car.getLateralSlipSignal());
+            Vector2 velocity = car.body.getLinearVelocity();
+            raceParticleEffects.updateDriftEmitter(
+                    car.template.vehicleId,
+                    delta,
+                    position.x,
+                    position.y,
+                    car.body.getAngle(),
+                    car.getWidth(),
+                    car.getHeight(),
+                    velocity.x,
+                    velocity.y,
                     speedRatio,
                     car.getLateralSlipSignal());
         }
@@ -8891,6 +9105,7 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawArenaOverlay(theme);
         skidMarkTrail.draw(shapeRenderer, effectClock);
+        raceParticleEffects.drawSmoke(shapeRenderer);
         if (sandboxMode) {
             drawSandboxRouteLine();
         }
@@ -8906,7 +9121,9 @@ public class RatassGame extends ApplicationAdapter {
         spriteBatch.end();
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        raceParticleEffects.drawSparks(shapeRenderer);
         drawDestructionEffects();
+        drawHighSpeedOverlay();
         drawWeatherOverlay();
         shapeRenderer.end();
 
@@ -9012,15 +9229,24 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
-        float rainLength = Math.max(0.75f, coverSize * 0.030f);
-        float rainWidth = Math.max(0.018f, coverSize * 0.0010f);
-
-        for (int i = 0; i < 44; i++) {
-            float xPhase = wrap01(hash01(i * 17, i * 37, 113) + effectClock * 0.055f);
-            float yPhase = wrap01(hash01(i * 29, i * 11, 197) - effectClock * 0.34f);
+        for (int i = 0; i < 64; i++) {
+            float depth = 0.42f + hash01(i * 13, i * 7, 229) * 0.82f;
+            float rainLength = Math.max(0.52f, coverSize * 0.024f * depth);
+            float rainWidth = Math.max(0.014f, coverSize * 0.00072f * depth);
+            float xPhase =
+                    wrap01(
+                            hash01(i * 17, i * 37, 113)
+                                    + effectClock * (0.040f + depth * 0.024f));
+            float yPhase =
+                    wrap01(
+                            hash01(i * 29, i * 11, 197)
+                                    - effectClock * (0.24f + depth * 0.18f));
             float x = left + xPhase * coverSize;
             float y = bottom + yPhase * coverSize;
-            float alpha = WEATHER_RAIN_ALPHA * (0.45f + hash01(i * 5, i * 19, 71) * 0.55f);
+            float alpha =
+                    WEATHER_RAIN_ALPHA
+                            * depth
+                            * (0.32f + hash01(i * 5, i * 19, 71) * 0.46f);
             drawRotatedRect(
                     x,
                     y,
@@ -9032,10 +9258,93 @@ public class RatassGame extends ApplicationAdapter {
                     0.72f,
                     alpha);
         }
+
+        for (int splash = 0; splash < 14; splash++) {
+            float phase = wrap01(hash01(splash * 11, splash * 31, 347) + effectClock * 1.8f);
+            float radius = Math.max(0.035f, coverSize * 0.00075f * (0.45f + phase));
+            shapeRenderer.setColor(0.68f, 0.80f, 0.94f, (1f - phase) * 0.10f);
+            shapeRenderer.circle(
+                    left + hash01(splash * 23, splash * 5, 139) * coverSize,
+                    bottom + hash01(splash * 7, splash * 41, 181) * coverSize,
+                    radius,
+                    10);
+        }
+    }
+
+    private void drawHighSpeedOverlay() {
+        if (!isPresentationEnabled() || worldCamera == null || roundOver) {
+            return;
+        }
+        Car target = getCameraTargetCar();
+        if (!isCameraFollowable(target)) {
+            return;
+        }
+
+        float speedRatio =
+                MathUtils.clamp(
+                        target.body.getLinearVelocity().len()
+                                / Math.max(1f, target.physics().maxForwardSpeed),
+                        0f,
+                        1f);
+        float intensity = MathUtils.clamp((speedRatio - 0.58f) / 0.34f, 0f, 1f);
+        if (intensity <= 0f) {
+            return;
+        }
+
+        Vector2 targetPosition = target.getRenderPosition();
+        float angleDeg = target.getRenderAngleDeg();
+        float forwardX = -MathUtils.sinDeg(angleDeg);
+        float forwardY = MathUtils.cosDeg(angleDeg);
+        float sideX = MathUtils.cosDeg(angleDeg);
+        float sideY = MathUtils.sinDeg(angleDeg);
+        float visibleWidth = worldCamera.viewportWidth * worldCamera.zoom;
+        float visibleHeight = worldCamera.viewportHeight * worldCamera.zoom;
+        float sideExtent = visibleWidth * 0.44f;
+        float forwardExtent = visibleHeight * 0.72f;
+        float lineWidth = Math.max(0.018f, visibleWidth * 0.00042f);
+
+        for (int line = 0; line < 24; line++) {
+            float sideOffset =
+                    (hash01(line * 31, line * 17, 271) * 2f - 1f) * sideExtent;
+            if (Math.abs(sideOffset) < target.getWidth() * 1.25f) {
+                sideOffset += Math.signum(sideOffset == 0f ? 1f : sideOffset)
+                        * target.getWidth()
+                        * 1.35f;
+            }
+            float phase =
+                    wrap01(
+                            hash01(line * 13, line * 47, 191)
+                                    - effectClock * (0.72f + speedRatio * 0.62f));
+            float forwardOffset = (phase - 0.5f) * forwardExtent;
+            float lineLength =
+                    Math.max(
+                            0.24f,
+                            visibleHeight
+                                    * (0.008f
+                                            + intensity * 0.012f
+                                            + hash01(line * 7, line * 23, 89) * 0.006f));
+            float x = targetPosition.x + sideX * sideOffset + forwardX * forwardOffset;
+            float y = targetPosition.y + sideY * sideOffset + forwardY * forwardOffset;
+            float alpha =
+                    intensity
+                            * (0.07f + hash01(line * 19, line * 5, 67) * 0.12f)
+                            * (0.55f + 0.45f * MathUtils.sin(MathUtils.PI * phase));
+            drawRotatedRect(
+                    x,
+                    y,
+                    lineWidth,
+                    lineLength,
+                    angleDeg,
+                    0.74f,
+                    0.90f,
+                    1f,
+                    alpha);
+        }
+
     }
 
     private void drawSnowOverlay(float left, float bottom, float coverSize) {
-        for (int i = 0; i < 72; i++) {
+        for (int i = 0; i < 88; i++) {
             float fallSpeed = 0.045f + hash01(i * 13, i * 31, 181) * 0.055f;
             float drift =
                     MathUtils.sin(effectClock * (0.55f + hash01(i, i * 7, 43)) + i)
@@ -9053,8 +9362,10 @@ public class RatassGame extends ApplicationAdapter {
                             coverSize
                                     * (0.00075f
                                             + hash01(i * 5, i * 19, 71) * 0.00075f));
+            float depth = 0.55f + hash01(i * 37, i * 17, 263) * 0.65f;
             float alpha =
                     WEATHER_SNOW_ALPHA
+                            * depth
                             * (0.45f + hash01(i * 23, i * 3, 97) * 0.55f);
             shapeRenderer.setColor(0.92f, 0.97f, 1f, alpha);
             shapeRenderer.circle(
@@ -10069,6 +10380,7 @@ public class RatassGame extends ApplicationAdapter {
             float carScale = car.getSizeScale();
 
             drawSlipstreamEffect(car, centerX, centerY, carWidth, carHeight, angleDeg, i);
+            drawVehicleLightEffects(car, centerX, centerY, carWidth, carHeight, angleDeg, i);
             drawRogueliteGadgetEffect(car, centerX, centerY, carWidth, carHeight, angleDeg);
 
             if (car.hasGrowthBoost()) {
@@ -10128,46 +10440,36 @@ public class RatassGame extends ApplicationAdapter {
         float flash = visual.getActivationFlash();
         switch (style) {
             case NITRO:
-                for (int side = -1; side <= 1; side += 2) {
-                    drawOffsetRotatedRect(
-                            centerX,
-                            centerY,
-                            side * carWidth * 0.24f,
-                            -carHeight * (0.82f + pulse * 0.16f),
-                            carWidth * 0.16f,
-                            carHeight * (0.85f + pulse * 0.35f),
-                            angleDeg,
-                            0.20f + flash * 0.65f,
-                            0.82f,
-                            1f,
-                            0.70f);
-                }
+                drawTurboFire(
+                        centerX,
+                        centerY,
+                        carWidth,
+                        carHeight,
+                        angleDeg,
+                        pulse,
+                        flash);
                 shapeRenderer.setColor(0.35f, 0.90f, 1f, 0.12f + flash * 0.18f);
                 shapeRenderer.circle(centerX, centerY, carHeight * (0.70f + pulse * 0.12f), 24);
+                drawEffectRing(
+                        centerX,
+                        centerY,
+                        carHeight * (0.76f + pulse * 0.14f),
+                        Math.max(0.025f, carWidth * 0.030f),
+                        28,
+                        0.30f,
+                        0.88f,
+                        1f,
+                        0.38f + flash * 0.30f);
                 break;
             case GRIP:
-                shapeRenderer.setColor(0.28f, 1f, 0.45f, 0.15f + pulse * 0.10f + flash * 0.14f);
-                shapeRenderer.circle(centerX, centerY, carHeight * (0.72f + pulse * 0.10f), 28);
-                drawRotatedRect(
+                drawGripFanFlow(
                         centerX,
                         centerY,
-                        carWidth * 1.50f,
-                        carHeight * 0.12f,
-                        angleDeg + effectClock * 210f,
-                        0.35f,
-                        1f,
-                        0.48f,
-                        0.58f);
-                drawRotatedRect(
-                        centerX,
-                        centerY,
-                        carWidth * 0.12f,
-                        carHeight * 1.50f,
-                        angleDeg + effectClock * 210f,
-                        0.35f,
-                        1f,
-                        0.48f,
-                        0.58f);
+                        carWidth,
+                        carHeight,
+                        angleDeg,
+                        pulse,
+                        flash);
                 break;
             case RAM:
                 drawOffsetRotatedRect(
@@ -10196,28 +10498,28 @@ public class RatassGame extends ApplicationAdapter {
                         0.78f);
                 break;
             case DRAFT:
-                shapeRenderer.setColor(0.20f, 0.86f, 1f, 0.13f + pulse * 0.12f + flash * 0.12f);
-                shapeRenderer.circle(centerX, centerY, carHeight * (0.88f + pulse * 0.18f), 28);
-                for (int side = -1; side <= 1; side++) {
-                    drawOffsetRotatedRect(
-                            centerX,
-                            centerY,
-                            side * carWidth * 0.34f,
-                            -carHeight * 0.72f,
-                            carWidth * 0.07f,
-                            carHeight * (1.05f + pulse * 0.25f),
-                            angleDeg,
-                            0.30f,
-                            0.88f,
-                            1f,
-                            0.52f);
-                }
+                drawDraftMagnetField(
+                        centerX,
+                        centerY,
+                        carWidth,
+                        carHeight,
+                        angleDeg,
+                        pulse,
+                        flash);
                 break;
             case SHIELD:
                 shapeRenderer.setColor(0.54f, 0.38f, 1f, 0.16f + pulse * 0.13f + flash * 0.18f);
                 shapeRenderer.circle(centerX, centerY, carHeight * (0.76f + pulse * 0.10f), 30);
-                shapeRenderer.setColor(0.76f, 0.64f, 1f, 0.10f + flash * 0.20f);
-                shapeRenderer.circle(centerX, centerY, carHeight * (0.94f + pulse * 0.08f), 30);
+                drawEffectRing(
+                        centerX,
+                        centerY,
+                        carHeight * (0.94f + pulse * 0.08f),
+                        Math.max(0.026f, carWidth * 0.032f),
+                        34,
+                        0.76f,
+                        0.64f,
+                        1f,
+                        0.48f + flash * 0.32f);
                 break;
             case OVERDRIVE:
                 shapeRenderer.setColor(1f, 0.82f, 0.18f, 0.12f + pulse * 0.10f + flash * 0.16f);
@@ -10236,9 +10538,299 @@ public class RatassGame extends ApplicationAdapter {
                             side == 0 ? 0.38f : 1f,
                             0.62f);
                 }
+                drawEffectRing(
+                        centerX,
+                        centerY,
+                        carHeight * (0.84f + pulse * 0.18f),
+                        Math.max(0.024f, carWidth * 0.030f),
+                        30,
+                        1f,
+                        0.74f,
+                        0.24f,
+                        0.42f + flash * 0.30f);
                 break;
             default:
                 break;
+        }
+    }
+
+    private void drawVehicleLightEffects(
+            Car car,
+            float centerX,
+            float centerY,
+            float carWidth,
+            float carHeight,
+            float angleDeg,
+            int carIndex) {
+        float brake = MathUtils.clamp(car.getBrakeSignal(), 0f, 1f);
+        if (brake > 0.04f) {
+            float glow = MathUtils.clamp((brake - 0.04f) / 0.40f, 0f, 1f);
+            for (int side = -1; side <= 1; side += 2) {
+                float offsetX = side * carWidth * 0.30f;
+                float offsetY = -carHeight * 0.39f;
+                drawOffsetCircle(
+                        centerX,
+                        centerY,
+                        offsetX,
+                        offsetY,
+                        angleDeg,
+                        carWidth * (0.18f + glow * 0.06f),
+                        1f,
+                        0.04f,
+                        0.015f,
+                        0.10f + glow * 0.16f,
+                        12);
+                drawOffsetCircle(
+                        centerX,
+                        centerY,
+                        offsetX,
+                        offsetY,
+                        angleDeg,
+                        carWidth * 0.070f,
+                        1f,
+                        0.12f,
+                        0.035f,
+                        0.64f + glow * 0.30f,
+                        9);
+            }
+        }
+
+        float throttle = MathUtils.clamp(car.lastThrottleCommand, 0f, 1f);
+        if (throttle < 0.78f || brake > 0.12f) {
+            return;
+        }
+        float intensity = (throttle - 0.78f) / 0.22f;
+        float flicker = 0.5f + 0.5f * MathUtils.sin(effectClock * 31f + carIndex * 2.7f);
+        for (int side = -1; side <= 1; side += 2) {
+            drawOffsetCircle(
+                    centerX,
+                    centerY,
+                    side * carWidth * 0.22f,
+                    -carHeight * (0.52f + flicker * 0.035f),
+                    angleDeg,
+                    carWidth * (0.045f + intensity * 0.025f),
+                    1f,
+                    0.48f,
+                    0.10f,
+                    0.28f + intensity * 0.34f,
+                    8);
+        }
+    }
+
+    private void drawTurboFire(
+            float centerX,
+            float centerY,
+            float carWidth,
+            float carHeight,
+            float angleDeg,
+            float pulse,
+            float flash) {
+        float flicker = 0.5f + 0.5f * MathUtils.sin(effectClock * 38f + pulse * 2.2f);
+        float flameLength = carHeight * (0.76f + pulse * 0.30f + flash * 0.22f + flicker * 0.12f);
+        for (int side = -1; side <= 1; side += 2) {
+            float nozzleX = side * carWidth * 0.24f;
+            float nozzleY = -carHeight * 0.49f;
+            drawOffsetTriangle(
+                    centerX,
+                    centerY,
+                    nozzleX - carWidth * 0.10f,
+                    nozzleY,
+                    nozzleX + carWidth * 0.10f,
+                    nozzleY,
+                    nozzleX + side * carWidth * 0.035f,
+                    nozzleY - flameLength,
+                    angleDeg,
+                    1f,
+                    0.18f,
+                    0.035f,
+                    0.58f);
+            drawOffsetTriangle(
+                    centerX,
+                    centerY,
+                    nozzleX - carWidth * 0.060f,
+                    nozzleY - carHeight * 0.015f,
+                    nozzleX + carWidth * 0.060f,
+                    nozzleY - carHeight * 0.015f,
+                    nozzleX - side * carWidth * 0.018f,
+                    nozzleY - flameLength * 0.72f,
+                    angleDeg,
+                    1f,
+                    0.72f,
+                    0.08f,
+                    0.82f);
+            drawOffsetTriangle(
+                    centerX,
+                    centerY,
+                    nozzleX - carWidth * 0.030f,
+                    nozzleY - carHeight * 0.025f,
+                    nozzleX + carWidth * 0.030f,
+                    nozzleY - carHeight * 0.025f,
+                    nozzleX,
+                    nozzleY - flameLength * 0.44f,
+                    angleDeg,
+                    0.68f,
+                    0.95f,
+                    1f,
+                    0.96f);
+        }
+    }
+
+    private void drawGripFanFlow(
+            float centerX,
+            float centerY,
+            float carWidth,
+            float carHeight,
+            float angleDeg,
+            float pulse,
+            float flash) {
+        float coreRadius = carHeight * (0.62f + pulse * 0.06f);
+        drawEffectRing(
+                centerX,
+                centerY,
+                coreRadius,
+                Math.max(0.025f, carWidth * 0.035f),
+                32,
+                0.32f,
+                1f,
+                0.48f,
+                0.50f + flash * 0.28f);
+
+        float outerSpan = Math.max(carWidth, carHeight) * 1.34f;
+        for (int line = 0; line < 16; line++) {
+            float phase = wrap01(line * 0.173f - effectClock * (1.45f + pulse * 0.30f));
+            float radialAngle = angleDeg + line * 137.5f;
+            float distance = coreRadius + outerSpan * phase;
+            float lineLength = carHeight * (0.12f + (1f - phase) * 0.16f);
+            float lineX = centerX + MathUtils.cosDeg(radialAngle) * distance;
+            float lineY = centerY + MathUtils.sinDeg(radialAngle) * distance;
+            float alpha = (0.18f + (1f - phase) * 0.55f) * (0.72f + flash * 0.28f);
+            drawRotatedRect(
+                    lineX,
+                    lineY,
+                    lineLength,
+                    Math.max(0.022f, carWidth * 0.026f),
+                    radialAngle,
+                    0.30f,
+                    1f,
+                    0.46f,
+                    alpha);
+        }
+    }
+
+    private void drawDraftMagnetField(
+            float centerX,
+            float centerY,
+            float carWidth,
+            float carHeight,
+            float angleDeg,
+            float pulse,
+            float flash) {
+        float fieldPulse = 0.92f + pulse * 0.10f + flash * 0.08f;
+        float lineWidth = Math.max(0.020f, carWidth * 0.026f);
+        drawOffsetEllipseRing(
+                centerX,
+                centerY,
+                carWidth * 0.72f * fieldPulse,
+                carHeight * 0.96f * fieldPulse,
+                angleDeg,
+                lineWidth,
+                32,
+                0.20f,
+                0.88f,
+                1f,
+                0.48f + flash * 0.18f);
+        drawOffsetEllipseRing(
+                centerX,
+                centerY,
+                carWidth * 1.02f * fieldPulse,
+                carHeight * 1.34f * fieldPulse,
+                angleDeg,
+                lineWidth * 0.82f,
+                36,
+                0.94f,
+                0.28f,
+                0.88f,
+                0.32f + flash * 0.15f);
+
+        for (int side = -1; side <= 1; side += 2) {
+            float poleX = side * carWidth * 0.48f;
+            drawOffsetCircle(
+                    centerX,
+                    centerY,
+                    poleX,
+                    0f,
+                    angleDeg,
+                    carWidth * (0.13f + flash * 0.025f),
+                    side < 0 ? 0.18f : 1f,
+                    side < 0 ? 0.82f : 0.22f,
+                    side < 0 ? 1f : 0.78f,
+                    0.82f,
+                    12);
+        }
+
+        for (int streak = 0; streak < 12; streak++) {
+            float phase = wrap01(streak * 0.193f + effectClock * (1.10f + pulse * 0.20f));
+            int side = (streak & 1) == 0 ? -1 : 1;
+            float sideOffset =
+                    side
+                            * carWidth
+                            * (0.18f + MathUtils.sin(MathUtils.PI * phase) * 0.62f);
+            float backOffset = -carHeight * (0.58f + (1f - phase) * 2.05f);
+            float alpha = (0.20f + phase * 0.58f) * (0.78f + flash * 0.22f);
+            drawOffsetRotatedRect(
+                    centerX,
+                    centerY,
+                    sideOffset,
+                    backOffset,
+                    lineWidth * 1.10f,
+                    carHeight * (0.18f + phase * 0.16f),
+                    angleDeg,
+                    side < 0 ? 0.20f : 1f,
+                    side < 0 ? 0.86f : 0.28f,
+                    side < 0 ? 1f : 0.84f,
+                    alpha);
+        }
+    }
+
+    private void drawOffsetEllipseRing(
+            float centerX,
+            float centerY,
+            float radiusX,
+            float radiusY,
+            float angleDeg,
+            float lineWidth,
+            int segments,
+            float red,
+            float green,
+            float blue,
+            float alpha) {
+        float sin = MathUtils.sinDeg(angleDeg);
+        float cos = MathUtils.cosDeg(angleDeg);
+        float previousLocalX = radiusX;
+        float previousLocalY = 0f;
+        float previousX = centerX + previousLocalX * cos - previousLocalY * sin;
+        float previousY = centerY + previousLocalX * sin + previousLocalY * cos;
+        for (int segment = 1; segment <= segments; segment++) {
+            float radians = MathUtils.PI2 * segment / segments;
+            float localX = MathUtils.cos(radians) * radiusX;
+            float localY = MathUtils.sin(radians) * radiusY;
+            float x = centerX + localX * cos - localY * sin;
+            float y = centerY + localX * sin + localY * cos;
+            float dx = x - previousX;
+            float dy = y - previousY;
+            float length = (float) Math.sqrt(dx * dx + dy * dy);
+            drawRotatedRect(
+                    (previousX + x) * 0.5f,
+                    (previousY + y) * 0.5f,
+                    length,
+                    lineWidth,
+                    MathUtils.atan2(dy, dx) * MathUtils.radiansToDegrees,
+                    red,
+                    green,
+                    blue,
+                    alpha);
+            previousX = x;
+            previousY = y;
         }
     }
 
@@ -10494,6 +11086,55 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.circle(rotatedX, rotatedY, radius, segments);
     }
 
+    private void drawEffectRing(
+            float centerX,
+            float centerY,
+            float radius,
+            float width,
+            int segments,
+            float red,
+            float green,
+            float blue,
+            float alpha) {
+        shapeRenderer.setColor(red, green, blue, alpha);
+        float previousX = centerX + radius;
+        float previousY = centerY;
+        for (int segment = 1; segment <= segments; segment++) {
+            float angle = MathUtils.PI2 * segment / segments;
+            float currentX = centerX + MathUtils.cos(angle) * radius;
+            float currentY = centerY + MathUtils.sin(angle) * radius;
+            shapeRenderer.rectLine(previousX, previousY, currentX, currentY, width);
+            previousX = currentX;
+            previousY = currentY;
+        }
+    }
+
+    private void drawOffsetTriangle(
+            float centerX,
+            float centerY,
+            float x1,
+            float y1,
+            float x2,
+            float y2,
+            float x3,
+            float y3,
+            float angleDeg,
+            float red,
+            float green,
+            float blue,
+            float alpha) {
+        float cos = MathUtils.cosDeg(angleDeg);
+        float sin = MathUtils.sinDeg(angleDeg);
+        float worldX1 = centerX + x1 * cos - y1 * sin;
+        float worldY1 = centerY + x1 * sin + y1 * cos;
+        float worldX2 = centerX + x2 * cos - y2 * sin;
+        float worldY2 = centerY + x2 * sin + y2 * cos;
+        float worldX3 = centerX + x3 * cos - y3 * sin;
+        float worldY3 = centerY + x3 * sin + y3 * cos;
+        shapeRenderer.setColor(red, green, blue, alpha);
+        shapeRenderer.triangle(worldX1, worldY1, worldX2, worldY2, worldX3, worldY3);
+    }
+
     private void drawOffsetRotatedRect(
             float centerX,
             float centerY,
@@ -10586,9 +11227,7 @@ public class RatassGame extends ApplicationAdapter {
         if (preRoundCountdownTimer > 0f && !roundOver) {
             drawCenteredOverlay(
                     String.valueOf(MathUtils.ceil(preRoundCountdownTimer)),
-                    championshipIntroductionVisible
-                            ? "CHAMPIONSHIP START"
-                            : "GET READY",
+                    buildCountdownContext(championshipIntroductionVisible),
                     playfieldWidth * 0.5f,
                     hudHeight,
                     new Color(0.98f, 0.94f, 0.84f, 1f),
@@ -10615,6 +11254,18 @@ public class RatassGame extends ApplicationAdapter {
                     winner != null && winner.playerControlled);
             spriteBatch.end();
         }
+    }
+
+    private String buildCountdownContext(boolean championshipIntroductionVisible) {
+        String prefix = championshipIntroductionVisible ? "CHAMPIONSHIP START" : "GET READY";
+        if (mapProgression == null) {
+            return prefix;
+        }
+        return prefix
+                + "  |  CIRCUIT "
+                + mapProgression.getCurrentMapNumber()
+                + " / "
+                + mapProgression.getMapCount();
     }
 
     private void updateRogueliteCardsButtonLayout(float hudWidth, float hudHeight) {
@@ -14142,7 +14793,9 @@ public class RatassGame extends ApplicationAdapter {
                 8f,
                 contentWidth
                         - getSidebarTelemetryLabelColumnWidth()
-                        - SIDEBAR_TELEMETRY_COLUMN_GAP);
+                        - SIDEBAR_TELEMETRY_COLUMN_GAP
+                        - SIDEBAR_TELEMETRY_PEAK_WIDTH
+                        - SIDEBAR_TELEMETRY_PEAK_GAP);
     }
 
     private void drawSidebarTelemetryBar(
@@ -14797,9 +15450,11 @@ public class RatassGame extends ApplicationAdapter {
 
         int speedKph = Math.round(target.body.getLinearVelocity().len() * 3.6f);
         boolean onRoad = currentMap == null || currentMap.supports(target.body.getPosition());
+        TelemetryPeakTracker peaks = target.telemetryPeaks;
         drawSidebarTelemetryValue(
                 onRoad ? "SPEED" : "OFF ROAD",
                 speedKph + " km/h",
+                formatTelemetryPeakSpeed(peaks),
                 x,
                 top - 22f,
                 contentWidth,
@@ -14813,12 +15468,14 @@ public class RatassGame extends ApplicationAdapter {
         drawSidebarTelemetryValue(
                 reversing ? "REV" : "THR",
                 Math.round(drive * 100f) + "%",
+                formatTelemetryPeakPercent(peaks == null ? 0f : peaks.getDrive()),
                 x,
                 top - 45f,
                 contentWidth);
         drawSidebarTelemetryValue(
                 "BRK",
                 Math.round(brake * 100f) + "%",
+                formatTelemetryPeakPercent(peaks == null ? 0f : peaks.getBrake()),
                 x,
                 top - 63f,
                 contentWidth);
@@ -14829,10 +15486,11 @@ public class RatassGame extends ApplicationAdapter {
                 : (steering < 0f ? "L " : "R ")
                         + Math.round(Math.abs(steering) * 100f)
                         + "%";
-        drawSidebarTelemetryValue("STEER", steeringValue, x, top - 81f, contentWidth);
+        drawSidebarTelemetryValue("STEER", steeringValue, null, x, top - 81f, contentWidth);
         drawSidebarTelemetryValue(
                 "DRIFT",
                 Math.round(target.getLateralSlipSignal() * 100f) + "%",
+                formatTelemetryPeakPercent(peaks == null ? 0f : peaks.getDrift()),
                 x,
                 top - 99f,
                 contentWidth);
@@ -14840,6 +15498,7 @@ public class RatassGame extends ApplicationAdapter {
         drawSidebarTelemetryValue(
                 "SLIPSTREAM",
                 Math.round(target.getSlipstreamBoost() * 100f) + "%",
+                formatTelemetryPeakPercent(peaks == null ? 0f : peaks.getSlipstream()),
                 x,
                 top - 117f,
                 contentWidth);
@@ -14994,15 +15653,26 @@ public class RatassGame extends ApplicationAdapter {
     private void drawSidebarTelemetryValue(
             String label,
             String value,
+            String peakValue,
             float x,
             float y,
             float width) {
-        drawSidebarTelemetryValue(label, value, x, y, width, 0.88f, 0.92f, 0.94f);
+        drawSidebarTelemetryValue(
+                label,
+                value,
+                peakValue,
+                x,
+                y,
+                width,
+                0.88f,
+                0.92f,
+                0.94f);
     }
 
     private void drawSidebarTelemetryValue(
             String label,
             String value,
+            String peakValue,
             float x,
             float y,
             float width,
@@ -15022,6 +15692,28 @@ public class RatassGame extends ApplicationAdapter {
                 value,
                 barX + Math.max(2f, (barWidth - glyphLayout.width) * 0.5f),
                 textY);
+        if (peakValue != null) {
+            labelFont.setColor(1f, 0.88f, 0.42f, 1f);
+            glyphLayout.setText(labelFont, peakValue);
+            drawTextWithShadow(
+                    labelFont,
+                    peakValue,
+                    x + width - glyphLayout.width,
+                    textY);
+        }
+    }
+
+    private String formatTelemetryPeakSpeed(TelemetryPeakTracker peaks) {
+        if (peaks == null || peaks.getSpeedRatio() <= 0.001f) {
+            return "--";
+        }
+        return Math.round(peaks.getSpeedKph()) + " km/h";
+    }
+
+    private String formatTelemetryPeakPercent(float peakValue) {
+        return peakValue <= 0.001f
+                ? "--"
+                : Math.round(MathUtils.clamp(peakValue, 0f, 1f) * 100f) + "%";
     }
 
     private String buildActiveCardEffectsText(Car target, float maxWidth) {
@@ -16778,6 +17470,19 @@ public class RatassGame extends ApplicationAdapter {
             float impactStrength = totalNormalImpulse + closingSpeed * Car.IMPACT_STRENGTH_SPEED_FACTOR;
             if (!roundOver && preRoundCountdownTimer <= 0f) {
                 playImpactSound(impactStrength);
+                if (isPresentationEnabled()) {
+                    Vector2 positionA = carA.body.getPosition();
+                    Vector2 positionB = carB.body.getPosition();
+                    raceParticleEffects.emitImpact(
+                            (positionA.x + positionB.x) * 0.5f,
+                            (positionA.y + positionB.y) * 0.5f,
+                            normal.x,
+                            normal.y,
+                            impactStrength,
+                            (carA.color.r + carB.color.r) * 0.5f,
+                            (carA.color.g + carB.color.g) * 0.5f,
+                            (carA.color.b + carB.color.b) * 0.5f);
+                }
             }
 
             boolean carADominant = speedIntoCollisionA > speedIntoCollisionB + 0.24f;
@@ -17238,6 +17943,7 @@ public class RatassGame extends ApplicationAdapter {
                     1f);
             telemetryPeaks.update(
                     speedRatio,
+                    body.getLinearVelocity().len() * 3.6f,
                     drive,
                     brake,
                     getLateralSlipSignal(),

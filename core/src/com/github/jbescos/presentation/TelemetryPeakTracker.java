@@ -16,7 +16,25 @@ public final class TelemetryPeakTracker {
             float currentBrake,
             float currentDrift,
             float currentSlipstream) {
-        speedRatio.update(sanitizeUnit(currentSpeedRatio));
+        update(
+                currentSpeedRatio,
+                currentSpeedRatio,
+                currentDrive,
+                currentBrake,
+                currentDrift,
+                currentSlipstream);
+    }
+
+    public void update(
+            float currentSpeedRatio,
+            float currentSpeedKph,
+            float currentDrive,
+            float currentBrake,
+            float currentDrift,
+            float currentSlipstream) {
+        speedRatio.update(
+                sanitizeUnit(currentSpeedRatio),
+                sanitizeNonNegative(currentSpeedKph));
         drive.update(sanitizeUnit(currentDrive));
         brake.update(sanitizeUnit(currentBrake));
         drift.update(sanitizeUnit(currentDrift));
@@ -33,6 +51,10 @@ public final class TelemetryPeakTracker {
 
     public float getSpeedRatio() {
         return speedRatio.getValue();
+    }
+
+    public float getSpeedKph() {
+        return speedRatio.getDisplayValue();
     }
 
     public float getDrive() {
@@ -65,23 +87,34 @@ public final class TelemetryPeakTracker {
 
     private static final class LatestPeak {
         private float value;
+        private float displayValue;
         private float peakCandidate;
+        private float peakCandidateDisplayValue;
         private float valleyCandidate;
         private boolean initialized;
         private boolean seekingPeak = true;
 
         private void update(float current) {
+            update(current, current);
+        }
+
+        private void update(float current, float currentDisplayValue) {
             if (!initialized) {
                 initialized = true;
                 peakCandidate = current;
+                peakCandidateDisplayValue = currentDisplayValue;
                 valleyCandidate = current;
                 return;
             }
 
             if (seekingPeak) {
-                peakCandidate = Math.max(peakCandidate, current);
+                if (current > peakCandidate) {
+                    peakCandidate = current;
+                    peakCandidateDisplayValue = currentDisplayValue;
+                }
                 if (peakCandidate - current >= PEAK_REVERSAL_THRESHOLD) {
                     value = peakCandidate;
+                    displayValue = peakCandidateDisplayValue;
                     valleyCandidate = current;
                     seekingPeak = false;
                 }
@@ -91,6 +124,7 @@ public final class TelemetryPeakTracker {
             valleyCandidate = Math.min(valleyCandidate, current);
             if (current - valleyCandidate >= PEAK_REVERSAL_THRESHOLD) {
                 peakCandidate = current;
+                peakCandidateDisplayValue = currentDisplayValue;
                 seekingPeak = true;
             }
         }
@@ -99,9 +133,15 @@ public final class TelemetryPeakTracker {
             return value;
         }
 
+        private float getDisplayValue() {
+            return displayValue;
+        }
+
         private void reset() {
             value = 0f;
+            displayValue = 0f;
             peakCandidate = 0f;
+            peakCandidateDisplayValue = 0f;
             valleyCandidate = 0f;
             initialized = false;
             seekingPeak = true;

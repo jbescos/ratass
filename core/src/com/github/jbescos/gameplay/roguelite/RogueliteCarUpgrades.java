@@ -323,6 +323,14 @@ public final class RogueliteCarUpgrades {
         return RogueliteEffectMath.clamp(speedRatio, 0f, 0.50f);
     }
 
+    public boolean consumeDraftMagnetPulse() {
+        boolean pulse = false;
+        for (int i = 0; i < effects.size(); i++) {
+            pulse |= effects.get(i).consumeDraftMagnetPulse();
+        }
+        return pulse;
+    }
+
     public boolean isRamGadgetActive() {
         for (int i = 0; i < effects.size(); i++) {
             if (effects.get(i).isRamChargeActive()) {
