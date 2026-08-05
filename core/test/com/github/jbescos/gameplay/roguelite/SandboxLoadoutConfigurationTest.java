@@ -43,6 +43,23 @@ public final class SandboxLoadoutConfigurationTest {
     }
 
     @Test
+    public void sandboxCanStartWithTheRunsRandomTierOneDriver() {
+        DriverProfileCatalog drivers = DriverProfileCatalog.fallback();
+        RogueliteRun run = new RogueliteRun(13L, drivers);
+        String startingDriver =
+                run.getPlayerLoadout().getDriverProfileId();
+        SandboxLoadoutConfiguration configuration =
+                new SandboxLoadoutConfiguration(drivers);
+
+        configuration.reset(drivers, startingDriver);
+
+        assertEquals(1, drivers.getTier(startingDriver));
+        assertEquals(
+                startingDriver,
+                configuration.getLoadout().getDriverProfileId());
+    }
+
+    @Test
     public void modificationSelectionReplacesAndTogglesItsSlot() {
         SandboxLoadoutConfiguration configuration =
                 new SandboxLoadoutConfiguration(DriverProfileCatalog.fallback());
@@ -62,7 +79,7 @@ public final class SandboxLoadoutConfigurationTest {
     }
 
     @Test
-    public void oneCardCanBeSelectedForEachOfTheFourLoadoutSlots() {
+    public void oneCardCanBeSelectedForEachOfTheFiveLoadoutSlots() {
         DriverProfileCatalog drivers = DriverProfileCatalog.fallback();
         SandboxLoadoutConfiguration configuration =
                 new SandboxLoadoutConfiguration(drivers);
@@ -82,9 +99,12 @@ public final class SandboxLoadoutConfigurationTest {
         assertTrue(
                 configuration.select(
                         findCard(configuration, RogueliteCardId.NITRO_PULSE)));
+        assertTrue(
+                configuration.select(
+                        findCard(configuration, RogueliteCardId.DRAFT_MAGNET)));
 
         assertTrue(configuration.getLoadout().isFull());
-        assertEquals(3, configuration.getLoadout().getModifications().size());
+        assertEquals(4, configuration.getLoadout().getModifications().size());
     }
 
     private static RogueliteCardOffer findDriver(

@@ -9,13 +9,26 @@ public final class RogueliteCarStatSnapshot {
     private final float massMultiplier;
     private final float aerodynamicEfficiency;
 
-    private RogueliteCarStatSnapshot(RogueliteCarUpgrades upgrades) {
-        accelerationMultiplier = upgrades.getAccelerationMultiplier();
-        maxSpeedMultiplier = upgrades.getMaxSpeedMultiplier();
-        gripMultiplier = upgrades.getGripMultiplier(0f);
-        steeringMultiplier = upgrades.getSteeringMultiplier(0f);
-        massMultiplier = upgrades.getMassMultiplier();
-        aerodynamicEfficiency = 1f / Math.max(0.01f, upgrades.getDragMultiplier());
+    private RogueliteCarStatSnapshot(
+            RogueliteCarUpgrades upgrades,
+            float slip,
+            float accelerationEffectMultiplier,
+            float maxSpeedEffectMultiplier,
+            float gripEffectMultiplier,
+            float steeringEffectMultiplier,
+            float massEffectMultiplier,
+            float aerodynamicEffectMultiplier) {
+        accelerationMultiplier =
+                upgrades.getAccelerationMultiplier() * accelerationEffectMultiplier;
+        maxSpeedMultiplier =
+                upgrades.getMaxSpeedMultiplier() * maxSpeedEffectMultiplier;
+        gripMultiplier = upgrades.getGripMultiplier(slip) * gripEffectMultiplier;
+        steeringMultiplier =
+                upgrades.getSteeringMultiplier(slip) * steeringEffectMultiplier;
+        massMultiplier = upgrades.getMassMultiplier() * massEffectMultiplier;
+        aerodynamicEfficiency =
+                aerodynamicEffectMultiplier
+                        / Math.max(0.01f, upgrades.getDragMultiplier());
     }
 
     public static RogueliteCarStatSnapshot from(
@@ -27,7 +40,37 @@ public final class RogueliteCarStatSnapshot {
         }
         RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
         upgrades.configure(previewLoadout);
-        return new RogueliteCarStatSnapshot(upgrades);
+        return new RogueliteCarStatSnapshot(
+                upgrades,
+                0f,
+                1f,
+                1f,
+                1f,
+                1f,
+                1f,
+                1f);
+    }
+
+    public static RogueliteCarStatSnapshot fromLive(
+            RogueliteCarUpgrades upgrades,
+            float slip,
+            float accelerationEffectMultiplier,
+            float maxSpeedEffectMultiplier,
+            float gripEffectMultiplier,
+            float steeringEffectMultiplier,
+            float massEffectMultiplier,
+            float aerodynamicEffectMultiplier) {
+        RogueliteCarUpgrades liveUpgrades =
+                upgrades == null ? new RogueliteCarUpgrades() : upgrades;
+        return new RogueliteCarStatSnapshot(
+                liveUpgrades,
+                slip,
+                accelerationEffectMultiplier,
+                maxSpeedEffectMultiplier,
+                gripEffectMultiplier,
+                steeringEffectMultiplier,
+                massEffectMultiplier,
+                aerodynamicEffectMultiplier);
     }
 
     public float getAccelerationMultiplier() {

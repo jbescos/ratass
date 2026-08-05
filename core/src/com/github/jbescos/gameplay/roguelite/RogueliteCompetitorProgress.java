@@ -2,18 +2,25 @@ package com.github.jbescos.gameplay.roguelite;
 
 public final class RogueliteCompetitorProgress {
     private static final int BASE_LEVEL_XP = 80;
-    private static final int LEVEL_XP_INCREMENT = 40;
     private static final int LAST_PLACE_XP = 30;
     private static final int FIRST_PLACE_XP = 100;
 
     private final RogueliteLoadout loadout;
+    private final int levelXpIncrement;
     private int level = 1;
     private int experience;
     private int pendingRewards;
     private int rewardDeferredUntilLevel;
 
     RogueliteCompetitorProgress(String defaultDriverProfileId) {
+        this(defaultDriverProfileId, CustomGameRules.DEFAULT_LEVEL_XP_INCREMENT);
+    }
+
+    RogueliteCompetitorProgress(
+            String defaultDriverProfileId,
+            int configuredLevelXpIncrement) {
         loadout = new RogueliteLoadout(defaultDriverProfileId);
+        levelXpIncrement = Math.max(0, configuredLevelXpIncrement);
     }
 
     public RogueliteLoadout getLoadout() {
@@ -44,7 +51,7 @@ public final class RogueliteCompetitorProgress {
         return pendingRewards > 0 && rewardDeferredUntilLevel == 0;
     }
 
-    int getRewardDeferredUntilLevel() {
+    public int getRewardDeferredUntilLevel() {
         return rewardDeferredUntilLevel;
     }
 
@@ -124,7 +131,8 @@ public final class RogueliteCompetitorProgress {
                         + (FIRST_PLACE_XP - LAST_PLACE_XP) * finishRatio);
     }
 
-    private static int experienceForLevel(int currentLevel) {
-        return BASE_LEVEL_XP + Math.max(0, currentLevel - 1) * LEVEL_XP_INCREMENT;
+    private int experienceForLevel(int currentLevel) {
+        return BASE_LEVEL_XP
+                + Math.max(0, currentLevel - 1) * levelXpIncrement;
     }
 }

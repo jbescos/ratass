@@ -6,6 +6,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import com.github.jbescos.gameplay.roguelite.RogueliteCompetitionMode;
+import com.github.jbescos.gameplay.roguelite.CustomGameRules;
 import com.github.jbescos.gameplay.roguelite.RogueliteRun;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -84,6 +86,45 @@ public class RogueliteSaveRepositoryTest {
         assertEquals(
                 Arrays.asList(Integer.valueOf(8), Integer.valueOf(9)),
                 loaded.pendingEliminatedVehicleIds);
+    }
+
+    @Test
+    public void infiniteCompetitionModeSurvivesSaveAndLoad() {
+        MemoryStore store = new MemoryStore();
+        RogueliteSaveRepository repository = new RogueliteSaveRepository(store);
+        RogueliteSaveData data = saveData(19);
+        data.competitionMode = RogueliteCompetitionMode.INFINITE.getId();
+
+        assertTrue(repository.save(data));
+
+        RogueliteSaveData loaded = repository.load();
+        assertNotNull(loaded);
+        assertEquals(RogueliteCompetitionMode.INFINITE.getId(), loaded.competitionMode);
+    }
+
+    @Test
+    public void customRulesSurviveSaveAndLoad() {
+        MemoryStore store = new MemoryStore();
+        RogueliteSaveRepository repository = new RogueliteSaveRepository(store);
+        RogueliteSaveData data = saveData(20);
+        CustomGameRules rules = new CustomGameRules();
+        rules.resetMaps(Arrays.asList("map001"));
+        rules.setLaps(6);
+        rules.setLevelXpIncrement(70);
+        rules.setChampionshipCount(4);
+        rules.setEliminationsPerChampionship(2);
+        data.competitionMode = RogueliteCompetitionMode.CUSTOM.getId();
+        data.customRules = rules.snapshot();
+
+        assertTrue(repository.save(data));
+
+        RogueliteSaveData loaded = repository.load();
+        assertNotNull(loaded);
+        assertEquals(RogueliteCompetitionMode.CUSTOM.getId(), loaded.competitionMode);
+        assertEquals(6, loaded.customRules.laps);
+        assertEquals(70, loaded.customRules.levelXpIncrement);
+        assertEquals(4, loaded.customRules.championshipCount);
+        assertEquals(2, loaded.customRules.eliminationsPerChampionship);
     }
 
     private static RogueliteSaveData saveData(int round) {

@@ -1,5 +1,7 @@
 package com.github.jbescos.gameplay.roguelite.save;
 
+import com.github.jbescos.gameplay.roguelite.RogueliteCompetitionMode;
+import com.github.jbescos.gameplay.roguelite.CustomGameRules;
 import com.github.jbescos.gameplay.roguelite.RogueliteRun;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,6 +23,9 @@ public final class RogueliteSaveData {
     public int carCount = 1;
     public int playerCarIndex;
     public int raceLaps = 1;
+    public String competitionMode = RogueliteCompetitionMode.CHAMPIONSHIP.getId();
+    public CustomGameRules.Snapshot customRules =
+            new CustomGameRules.Snapshot();
     public boolean championshipTransitionPending;
     public List<Integer> pendingEliminatedVehicleIds =
             new ArrayList<Integer>();
@@ -45,6 +50,10 @@ public final class RogueliteSaveData {
                 || carCount < 1
                 || playerCarIndex < 0
                 || raceLaps < 1
+                || !RogueliteCompetitionMode.isKnownId(competitionMode)
+                || (RogueliteCompetitionMode.CUSTOM.getId().equals(competitionMode)
+                        && (customRules == null
+                                || !customRules.isStructurallyValid()))
                 || run == null
                 || roster == null
                 || pendingEliminatedVehicleIds == null

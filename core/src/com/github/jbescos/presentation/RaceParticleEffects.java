@@ -223,10 +223,28 @@ public final class RaceParticleEffects {
             float alpha = opacity[i] * (1f - progress) * (1f - progress);
             float size = MathUtils.lerp(startSize[i], endSize[i], progress);
             if (kind[i] == FLASH) {
-                renderer.setColor(red[i], green[i], blue[i], alpha * 0.24f);
-                renderer.circle(x[i], y[i], size * 1.45f, 18);
-                renderer.setColor(1f, 0.95f, 0.72f, alpha * 0.72f);
-                renderer.circle(x[i], y[i], size * 0.48f, 14);
+                drawRing(
+                        renderer,
+                        x[i],
+                        y[i],
+                        size * 1.45f,
+                        Math.max(0.012f, size * 0.16f),
+                        18,
+                        red[i],
+                        green[i],
+                        blue[i],
+                        alpha * 0.24f);
+                drawRing(
+                        renderer,
+                        x[i],
+                        y[i],
+                        size * 0.48f,
+                        Math.max(0.012f, size * 0.14f),
+                        14,
+                        1f,
+                        0.95f,
+                        0.72f,
+                        alpha * 0.72f);
                 continue;
             }
 
@@ -240,8 +258,41 @@ public final class RaceParticleEffects {
                     x[i] - velocityX[i] * tailScale,
                     y[i] - velocityY[i] * tailScale,
                     size * 1.55f);
-            renderer.setColor(1f, 0.95f, 0.70f, alpha);
-            renderer.circle(x[i], y[i], size, 7);
+            drawRing(
+                    renderer,
+                    x[i],
+                    y[i],
+                    size,
+                    Math.max(0.010f, size * 0.32f),
+                    7,
+                    1f,
+                    0.95f,
+                    0.70f,
+                    alpha);
+        }
+    }
+
+    private static void drawRing(
+            ShapeRenderer renderer,
+            float centerX,
+            float centerY,
+            float radius,
+            float width,
+            int segments,
+            float red,
+            float green,
+            float blue,
+            float alpha) {
+        renderer.setColor(red, green, blue, alpha);
+        float previousX = centerX + radius;
+        float previousY = centerY;
+        for (int segment = 1; segment <= segments; segment++) {
+            float angle = MathUtils.PI2 * segment / segments;
+            float currentX = centerX + MathUtils.cos(angle) * radius;
+            float currentY = centerY + MathUtils.sin(angle) * radius;
+            renderer.rectLine(previousX, previousY, currentX, currentY, width);
+            previousX = currentX;
+            previousY = currentY;
         }
     }
 

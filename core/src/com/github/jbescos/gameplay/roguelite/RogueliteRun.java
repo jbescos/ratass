@@ -12,6 +12,7 @@ public final class RogueliteRun {
     private final Map<Integer, RogueliteCompetitorProgress> rivals =
             new LinkedHashMap<Integer, RogueliteCompetitorProgress>();
     private final RogueliteRandom random;
+    private CustomGameRules gameRules = new CustomGameRules();
     private int championshipNumber = 1;
     private int startingTier = 1;
 
@@ -32,16 +33,27 @@ public final class RogueliteRun {
             DriverProfileCatalog driverCatalog) {
         this.random = random;
         this.driverCatalog = requireCatalog(driverCatalog);
-        player = newProgress();
+        player = newPlayerProgress();
     }
 
     public void configureDriverCatalog(DriverProfileCatalog catalog) {
         String previousDefault = driverCatalog.getWorst().getProfileId();
         driverCatalog = requireCatalog(catalog);
         repairDriver(player, previousDefault);
+        if (player.isPristine()
+                && driverCatalog.getTier(
+                                player.getLoadout().getDriverProfileId())
+                        > 1) {
+            player.getLoadout().setDriverProfileId(
+                    randomTierOneDriver().getProfileId());
+        }
         for (RogueliteCompetitorProgress rival : rivals.values()) {
             repairDriver(rival, previousDefault);
         }
+    }
+
+    public void configureGameRules(CustomGameRules rules) {
+        gameRules = rules == null ? new CustomGameRules() : rules.copy();
     }
 
     public void reset() {
@@ -53,7 +65,7 @@ public final class RogueliteRun {
                 || selectedStartingTier > DriverProfileCatalog.MAX_TIER) {
             throw new IllegalArgumentException("Starting tier is out of range.");
         }
-        player = newProgress();
+        player = newPlayerProgress();
         rivals.clear();
         championshipNumber = 1;
         startingTier = selectedStartingTier;
@@ -87,7 +99,7 @@ public final class RogueliteRun {
         Integer key = Integer.valueOf(vehicleId);
         RogueliteCompetitorProgress progress = rivals.get(key);
         if (progress == null) {
-            progress = newProgress();
+            progress = newRivalProgress();
             rivals.put(key, progress);
         }
         return progress;
@@ -106,12 +118,18 @@ public final class RogueliteRun {
     }
 
     public int getUnlockedTier() {
-        return Math.min(
-                DriverProfileCatalog.MAX_TIER,
-                startingTier + championshipNumber - 1);
+        int naturalTier =
+                Math.min(
+                        DriverProfileCatalog.MAX_TIER,
+                        startingTier + championshipNumber - 1);
+        return gameRules.resolveTier(naturalTier);
     }
 
     public int advanceChampionship() {
+        return advanceProgression();
+    }
+
+    public int advanceProgression() {
         championshipNumber++;
         return getUnlockedTier();
     }
@@ -250,17 +268,19 @@ public final class RogueliteRun {
         int unlockedTier = getUnlockedTier();
         List<RogueliteCardOffer> driverOffers =
                 new ArrayList<RogueliteCardOffer>();
-        List<DriverProfileMetadata> eligibleDrivers =
-                driverCatalog.eligibleThroughTier(unlockedTier);
-        for (int i = 0; i < eligibleDrivers.size(); i++) {
-            DriverProfileMetadata driver = eligibleDrivers.get(i);
-            if (driverCatalog.getTier(driver.getProfileId()) == unlockedTier
-                    && !driver.getProfileId().equals(
-                    progress.getLoadout().getDriverProfileId())) {
-                driverOffers.add(
-                        RogueliteCardOffer.driver(
-                                driver,
-                                driverCatalog.getTier(driver.getProfileId())));
+        if (gameRules.isCardTypeAllowed(RogueliteSlotType.DRIVER)) {
+            List<DriverProfileMetadata> eligibleDrivers =
+                    driverCatalog.eligibleThroughTier(unlockedTier);
+            for (int i = 0; i < eligibleDrivers.size(); i++) {
+                DriverProfileMetadata driver = eligibleDrivers.get(i);
+                if (driverCatalog.getTier(driver.getProfileId()) == unlockedTier
+                        && !driver.getProfileId().equals(
+                        progress.getLoadout().getDriverProfileId())) {
+                    driverOffers.add(
+                            RogueliteCardOffer.driver(
+                                    driver,
+                                    driverCatalog.getTier(driver.getProfileId())));
+                }
             }
         }
 
@@ -270,6 +290,7 @@ public final class RogueliteRun {
         for (int i = 0; i < cards.size(); i++) {
             RogueliteCardDefinition card = cards.get(i);
             if (card.getTier() == unlockedTier
+                    && gameRules.isCardTypeAllowed(card.getSlotType())
                     && !progress.getLoadout().has(card.getId())) {
                 modificationOffers.add(RogueliteCardOffer.modification(card));
             }
@@ -317,6 +338,9 @@ public final class RogueliteRun {
             RogueliteCompetitorProgress progress,
             RogueliteCardOffer offer) {
         if (offer == null || offer.getTier() != getUnlockedTier()) {
+            return false;
+        }
+        if (!gameRules.isCardTypeAllowed(offer.getSlotType())) {
             return false;
         }
         if (offer.isDriver()) {
@@ -384,7 +408,9 @@ public final class RogueliteRun {
         }
         try {
             RogueliteCompetitorProgress progress =
-                    new RogueliteCompetitorProgress(snapshot.driverProfileId);
+                    new RogueliteCompetitorProgress(
+                            snapshot.driverProfileId,
+                            gameRules.getLevelXpIncrement());
             for (int i = 0; i < snapshot.modificationCardIds.size(); i++) {
                 RogueliteCardId cardId =
                         RogueliteCardCatalog.resolveSavedId(
@@ -415,9 +441,22 @@ public final class RogueliteRun {
         return Collections.unmodifiableList(cards);
     }
 
-    private RogueliteCompetitorProgress newProgress() {
+    private RogueliteCompetitorProgress newPlayerProgress() {
         return new RogueliteCompetitorProgress(
-                driverCatalog.getWorst().getProfileId());
+                randomTierOneDriver().getProfileId(),
+                gameRules.getLevelXpIncrement());
+    }
+
+    private DriverProfileMetadata randomTierOneDriver() {
+        List<DriverProfileMetadata> tierOneDrivers =
+                driverCatalog.eligibleThroughTier(1);
+        return tierOneDrivers.get(random.nextInt(tierOneDrivers.size()));
+    }
+
+    private RogueliteCompetitorProgress newRivalProgress() {
+        return new RogueliteCompetitorProgress(
+                randomTierOneDriver().getProfileId(),
+                gameRules.getLevelXpIncrement());
     }
 
     private void repairDriver(

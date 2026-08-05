@@ -15,9 +15,38 @@ public final class RogueliteTournament {
     public Outcome resolve(
             int championshipNumber,
             List<Standing> standings) {
+        return resolve(
+                championshipNumber,
+                standings,
+                CHAMPIONSHIP_COUNT,
+                ELIMINATIONS_PER_CHAMPIONSHIP,
+                FINALIST_COUNT);
+    }
+
+    public Outcome resolve(
+            int championshipNumber,
+            List<Standing> standings,
+            int championshipCount,
+            int eliminationsPerChampionship) {
+        return resolve(
+                championshipNumber,
+                standings,
+                championshipCount,
+                eliminationsPerChampionship,
+                1);
+    }
+
+    private Outcome resolve(
+            int championshipNumber,
+            List<Standing> standings,
+            int championshipCount,
+            int eliminationsPerChampionship,
+            int minimumCompetitorCount) {
         if (championshipNumber < 1
                 || standings == null
-                || standings.isEmpty()) {
+                || standings.isEmpty()
+                || championshipCount < 1
+                || eliminationsPerChampionship < 0) {
             throw new IllegalArgumentException(
                     "A championship requires at least one standing.");
         }
@@ -50,14 +79,14 @@ public final class RogueliteTournament {
                     }
                 });
 
-        if (championshipNumber >= CHAMPIONSHIP_COUNT) {
+        if (championshipNumber >= championshipCount) {
             return Outcome.finalWinner(ordered.get(0).getVehicleId());
         }
 
         int eliminationCount =
                 Math.min(
-                        ELIMINATIONS_PER_CHAMPIONSHIP,
-                        Math.max(0, ordered.size() - FINALIST_COUNT));
+                        eliminationsPerChampionship,
+                        Math.max(0, ordered.size() - minimumCompetitorCount));
         List<Integer> eliminatedVehicleIds =
                 new ArrayList<Integer>(eliminationCount);
         for (int i = 0; i < eliminationCount; i++) {
@@ -70,7 +99,64 @@ public final class RogueliteTournament {
     }
 
     public boolean isFinalChampionship(int championshipNumber) {
-        return championshipNumber >= CHAMPIONSHIP_COUNT;
+        return isFinalChampionship(championshipNumber, CHAMPIONSHIP_COUNT);
+    }
+
+    public boolean isFinalChampionship(
+            int championshipNumber,
+            int championshipCount) {
+        return championshipNumber >= Math.max(1, championshipCount);
+    }
+
+    public boolean isLosingPosition(
+            int championshipNumber,
+            int position,
+            int competitorCount) {
+        return isLosingPosition(
+                championshipNumber,
+                position,
+                competitorCount,
+                CHAMPIONSHIP_COUNT,
+                ELIMINATIONS_PER_CHAMPIONSHIP,
+                FINALIST_COUNT);
+    }
+
+    public boolean isLosingPosition(
+            int championshipNumber,
+            int position,
+            int competitorCount,
+            int championshipCount,
+            int eliminationsPerChampionship) {
+        return isLosingPosition(
+                championshipNumber,
+                position,
+                competitorCount,
+                championshipCount,
+                eliminationsPerChampionship,
+                1);
+    }
+
+    private boolean isLosingPosition(
+            int championshipNumber,
+            int position,
+            int competitorCount,
+            int championshipCount,
+            int eliminationsPerChampionship,
+            int minimumCompetitorCount) {
+        if (position <= 1 || position > competitorCount) {
+            return false;
+        }
+        if (isFinalChampionship(championshipNumber, championshipCount)) {
+            return true;
+        }
+        if (competitorCount <= minimumCompetitorCount) {
+            return false;
+        }
+        int eliminationCount =
+                Math.min(
+                        Math.max(0, eliminationsPerChampionship),
+                        competitorCount - minimumCompetitorCount);
+        return position > competitorCount - eliminationCount;
     }
 
     private void validateUniqueVehicles(List<Standing> standings) {

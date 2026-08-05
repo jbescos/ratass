@@ -19,7 +19,7 @@ public final class RogueliteCarUpgrades {
         configure(loadout, 0f);
     }
 
-    public void configure(RogueliteLoadout loadout, float gadgetCycleOffset) {
+    public void configure(RogueliteLoadout loadout, float powerupCycleOffset) {
         effects.clear();
         activeCardIds.clear();
         frame.clear();
@@ -34,7 +34,7 @@ public final class RogueliteCarUpgrades {
             RogueliteUpgradeEffect effect =
                     RogueliteEffectFactory.create(
                             cardIds.get(i),
-                            gadgetCycleOffset);
+                            powerupCycleOffset);
             effects.add(effect);
             timedEffectDecay = Math.min(timedEffectDecay, effect.timedEffectDecay());
             overtakeInjectorEnabled |= effect.tracksRacePosition();
@@ -53,21 +53,44 @@ public final class RogueliteCarUpgrades {
         return readOnlyActiveCardIds;
     }
 
-    public RogueliteCardId getActiveGadgetCardId() {
+    public RogueliteCardId getActivePowerupCardId() {
         for (int i = 0; i < activeCardIds.size(); i++) {
             RogueliteCardId cardId = activeCardIds.get(i);
-            if (RogueliteCardCatalog.get(cardId).getSlotType() == RogueliteSlotType.GADGET) {
+            if (RogueliteCardCatalog.get(cardId).getSlotType() == RogueliteSlotType.POWERUP) {
                 return cardId;
             }
         }
         return null;
     }
 
-    public boolean isGadgetReady() {
+    public RogueliteCardId getActiveTechniqueCardId() {
+        for (int i = 0; i < activeCardIds.size(); i++) {
+            RogueliteCardId cardId = activeCardIds.get(i);
+            if (RogueliteCardCatalog.get(cardId).getSlotType() == RogueliteSlotType.TECHNIQUE) {
+                return cardId;
+            }
+        }
+        return null;
+    }
+
+    public RogueliteCardId getActiveAbilityCardId() {
+        for (int i = 0; i < activeCardIds.size(); i++) {
+            RogueliteCardId cardId = activeCardIds.get(i);
+            RogueliteSlotType slotType =
+                    RogueliteCardCatalog.get(cardId).getSlotType();
+            if (slotType == RogueliteSlotType.POWERUP
+                    || slotType == RogueliteSlotType.REVENGE) {
+                return cardId;
+            }
+        }
+        return null;
+    }
+
+    public boolean isPowerupReady() {
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
             if (RogueliteCardCatalog.get(effect.getCardId()).getSlotType()
-                            == RogueliteSlotType.GADGET
+                            == RogueliteSlotType.POWERUP
                     && effect.isReady()) {
                 return true;
             }
@@ -75,15 +98,72 @@ public final class RogueliteCarUpgrades {
         return false;
     }
 
-    public float getGadgetReadiness() {
+    public float getPowerupReadiness() {
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
             if (RogueliteCardCatalog.get(effect.getCardId()).getSlotType()
-                    == RogueliteSlotType.GADGET) {
+                    == RogueliteSlotType.POWERUP) {
                 return effect.readiness();
             }
         }
         return 0f;
+    }
+
+    public boolean isRevengeArmed() {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            if (RogueliteCardCatalog.get(effect.getCardId()).getSlotType()
+                            == RogueliteSlotType.REVENGE
+                    && effect.isArmed()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public float getRevengeReadiness() {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            if (RogueliteCardCatalog.get(effect.getCardId()).getSlotType()
+                    == RogueliteSlotType.REVENGE) {
+                return effect.readiness();
+            }
+        }
+        return 0f;
+    }
+
+    public RogueliteCardId getRevengeCardId() {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteCardId cardId = effects.get(i).getCardId();
+            if (RogueliteCardCatalog.get(cardId).getSlotType()
+                    == RogueliteSlotType.REVENGE) {
+                return cardId;
+            }
+        }
+        return null;
+    }
+
+    public float getActiveTimeRemainingSeconds(RogueliteCardId cardId) {
+        RogueliteUpgradeEffect effect = findEffect(cardId);
+        return effect == null ? 0f : effect.activeTimeRemainingSeconds();
+    }
+
+    public float getCooldownTimeRemainingSeconds(RogueliteCardId cardId) {
+        RogueliteUpgradeEffect effect = findEffect(cardId);
+        return effect == null ? 0f : effect.cooldownTimeRemainingSeconds();
+    }
+
+    private RogueliteUpgradeEffect findEffect(RogueliteCardId cardId) {
+        if (cardId == null) {
+            return null;
+        }
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            if (effect.getCardId() == cardId) {
+                return effect;
+            }
+        }
+        return null;
     }
 
     public void update(
@@ -193,6 +273,84 @@ public final class RogueliteCarUpgrades {
             float nextCornerSeverity,
             float opponentAheadProximity,
             float nearbyOpponentProximity) {
+        update(
+                delta,
+                throttle,
+                onRoad,
+                adverseWeather,
+                recentlyImpacted,
+                slip,
+                speedRatio,
+                slipstreamBoost,
+                routeProgress,
+                routeLength,
+                safeRecoveryRouteGain,
+                cornerSeverity,
+                nextCornerDistance,
+                nextCornerSeverity,
+                opponentAheadProximity,
+                nearbyOpponentProximity,
+                false);
+    }
+
+    public void update(
+            float delta,
+            float throttle,
+            boolean onRoad,
+            boolean adverseWeather,
+            boolean recentlyImpacted,
+            float slip,
+            float speedRatio,
+            float slipstreamBoost,
+            float routeProgress,
+            float routeLength,
+            float safeRecoveryRouteGain,
+            float cornerSeverity,
+            float nextCornerDistance,
+            float nextCornerSeverity,
+            float opponentAheadProximity,
+            float nearbyOpponentProximity,
+            boolean forwardLaneBlocked) {
+        update(
+                delta,
+                throttle,
+                onRoad,
+                adverseWeather,
+                recentlyImpacted,
+                slip,
+                speedRatio,
+                slipstreamBoost,
+                routeProgress,
+                routeLength,
+                safeRecoveryRouteGain,
+                cornerSeverity,
+                nextCornerDistance,
+                nextCornerSeverity,
+                opponentAheadProximity,
+                nearbyOpponentProximity,
+                forwardLaneBlocked,
+                0f);
+    }
+
+    public void update(
+            float delta,
+            float throttle,
+            boolean onRoad,
+            boolean adverseWeather,
+            boolean recentlyImpacted,
+            float slip,
+            float speedRatio,
+            float slipstreamBoost,
+            float routeProgress,
+            float routeLength,
+            float safeRecoveryRouteGain,
+            float cornerSeverity,
+            float nextCornerDistance,
+            float nextCornerSeverity,
+            float opponentAheadProximity,
+            float nearbyOpponentProximity,
+            boolean forwardLaneBlocked,
+            float racePositionFactor) {
         if (effects.isEmpty()) {
             return;
         }
@@ -211,7 +369,9 @@ public final class RogueliteCarUpgrades {
                 RogueliteEffectMath.clamp(nextCornerDistance, 0f, 1f),
                 RogueliteEffectMath.clamp(nextCornerSeverity, 0f, 1f),
                 RogueliteEffectMath.clamp(opponentAheadProximity, 0f, 1f),
-                RogueliteEffectMath.clamp(nearbyOpponentProximity, 0f, 1f));
+                RogueliteEffectMath.clamp(nearbyOpponentProximity, 0f, 1f),
+                forwardLaneBlocked,
+                RogueliteEffectMath.clamp(racePositionFactor, 0f, 1f));
         float timerDelta = delta * timedEffectDecay;
         for (int i = 0; i < effects.size(); i++) {
             effects.get(i).advance(delta, timerDelta, frame);
@@ -323,15 +483,32 @@ public final class RogueliteCarUpgrades {
         return RogueliteEffectMath.clamp(speedRatio, 0f, 0.50f);
     }
 
-    public boolean consumeDraftMagnetPulse() {
-        boolean pulse = false;
+    public boolean isDraftMagnetActive() {
         for (int i = 0; i < effects.size(); i++) {
-            pulse |= effects.get(i).consumeDraftMagnetPulse();
+            if (effects.get(i).isDraftMagnetActive()) {
+                return true;
+            }
         }
-        return pulse;
+        return false;
     }
 
-    public boolean isRamGadgetActive() {
+    public float getDraftMagnetRangeMultiplier() {
+        float multiplier = 1f;
+        for (int i = 0; i < effects.size(); i++) {
+            multiplier = Math.max(multiplier, effects.get(i).draftMagnetRangeMultiplier());
+        }
+        return multiplier;
+    }
+
+    public float getDraftMagnetForceMultiplier() {
+        float multiplier = 1f;
+        for (int i = 0; i < effects.size(); i++) {
+            multiplier = Math.max(multiplier, effects.get(i).draftMagnetForceMultiplier());
+        }
+        return multiplier;
+    }
+
+    public boolean isRamChargeActive() {
         for (int i = 0; i < effects.size(); i++) {
             if (effects.get(i).isRamChargeActive()) {
                 return true;
@@ -340,9 +517,25 @@ public final class RogueliteCarUpgrades {
         return false;
     }
 
-    public void consumeRamGadgetCharge() {
+    public void consumeRamCharge() {
         for (int i = 0; i < effects.size(); i++) {
             effects.get(i).consumeRamCharge();
+        }
+        refreshActiveCards();
+    }
+
+    public boolean isImpactCounterReady() {
+        for (int i = 0; i < effects.size(); i++) {
+            if (effects.get(i).isImpactCounterReady()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void consumeImpactCounter() {
+        for (int i = 0; i < effects.size(); i++) {
+            effects.get(i).consumeImpactCounter();
         }
         refreshActiveCards();
     }
@@ -359,6 +552,56 @@ public final class RogueliteCarUpgrades {
             effects.get(i).onCollision(impactStrength);
         }
         refreshActiveCards();
+    }
+
+    public void onHitBy(int vehicleId, float impactStrength) {
+        for (int i = 0; i < effects.size(); i++) {
+            effects.get(i).onHitBy(vehicleId, impactStrength);
+        }
+        refreshActiveCards();
+    }
+
+    public boolean isInvisible() {
+        for (int i = 0; i < effects.size(); i++) {
+            if (effects.get(i).isInvisible()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean blocksHostileEffects() {
+        return isInvisible();
+    }
+
+    public void deferInvisibilityExpiration() {
+        for (int i = 0; i < effects.size(); i++) {
+            effects.get(i).deferInvisibilityExpiration();
+        }
+    }
+
+    public int getRevengeTargetVehicleId() {
+        for (int i = 0; i < effects.size(); i++) {
+            int targetVehicleId = effects.get(i).revengeTargetVehicleId();
+            if (targetVehicleId >= 0) {
+                return targetVehicleId;
+            }
+        }
+        return -1;
+    }
+
+    public RogueliteRevengeStrike tryActivateOffenderStrike(
+            int targetVehicleId,
+            float distance) {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteRevengeStrike strike =
+                    effects.get(i).tryActivateOffenderStrike(targetVehicleId, distance);
+            if (strike != null) {
+                refreshActiveCards();
+                return strike;
+            }
+        }
+        return null;
     }
 
     private void refreshActiveCards() {

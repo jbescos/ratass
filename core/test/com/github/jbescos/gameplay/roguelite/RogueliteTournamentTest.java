@@ -58,6 +58,27 @@ public class RogueliteTournamentTest {
     }
 
     @Test
+    public void finalChampionshipMarksEveryNonWinnerAsLosing() {
+        RogueliteTournament tournament = new RogueliteTournament();
+
+        assertFalse(tournament.isLosingPosition(3, 1, 4));
+        assertTrue(tournament.isLosingPosition(3, 2, 4));
+        assertTrue(tournament.isLosingPosition(3, 3, 4));
+        assertTrue(tournament.isLosingPosition(3, 4, 4));
+    }
+
+    @Test
+    public void earlierChampionshipMarksOnlyBottomThree() {
+        RogueliteTournament tournament = new RogueliteTournament();
+
+        assertFalse(tournament.isLosingPosition(1, 6, 10));
+        assertFalse(tournament.isLosingPosition(1, 7, 10));
+        assertTrue(tournament.isLosingPosition(1, 8, 10));
+        assertTrue(tournament.isLosingPosition(1, 9, 10));
+        assertTrue(tournament.isLosingPosition(1, 10, 10));
+    }
+
+    @Test
     public void latestFinishBreaksEqualPointsBeforeVehicleId() {
         RogueliteTournament tournament = new RogueliteTournament();
         List<RogueliteTournament.Standing> standings =
@@ -79,6 +100,24 @@ public class RogueliteTournamentTest {
                         Integer.valueOf(10),
                         Integer.valueOf(9)),
                 outcome.getEliminatedVehicleIds());
+    }
+
+    @Test
+    public void customTournamentUsesConfiguredLengthAndNeverEliminatesWinner() {
+        RogueliteTournament tournament = new RogueliteTournament();
+        List<RogueliteTournament.Standing> standings =
+                standingsFor(Arrays.asList(0, 1, 2));
+
+        RogueliteTournament.Outcome first =
+                tournament.resolve(1, standings, 4, 9);
+        RogueliteTournament.Outcome finalOutcome =
+                tournament.resolve(4, standings, 4, 9);
+
+        assertFalse(first.isFinalChampionship());
+        assertEquals(2, first.getEliminatedVehicleIds().size());
+        assertFalse(first.getEliminatedVehicleIds().contains(Integer.valueOf(0)));
+        assertTrue(finalOutcome.isFinalChampionship());
+        assertEquals(0, finalOutcome.getWinningVehicleId());
     }
 
     private static List<RogueliteTournament.Standing> standingsFor(

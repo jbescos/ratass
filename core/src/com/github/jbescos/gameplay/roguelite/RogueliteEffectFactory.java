@@ -6,15 +6,28 @@ final class RogueliteEffectFactory {
 
     static RogueliteUpgradeEffect create(
             RogueliteCardId id,
-            float gadgetCycleOffset) {
+            float powerupCycleOffset) {
+        if (id == RogueliteCardId.TAR_TETHER
+                || id == RogueliteCardId.EMP_SNARE
+                || id == RogueliteCardId.VOID_ANCHOR
+                || id == RogueliteCardId.DRAFT_VENDETTA
+                || id == RogueliteCardId.RECOVERY_BEACON
+                || id == RogueliteCardId.PAYBACK_SHIELD) {
+            return new TargetedRevengeEffect(id);
+        }
+        if (id == RogueliteCardId.CROWN_ENGINE) {
+            return new CrownBreakerRevengeEffect();
+        }
         RogueliteCardDefinition definition = RogueliteCardCatalog.get(id);
         switch (definition.getSlotType()) {
             case TUNING:
                 return new TieredTuningEffect(id);
             case TECHNIQUE:
                 return new RaceTechniqueEffect(id);
-            case GADGET:
-                return new CooldownGadgetEffect(id, gadgetCycleOffset);
+            case POWERUP:
+                return new CooldownPowerupEffect(id, powerupCycleOffset);
+            case REVENGE:
+                return new ReactiveRevengeEffect(id);
             default:
                 throw new IllegalArgumentException("Unsupported roguelite card slot: " + id);
         }

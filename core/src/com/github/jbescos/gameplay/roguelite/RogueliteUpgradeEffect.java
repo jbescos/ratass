@@ -25,7 +25,19 @@ abstract class RogueliteUpgradeEffect {
         return false;
     }
 
+    boolean isArmed() {
+        return false;
+    }
+
     float readiness() {
+        return 0f;
+    }
+
+    float activeTimeRemainingSeconds() {
+        return 0f;
+    }
+
+    float cooldownTimeRemainingSeconds() {
         return 0f;
     }
 
@@ -96,8 +108,16 @@ abstract class RogueliteUpgradeEffect {
         return 0f;
     }
 
-    boolean consumeDraftMagnetPulse() {
+    boolean isDraftMagnetActive() {
         return false;
+    }
+
+    float draftMagnetRangeMultiplier() {
+        return 1f;
+    }
+
+    float draftMagnetForceMultiplier() {
+        return 1f;
     }
 
     boolean isRamChargeActive() {
@@ -107,9 +127,36 @@ abstract class RogueliteUpgradeEffect {
     void consumeRamCharge() {
     }
 
+    boolean isImpactCounterReady() {
+        return false;
+    }
+
+    void consumeImpactCounter() {
+    }
+
     void onRacePositionImproved(int positionsGained, float slipstreamBoost) {
     }
 
     void onCollision(float impactStrength) {
+    }
+
+    void onHitBy(int vehicleId, float impactStrength) {
+    }
+
+    boolean isInvisible() {
+        return false;
+    }
+
+    void deferInvisibilityExpiration() {
+    }
+
+    int revengeTargetVehicleId() {
+        return -1;
+    }
+
+    RogueliteRevengeStrike tryActivateOffenderStrike(
+            int targetVehicleId,
+            float distance) {
+        return null;
     }
 }

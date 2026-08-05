@@ -32,8 +32,21 @@ public final class SandboxLoadoutConfiguration {
         if (driverCatalog == null) {
             throw new IllegalArgumentException("Driver catalog is required.");
         }
+        reset(driverCatalog, driverCatalog.getWorst().getProfileId());
+    }
+
+    public void reset(
+            DriverProfileCatalog driverCatalog,
+            String initialDriverProfileId) {
+        if (driverCatalog == null) {
+            throw new IllegalArgumentException("Driver catalog is required.");
+        }
+        if (driverCatalog.get(initialDriverProfileId) == null) {
+            throw new IllegalArgumentException(
+                    "Unknown initial driver profile: " + initialDriverProfileId);
+        }
         controlMode = ControlMode.AUTOMATIC;
-        loadout = new RogueliteLoadout(driverCatalog.getWorst().getProfileId());
+        loadout = new RogueliteLoadout(initialDriverProfileId);
         availableChoices = buildAvailableChoices(driverCatalog);
     }
 

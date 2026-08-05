@@ -1,0 +1,82 @@
+package com.github.jbescos.presentation;
+
+public final class RogueliteResponsiveCardLayout {
+    private static final float SHORT_LANDSCAPE_HEIGHT = 560f;
+
+    private RogueliteResponsiveCardLayout() {}
+
+    public static boolean isShortLandscape(float width, float height) {
+        return width > height && height < SHORT_LANDSCAPE_HEIGHT;
+    }
+
+    public static int rewardSectionColumns(
+            float width,
+            float height,
+            int itemCount,
+            int wideColumns) {
+        if (itemCount <= 0 || wideColumns <= 0) {
+            return 0;
+        }
+        boolean constrained =
+                isShortLandscape(width, height)
+                        || (height > width && width < 900f);
+        int columns = constrained ? 3 : wideColumns;
+        return Math.min(itemCount, columns);
+    }
+
+    public static boolean showCarStats(float height) {
+        return height >= 520f;
+    }
+
+    public static int collectionPageCapacity(
+            float width,
+            float height,
+            int maximumCards) {
+        return Math.max(0, Math.min(3, maximumCards));
+    }
+
+    public static int equippedLoadoutPageCapacity(int maximumCards) {
+        return Math.max(0, maximumCards);
+    }
+
+    public static int equippedLoadoutColumns(
+            float width,
+            float height,
+            int cardCount) {
+        if (cardCount <= 0) {
+            return 0;
+        }
+        if (width < 560f) {
+            return 1;
+        }
+        if (height > width && width < 900f) {
+            return Math.min(2, cardCount);
+        }
+        if (isShortLandscape(width, height)) {
+            return Math.min(3, cardCount);
+        }
+        return Math.min(5, cardCount);
+    }
+
+    public static float minimumTouchTarget(float width, float height) {
+        float shortSide = Math.max(1f, Math.min(width, height));
+        return Math.max(56f, Math.min(72f, shortSide * 0.085f));
+    }
+
+    public static float cardsButtonSize(float width, float height) {
+        float shortSide = Math.max(1f, Math.min(width, height));
+        return Math.max(88f, Math.min(120f, shortSide * 0.14f));
+    }
+
+    public static float mainMenuButtonHeight(float screenHeight) {
+        return Math.max(60f, Math.min(84f, screenHeight * 0.105f));
+    }
+
+    public static float centeredTextBaseline(
+            float bottom,
+            float height,
+            float capHeight) {
+        return bottom
+                + (Math.max(0f, height) + Math.max(0f, capHeight)) * 0.5f;
+    }
+}

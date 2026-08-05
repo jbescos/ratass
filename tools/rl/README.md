@@ -15,6 +15,13 @@ tools/rl/evaluate_tuning_cards.py --profile profile04 --laps 3
 
 The benchmark equips one tuning card at a time in the headless lap evaluator.
 
+Powerup balance uses the same isolated evaluator, including contextual
+activation and cooldown behavior:
+
+```bash
+tools/rl/evaluate_powerup_cards.py --profile profile04 --laps 3
+```
+
 ## Build
 
 ```bash

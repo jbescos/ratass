@@ -19,11 +19,18 @@ ends immediately if the player is in the bottom three after championships 1 or 2
 Championship ties are resolved by the latest race finish, then by stable
 vehicle ID.
 
+Infinite mode uses the same races, XP, cards, and ten-car starting field, but
+does not run championship elimination or a final win/loss check. After every
+circuit has been raced, the circuit order is reshuffled and starts again with
+all ten cars, accumulated points, experience, levels, and loadouts intact.
+Completing a full circuit loop advances card-tier progression, capped at tier
+3.
+
 The player and every rival have independent progression. Rivals earn the same
 position-based experience. They maximize tier gain across the complete loadout
 and prefer the weakest slot when gains tie. Driver benchmark rating breaks ties
 between otherwise equal upgrades. This prevents repeated marginal driver swaps
-from leaving tuning, technique, or gadget slots empty or under-tiered.
+from leaving tuning, technique, powerup, or revenge slots empty or under-tiered.
 
 ## Experience
 
@@ -41,12 +48,13 @@ from leaving tuning, technique, or gadget slots empty or under-tiered.
 
 ## Loadout
 
-Each competitor has four fixed slots:
+Each competitor has five fixed slots:
 
 - Driver.
 - Tuning.
 - Technique.
-- Gadget.
+- Powerup.
+- Revenge.
 
 Cards have no upgrade levels. Selecting a card previews it in its matching
 slot. Accepting commits the replacement, cancelling restores the displayed
@@ -106,7 +114,7 @@ generated.
 ## Card Families
 
 Tuning cards are permanent, predictable setups. They include lightweight mass,
-reinforced heavy-contact, and low-drag aerodynamic choices alongside balanced
+reinforced heavy-contact, and aero-efficiency choices alongside balanced
 power, top-speed, and grip packages. They deliberately do not change braking.
 
 Technique cards reward driving events rather than running on a timer. The
@@ -114,11 +122,11 @@ catalog includes corner-exit launches, drafting, clean momentum, road recovery,
 drift and slipstream releases, overtaking, fast apexes, perfect laps, and
 combined racecraft. A failed event provides no benefit.
 
-Gadgets are visible, automatic abilities with contextual triggers and
+Powerups are visible, automatic abilities with contextual triggers and
 cooldowns. Nitro, rockets, overdrive, and hyperdrive wait for open straights;
 grip devices wait for corners; draft devices wait for a rival ahead; shields
 wait for close traffic; and the Ram Reactor arms only when a rival is close in
-front. Triggering starts the cooldown, so a gadget cannot fire continuously.
+front. Triggering starts the cooldown, so a powerup cannot fire continuously.
 
 There are no explicit card-pair IDs or hidden combination bonuses. Equipped
 effects act on the same car and can combine naturally, making useful loadouts
@@ -132,15 +140,15 @@ image. The atlas is loaded lazily by presentation code.
 
 - RL training never creates progression, presents cards, advances rivals, or
   applies card modifiers.
-- Card artwork and gadget animation state are created and updated only while
+- Card artwork and ability animation state are created and updated only while
   presentation is enabled.
-- Sandbox mode applies the four-card loadout configured from its card catalog.
+- Sandbox mode applies the five-slot loadout configured from its card catalog.
 - Normal races configure each car from its persistent run loadout when a
   circuit starts.
 - Runtime effect state, such as a temporary boost timer, resets between
   circuits.
-- Driver choice, modifications, XP, level, championship, survivors, and
-  pending rewards are saved for the current run.
+- Competition mode, driver choice, modifications, XP, level, progression
+  cycle, survivors, and pending rewards are saved for the current run.
 
 ## Code Structure
 
@@ -157,10 +165,10 @@ The implementation is under
 - `RogueliteCarUpgrades` combines equipped effects and dispatches driving
   events.
 - `RogueliteUpgradeEffect` is the stable runtime effect contract.
-- `TieredTuningEffect`, `RaceTechniqueEffect`, and `CooldownGadgetEffect`
-  implement the three card families.
+- `TieredTuningEffect`, `RaceTechniqueEffect`, `CooldownPowerupEffect`, and
+  `CooldownRevengeEffect` implement the four modification families.
 - `RogueliteEffectFactory` dispatches catalog IDs to those family effects.
-- `GadgetActivationVisual` contains presentation-only gadget animation state.
+- `AbilityActivationVisual` contains presentation-only ability animation state.
 - `RatassGame` coordinates races, progression screens, save transitions, and
   rendering.
 

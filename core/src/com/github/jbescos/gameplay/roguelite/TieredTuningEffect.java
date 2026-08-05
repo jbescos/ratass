@@ -66,6 +66,16 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
                 recoil = 0.98f;
                 push = 1.02f;
                 break;
+            case CARBON_PANELS:
+                acceleration = 0.03f;
+                speed = 0.03f;
+                drag = 0.96f;
+                mass = 0.94f;
+                grip = 0.01f;
+                steering = 0.03f;
+                recoil = 1f;
+                push = 1f;
+                break;
             case RACE_TUNE:
                 acceleration = 0.34f;
                 speed = 0.14f;
@@ -107,6 +117,16 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
                 recoil = 1f;
                 push = 1.08f;
                 break;
+            case CARBON_MONOCOQUE:
+                acceleration = 0.27f;
+                speed = 0.12f;
+                drag = 0.88f;
+                mass = 0.88f;
+                grip = 0.12f;
+                steering = 0.08f;
+                recoil = 1f;
+                push = 1f;
+                break;
             case CHAMPIONSHIP_TUNE:
                 acceleration = 0.56f;
                 speed = 0.24f;
@@ -138,14 +158,24 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
                 push = 1.10f;
                 break;
             case TORQUE_VECTORING:
-                acceleration = 0.68f;
-                speed = 0.32f;
-                drag = 0.68f;
-                mass = 1.10f;
-                grip = 0.18f;
-                steering = 0.04f;
-                recoil = 0.84f;
-                push = 1.22f;
+                acceleration = 0.64f;
+                speed = 0.25f;
+                drag = 0.86f;
+                mass = 1.06f;
+                grip = 0.26f;
+                steering = 0.14f;
+                recoil = 0.80f;
+                push = 1.18f;
+                break;
+            case GRAPHENE_CHASSIS:
+                acceleration = 0.43f;
+                speed = 0.20f;
+                drag = 0.82f;
+                mass = 0.82f;
+                grip = 0.17f;
+                steering = 0.12f;
+                recoil = 1f;
+                push = 1f;
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported tuning card: " + cardId);

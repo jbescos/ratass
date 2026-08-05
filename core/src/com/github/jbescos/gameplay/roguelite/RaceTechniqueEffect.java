@@ -19,6 +19,9 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
 
     @Override
     boolean isActive() {
+        if (isConditionalStatCard()) {
+            return conditionalStatBonus() > 0.001f;
+        }
         if (getCardId() == RogueliteCardId.DRAFT_HUNTER) {
             return latestFrame != null && latestFrame.slipstreamBoost > 0.01f;
         }
@@ -33,7 +36,8 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
     @Override
     boolean tracksRacePosition() {
         return getCardId() == RogueliteCardId.OVERTAKE_SURGE
-                || getCardId() == RogueliteCardId.RACECRAFT_MASTERY;
+                || getCardId() == RogueliteCardId.RACECRAFT_MASTERY
+                || isPositionCatchupCard();
     }
 
     @Override
@@ -71,6 +75,13 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
             case RACECRAFT_MASTERY:
                 updateRacecraft(delta, frame);
                 break;
+            case UNDERDOG_INSTINCT:
+            case COMEBACK_DRIVE:
+            case LAST_PLACE_FURY:
+            case CLOSE_QUARTERS:
+            case PACK_RACER:
+            case TRAFFIC_DOMINANCE:
+                break;
             default:
                 throw new IllegalStateException("Unsupported technique card: " + getCardId());
         }
@@ -100,6 +111,9 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
 
     @Override
     float accelerationBonus() {
+        if (isConditionalStatCard()) {
+            return conditionalStatBonus();
+        }
         if (boostTimer > 0f) {
             return boostStrength;
         }
@@ -117,6 +131,9 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
 
     @Override
     float maxSpeedBonus() {
+        if (isConditionalStatCard()) {
+            return conditionalStatBonus();
+        }
         if (getCardId() == RogueliteCardId.CLEAN_MOMENTUM) {
             return charge * 0.07f;
         }
@@ -131,6 +148,9 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
 
     @Override
     float gripBonus(float slip) {
+        if (isConditionalStatCard()) {
+            return conditionalStatBonus();
+        }
         if (getCardId() == RogueliteCardId.RECOVERY_LAUNCH && boostTimer > 0f) {
             return 0.18f;
         }
@@ -141,6 +161,12 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
             return 0.15f;
         }
         return 0f;
+    }
+
+    @Override
+    float dragMultiplier() {
+        float bonus = conditionalStatBonus();
+        return bonus <= 0f ? 1f : 1f / (1f + bonus);
     }
 
     @Override
@@ -292,6 +318,66 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
             boostTimer = 1.9f;
             loadingEvent = false;
             charge = 0f;
+        }
+    }
+
+    private boolean isPositionCatchupCard() {
+        return getCardId() == RogueliteCardId.UNDERDOG_INSTINCT
+                || getCardId() == RogueliteCardId.COMEBACK_DRIVE
+                || getCardId() == RogueliteCardId.LAST_PLACE_FURY;
+    }
+
+    private boolean isNearbyRivalCard() {
+        return getCardId() == RogueliteCardId.CLOSE_QUARTERS
+                || getCardId() == RogueliteCardId.PACK_RACER
+                || getCardId() == RogueliteCardId.TRAFFIC_DOMINANCE;
+    }
+
+    private boolean isConditionalStatCard() {
+        return isPositionCatchupCard() || isNearbyRivalCard();
+    }
+
+    private float conditionalStatBonus() {
+        if (isPositionCatchupCard()) {
+            return positionBonus();
+        }
+        return nearbyRivalBonus();
+    }
+
+    private float positionBonus() {
+        if (latestFrame == null) {
+            return 0f;
+        }
+        float maximum;
+        switch (getCardId()) {
+            case UNDERDOG_INSTINCT:
+                maximum = 0.10f;
+                break;
+            case COMEBACK_DRIVE:
+                maximum = 0.15f;
+                break;
+            case LAST_PLACE_FURY:
+                maximum = 0.20f;
+                break;
+            default:
+                return 0f;
+        }
+        return maximum * latestFrame.racePositionFactor;
+    }
+
+    private float nearbyRivalBonus() {
+        if (latestFrame == null || latestFrame.nearbyOpponentProximity <= 0.01f) {
+            return 0f;
+        }
+        switch (getCardId()) {
+            case CLOSE_QUARTERS:
+                return 0.05f;
+            case PACK_RACER:
+                return 0.10f;
+            case TRAFFIC_DOMINANCE:
+                return 0.15f;
+            default:
+                return 0f;
         }
     }
 }

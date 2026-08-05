@@ -8,11 +8,12 @@ public enum RogueliteSlotType {
     DRIVER("Driver"),
     TUNING("Tuning"),
     TECHNIQUE("Technique"),
-    GADGET("Gadget");
+    POWERUP("Powerup"),
+    REVENGE("Revenge");
 
     private static final List<RogueliteSlotType> MODIFICATION_SLOTS =
             Collections.unmodifiableList(
-                    Arrays.asList(TUNING, TECHNIQUE, GADGET));
+                    Arrays.asList(TUNING, TECHNIQUE, POWERUP, REVENGE));
 
     private final String displayName;
 

@@ -1,14 +1,14 @@
 package com.github.jbescos.gameplay.roguelite;
 
 public final class RogueliteCardDefinition {
-    public static final int ARTWORK_CAPACITY = 36;
+    public static final int ARTWORK_CAPACITY = 54;
     private final RogueliteCardId id;
     private final String title;
     private final String description;
     private final String effectText;
     private final int tier;
     private final RogueliteSlotType slotType;
-    private final RogueliteGadgetVisualStyle gadgetVisualStyle;
+    private final RogueliteAbilityVisualStyle abilityVisualStyle;
     private final int artworkIndex;
 
     RogueliteCardDefinition(
@@ -18,7 +18,7 @@ public final class RogueliteCardDefinition {
             String effectText,
             int tier,
             RogueliteSlotType slotType,
-            RogueliteGadgetVisualStyle gadgetVisualStyle,
+            RogueliteAbilityVisualStyle abilityVisualStyle,
             int artworkIndex) {
         if (effectText == null || effectText.length() == 0) {
             throw new IllegalArgumentException("A card requires an effect.");
@@ -29,8 +29,12 @@ public final class RogueliteCardDefinition {
         if (slotType == null || slotType.isDriver()) {
             throw new IllegalArgumentException("A modification card requires a modification slot.");
         }
-        if ((slotType == RogueliteSlotType.GADGET) != (gadgetVisualStyle != null)) {
-            throw new IllegalArgumentException("Only gadget cards require a visual style.");
+        boolean activeAbility =
+                slotType == RogueliteSlotType.POWERUP
+                        || slotType == RogueliteSlotType.REVENGE;
+        if (activeAbility != (abilityVisualStyle != null)) {
+            throw new IllegalArgumentException(
+                    "Only powerup and revenge cards require a visual style.");
         }
         if (artworkIndex < 0 || artworkIndex >= ARTWORK_CAPACITY) {
             throw new IllegalArgumentException("Card artwork index is out of range.");
@@ -41,7 +45,7 @@ public final class RogueliteCardDefinition {
         this.effectText = effectText;
         this.tier = tier;
         this.slotType = slotType;
-        this.gadgetVisualStyle = gadgetVisualStyle;
+        this.abilityVisualStyle = abilityVisualStyle;
         this.artworkIndex = artworkIndex;
     }
 
@@ -69,8 +73,8 @@ public final class RogueliteCardDefinition {
         return slotType;
     }
 
-    public RogueliteGadgetVisualStyle getGadgetVisualStyle() {
-        return gadgetVisualStyle;
+    public RogueliteAbilityVisualStyle getAbilityVisualStyle() {
+        return abilityVisualStyle;
     }
 
     public int getArtworkIndex() {

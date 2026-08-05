@@ -16,6 +16,8 @@ final class RogueliteDrivingFrame {
     float nextCornerSeverity;
     float opponentAheadProximity;
     float nearbyOpponentProximity;
+    boolean forwardLaneBlocked;
+    float racePositionFactor;
 
     void set(
             float throttle,
@@ -32,7 +34,9 @@ final class RogueliteDrivingFrame {
             float nextCornerDistance,
             float nextCornerSeverity,
             float opponentAheadProximity,
-            float nearbyOpponentProximity) {
+            float nearbyOpponentProximity,
+            boolean forwardLaneBlocked,
+            float racePositionFactor) {
         this.throttle = throttle;
         this.onRoad = onRoad;
         this.adverseWeather = adverseWeather;
@@ -48,6 +52,8 @@ final class RogueliteDrivingFrame {
         this.nextCornerSeverity = nextCornerSeverity;
         this.opponentAheadProximity = opponentAheadProximity;
         this.nearbyOpponentProximity = nearbyOpponentProximity;
+        this.forwardLaneBlocked = forwardLaneBlocked;
+        this.racePositionFactor = racePositionFactor;
     }
 
     void clear() {
@@ -66,6 +72,8 @@ final class RogueliteDrivingFrame {
                 1f,
                 0f,
                 0f,
+                0f,
+                false,
                 0f);
     }
 }

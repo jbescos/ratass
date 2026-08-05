@@ -47,4 +47,12 @@ public class RogueliteCardSkinAtlasTest {
         assertEquals(164f, RogueliteCardSkinAtlas.artworkWindowBottom(height), 0.001f);
         assertEquals(316f, RogueliteCardSkinAtlas.artworkWindowTop(height), 0.001f);
     }
+
+    @Test
+    public void footerLabelMatchesTheCenteredShellSocket() {
+        assertEquals(119.04f, RogueliteCardSkinAtlas.footerLabelLeft(384f), 0.001f);
+        assertEquals(138.24f, RogueliteCardSkinAtlas.footerLabelWidth(384f), 0.001f);
+        assertEquals(18.944f, RogueliteCardSkinAtlas.footerLabelBottom(512f), 0.001f);
+        assertEquals(18.944f, RogueliteCardSkinAtlas.footerLabelHeight(512f), 0.001f);
+    }
 }

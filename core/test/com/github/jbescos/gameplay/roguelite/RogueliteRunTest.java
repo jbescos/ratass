@@ -8,10 +8,41 @@ import static org.junit.Assert.assertTrue;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import org.junit.Test;
 
 public class RogueliteRunTest {
+    @Test
+    public void customRulesFilterOffersAndChangeTheExperienceCurve() {
+        RogueliteRun run = new RogueliteRun(9L);
+        CustomGameRules rules = new CustomGameRules();
+        rules.toggleCardType(RogueliteSlotType.DRIVER);
+        rules.toggleCardType(RogueliteSlotType.TUNING);
+        rules.toggleCardType(RogueliteSlotType.POWERUP);
+        rules.toggleCardType(RogueliteSlotType.REVENGE);
+        rules.toggleTier(1);
+        rules.toggleTier(3);
+        rules.setLevelXpIncrement(100);
+        run.configureGameRules(rules);
+        run.reset();
+
+        run.awardPlayerRacePosition(1, 10);
+        List<RogueliteCardOffer> offers = run.createOffers(20);
+
+        assertEquals(2, run.getUnlockedTier());
+        assertFalse(offers.isEmpty());
+        for (int i = 0; i < offers.size(); i++) {
+            assertEquals(RogueliteSlotType.TECHNIQUE, offers.get(i).getSlotType());
+            assertEquals(2, offers.get(i).getTier());
+        }
+        assertEquals(2, run.getPlayerProgress().getLevel());
+        run.awardPlayerRacePosition(1, 10);
+        assertEquals(2, run.getPlayerProgress().getLevel());
+        assertEquals(120, run.getPlayerProgress().getExperience());
+        assertEquals(180, run.getPlayerProgress().getExperienceForNextLevel());
+    }
+
     @Test
     public void loadoutHasOneDriverAndOneSlotPerModificationCategory() {
         RogueliteLoadout loadout = new RogueliteLoadout("profile00");
@@ -19,11 +50,12 @@ public class RogueliteRunTest {
         assertTrue(loadout.equip(RogueliteCardId.CLUB_TUNE));
         assertTrue(loadout.equip(RogueliteCardId.CORNER_EXIT));
         assertTrue(loadout.equip(RogueliteCardId.NITRO_PULSE));
+        assertTrue(loadout.equip(RogueliteCardId.DRAFT_MAGNET));
         assertTrue(loadout.isFull());
         assertFalse(loadout.equip(RogueliteCardId.CLUB_TUNE));
 
         assertTrue(loadout.equip(RogueliteCardId.SPORT_TUNE));
-        assertEquals(3, loadout.getModifications().size());
+        assertEquals(4, loadout.getModifications().size());
         assertEquals(
                 RogueliteCardId.SPORT_TUNE,
                 loadout.get(RogueliteSlotType.TUNING));
@@ -33,7 +65,10 @@ public class RogueliteRunTest {
                 loadout.get(RogueliteSlotType.TECHNIQUE));
         assertEquals(
                 RogueliteCardId.NITRO_PULSE,
-                loadout.get(RogueliteSlotType.GADGET));
+                loadout.get(RogueliteSlotType.POWERUP));
+        assertEquals(
+                RogueliteCardId.DRAFT_MAGNET,
+                loadout.get(RogueliteSlotType.REVENGE));
 
         loadout.setDriverProfileId("profile01");
         assertEquals("profile01", loadout.getDriverProfileId());
@@ -111,18 +146,22 @@ public class RogueliteRunTest {
                 restored.getPlayerLoadout().get(RogueliteSlotType.TECHNIQUE));
         assertEquals(
                 RogueliteCardId.GRIP_FAN,
-                restored.getPlayerLoadout().get(RogueliteSlotType.GADGET));
+                restored.getPlayerLoadout().get(RogueliteSlotType.POWERUP));
     }
 
     @Test
     public void catalogCardsHaveCompleteIndependentMetadata() {
         List<RogueliteCardDefinition> cards = RogueliteCardCatalog.all();
-        Set<Integer> artworkIndexes = new HashSet<Integer>();
         for (int i = 0; i < cards.size(); i++) {
             RogueliteCardDefinition card = cards.get(i);
             assertFalse(card.getSlotType().isDriver());
             assertFalse(card.getEffectText().isEmpty());
-            assertTrue(artworkIndexes.add(Integer.valueOf(card.getArtworkIndex())));
+            String playerFacingText =
+                    (card.getTitle() + " " + card.getDescription() + " " + card.getEffectText())
+                            .toLowerCase(Locale.ROOT);
+            assertFalse(playerFacingText.contains("drag"));
+            assertTrue(card.getArtworkIndex() >= 0);
+            assertTrue(card.getArtworkIndex() < RogueliteCardDefinition.ARTWORK_CAPACITY);
         }
     }
 
@@ -148,7 +187,7 @@ public class RogueliteRunTest {
     }
 
     @Test
-    public void worstBenchmarkedDriverIsDefaultAndFirstOffersStayInTierOne() {
+    public void randomTierOneDriverStartsTheRunAndFirstOffersStayInTierOne() {
         DriverProfileCatalog catalog =
                 new DriverProfileCatalog(Arrays.asList(
                         metadata("profile00", 31f),
@@ -156,10 +195,10 @@ public class RogueliteRunTest {
                         metadata("profile02", 35f),
                         metadata("profile03", 30f)));
         RogueliteRun run = new RogueliteRun(31L, catalog);
+        String startingDriver =
+                run.getPlayerLoadout().getDriverProfileId();
 
-        assertEquals(
-                "profile01",
-                run.getPlayerLoadout().getDriverProfileId());
+        assertEquals(1, run.getDriverTier(startingDriver));
         run.awardPlayerRacePosition(1, 10);
         List<RogueliteCardOffer> offers = run.createOffers(3);
 
@@ -170,8 +209,84 @@ public class RogueliteRunTest {
             assertTrue(ids.add(offer.getOfferId()));
             assertEquals(1, offer.getTier());
             if (offer.isDriver()) {
-                assertEquals("profile02", offer.getDriver().getProfileId());
+                assertNotEquals(startingDriver, offer.getDriver().getProfileId());
+                assertEquals(1, run.getDriverTier(offer.getDriver().getProfileId()));
             }
+        }
+    }
+
+    @Test
+    public void everyStartingTierStillBeginsWithARandomTierOneDriver() {
+        DriverProfileCatalog catalog =
+                new DriverProfileCatalog(Arrays.asList(
+                        metadata("profile00", 31f),
+                        metadata("profile01", 40f),
+                        metadata("profile02", 35f),
+                        metadata("profile03", 30f)));
+        Set<String> selectedDrivers = new HashSet<String>();
+
+        for (long seed = 1L; seed <= 32L; seed++) {
+            RogueliteRun run = new RogueliteRun(seed, catalog);
+            selectedDrivers.add(run.getPlayerLoadout().getDriverProfileId());
+            assertEquals(
+                    1,
+                    run.getDriverTier(
+                            run.getPlayerLoadout().getDriverProfileId()));
+            for (int startingTier = 1;
+                    startingTier <= DriverProfileCatalog.MAX_TIER;
+                    startingTier++) {
+                run.reset(startingTier);
+                assertEquals(
+                        1,
+                        run.getDriverTier(
+                                run.getPlayerLoadout().getDriverProfileId()));
+            }
+        }
+
+        assertEquals(2, selectedDrivers.size());
+    }
+
+    @Test
+    public void everyRivalBeginsWithAnIndependentRandomTierOneDriver() {
+        DriverProfileCatalog catalog =
+                new DriverProfileCatalog(Arrays.asList(
+                        metadata("profile00", 31f),
+                        metadata("profile01", 40f),
+                        metadata("profile02", 35f),
+                        metadata("profile03", 30f)));
+        Set<String> selectedDrivers = new HashSet<String>();
+
+        for (long seed = 1L; seed <= 32L; seed++) {
+            RogueliteRun run = new RogueliteRun(seed, catalog);
+            for (int vehicleId = 1; vehicleId <= 4; vehicleId++) {
+                String driver =
+                        run.getRivalLoadout(vehicleId).getDriverProfileId();
+                selectedDrivers.add(driver);
+                assertEquals(1, run.getDriverTier(driver));
+            }
+        }
+
+        assertEquals(2, selectedDrivers.size());
+    }
+
+    @Test
+    public void loadedBenchmarksRepairAFallbackDriverOutsideTheRealTierOne() {
+        DriverProfileCatalog benchmarkCatalog =
+                new DriverProfileCatalog(Arrays.asList(
+                        metadata("profile00", 31f),
+                        metadata("profile01", 40f),
+                        metadata("profile02", 35f),
+                        metadata("profile03", 30f)));
+
+        for (long seed = 1L; seed <= 32L; seed++) {
+            RogueliteRun run = new RogueliteRun(seed);
+            run.reset(1);
+            run.configureDriverCatalog(benchmarkCatalog);
+
+            assertEquals(
+                    1,
+                    run.getDriverTier(
+                            run.getPlayerLoadout().getDriverProfileId()));
         }
     }
 
@@ -344,6 +459,25 @@ public class RogueliteRunTest {
 
         assertEquals(defaultDriver, loadout.getDriverProfileId());
         assertEquals(1, loadout.getModifications().size());
+    }
+
+    @Test
+    public void rivalsEquipRevengeAfterEarningEnoughTierOneRewards() {
+        RogueliteRun run = new RogueliteRun(574L);
+        RogueliteLoadout loadout = run.getRivalLoadout(2);
+
+        for (int race = 0; race < 8 && !loadout.isFull(); race++) {
+            run.awardRivalRacePosition(2, 1, 10);
+            run.resolveRivalRewards(Arrays.asList(Integer.valueOf(2)));
+        }
+
+        assertTrue(loadout.isFull());
+        RogueliteCardId revengeCard =
+                loadout.get(RogueliteSlotType.REVENGE);
+        assertTrue(revengeCard != null);
+        assertEquals(
+                RogueliteSlotType.REVENGE,
+                RogueliteCardCatalog.get(revengeCard).getSlotType());
     }
 
     @Test

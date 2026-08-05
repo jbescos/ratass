@@ -4,7 +4,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
 
 /** Maps roguelite slot types to the filled and empty card-shell atlas cells. */
 public final class RogueliteCardSkinAtlas {
-    public static final int COLUMNS = 4;
+    public static final int COLUMNS = 5;
     public static final int ROWS = 2;
     private static final float MINIMUM_ARTWORK_SIZE = 24f;
     private static final float COMPACT_CARD_HEIGHT = 260f;
@@ -16,6 +16,10 @@ public final class RogueliteCardSkinAtlas {
     private static final float ARTWORK_WINDOW_TOP_RATIO = 0.79f;
     private static final float INFORMATION_PANEL_BOTTOM_RATIO = 0.075f;
     private static final float INFORMATION_PANEL_TOP_RATIO = 0.39f;
+    private static final float FOOTER_LABEL_LEFT_RATIO = 0.31f;
+    private static final float FOOTER_LABEL_WIDTH_RATIO = 0.36f;
+    private static final float FOOTER_LABEL_BOTTOM_RATIO = 0.037f;
+    private static final float FOOTER_LABEL_HEIGHT_RATIO = 0.037f;
 
     private RogueliteCardSkinAtlas() {
     }
@@ -35,8 +39,11 @@ public final class RogueliteCardSkinAtlas {
             case TECHNIQUE:
                 column = 2;
                 break;
-            case GADGET:
+            case POWERUP:
                 column = 3;
+                break;
+            case REVENGE:
+                column = 4;
                 break;
             default:
                 return -1;
@@ -79,5 +86,21 @@ public final class RogueliteCardSkinAtlas {
 
     public static float informationPanelTop(float cardHeight) {
         return Math.max(0f, cardHeight * INFORMATION_PANEL_TOP_RATIO);
+    }
+
+    public static float footerLabelLeft(float cardWidth) {
+        return Math.max(0f, cardWidth * FOOTER_LABEL_LEFT_RATIO);
+    }
+
+    public static float footerLabelWidth(float cardWidth) {
+        return Math.max(0f, cardWidth * FOOTER_LABEL_WIDTH_RATIO);
+    }
+
+    public static float footerLabelBottom(float cardHeight) {
+        return Math.max(0f, cardHeight * FOOTER_LABEL_BOTTOM_RATIO);
+    }
+
+    public static float footerLabelHeight(float cardHeight) {
+        return Math.max(0f, cardHeight * FOOTER_LABEL_HEIGHT_RATIO);
     }
 }
