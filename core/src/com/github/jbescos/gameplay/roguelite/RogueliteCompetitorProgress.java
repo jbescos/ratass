@@ -1,8 +1,8 @@
 package com.github.jbescos.gameplay.roguelite;
 
 public final class RogueliteCompetitorProgress {
-    private static final int BASE_LEVEL_XP = 180;
-    private static final int LEVEL_XP_INCREMENT = 60;
+    private static final int BASE_LEVEL_XP = 80;
+    private static final int LEVEL_XP_INCREMENT = 40;
     private static final int LAST_PLACE_XP = 30;
     private static final int FIRST_PLACE_XP = 100;
 

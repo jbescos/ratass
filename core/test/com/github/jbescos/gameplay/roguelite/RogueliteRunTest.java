@@ -161,7 +161,6 @@ public class RogueliteRunTest {
                 "profile01",
                 run.getPlayerLoadout().getDriverProfileId());
         run.awardPlayerRacePosition(1, 10);
-        run.awardPlayerRacePosition(1, 10);
         List<RogueliteCardOffer> offers = run.createOffers(3);
 
         assertFalse(offers.isEmpty());
@@ -178,19 +177,24 @@ public class RogueliteRunTest {
 
     @Test
     public void finishingPositionControlsExperienceAndLevelUpRewards() {
-        RogueliteRun run = new RogueliteRun(43L);
+        RogueliteRun first = new RogueliteRun(43L);
+        RogueliteRun second = new RogueliteRun(44L);
+        RogueliteRun third = new RogueliteRun(45L);
+        RogueliteRun fourth = new RogueliteRun(46L);
 
-        assertEquals(100, run.awardPlayerRacePosition(1, 10));
-        assertEquals(30, run.awardRivalRacePosition(7, 10, 10));
-        assertTrue(
-                run.getPlayerProgress().getExperience()
-                        > run.getRivalProgress(7).getExperience());
-        assertFalse(run.getPlayerProgress().hasPendingReward());
+        assertEquals(100, first.awardPlayerRacePosition(1, 10));
+        assertEquals(92, second.awardPlayerRacePosition(2, 10));
+        assertEquals(84, third.awardPlayerRacePosition(3, 10));
+        assertEquals(77, fourth.awardPlayerRacePosition(4, 10));
 
-        run.awardPlayerRacePosition(1, 10);
-        assertEquals(2, run.getPlayerProgress().getLevel());
-        assertEquals(20, run.getPlayerProgress().getExperience());
-        assertEquals(1, run.getPlayerProgress().getPendingRewards());
+        assertEquals(2, first.getPlayerProgress().getLevel());
+        assertEquals(20, first.getPlayerProgress().getExperience());
+        assertEquals(120, first.getPlayerProgress().getExperienceForNextLevel());
+        assertEquals(2, second.getPlayerProgress().getLevel());
+        assertEquals(2, third.getPlayerProgress().getLevel());
+        assertEquals(1, fourth.getPlayerProgress().getLevel());
+        assertEquals(1, first.getPlayerProgress().getPendingRewards());
+        assertFalse(fourth.getPlayerProgress().hasPendingReward());
     }
 
     @Test
@@ -226,10 +230,6 @@ public class RogueliteRunTest {
         assertEquals(1, restored.getPlayerProgress().getPendingRewards());
         assertFalse(restored.getPlayerProgress().hasOfferableReward());
 
-        restored.awardPlayerRacePosition(1, 10);
-        restored.awardPlayerRacePosition(1, 10);
-        assertFalse(restored.getPlayerProgress().hasOfferableReward());
-        assertTrue(restored.createOffers(3).isEmpty());
         restored.awardPlayerRacePosition(1, 10);
 
         assertTrue(restored.getPlayerProgress().hasOfferableReward());
@@ -307,7 +307,6 @@ public class RogueliteRunTest {
         assertTrue(run.getRivalLoadout(2).getModifications().isEmpty());
 
         run.awardRivalRacePosition(2, 1, 10);
-        run.awardRivalRacePosition(2, 1, 10);
         run.resolveRivalRewards(Arrays.asList(Integer.valueOf(2)));
 
         RogueliteCompetitorProgress rival = run.getRivalProgress(2);
@@ -326,7 +325,6 @@ public class RogueliteRunTest {
         assertTrue(loadout.equip(RogueliteCardId.CLUB_TUNE));
 
         run.awardRivalRacePosition(2, 1, 10);
-        run.awardRivalRacePosition(2, 1, 10);
         run.resolveRivalRewards(Arrays.asList(Integer.valueOf(2)));
 
         assertEquals("profile01", loadout.getDriverProfileId());
@@ -341,7 +339,6 @@ public class RogueliteRunTest {
         RogueliteLoadout loadout = run.getRivalLoadout(2);
         String defaultDriver = loadout.getDriverProfileId();
 
-        run.awardRivalRacePosition(2, 1, 10);
         run.awardRivalRacePosition(2, 1, 10);
         run.resolveRivalRewards(Arrays.asList(Integer.valueOf(2)));
 
@@ -381,7 +378,6 @@ public class RogueliteRunTest {
         assertTrue(loadout.equip(RogueliteCardId.NITRO_PULSE));
         run.advanceChampionship();
 
-        run.awardRivalRacePosition(2, 1, 10);
         run.awardRivalRacePosition(2, 1, 10);
         run.resolveRivalRewards(Arrays.asList(Integer.valueOf(2)));
 
@@ -440,7 +436,6 @@ public class RogueliteRunTest {
     }
 
     private static void levelUpPlayer(RogueliteRun run) {
-        run.awardPlayerRacePosition(1, 10);
         run.awardPlayerRacePosition(1, 10);
     }
 
