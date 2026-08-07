@@ -2,31 +2,55 @@ package com.github.jbescos.presentation;
 
 /** Presentation-only state for the warning shown while a car is debuffed. */
 public final class DebuffWarningVisual {
-    private boolean active;
+    public enum Reason {
+        NONE(""),
+        BRAKED("BRAKED"),
+        NO_GRIP("NO GRIP"),
+        BLIND_ENEMIES("BLIND ENEMIES"),
+        SLOWED("SLOWED"),
+        FULL_THROTTLE("FULL THROTTLE");
+
+        private final String label;
+
+        Reason(String label) {
+            this.label = label;
+        }
+
+        public String getLabel() {
+            return label;
+        }
+    }
+
+    private Reason reason = Reason.NONE;
     private float activeAge;
 
-    public void update(float deltaSeconds, boolean currentlyActive) {
-        if (currentlyActive != active) {
-            active = currentlyActive;
+    public void update(float deltaSeconds, Reason currentReason) {
+        Reason nextReason = currentReason == null ? Reason.NONE : currentReason;
+        if (nextReason != reason) {
+            reason = nextReason;
             activeAge = 0f;
             return;
         }
-        if (active) {
+        if (isActive()) {
             activeAge += sanitizeDelta(deltaSeconds);
         }
     }
 
     public void reset() {
-        active = false;
+        reason = Reason.NONE;
         activeAge = 0f;
     }
 
     public boolean isActive() {
-        return active;
+        return reason != Reason.NONE;
+    }
+
+    public String getReasonLabel() {
+        return reason.getLabel();
     }
 
     public float getPulse() {
-        return active
+        return isActive()
                 ? 0.5f + 0.5f * (float) Math.sin(activeAge * 7.5f)
                 : 0f;
     }

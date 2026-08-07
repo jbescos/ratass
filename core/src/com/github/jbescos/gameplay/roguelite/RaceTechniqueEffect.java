@@ -4,6 +4,7 @@ package com.github.jbescos.gameplay.roguelite;
 final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
     private static final float DRIFT_START_SLIP = 0.18f;
     private static final float DRIFT_END_SLIP = 0.11f;
+    private static final float CLEAN_MOMENTUM_AERO_BONUS = 0.03f;
 
     private float charge;
     private float boostTimer;
@@ -165,6 +166,9 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
 
     @Override
     float dragMultiplier() {
+        if (getCardId() == RogueliteCardId.CLEAN_MOMENTUM) {
+            return 1f / (1f + charge * CLEAN_MOMENTUM_AERO_BONUS);
+        }
         float bonus = conditionalStatBonus();
         return bonus <= 0f ? 1f : 1f / (1f + bonus);
     }

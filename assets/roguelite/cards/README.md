@@ -1,6 +1,6 @@
 # Card Artwork Atlas
 
-`card_art_atlas_v3.png` is the active 6 by 9 atlas. Cells are addressed in row-major order
+`card_art_atlas_v3.png` is the active 6 by 11 atlas. Cells are addressed in row-major order
 by `RogueliteCardDefinition.artworkIndex`.
 
 The legacy `card_art_atlas.png` and `card_art_atlas_v2.png` files are retained as
@@ -14,9 +14,11 @@ artwork references.
 | 4 | Gravity Well | Mirror Duo | Championship Tune | Perfect Lap | Racecraft Mastery | Hyperdrive |
 | 5 | Crown Engine | Streamline Kit | Short-Ratio Gearbox | Le Mans Body | Drift Differential | Ground Effect |
 | 6 | Velocity Shell | Torque Vectoring | Recovery Beacon | Draft Vendetta | Payback Shield | Repulsor Surge |
-| 7 | Tar Tether | EMP Snare | Void Anchor | Unused | Unused | Unused |
+| 7 | Tar Tether | EMP Snare | Void Anchor | Ghost Cloak | Phantom Cloak | Void Cloak |
 | 8 | Mirror Trio | Mirror Quartet | Underdog Instinct | Comeback Drive | Last Place Fury | Close Quarters |
-| 9 | Pack Racer | Traffic Dominance | Carbon Panels | Carbon Monocoque | Graphene Chassis | Unused |
+| 9 | Pack Racer | Traffic Dominance | Carbon Panels | Carbon Monocoque | Graphene Chassis | Sensor Jammer |
+| 10 | Grid Blackout | Total Blackout | Lucky Spark | Chaos Relay | Wildcard Core | Loaded Grudge |
+| 11 | Chaos Retort | Fate's Revenge | Unused | Unused | Unused | Unused |
 
 Every non-driver card has a unique artwork cell.
 

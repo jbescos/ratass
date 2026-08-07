@@ -13,7 +13,7 @@ public class VoidAnchorVisualTest {
     public void anchorDeploysAndRemainsActiveForTheTargetDebuffDuration() {
         VoidAnchorVisual visual = new VoidAnchorVisual();
 
-        visual.start(2f);
+        visual.start(3f);
         visual.update(0.18f);
 
         assertTrue(visual.isActive());
@@ -21,8 +21,9 @@ public class VoidAnchorVisualTest {
         assertTrue(visual.getPulse() >= 0f);
         assertTrue(visual.getPulse() <= 1f);
 
-        visual.update(0.91f);
-        visual.update(0.90f);
+        visual.update(1f);
+        visual.update(1f);
+        visual.update(0.80f);
         assertTrue(visual.isActive());
         visual.update(0.02f);
         assertFalse(visual.isActive());

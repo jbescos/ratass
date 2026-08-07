@@ -5,6 +5,7 @@ public final class RogueliteRevengeStrike {
     public enum Action {
         DEBUFF,
         HARD_IMPACT,
+        FORCE_BRAKE,
         FORCE_THROTTLE,
         POSITION_SWAP,
         HOOK
@@ -92,6 +93,19 @@ public final class RogueliteRevengeStrike {
                 0f);
     }
 
+    static RogueliteRevengeStrike forceBrake(
+            RogueliteCardId cardId,
+            float durationSeconds) {
+        return new RogueliteRevengeStrike(
+                cardId,
+                Action.FORCE_BRAKE,
+                1f,
+                1f,
+                durationSeconds,
+                0f,
+                0f);
+    }
+
     static RogueliteRevengeStrike positionSwap(RogueliteCardId cardId) {
         return new RogueliteRevengeStrike(
                 cardId,
@@ -105,13 +119,14 @@ public final class RogueliteRevengeStrike {
 
     static RogueliteRevengeStrike hook(
             RogueliteCardId cardId,
-            float attackerLaunchSpeedRatio) {
+            float attackerLaunchSpeedRatio,
+            float durationSeconds) {
         return new RogueliteRevengeStrike(
                 cardId,
                 Action.HOOK,
                 1f,
                 1f,
-                0f,
+                durationSeconds,
                 attackerLaunchSpeedRatio,
                 0f);
     }

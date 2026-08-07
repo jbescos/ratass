@@ -27,10 +27,9 @@ public final class RogueliteSaveData {
     public CustomGameRules.Snapshot customRules =
             new CustomGameRules.Snapshot();
     public boolean championshipTransitionPending;
-    public List<Integer> pendingEliminatedVehicleIds =
-            new ArrayList<Integer>();
     public boolean runEnded;
     public boolean playerWonRun;
+    public boolean rewardResumesRace;
     public RogueliteRun.Snapshot run = new RogueliteRun.Snapshot();
     public List<RosterEntry> roster = new ArrayList<RosterEntry>();
     public List<String> rewardCardIds = new ArrayList<String>();
@@ -56,17 +55,8 @@ public final class RogueliteSaveData {
                                 || !customRules.isStructurallyValid()))
                 || run == null
                 || roster == null
-                || pendingEliminatedVehicleIds == null
                 || rewardCardIds == null) {
             return false;
-        }
-        for (int i = 0; i < pendingEliminatedVehicleIds.size(); i++) {
-            Integer vehicleId = pendingEliminatedVehicleIds.get(i);
-            if (vehicleId == null
-                    || vehicleId.intValue() < 0
-                    || pendingEliminatedVehicleIds.indexOf(vehicleId) != i) {
-                return false;
-            }
         }
         if (PHASE_REWARD.equals(phase) && rewardCardIds.isEmpty()) {
             return false;

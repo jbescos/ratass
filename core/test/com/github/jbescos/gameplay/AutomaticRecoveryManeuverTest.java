@@ -38,18 +38,18 @@ public class AutomaticRecoveryManeuverTest {
     }
 
     @Test
-    public void repeatedFailedManeuversEscalateToRelocation() {
+    public void repeatedFailedManeuversKeepReplanningWithOppositeGear() {
         AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
-        maneuver.begin(4f, 0.2f);
+        maneuver.begin(4f, -0.2f);
 
-        maneuver.update(0.90f, 4f, 0.2f);
+        maneuver.update(0.90f, 4f, -0.2f);
         assertTrue(maneuver.consumeReplanRequest());
-        assertFalse(maneuver.isRelocationRequested());
+        assertTrue(maneuver.isReversing());
 
-        maneuver.retarget(4f, 0.2f);
-        maneuver.update(0.90f, 4f, 0.2f);
+        maneuver.retarget(4f, -0.2f);
+        maneuver.update(0.90f, 4f, -0.2f);
         assertTrue(maneuver.consumeReplanRequest());
-        assertTrue(maneuver.isRelocationRequested());
+        assertFalse(maneuver.isReversing());
     }
 
     @Test
@@ -62,6 +62,80 @@ public class AutomaticRecoveryManeuverTest {
         }
 
         assertFalse(maneuver.consumeReplanRequest());
-        assertFalse(maneuver.isRelocationRequested());
+    }
+
+    @Test
+    public void fastApproachBrakesBeforeCrossingTheTarget() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+
+        assertEquals(
+                -1f,
+                maneuver.limitApproachThrottle(
+                        0.8f,
+                        9f,
+                        9f,
+                        3f,
+                        4f,
+                        0.8f,
+                        6f,
+                        8f),
+                EPSILON);
+        assertEquals(
+                1f,
+                maneuver.limitApproachThrottle(
+                        -0.6f,
+                        -9f,
+                        9f,
+                        3f,
+                        4f,
+                        0.8f,
+                        6f,
+                        8f),
+                EPSILON);
+    }
+
+    @Test
+    public void controlledApproachTapersThrottleNearTheTarget() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+
+        float farThrottle =
+                maneuver.limitApproachThrottle(
+                        0.8f,
+                        2f,
+                        2f,
+                        8f,
+                        0.4f,
+                        0.8f,
+                        6f,
+                        8f);
+        float nearThrottle =
+                maneuver.limitApproachThrottle(
+                        0.8f,
+                        2f,
+                        2f,
+                        2f,
+                        0.4f,
+                        0.8f,
+                        6f,
+                        8f);
+
+        assertEquals(0.8f, farThrottle, EPSILON);
+        assertTrue(nearThrottle > 0f);
+        assertTrue(nearThrottle < farThrottle);
+    }
+
+    @Test
+    public void contactRecoveryStopsWhenTheBlockingConditionClears() {
+        assertTrue(AutomaticRecoveryManeuver.requiresContactRecovery(1, false));
+        assertFalse(AutomaticRecoveryManeuver.requiresContactRecovery(0, false));
+        assertFalse(AutomaticRecoveryManeuver.requiresContactRecovery(1, true));
+    }
+
+    @Test
+    public void offRoadRecoveryStopsOnlyAtASafeOnRoadHandoff() {
+        assertTrue(AutomaticRecoveryManeuver.requiresOffRoadRecovery(true, false));
+        assertTrue(AutomaticRecoveryManeuver.requiresOffRoadRecovery(true, true));
+        assertTrue(AutomaticRecoveryManeuver.requiresOffRoadRecovery(false, false));
+        assertFalse(AutomaticRecoveryManeuver.requiresOffRoadRecovery(false, true));
     }
 }

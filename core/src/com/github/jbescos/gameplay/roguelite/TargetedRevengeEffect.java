@@ -3,6 +3,7 @@ package com.github.jbescos.gameplay.roguelite;
 /** Arms against the exact rival responsible for a qualified hit. */
 final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
     private static final float POSITION_SWAP_MIN_DISTANCE = 3.2f;
+    private static final float POSITION_SWAP_DELAY_SECONDS = 3f;
     private static final float HOOK_MIN_DISTANCE = 2.8f;
     private static final float HOOK_MAX_DISTANCE = 24f;
 
@@ -12,6 +13,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
 
     private int offenderVehicleId = -1;
     private float activeTimer;
+    private float armedAge;
 
     TargetedRevengeEffect(RogueliteCardId cardId) {
         super(cardId);
@@ -22,13 +24,13 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
                 targetGripMultiplier = 0f;
                 break;
             case EMP_SNARE:
-                effectDurationSeconds = 1f;
-                targetSpeedMultiplier = 0f;
+                effectDurationSeconds = 2f;
+                targetSpeedMultiplier = 1f;
                 targetGripMultiplier = 1f;
                 break;
             case VOID_ANCHOR:
-                effectDurationSeconds = 2f;
-                targetSpeedMultiplier = 0f;
+                effectDurationSeconds = 3f;
+                targetSpeedMultiplier = 1f;
                 targetGripMultiplier = 1f;
                 break;
             case DRAFT_VENDETTA:
@@ -42,7 +44,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
                 targetGripMultiplier = 1f;
                 break;
             case PAYBACK_SHIELD:
-                effectDurationSeconds = 0.9f;
+                effectDurationSeconds = 20f;
                 targetSpeedMultiplier = 1f;
                 targetGripMultiplier = 1f;
                 break;
@@ -59,7 +61,10 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
 
     @Override
     boolean isReady() {
-        return offenderVehicleId >= 0 && activeTimer <= 0f;
+        return offenderVehicleId >= 0
+                && activeTimer <= 0f
+                && (getCardId() != RogueliteCardId.RECOVERY_BEACON
+                        || armedAge >= POSITION_SWAP_DELAY_SECONDS);
     }
 
     @Override
@@ -69,7 +74,10 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
 
     @Override
     float readiness() {
-        return 1f;
+        if (getCardId() != RogueliteCardId.RECOVERY_BEACON) {
+            return 1f;
+        }
+        return Math.max(0f, Math.min(1f, armedAge / POSITION_SWAP_DELAY_SECONDS));
     }
 
     @Override
@@ -85,12 +93,19 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
     @Override
     void update(float delta, float timerDelta, RogueliteDrivingFrame frame) {
         activeTimer = Math.max(0f, activeTimer - timerDelta);
+        if (offenderVehicleId >= 0 && activeTimer <= 0f) {
+            armedAge += Math.max(0f, delta);
+        }
     }
 
     @Override
     void onHitBy(int vehicleId, float impactStrength) {
-        if (vehicleId >= 0 && impactStrength > 0f && activeTimer <= 0f) {
+        if (vehicleId >= 0
+                && impactStrength > 0f
+                && activeTimer <= 0f
+                && offenderVehicleId < 0) {
             offenderVehicleId = vehicleId;
+            armedAge = 0f;
         }
     }
 
@@ -100,18 +115,27 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
-    RogueliteRevengeStrike tryActivateOffenderStrike(int targetVehicleId, float distance) {
+    RogueliteRevengeStrike tryActivateOffenderStrike(
+            int targetVehicleId,
+            float distance,
+            boolean offenderAhead) {
         if (!isReady() || targetVehicleId != offenderVehicleId) {
             return null;
         }
 
         RogueliteRevengeStrike strike;
         switch (getCardId()) {
+            case EMP_SNARE:
+            case VOID_ANCHOR:
+                strike = RogueliteRevengeStrike.forceBrake(
+                        getCardId(),
+                        effectDurationSeconds);
+                break;
             case DRAFT_VENDETTA:
                 strike = RogueliteRevengeStrike.forceThrottle(getCardId(), effectDurationSeconds);
                 break;
             case RECOVERY_BEACON:
-                if (distance < POSITION_SWAP_MIN_DISTANCE) {
+                if (!offenderAhead || distance < POSITION_SWAP_MIN_DISTANCE) {
                     return null;
                 }
                 strike = RogueliteRevengeStrike.positionSwap(getCardId());
@@ -120,7 +144,10 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
                 if (distance < HOOK_MIN_DISTANCE || distance > HOOK_MAX_DISTANCE) {
                     return null;
                 }
-                strike = RogueliteRevengeStrike.hook(getCardId(), 0.42f);
+                strike = RogueliteRevengeStrike.hook(
+                        getCardId(),
+                        0.42f,
+                        effectDurationSeconds);
                 break;
             default:
                 strike = RogueliteRevengeStrike.debuff(
@@ -132,6 +159,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
         }
 
         offenderVehicleId = -1;
+        armedAge = 0f;
         activeTimer = effectDurationSeconds;
         return strike;
     }

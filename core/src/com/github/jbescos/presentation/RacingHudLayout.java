@@ -36,6 +36,10 @@ public final class RacingHudLayout {
         return CAR_STAT_ROWS;
     }
 
+    public static int cardRows(int loadoutSlotCount) {
+        return Math.max(1, loadoutSlotCount + 1);
+    }
+
     public static float bottomPanelHeight(float screenHeight) {
         return clamp(
                 screenHeight * 0.21f,

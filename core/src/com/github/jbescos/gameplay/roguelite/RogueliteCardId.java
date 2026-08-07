@@ -45,6 +45,9 @@ public enum RogueliteCardId {
     GRAVITY_WELL,
     OVERDRIVE_COIL,
     HYPERDRIVE,
+    LUCKY_SPARK,
+    CHAOS_RELAY,
+    WILDCARD_CORE,
     CROWN_ENGINE,
 
     RECOVERY_BEACON,
@@ -54,6 +57,12 @@ public enum RogueliteCardId {
     TAR_TETHER,
     EMP_SNARE,
     VOID_ANCHOR,
+    SENSOR_JAMMER,
+    GRID_BLACKOUT,
+    TOTAL_BLACKOUT,
+    LOADED_GRUDGE,
+    CHAOS_RETORT,
+    FATES_REVENGE,
 
     GHOST_CLOAK,
     PHANTOM_CLOAK,

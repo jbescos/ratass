@@ -11,11 +11,12 @@ public class DebuffWarningVisualTest {
     public void warningRemainsVisibleAndPulsesForTheWholeDebuff() {
         DebuffWarningVisual visual = new DebuffWarningVisual();
 
-        visual.update(0.1f, true);
+        visual.update(0.1f, DebuffWarningVisual.Reason.BLIND_ENEMIES);
         float initialPulse = visual.getPulse();
-        visual.update(0.2f, true);
+        visual.update(0.2f, DebuffWarningVisual.Reason.BLIND_ENEMIES);
 
         assertTrue(visual.isActive());
+        assertEquals("BLIND ENEMIES", visual.getReasonLabel());
         assertTrue(visual.getPulse() >= 0f);
         assertTrue(visual.getPulse() <= 1f);
         assertTrue(initialPulse != visual.getPulse());
@@ -25,17 +26,18 @@ public class DebuffWarningVisualTest {
     public void warningClearsAsSoonAsTheDebuffEnds() {
         DebuffWarningVisual visual = new DebuffWarningVisual();
 
-        visual.update(0.1f, true);
-        visual.update(0.1f, false);
+        visual.update(0.1f, DebuffWarningVisual.Reason.BRAKED);
+        visual.update(0.1f, DebuffWarningVisual.Reason.NONE);
 
         assertFalse(visual.isActive());
+        assertEquals("", visual.getReasonLabel());
         assertEquals(0f, visual.getPulse(), 0f);
     }
 
     @Test
     public void resetClearsPresentationState() {
         DebuffWarningVisual visual = new DebuffWarningVisual();
-        visual.update(0.1f, true);
+        visual.update(0.1f, DebuffWarningVisual.Reason.NO_GRIP);
 
         visual.reset();
 

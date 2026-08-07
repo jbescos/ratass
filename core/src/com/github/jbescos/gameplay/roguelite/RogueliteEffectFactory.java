@@ -7,6 +7,9 @@ final class RogueliteEffectFactory {
     static RogueliteUpgradeEffect create(
             RogueliteCardId id,
             float powerupCycleOffset) {
+        if (RandomCardEffect.isRandomCard(id)) {
+            return new RandomCardEffect(id, powerupCycleOffset);
+        }
         if (id == RogueliteCardId.TAR_TETHER
                 || id == RogueliteCardId.EMP_SNARE
                 || id == RogueliteCardId.VOID_ANCHOR
@@ -17,6 +20,11 @@ final class RogueliteEffectFactory {
         }
         if (id == RogueliteCardId.CROWN_ENGINE) {
             return new CrownBreakerRevengeEffect();
+        }
+        if (id == RogueliteCardId.SENSOR_JAMMER
+                || id == RogueliteCardId.GRID_BLACKOUT
+                || id == RogueliteCardId.TOTAL_BLACKOUT) {
+            return new RaceBlackoutRevengeEffect(id);
         }
         RogueliteCardDefinition definition = RogueliteCardCatalog.get(id);
         switch (definition.getSlotType()) {

@@ -23,10 +23,17 @@ public class CustomGameRulesTest {
         for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
             assertTrue(rules.isTierAllowed(tier));
         }
-        assertEquals(3, rules.getLaps());
-        assertEquals(40, rules.getLevelXpIncrement());
-        assertEquals(3, rules.getChampionshipCount());
-        assertEquals(3, rules.getEliminationsPerChampionship());
+        assertEquals(5, rules.getLaps());
+        assertEquals(2, rules.getLevelXpIncrement());
+        assertEquals(30, rules.getRacecraftXpPerLapCap());
+        for (RogueliteExperienceAwards.Reason reason
+                : RogueliteExperienceAwards.Reason.values()) {
+            if (reason.isCustomizable()) {
+                assertEquals(
+                        reason.getDefaultExperience(),
+                        rules.getRacecraftXpAward(reason));
+            }
+        }
     }
 
     @Test
@@ -55,8 +62,9 @@ public class CustomGameRulesTest {
         original.toggleMap("map001");
         original.setLaps(7);
         original.setLevelXpIncrement(90);
-        original.setChampionshipCount(5);
-        original.setEliminationsPerChampionship(2);
+        original.setRacecraftXpPerLapCap(45);
+        original.setRacecraftXpAward(RogueliteExperienceAwards.Reason.OVERTAKE, 7);
+        original.setRacecraftXpAward(RogueliteExperienceAwards.Reason.DRIFT, 3);
 
         CustomGameRules restored = new CustomGameRules();
 
@@ -67,7 +75,37 @@ public class CustomGameRulesTest {
         assertEquals(Arrays.asList("map000", "map002"), restored.getMapIds());
         assertEquals(7, restored.getLaps());
         assertEquals(90, restored.getLevelXpIncrement());
-        assertEquals(5, restored.getChampionshipCount());
-        assertEquals(2, restored.getEliminationsPerChampionship());
+        assertEquals(45, restored.getRacecraftXpPerLapCap());
+        assertEquals(
+                7,
+                restored.getRacecraftXpAward(
+                        RogueliteExperienceAwards.Reason.OVERTAKE));
+        assertEquals(
+                3,
+                restored.getRacecraftXpAward(
+                        RogueliteExperienceAwards.Reason.DRIFT));
+    }
+
+    @Test
+    public void numericSettingsAreClampedToSupportedRanges() {
+        CustomGameRules rules = new CustomGameRules();
+
+        rules.setRacecraftXpPerLapCap(-1);
+        assertEquals(
+                CustomGameRules.MIN_RACECRAFT_XP_PER_LAP_CAP,
+                rules.getRacecraftXpPerLapCap());
+        rules.setRacecraftXpPerLapCap(1000);
+        assertEquals(
+                CustomGameRules.MAX_RACECRAFT_XP_PER_LAP_CAP,
+                rules.getRacecraftXpPerLapCap());
+
+        rules.setRacecraftXpAward(RogueliteExperienceAwards.Reason.REVENGE, -1);
+        assertEquals(
+                CustomGameRules.MIN_RACECRAFT_XP_AWARD,
+                rules.getRacecraftXpAward(RogueliteExperienceAwards.Reason.REVENGE));
+        rules.setRacecraftXpAward(RogueliteExperienceAwards.Reason.REVENGE, 1000);
+        assertEquals(
+                CustomGameRules.MAX_RACECRAFT_XP_AWARD,
+                rules.getRacecraftXpAward(RogueliteExperienceAwards.Reason.REVENGE));
     }
 }

@@ -2,7 +2,6 @@ package com.github.jbescos.gameplay.roguelite;
 
 public enum RogueliteCompetitionMode {
     CHAMPIONSHIP("championship"),
-    INFINITE("infinite"),
     CUSTOM("custom");
 
     private final String id;
@@ -13,10 +12,6 @@ public enum RogueliteCompetitionMode {
 
     public String getId() {
         return id;
-    }
-
-    public boolean isInfinite() {
-        return this == INFINITE;
     }
 
     public boolean isCustom() {

@@ -7,6 +7,10 @@ import java.util.List;
 import java.util.Map;
 
 public final class RogueliteRun {
+    // Level 2 grants the first card. These gates yield 10 Tier 1 and 7 Tier 2 choices.
+    public static final int TIER_TWO_LEVEL = 12;
+    public static final int TIER_THREE_LEVEL = 19;
+
     private DriverProfileCatalog driverCatalog;
     private RogueliteCompetitorProgress player;
     private final Map<Integer, RogueliteCompetitorProgress> rivals =
@@ -117,12 +121,20 @@ public final class RogueliteRun {
         return startingTier;
     }
 
+    public int getRacecraftXpPerLapCap() {
+        return gameRules.getRacecraftXpPerLapCap();
+    }
+
+    public int getRacecraftXpAward(RogueliteExperienceAwards.Reason reason) {
+        return gameRules.getRacecraftXpAward(reason);
+    }
+
     public int getUnlockedTier() {
-        int naturalTier =
-                Math.min(
-                        DriverProfileCatalog.MAX_TIER,
-                        startingTier + championshipNumber - 1);
-        return gameRules.resolveTier(naturalTier);
+        return getUnlockedTier(player);
+    }
+
+    public int getRivalUnlockedTier(int vehicleId) {
+        return getUnlockedTier(getRivalProgress(vehicleId));
     }
 
     public int advanceChampionship() {
@@ -132,6 +144,10 @@ public final class RogueliteRun {
     public int advanceProgression() {
         championshipNumber++;
         return getUnlockedTier();
+    }
+
+    public void restartChampionship() {
+        championshipNumber = 1;
     }
 
     public void removeRival(int vehicleId) {
@@ -146,6 +162,67 @@ public final class RogueliteRun {
         return getRivalProgress(vehicleId).awardRacePosition(position, fieldSize);
     }
 
+    public int awardPlayerExperience(int amount) {
+        return player.awardExperience(amount);
+    }
+
+    public int awardRivalExperience(int vehicleId, int amount) {
+        return getRivalProgress(vehicleId).awardExperience(amount);
+    }
+
+    public int awardPlayerRacecraftExperience(int amount) {
+        return player.awardRacecraftExperience(
+                amount,
+                getRacecraftXpPerLapCap());
+    }
+
+    public int awardPlayerRacecraftExperience(
+            RogueliteExperienceAwards.Reason reason,
+            int amount) {
+        return player.awardRacecraftExperience(
+                reason,
+                amount,
+                getRacecraftXpPerLapCap());
+    }
+
+    public int awardRivalRacecraftExperience(int vehicleId, int amount) {
+        return getRivalProgress(vehicleId).awardRacecraftExperience(
+                amount,
+                getRacecraftXpPerLapCap());
+    }
+
+    public int awardRivalRacecraftExperience(
+            int vehicleId,
+            RogueliteExperienceAwards.Reason reason,
+            int amount) {
+        return getRivalProgress(vehicleId).awardRacecraftExperience(
+                reason,
+                amount,
+                getRacecraftXpPerLapCap());
+    }
+
+    public void resetPlayerLapExperience() {
+        player.resetLapExperience();
+    }
+
+    public void resetRivalLapExperience(int vehicleId) {
+        getRivalProgress(vehicleId).resetLapExperience();
+    }
+
+    public void resetAllLapExperience() {
+        player.resetLapExperience();
+        for (RogueliteCompetitorProgress rival : rivals.values()) {
+            rival.resetLapExperience();
+        }
+    }
+
+    public void resetAllRaceExperience() {
+        player.resetRaceExperience();
+        for (RogueliteCompetitorProgress rival : rivals.values()) {
+            rival.resetRaceExperience();
+        }
+    }
+
     public List<RogueliteCardOffer> createOffers(int count) {
         if (!player.hasOfferableReward()) {
             return Collections.emptyList();
@@ -157,8 +234,8 @@ public final class RogueliteRun {
         return applyOffer(player, offer);
     }
 
-    public boolean deferPlayerRewardsUntilNextLevel() {
-        return player.deferRewardsUntilNextLevel();
+    public boolean skipPlayerReward() {
+        return player.consumePendingReward();
     }
 
     public void resolveRivalRewards(Iterable<Integer> vehicleIds) {
@@ -169,19 +246,21 @@ public final class RogueliteRun {
             if (vehicleId == null) {
                 continue;
             }
-            RogueliteCompetitorProgress rival =
-                    getRivalProgress(vehicleId.intValue());
-            while (rival.hasPendingReward()) {
-                List<RogueliteCardOffer> offers = createOffersFor(rival, 3);
-                if (offers.isEmpty()) {
-                    rival.consumePendingReward();
-                    continue;
-                }
-                RogueliteCardOffer offer =
-                        chooseRivalOffer(rival, offers);
-                if (!applyOffer(rival, offer)) {
-                    rival.consumePendingReward();
-                }
+            resolveRivalReward(vehicleId.intValue());
+        }
+    }
+
+    public void resolveRivalReward(int vehicleId) {
+        RogueliteCompetitorProgress rival = getRivalProgress(vehicleId);
+        while (rival.hasPendingReward()) {
+            List<RogueliteCardOffer> offers = createOffersFor(rival, 3);
+            if (offers.isEmpty()) {
+                rival.consumePendingReward();
+                continue;
+            }
+            RogueliteCardOffer offer = chooseRivalOffer(rival, offers);
+            if (!applyOffer(rival, offer)) {
+                rival.consumePendingReward();
             }
         }
     }
@@ -265,7 +344,7 @@ public final class RogueliteRun {
         if (count <= 0) {
             return Collections.emptyList();
         }
-        int unlockedTier = getUnlockedTier();
+        int unlockedTier = getUnlockedTier(progress);
         List<RogueliteCardOffer> driverOffers =
                 new ArrayList<RogueliteCardOffer>();
         if (gameRules.isCardTypeAllowed(RogueliteSlotType.DRIVER)) {
@@ -337,7 +416,7 @@ public final class RogueliteRun {
     private boolean isEligible(
             RogueliteCompetitorProgress progress,
             RogueliteCardOffer offer) {
-        if (offer == null || offer.getTier() != getUnlockedTier()) {
+        if (offer == null || offer.getTier() != getUnlockedTier(progress)) {
             return false;
         }
         if (!gameRules.isCardTypeAllowed(offer.getSlotType())) {
@@ -388,9 +467,8 @@ public final class RogueliteRun {
         snapshot.driverProfileId = progress.getLoadout().getDriverProfileId();
         snapshot.level = progress.getLevel();
         snapshot.experience = progress.getExperience();
+        snapshot.lapExperience = progress.getLapExperience();
         snapshot.pendingRewards = progress.getPendingRewards();
-        snapshot.rewardDeferredUntilLevel =
-                progress.getRewardDeferredUntilLevel();
         List<RogueliteCardId> modifications =
                 progress.getLoadout().getModifications();
         for (int i = 0; i < modifications.size(); i++) {
@@ -423,8 +501,10 @@ public final class RogueliteRun {
             progress.restore(
                     snapshot.level,
                     snapshot.experience,
-                    snapshot.pendingRewards,
-                    snapshot.rewardDeferredUntilLevel);
+                    snapshot.pendingRewards);
+            progress.restoreLapExperience(
+                    snapshot.lapExperience,
+                    getRacecraftXpPerLapCap());
             return progress;
         } catch (RuntimeException exception) {
             return null;
@@ -457,6 +537,15 @@ public final class RogueliteRun {
         return new RogueliteCompetitorProgress(
                 randomTierOneDriver().getProfileId(),
                 gameRules.getLevelXpIncrement());
+    }
+
+    private int getUnlockedTier(RogueliteCompetitorProgress progress) {
+        int level = progress == null ? 1 : progress.getLevel();
+        int levelTier =
+                level >= TIER_THREE_LEVEL
+                        ? 3
+                        : level >= TIER_TWO_LEVEL ? 2 : 1;
+        return gameRules.resolveTier(Math.max(startingTier, levelTier));
     }
 
     private void repairDriver(
@@ -626,7 +715,9 @@ public final class RogueliteRun {
         public String driverProfileId = "";
         public int level = 1;
         public int experience;
+        public int lapExperience;
         public int pendingRewards;
+        // Retained only to normalize saves written by the former postpone system.
         public int rewardDeferredUntilLevel;
         public List<String> modificationCardIds = new ArrayList<String>();
     }

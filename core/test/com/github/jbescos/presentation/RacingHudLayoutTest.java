@@ -10,6 +10,7 @@ public class RacingHudLayoutTest {
         assertEquals(1, RacingHudLayout.telemetryColumns());
         assertEquals(6, RacingHudLayout.telemetryRows());
         assertEquals(6, RacingHudLayout.carStatRows());
+        assertEquals(6, RacingHudLayout.cardRows(5));
         float phoneStandingsWidth =
                 RacingHudLayout.standingsPanelWidth(720f, 260f);
         assertEquals(260f, phoneStandingsWidth, 0.001f);

@@ -8,9 +8,7 @@ import java.util.List;
 import java.util.Set;
 
 public final class RogueliteTournament {
-    public static final int CHAMPIONSHIP_COUNT = 3;
-    public static final int ELIMINATIONS_PER_CHAMPIONSHIP = 3;
-    public static final int FINALIST_COUNT = 4;
+    public static final int CHAMPIONSHIP_COUNT = 1;
 
     public Outcome resolve(
             int championshipNumber,
@@ -18,35 +16,17 @@ public final class RogueliteTournament {
         return resolve(
                 championshipNumber,
                 standings,
-                CHAMPIONSHIP_COUNT,
-                ELIMINATIONS_PER_CHAMPIONSHIP,
-                FINALIST_COUNT);
+                CHAMPIONSHIP_COUNT);
     }
 
     public Outcome resolve(
             int championshipNumber,
             List<Standing> standings,
-            int championshipCount,
-            int eliminationsPerChampionship) {
-        return resolve(
-                championshipNumber,
-                standings,
-                championshipCount,
-                eliminationsPerChampionship,
-                1);
-    }
-
-    private Outcome resolve(
-            int championshipNumber,
-            List<Standing> standings,
-            int championshipCount,
-            int eliminationsPerChampionship,
-            int minimumCompetitorCount) {
+            int championshipCount) {
         if (championshipNumber < 1
                 || standings == null
                 || standings.isEmpty()
-                || championshipCount < 1
-                || eliminationsPerChampionship < 0) {
+                || championshipCount < 1) {
             throw new IllegalArgumentException(
                     "A championship requires at least one standing.");
         }
@@ -79,23 +59,9 @@ public final class RogueliteTournament {
                     }
                 });
 
-        if (championshipNumber >= championshipCount) {
-            return Outcome.finalWinner(ordered.get(0).getVehicleId());
-        }
-
-        int eliminationCount =
-                Math.min(
-                        eliminationsPerChampionship,
-                        Math.max(0, ordered.size() - minimumCompetitorCount));
-        List<Integer> eliminatedVehicleIds =
-                new ArrayList<Integer>(eliminationCount);
-        for (int i = 0; i < eliminationCount; i++) {
-            eliminatedVehicleIds.add(
-                    Integer.valueOf(
-                            ordered.get(ordered.size() - 1 - i)
-                                    .getVehicleId()));
-        }
-        return Outcome.eliminations(eliminatedVehicleIds);
+        return Outcome.winner(
+                championshipNumber >= championshipCount,
+                ordered.get(0).getVehicleId());
     }
 
     public boolean isFinalChampionship(int championshipNumber) {
@@ -116,47 +82,18 @@ public final class RogueliteTournament {
                 championshipNumber,
                 position,
                 competitorCount,
-                CHAMPIONSHIP_COUNT,
-                ELIMINATIONS_PER_CHAMPIONSHIP,
-                FINALIST_COUNT);
+                CHAMPIONSHIP_COUNT);
     }
 
     public boolean isLosingPosition(
             int championshipNumber,
             int position,
             int competitorCount,
-            int championshipCount,
-            int eliminationsPerChampionship) {
-        return isLosingPosition(
-                championshipNumber,
-                position,
-                competitorCount,
-                championshipCount,
-                eliminationsPerChampionship,
-                1);
-    }
-
-    private boolean isLosingPosition(
-            int championshipNumber,
-            int position,
-            int competitorCount,
-            int championshipCount,
-            int eliminationsPerChampionship,
-            int minimumCompetitorCount) {
+            int championshipCount) {
         if (position <= 1 || position > competitorCount) {
             return false;
         }
-        if (isFinalChampionship(championshipNumber, championshipCount)) {
-            return true;
-        }
-        if (competitorCount <= minimumCompetitorCount) {
-            return false;
-        }
-        int eliminationCount =
-                Math.min(
-                        Math.max(0, eliminationsPerChampionship),
-                        competitorCount - minimumCompetitorCount);
-        return position > competitorCount - eliminationCount;
+        return isFinalChampionship(championshipNumber, championshipCount);
     }
 
     private void validateUniqueVehicles(List<Standing> standings) {
@@ -215,30 +152,18 @@ public final class RogueliteTournament {
     public static final class Outcome {
         private final boolean finalChampionship;
         private final int winningVehicleId;
-        private final List<Integer> eliminatedVehicleIds;
 
         private Outcome(
                 boolean finalChampionship,
-                int winningVehicleId,
-                List<Integer> eliminatedVehicleIds) {
+                int winningVehicleId) {
             this.finalChampionship = finalChampionship;
             this.winningVehicleId = winningVehicleId;
-            this.eliminatedVehicleIds =
-                    Collections.unmodifiableList(
-                            new ArrayList<Integer>(
-                                    eliminatedVehicleIds));
         }
 
-        private static Outcome finalWinner(int winningVehicleId) {
-            return new Outcome(
-                    true,
-                    winningVehicleId,
-                    Collections.<Integer>emptyList());
-        }
-
-        private static Outcome eliminations(
-                List<Integer> eliminatedVehicleIds) {
-            return new Outcome(false, -1, eliminatedVehicleIds);
+        private static Outcome winner(
+                boolean finalChampionship,
+                int winningVehicleId) {
+            return new Outcome(finalChampionship, winningVehicleId);
         }
 
         public boolean isFinalChampionship() {
@@ -247,10 +172,6 @@ public final class RogueliteTournament {
 
         public int getWinningVehicleId() {
             return winningVehicleId;
-        }
-
-        public List<Integer> getEliminatedVehicleIds() {
-            return eliminatedVehicleIds;
         }
     }
 }

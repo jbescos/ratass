@@ -1,7 +1,7 @@
 package com.github.jbescos.gameplay.roguelite;
 
 public final class RogueliteCardDefinition {
-    public static final int ARTWORK_CAPACITY = 54;
+    public static final int ARTWORK_CAPACITY = 66;
     private final RogueliteCardId id;
     private final String title;
     private final String description;

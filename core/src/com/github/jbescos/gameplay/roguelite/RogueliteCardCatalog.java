@@ -17,105 +17,105 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.CLUB_TUNE,
                 "Club Tune",
                 "A dependable first race setup with more power, speed and tire grip.",
-                "Power +6% | Speed +2% | Grip +4%",
+                "Power +5% | Speed +2% | Grip +3%",
                 1,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.SPORT_TUNE,
                 "Lightweight Tune",
                 "A stripped chassis accelerates and changes direction quickly, but gives up tire stability.",
-                "Mass -2% | Power +8% | Speed +3%\nSteering +4% | Grip +2%",
+                "Mass -2% | Power +8% | Speed +3%\nSteering +4% | Grip +3%",
                 1,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.AERO_TRIM,
                 "Streamline Kit",
                 "An aerodynamically efficient body carries speed on open road at the cost of cornering confidence.",
-                "Aero +9% | Speed +7% | Power +6% | Grip +2%",
+                "Aero +9% | Speed +7% | Power +7% | Grip +3%",
                 1,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.SHORT_GEARING,
                 "Short-Ratio Gearbox",
                 "Close gearing launches hard between corners but reaches its limit earlier on long straights.",
-                "Power +12% | Grip +6% | Steering +4% | Speed -4%",
+                "Power +8% | Grip +4% | Steering +3% | Speed -2%",
                 1,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.CARBON_PANELS,
                 "Carbon Panels",
                 "Light body panels improve acceleration, response and aero efficiency.",
-                "Mass -6% | Power +3% | Speed +3%\nAero +4% | Steering +3% | Grip +1%",
+                "Mass -6% | Power +8% | Speed +3%\nAero +4% | Steering +3% | Grip +3%",
                 1,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.RACE_TUNE,
                 "Race Tune",
                 "Sharper race hardware combines sustained power with high-speed stability.",
-                "Power +34% | Speed +14% | Grip +16%\nMass +6% | Aero +8%",
+                "Power +18% | Speed +8% | Grip +11%\nMass +3% | Aero +4%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.HEAVYWEIGHT_TUNE,
                 "Ballast Powertrain",
                 "A reinforced, heavier car carries extra power and grip so contact no longer ruins its pace.",
-                "Mass +16% | Power +40% | Speed +14%\nGrip +18% | Stronger hits",
+                "Mass +10% | Power +20% | Speed +8%\nGrip +10% | Stronger hits",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.LOW_DRAG_BODY,
                 "Le Mans Body",
                 "Exceptional aero efficiency rewards committed high-speed driving without sacrificing basic stability.",
-                "Aero +28% | Speed +20% | Power +38%\nGrip +16% | Mass +8%",
+                "Aero +14% | Speed +11% | Power +21%\nGrip +10% | Mass +4%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.DRIFT_DIFFERENTIAL,
                 "Drift Differential",
                 "An aggressive differential makes sustained rotation easy and straightens with strong drive.",
-                "Power +48% | Speed +20% | Grip +20%\nMass +12% | Freer rear while drifting",
+                "Power +24% | Speed +11% | Grip +13%\nMass +6% | Freer rear while drifting",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.CARBON_MONOCOQUE,
                 "Carbon Monocoque",
                 "A rigid carbon cell cuts inertia while sharpening power delivery, aero and response.",
-                "Mass -12% | Power +27% | Speed +12%\nAero +14% | Grip +12% | Steering +8%",
+                "Mass -8% | Power +20% | Speed +7%\nAero +8% | Grip +10% | Steering +6%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.CHAMPIONSHIP_TUNE,
                 "Aero Prototype",
                 "An aerodynamically efficient body and high-speed downforce turn open road into a decisive advantage.",
-                "Aero +25% | Power +56% | Speed +24%\nGrip +22% | Mass +10%",
+                "Aero +16% | Power +39% | Speed +17%\nGrip +18% | Mass +7%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.GROUND_EFFECT,
                 "Ground Effect",
                 "A sealed floor creates exceptional cornering force while adding weight and aerodynamic resistance.",
-                "Grip +24% | Steering +6% | Power +62%\nSpeed +24% | Mass +14%",
+                "Grip +18% | Steering +5% | Power +40%\nSpeed +17% | Mass +9%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.VELOCITY_SHELL,
                 "Velocity Shell",
                 "A radical long-tail body maximizes aero efficiency for huge straight-line pace with modest cornering support.",
-                "Aero +47% | Speed +32% | Power +68%\nGrip +18% | Mass +10%",
+                "Aero +39% | Speed +28% | Power +62%\nGrip +17% | Mass +8%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.TORQUE_VECTORING,
                 "Torque Vectoring",
                 "Active torque distribution rotates the car decisively through corners while preserving competitive speed and contact strength.",
-                "Power +64% | Speed +25% | Grip +26%\nSteering +14% | Aero +16% | Mass +6%",
+                "Power +44% | Speed +18% | Grip +17%\nSteering +9% | Aero +11% | Mass +4%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.GRAPHENE_CHASSIS,
                 "Graphene Chassis",
                 "An ultralight structure delivers extreme acceleration, aero efficiency and precise handling.",
-                "Mass -18% | Power +43% | Speed +20%\nAero +22% | Grip +17% | Steering +12%",
+                "Mass -16% | Power +48% | Speed +22%\nAero +25% | Grip +19% | Steering +12%",
                 3,
                 RogueliteSlotType.TUNING));
 
@@ -137,7 +137,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.CLEAN_MOMENTUM,
                 "Clean Momentum",
                 "Continuous on-road driving builds a speed advantage that is lost by leaving the circuit.",
-                "Stay on-road: build speed up to +7%",
+                "Stay on-road: Speed +7% | Aero +3%",
                 1,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
@@ -260,12 +260,19 @@ public final class RogueliteCardCatalog {
                 "Nearby rival: invisible 3s | Rivals pass through you\nCooldown after effect: 10s",
                 1,
                 RogueliteAbilityVisualStyle.CLOAK));
+        cards.add(powerup(
+                RogueliteCardId.LUCKY_SPARK,
+                "Lucky Spark",
+                "Prepares a random Tier 1 Powerup and copies its real trigger, effect and cooldown.",
+                "Each activation: random Tier 1 Powerup",
+                1,
+                RogueliteAbilityVisualStyle.NITRO));
         cards.add(revenge(
                 RogueliteCardId.RAM_REACTOR,
                 "Impact Reversal",
                 "A qualified rival hit arms a counter that throws away the next car to strike you.",
                 "Rival hit -> next hit: reflect impact",
-                2,
+                1,
                 RogueliteAbilityVisualStyle.RAM));
         cards.add(revenge(
                 RogueliteCardId.DRAFT_MAGNET,
@@ -277,8 +284,8 @@ public final class RogueliteCardCatalog {
         cards.add(revenge(
                 RogueliteCardId.RECOVERY_BEACON,
                 "Position Hijack",
-                "A qualified hit marks its offender. Once there is space, you exchange positions and momentum.",
-                "Rival hit -> swap place and momentum with offender",
+                "A qualified hit marks its offender. After charging, it exchanges positions only while they are ahead.",
+                "Rival hit -> after 3s, swap with offender if ahead",
                 2,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -317,6 +324,13 @@ public final class RogueliteCardCatalog {
                 2,
                 RogueliteAbilityVisualStyle.CLOAK));
         cards.add(powerup(
+                RogueliteCardId.CHAOS_RELAY,
+                "Chaos Relay",
+                "Prepares a random Tier 2 Powerup and copies its real trigger, effect and cooldown.",
+                "Each activation: random Tier 2 Powerup",
+                2,
+                RogueliteAbilityVisualStyle.MIRROR));
+        cards.add(powerup(
                 RogueliteCardId.GRAVITY_WELL,
                 "Gravity Well",
                 "A visible ground field forms in corners or close traffic for extreme stability.",
@@ -344,18 +358,25 @@ public final class RogueliteCardCatalog {
                 "Nearby rival: invisible 5s | Rivals pass through you\nCooldown after effect: 10s",
                 3,
                 RogueliteAbilityVisualStyle.CLOAK));
+        cards.add(powerup(
+                RogueliteCardId.WILDCARD_CORE,
+                "Wildcard Core",
+                "Prepares a random Tier 3 Powerup and copies its real trigger, effect and cooldown.",
+                "Each activation: random Tier 3 Powerup",
+                3,
+                RogueliteAbilityVisualStyle.NITRO));
         cards.add(revenge(
                 RogueliteCardId.CROWN_ENGINE,
                 "Crown Breaker",
                 "A qualified rival hit arms a brutal hunt for the offender responsible.",
-                "Rival hit -> hunt offender with major boosts\nClose range: explosive ram",
+                "Hit taken -> Power +55% | Speed +22%\nRecoil -75% | Push +70% | Explosive ram",
                 3,
                 RogueliteAbilityVisualStyle.RAM));
         cards.add(revenge(
                 RogueliteCardId.PAYBACK_SHIELD,
                 "Vendetta Hook",
                 "A qualified hit marks its offender. A revenge cable then launches you rapidly back toward them.",
-                "Rival hit -> grapple rapidly toward offender",
+                "Rival hit -> grapple toward offender | Hooked 20s",
                 2,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -375,15 +396,57 @@ public final class RogueliteCardCatalog {
         cards.add(revenge(
                 RogueliteCardId.EMP_SNARE,
                 "EMP Snare",
-                "Launches a disruptive snare that briefly immobilizes the rival responsible for hitting you.",
-                "Rival hit -> offender: stop for 1s",
+                "Launches a disruptive snare that forces the rival responsible for hitting you to brake without reversing.",
+                "Rival hit -> offender: full brake for 2s",
                 2,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
                 RogueliteCardId.VOID_ANCHOR,
                 "Void Anchor",
-                "Hurls a heavy energy anchor that stops the rival responsible for hitting you.",
-                "Rival hit -> offender: stop for 2s",
+                "Hurls a heavy energy anchor that forces the rival responsible for hitting you to brake without reversing.",
+                "Rival hit -> offender: full brake for 3s",
+                3,
+                RogueliteAbilityVisualStyle.RAM));
+        cards.add(revenge(
+                RogueliteCardId.SENSOR_JAMMER,
+                "Sensor Jammer",
+                "A hit overloads every rival's car-awareness systems across the circuit.",
+                "Hit taken -> all rivals blind for 10s",
+                1,
+                RogueliteAbilityVisualStyle.SHIELD));
+        cards.add(revenge(
+                RogueliteCardId.GRID_BLACKOUT,
+                "Grid Blackout",
+                "A hit floods the circuit with interference that blinds every rival for an extended attack window.",
+                "Hit taken -> all rivals blind for 20s",
+                2,
+                RogueliteAbilityVisualStyle.SHIELD));
+        cards.add(revenge(
+                RogueliteCardId.TOTAL_BLACKOUT,
+                "Total Blackout",
+                "A hit collapses every rival's car-awareness systems for a long period of race-wide chaos.",
+                "Hit taken -> all rivals blind for 30s",
+                3,
+                RogueliteAbilityVisualStyle.SHIELD));
+        cards.add(revenge(
+                RogueliteCardId.LOADED_GRUDGE,
+                "Loaded Grudge",
+                "A rival hit executes a random Tier 1 Revenge card, then prepares a different retaliation.",
+                "Hit taken: random Tier 1 Revenge",
+                1,
+                RogueliteAbilityVisualStyle.DRAFT));
+        cards.add(revenge(
+                RogueliteCardId.CHAOS_RETORT,
+                "Chaos Retort",
+                "A rival hit executes a random Tier 2 Revenge card, then prepares a different retaliation.",
+                "Hit taken: random Tier 2 Revenge",
+                2,
+                RogueliteAbilityVisualStyle.SHIELD));
+        cards.add(revenge(
+                RogueliteCardId.FATES_REVENGE,
+                "Fate's Revenge",
+                "A rival hit executes a random Tier 3 Revenge card, then prepares a different retaliation.",
+                "Hit taken: random Tier 3 Revenge",
                 3,
                 RogueliteAbilityVisualStyle.RAM));
 
@@ -636,6 +699,24 @@ public final class RogueliteCardCatalog {
                 return 37;
             case VOID_ANCHOR:
                 return 38;
+            case SENSOR_JAMMER:
+                return 53;
+            case GRID_BLACKOUT:
+                return 54;
+            case TOTAL_BLACKOUT:
+                return 55;
+            case LUCKY_SPARK:
+                return 56;
+            case CHAOS_RELAY:
+                return 57;
+            case WILDCARD_CORE:
+                return 58;
+            case LOADED_GRUDGE:
+                return 59;
+            case CHAOS_RETORT:
+                return 60;
+            case FATES_REVENGE:
+                return 61;
             case GHOST_CLOAK:
                 return 39;
             case PHANTOM_CLOAK:

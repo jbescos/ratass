@@ -132,6 +132,11 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="optional RogueliteCardId powerup card for isolated balance benchmarks",
     )
+    parser.add_argument(
+        "--technique-card",
+        default="",
+        help="optional RogueliteCardId technique card for isolated balance benchmarks",
+    )
     parser.add_argument("--seed", type=int, default=20260531)
     parser.add_argument(
         "--timeout-seconds",
@@ -347,12 +352,15 @@ def make_environment(
         config.withCarPerformanceIndex(car_index)
     tuning_card = str(getattr(args, "tuning_card", "")).strip()
     powerup_card = str(getattr(args, "powerup_card", "")).strip()
-    if tuning_card and powerup_card:
+    technique_card = str(getattr(args, "technique_card", "")).strip()
+    if sum(bool(card) for card in (tuning_card, powerup_card, technique_card)) > 1:
         raise ValueError("only one benchmark card can be equipped")
     if tuning_card:
         config.withBenchmarkTuningCard(tuning_card)
     if powerup_card:
         config.withBenchmarkPowerupCard(powerup_card)
+    if technique_card:
+        config.withBenchmarkTechniqueCard(technique_card)
     config.addMap(arena_map)
     return ratass_game.RlTrainingEnvironment(config)
 

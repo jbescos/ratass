@@ -17,6 +17,14 @@ abstract class RogueliteUpgradeEffect {
         return cardId;
     }
 
+    RogueliteCardId behaviorCardId() {
+        return cardId;
+    }
+
+    RogueliteCardId activeDisplayCardId() {
+        return cardId;
+    }
+
     boolean isActive() {
         return false;
     }
@@ -134,6 +142,10 @@ abstract class RogueliteUpgradeEffect {
     void consumeImpactCounter() {
     }
 
+    float consumeRaceBlackoutSeconds() {
+        return 0f;
+    }
+
     void onRacePositionImproved(int positionsGained, float slipstreamBoost) {
     }
 
@@ -141,6 +153,9 @@ abstract class RogueliteUpgradeEffect {
     }
 
     void onHitBy(int vehicleId, float impactStrength) {
+    }
+
+    void onContactEnded(int vehicleId) {
     }
 
     boolean isInvisible() {
@@ -156,7 +171,8 @@ abstract class RogueliteUpgradeEffect {
 
     RogueliteRevengeStrike tryActivateOffenderStrike(
             int targetVehicleId,
-            float distance) {
+            float distance,
+            boolean offenderAhead) {
         return null;
     }
 }

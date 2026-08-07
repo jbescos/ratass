@@ -39,8 +39,22 @@ public class RogueliteRunTest {
         assertEquals(2, run.getPlayerProgress().getLevel());
         run.awardPlayerRacePosition(1, 10);
         assertEquals(2, run.getPlayerProgress().getLevel());
-        assertEquals(120, run.getPlayerProgress().getExperience());
+        assertEquals(20, run.getPlayerProgress().getExperience());
         assertEquals(180, run.getPlayerProgress().getExperienceForNextLevel());
+    }
+
+    @Test
+    public void customRacecraftCapAppliesIndependentlyToEveryCompetitor() {
+        RogueliteRun run = new RogueliteRun(91L);
+        CustomGameRules rules = new CustomGameRules();
+        rules.setRacecraftXpPerLapCap(15);
+        run.configureGameRules(rules);
+        run.reset();
+
+        assertEquals(15, run.getRacecraftXpPerLapCap());
+        assertEquals(15, run.awardPlayerRacecraftExperience(30));
+        assertEquals(15, run.awardRivalRacecraftExperience(7, 30));
+        assertEquals(0, run.awardPlayerRacecraftExperience(1));
     }
 
     @Test
@@ -75,33 +89,78 @@ public class RogueliteRunTest {
     }
 
     @Test
-    public void oneCardTierUnlocksForEachOfThreeChampionships() {
+    public void cardTiersUnlockAtBalancedProgressionLevels() {
         RogueliteRun run = new RogueliteRun(17L);
 
         assertEquals(1, run.getUnlockedTier());
-        run.advanceChampionship();
+        run.getPlayerProgress().restore(
+                RogueliteRun.TIER_TWO_LEVEL - 1, 0, 0);
+        assertEquals(1, run.getUnlockedTier());
+        run.getPlayerProgress().restore(RogueliteRun.TIER_TWO_LEVEL, 0, 0);
         assertEquals(2, run.getUnlockedTier());
-        run.advanceChampionship();
-        assertEquals(3, run.getUnlockedTier());
-        for (int i = 0; i < 3; i++) {
-            run.advanceChampionship();
-        }
+        run.getPlayerProgress().restore(
+                RogueliteRun.TIER_THREE_LEVEL - 1, 0, 0);
+        assertEquals(2, run.getUnlockedTier());
+        run.getPlayerProgress().restore(RogueliteRun.TIER_THREE_LEVEL, 0, 0);
         assertEquals(3, run.getUnlockedTier());
     }
 
     @Test
-    public void selectedStartingTierOffsetsProgressionAndCapsAtTierThree() {
+    public void championshipProgressDoesNotGrantLevelsOrChangeCardTier() {
+        RogueliteRun run = new RogueliteRun(171L);
+        RogueliteCompetitorProgress player = run.getPlayerProgress();
+        RogueliteCompetitorProgress rival = run.getRivalProgress(4);
+
+        run.advanceProgression();
+        assertEquals(1, player.getLevel());
+        assertEquals(0, player.getPendingRewards());
+        assertEquals(0, player.getExperience());
+        assertEquals(1, rival.getLevel());
+        assertEquals(0, rival.getPendingRewards());
+        assertEquals(0, rival.getExperience());
+        assertEquals(1, run.getUnlockedTier());
+    }
+
+    @Test
+    public void restartingAfterTheFinalKeepsProgressAndLoadout() {
+        RogueliteRun run = new RogueliteRun(172L);
+        run.awardPlayerRacePosition(1, 10);
+        RogueliteCardOffer selected = firstModification(run.createOffers(20));
+        assertTrue(run.select(selected));
+        int level = run.getPlayerProgress().getLevel();
+        int experience = run.getPlayerProgress().getExperience();
+
+        run.advanceProgression();
+        run.restartChampionship();
+
+        assertEquals(1, run.getChampionshipNumber());
+        assertEquals(level, run.getPlayerProgress().getLevel());
+        assertEquals(experience, run.getPlayerProgress().getExperience());
+        assertTrue(run.getPlayerLoadout().has(selected.getCard().getId()));
+    }
+
+    @Test
+    public void rivalsUnlockTiersFromTheirOwnLevels() {
+        RogueliteRun run = new RogueliteRun(173L);
+        run.getRivalProgress(4).restore(RogueliteRun.TIER_TWO_LEVEL, 0, 0);
+
+        assertEquals(1, run.getUnlockedTier());
+        assertEquals(2, run.getRivalUnlockedTier(4));
+    }
+
+    @Test
+    public void selectedStartingTierSetsTheMinimumTierAcrossChampionships() {
         RogueliteRun run = new RogueliteRun(18L);
 
         run.reset(2);
         assertEquals(2, run.getStartingTier());
         assertEquals(2, run.getUnlockedTier());
         run.advanceChampionship();
-        assertEquals(3, run.getUnlockedTier());
+        assertEquals(2, run.getUnlockedTier());
         run.advanceChampionship();
-        assertEquals(3, run.getUnlockedTier());
+        assertEquals(2, run.getUnlockedTier());
         run.advanceChampionship();
-        assertEquals(3, run.getUnlockedTier());
+        assertEquals(2, run.getUnlockedTier());
         assertEquals(4, run.getChampionshipNumber());
     }
 
@@ -304,12 +363,24 @@ public class RogueliteRunTest {
 
         assertEquals(2, first.getPlayerProgress().getLevel());
         assertEquals(20, first.getPlayerProgress().getExperience());
-        assertEquals(120, first.getPlayerProgress().getExperienceForNextLevel());
+        assertEquals(82, first.getPlayerProgress().getExperienceForNextLevel());
         assertEquals(2, second.getPlayerProgress().getLevel());
         assertEquals(2, third.getPlayerProgress().getLevel());
         assertEquals(1, fourth.getPlayerProgress().getLevel());
         assertEquals(1, first.getPlayerProgress().getPendingRewards());
         assertFalse(fourth.getPlayerProgress().hasPendingReward());
+    }
+
+    @Test
+    public void finishingPositionExperienceIsIndependentFromTheLapCap() {
+        RogueliteRun run = new RogueliteRun(431L);
+        CustomGameRules rules = new CustomGameRules();
+        rules.setRacecraftXpPerLapCap(
+                CustomGameRules.MIN_RACECRAFT_XP_PER_LAP_CAP);
+        run.configureGameRules(rules);
+
+        assertEquals(100, run.awardPlayerRacePosition(1, 10));
+        assertEquals(0, run.getPlayerProgress().getLapExperience());
     }
 
     @Test
@@ -328,31 +399,46 @@ public class RogueliteRunTest {
     }
 
     @Test
-    public void deferredRewardsUnlockAtTheNextLevelAndRemainQueued() {
+    public void skippingConsumesTheRewardAndAllowsTheNextLevel() {
+        RogueliteRun run = new RogueliteRun(471L);
+        levelUpPlayer(run);
+
+        assertTrue(run.skipPlayerReward());
+        assertFalse(run.getPlayerProgress().hasPendingReward());
+        assertTrue(run.getPlayerLoadout().getModifications().isEmpty());
+        assertTrue(run.createOffers(3).isEmpty());
+
+        assertEquals(61, run.awardPlayerExperience(61));
+        assertEquals(2, run.getPlayerProgress().getLevel());
+        assertEquals(1, run.awardPlayerExperience(1));
+        assertEquals(3, run.getPlayerProgress().getLevel());
+        assertTrue(run.getPlayerProgress().hasPendingReward());
+    }
+
+    @Test
+    public void unresolvedRewardPausesXpAndLegacyQueuesRestoreAsOneChoice() {
         RogueliteRun run = new RogueliteRun(48L);
         levelUpPlayer(run);
-        List<RogueliteCardOffer> deferredOffers = run.createOffers(3);
-
-        assertFalse(deferredOffers.isEmpty());
-        assertEquals(1, run.getPlayerProgress().getPendingRewards());
-        assertTrue(run.deferPlayerRewardsUntilNextLevel());
-        assertFalse(run.getPlayerProgress().hasOfferableReward());
-        assertTrue(run.createOffers(3).isEmpty());
-        assertFalse(run.select(deferredOffers.get(0)));
+        RogueliteRun.Snapshot snapshot = run.snapshot();
+        snapshot.player.pendingRewards = 4;
+        snapshot.player.rewardDeferredUntilLevel = 99;
 
         RogueliteRun restored = new RogueliteRun(480L);
-        assertTrue(restored.restore(run.snapshot()));
+        assertTrue(restored.restore(snapshot));
         assertEquals(1, restored.getPlayerProgress().getPendingRewards());
-        assertFalse(restored.getPlayerProgress().hasOfferableReward());
-
-        restored.awardPlayerRacePosition(1, 10);
-
         assertTrue(restored.getPlayerProgress().hasOfferableReward());
-        assertEquals(2, restored.getPlayerProgress().getPendingRewards());
-        assertTrue(restored.select(restored.createOffers(3).get(0)));
+        assertFalse(restored.createOffers(3).isEmpty());
+
+        assertEquals(0, restored.awardPlayerRacePosition(1, 10));
+        assertEquals(2, restored.getPlayerProgress().getLevel());
+        assertEquals(20, restored.getPlayerProgress().getExperience());
         assertEquals(1, restored.getPlayerProgress().getPendingRewards());
+
         assertTrue(restored.select(restored.createOffers(3).get(0)));
         assertEquals(0, restored.getPlayerProgress().getPendingRewards());
+        assertEquals(100, restored.awardPlayerRacePosition(1, 10));
+        assertEquals(3, restored.getPlayerProgress().getLevel());
+        assertEquals(1, restored.getPlayerProgress().getPendingRewards());
     }
 
     @Test
@@ -398,6 +484,13 @@ public class RogueliteRunTest {
     @Test
     public void currentDriverStaysOutOfOffersButPreviousDriverCanReturn() {
         RogueliteRun run = new RogueliteRun(51L);
+        CustomGameRules driverOnlyRules = new CustomGameRules();
+        for (RogueliteSlotType type : RogueliteSlotType.values()) {
+            if (type != RogueliteSlotType.DRIVER) {
+                assertTrue(driverOnlyRules.toggleCardType(type));
+            }
+        }
+        run.configureGameRules(driverOnlyRules);
         String defaultDriver = run.getPlayerLoadout().getDriverProfileId();
 
         earnOneReward(run);
@@ -510,9 +603,7 @@ public class RogueliteRunTest {
         assertTrue(loadout.equip(RogueliteCardId.CLUB_TUNE));
         assertTrue(loadout.equip(RogueliteCardId.CORNER_EXIT));
         assertTrue(loadout.equip(RogueliteCardId.NITRO_PULSE));
-        run.advanceChampionship();
-
-        run.awardRivalRacePosition(2, 1, 10);
+        run.getRivalProgress(2).restore(RogueliteRun.TIER_TWO_LEVEL, 0, 1);
         run.resolveRivalRewards(Arrays.asList(Integer.valueOf(2)));
 
         int tierTwoSlots =
@@ -527,10 +618,9 @@ public class RogueliteRunTest {
     }
 
     @Test
-    public void offersContainOnlyTheCurrentChampionshipTier() {
+    public void offersContainOnlyTheTierUnlockedByTheCompetitorLevel() {
         RogueliteRun run = new RogueliteRun(58L);
-        run.advanceChampionship();
-        earnOneReward(run);
+        run.getPlayerProgress().restore(RogueliteRun.TIER_TWO_LEVEL, 0, 1);
 
         List<RogueliteCardOffer> offers = run.createOffers(20);
 
@@ -538,6 +628,97 @@ public class RogueliteRunTest {
         for (int i = 0; i < offers.size(); i++) {
             assertEquals(2, offers.get(i).getTier());
         }
+    }
+
+    @Test
+    public void representativeSingleChampionshipProgressionReachesTierThree() {
+        RogueliteRun run = new RogueliteRun(581L);
+        int tierTwoCircuit = 0;
+        int tierThreeCircuit = 0;
+
+        for (int circuit = 1; circuit <= 19; circuit++) {
+            for (int lap = 0; lap < CustomGameRules.DEFAULT_LAPS; lap++) {
+                awardRacecraftAndResolve(run, RogueliteExperienceAwards.PASS_RIVAL);
+                awardRacecraftAndResolve(run, RogueliteExperienceAwards.FASTEST_LAP);
+                if (lap == 0) {
+                    awardRacecraftAndResolve(run, RogueliteExperienceAwards.REVENGE);
+                }
+                if (circuit % 2 == 0 && lap == 1) {
+                    awardRacecraftAndResolve(
+                            run,
+                            RogueliteExperienceAwards.PUSH_RIVAL_OFF_ROAD);
+                }
+                int driftSeconds = lap == CustomGameRules.DEFAULT_LAPS - 1 ? 4 : 3;
+                for (int second = 0; second < driftSeconds; second++) {
+                    awardRacecraftAndResolve(
+                            run,
+                            RogueliteExperienceAwards.DRIFT_SECOND);
+                }
+                run.resetPlayerLapExperience();
+            }
+            run.awardPlayerRacePosition(3, 10);
+            resolvePlayerReward(run);
+
+            if (tierTwoCircuit == 0 && run.getUnlockedTier() >= 2) {
+                tierTwoCircuit = circuit;
+            }
+            if (tierThreeCircuit == 0 && run.getUnlockedTier() >= 3) {
+                tierThreeCircuit = circuit;
+            }
+        }
+
+        assertTrue(tierTwoCircuit > 0 && tierTwoCircuit <= 10);
+        assertTrue(tierThreeCircuit > 0 && tierThreeCircuit <= 19);
+        assertTrue(
+                run.getPlayerProgress().getLevel()
+                        >= RogueliteRun.TIER_THREE_LEVEL);
+    }
+
+    @Test
+    public void onlyAnEventHeavyLapReachesTheRacecraftCap() {
+        RogueliteRun run = new RogueliteRun(582L);
+
+        for (int overtake = 0; overtake < 3; overtake++) {
+            awardRacecraftAndResolve(run, RogueliteExperienceAwards.PASS_RIVAL);
+        }
+        awardRacecraftAndResolve(run, RogueliteExperienceAwards.FASTEST_LAP);
+        awardRacecraftAndResolve(run, RogueliteExperienceAwards.REVENGE);
+        awardRacecraftAndResolve(run, RogueliteExperienceAwards.PUSH_RIVAL_OFF_ROAD);
+        for (int second = 0; second < 4; second++) {
+            awardRacecraftAndResolve(run, RogueliteExperienceAwards.DRIFT_SECOND);
+        }
+
+        assertEquals(26, run.getPlayerProgress().getLapExperience());
+        assertEquals(1, run.getPlayerProgress().getLevel());
+        awardRacecraftAndResolve(run, RogueliteExperienceAwards.PASS_RIVAL);
+        awardRacecraftAndResolve(run, RogueliteExperienceAwards.PASS_RIVAL);
+        assertEquals(
+                RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP,
+                run.getPlayerProgress().getLapExperience());
+        assertTrue(
+                RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP * 2
+                        < run.getPlayerProgress().getExperienceForNextLevel());
+    }
+
+    @Test
+    public void racecraftExperienceIsCappedPerCompetitorAndRestored() {
+        RogueliteRun run = new RogueliteRun(583L);
+
+        assertEquals(30, run.awardPlayerRacecraftExperience(100));
+        assertEquals(0, run.awardPlayerRacecraftExperience(1));
+        assertEquals(
+                RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP,
+                run.getPlayerProgress().getLapExperience());
+        assertEquals(30, run.awardRivalRacecraftExperience(7, 200));
+
+        RogueliteRun restored = new RogueliteRun(584L);
+        assertTrue(restored.restore(run.snapshot()));
+        assertEquals(30, restored.getPlayerProgress().getLapExperience());
+        assertEquals(30, restored.getRivalProgress(7).getLapExperience());
+
+        restored.resetPlayerLapExperience();
+        assertEquals(0, restored.getPlayerProgress().getLapExperience());
+        assertEquals(30, restored.getRivalProgress(7).getLapExperience());
     }
 
     @Test
@@ -577,6 +758,27 @@ public class RogueliteRunTest {
         while (!run.getPlayerProgress().hasPendingReward()) {
             run.awardPlayerRacePosition(1, 10);
         }
+    }
+
+    private static void awardAndResolve(RogueliteRun run, int experience) {
+        run.awardPlayerExperience(experience);
+        resolvePlayerReward(run);
+    }
+
+    private static void awardRacecraftAndResolve(
+            RogueliteRun run,
+            int experience) {
+        run.awardPlayerRacecraftExperience(experience);
+        resolvePlayerReward(run);
+    }
+
+    private static void resolvePlayerReward(RogueliteRun run) {
+        if (!run.getPlayerProgress().hasPendingReward()) {
+            return;
+        }
+        List<RogueliteCardOffer> offers = run.createOffers(3);
+        assertFalse(offers.isEmpty());
+        assertTrue(run.select(offers.get(0)));
     }
 
     private static RogueliteCardOffer firstModification(

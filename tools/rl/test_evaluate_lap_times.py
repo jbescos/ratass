@@ -63,6 +63,7 @@ class LapTimingEnvironmentTest(unittest.TestCase):
             random_race_spawns=False,
             seed=1,
             tuning_card="AERO_TRIM",
+            technique_card="",
         )
 
         config = make_environment(args, ratass_game, object(), 5, None)
@@ -71,6 +72,44 @@ class LapTimingEnvironmentTest(unittest.TestCase):
         self.assertEqual(config.values["withOffRoadFailureMaxActionSteps"], 0)
         self.assertTrue(config.values["withRewardBreakdownEnabled"])
         self.assertEqual(config.values["withBenchmarkTuningCard"], "AERO_TRIM")
+
+    def test_equips_one_technique_card_for_benchmarking(self):
+        class FakeConfig:
+            def __init__(self):
+                self.values = {}
+
+            def __getattr__(self, name):
+                def record(value):
+                    self.values[name] = value
+                    return self
+
+                return record
+
+        class FakeRatassGame:
+            def __init__(self):
+                self.config = FakeConfig()
+
+            def RlTrainingConfig(self):
+                return self.config
+
+            @staticmethod
+            def RlTrainingEnvironment(config):
+                return config
+
+        ratass_game = FakeRatassGame()
+        args = SimpleNamespace(
+            steps=0,
+            action_repeat=4,
+            random_race_spawns=False,
+            seed=1,
+            technique_card="CLEAN_MOMENTUM",
+        )
+
+        config = make_environment(args, ratass_game, object(), 3, None)
+
+        self.assertEqual(
+            config.values["withBenchmarkTechniqueCard"], "CLEAN_MOMENTUM"
+        )
 
     def test_wall_timeout_preserves_completed_laps(self):
         class FakeEnvironment:

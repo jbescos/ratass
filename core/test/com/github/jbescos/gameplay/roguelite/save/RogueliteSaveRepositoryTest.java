@@ -70,36 +70,44 @@ public class RogueliteSaveRepositoryTest {
     }
 
     @Test
-    public void pendingBottomTwoEliminationsSurviveSaveAndLoad() {
+    public void championshipTransitionSurvivesSaveAndLoad() {
         MemoryStore store = new MemoryStore();
         RogueliteSaveRepository repository = new RogueliteSaveRepository(store);
         RogueliteSaveData data = saveData(18);
         data.championshipTransitionPending = true;
-        data.pendingEliminatedVehicleIds.add(Integer.valueOf(8));
-        data.pendingEliminatedVehicleIds.add(Integer.valueOf(9));
 
         assertTrue(repository.save(data));
 
         RogueliteSaveData loaded = repository.load();
         assertNotNull(loaded);
         assertTrue(loaded.championshipTransitionPending);
-        assertEquals(
-                Arrays.asList(Integer.valueOf(8), Integer.valueOf(9)),
-                loaded.pendingEliminatedVehicleIds);
     }
 
     @Test
-    public void infiniteCompetitionModeSurvivesSaveAndLoad() {
+    public void liveRewardResumeContextSurvivesSaveAndLoad() {
         MemoryStore store = new MemoryStore();
         RogueliteSaveRepository repository = new RogueliteSaveRepository(store);
-        RogueliteSaveData data = saveData(19);
-        data.competitionMode = RogueliteCompetitionMode.INFINITE.getId();
+        RogueliteSaveData data = saveData(181);
+        data.phase = RogueliteSaveData.PHASE_REWARD;
+        data.rewardResumesRace = true;
+        data.rewardCardIds.add("card:CLUB_TUNE");
 
         assertTrue(repository.save(data));
 
         RogueliteSaveData loaded = repository.load();
         assertNotNull(loaded);
-        assertEquals(RogueliteCompetitionMode.INFINITE.getId(), loaded.competitionMode);
+        assertTrue(loaded.rewardResumesRace);
+    }
+
+    @Test
+    public void removedInfiniteCompetitionModeIsRejected() {
+        MemoryStore store = new MemoryStore();
+        RogueliteSaveRepository repository = new RogueliteSaveRepository(store);
+        RogueliteSaveData data = saveData(19);
+        data.competitionMode = "infinite";
+
+        assertFalse(repository.save(data));
+        assertNull(repository.load());
     }
 
     @Test
@@ -111,8 +119,7 @@ public class RogueliteSaveRepositoryTest {
         rules.resetMaps(Arrays.asList("map001"));
         rules.setLaps(6);
         rules.setLevelXpIncrement(70);
-        rules.setChampionshipCount(4);
-        rules.setEliminationsPerChampionship(2);
+        rules.setRacecraftXpPerLapCap(55);
         data.competitionMode = RogueliteCompetitionMode.CUSTOM.getId();
         data.customRules = rules.snapshot();
 
@@ -123,8 +130,7 @@ public class RogueliteSaveRepositoryTest {
         assertEquals(RogueliteCompetitionMode.CUSTOM.getId(), loaded.competitionMode);
         assertEquals(6, loaded.customRules.laps);
         assertEquals(70, loaded.customRules.levelXpIncrement);
-        assertEquals(4, loaded.customRules.championshipCount);
-        assertEquals(2, loaded.customRules.eliminationsPerChampionship);
+        assertEquals(55, loaded.customRules.racecraftXpPerLapCap);
     }
 
     private static RogueliteSaveData saveData(int round) {

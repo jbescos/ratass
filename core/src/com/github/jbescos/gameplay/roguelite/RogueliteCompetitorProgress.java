@@ -9,8 +9,11 @@ public final class RogueliteCompetitorProgress {
     private final int levelXpIncrement;
     private int level = 1;
     private int experience;
+    private int lapExperience;
+    private int raceExperience;
+    private RogueliteExperienceAwards.Reason lastExperienceReason;
+    private int lastExperienceAmount;
     private int pendingRewards;
-    private int rewardDeferredUntilLevel;
 
     RogueliteCompetitorProgress(String defaultDriverProfileId) {
         this(defaultDriverProfileId, CustomGameRules.DEFAULT_LEVEL_XP_INCREMENT);
@@ -39,6 +42,22 @@ public final class RogueliteCompetitorProgress {
         return experienceForLevel(level);
     }
 
+    public int getLapExperience() {
+        return lapExperience;
+    }
+
+    public int getRaceExperience() {
+        return raceExperience;
+    }
+
+    public RogueliteExperienceAwards.Reason getLastExperienceReason() {
+        return lastExperienceReason;
+    }
+
+    public int getLastExperienceAmount() {
+        return lastExperienceAmount;
+    }
+
     public int getPendingRewards() {
         return pendingRewards;
     }
@@ -48,75 +67,93 @@ public final class RogueliteCompetitorProgress {
     }
 
     public boolean hasOfferableReward() {
-        return pendingRewards > 0 && rewardDeferredUntilLevel == 0;
-    }
-
-    public int getRewardDeferredUntilLevel() {
-        return rewardDeferredUntilLevel;
+        return pendingRewards > 0;
     }
 
     boolean isPristine() {
         return level == 1
                 && experience == 0
+                && lapExperience == 0
                 && pendingRewards == 0
-                && rewardDeferredUntilLevel == 0
                 && loadout.getModifications().isEmpty();
     }
 
     public int awardRacePosition(int position, int fieldSize) {
-        int gained = experienceForPosition(position, fieldSize);
+        int gained = awardExperience(experienceForPosition(position, fieldSize));
+        recordRaceAward(RogueliteExperienceAwards.Reason.FINISH, gained);
+        return gained;
+    }
+
+    public int awardExperience(int amount) {
+        if (hasPendingReward() || amount <= 0) {
+            return 0;
+        }
+        int gained = amount;
         experience += gained;
-        while (experience >= getExperienceForNextLevel()) {
+        if (experience >= getExperienceForNextLevel()) {
             experience -= getExperienceForNextLevel();
             level++;
-            pendingRewards++;
-            if (rewardDeferredUntilLevel > 0
-                    && level >= rewardDeferredUntilLevel) {
-                rewardDeferredUntilLevel = 0;
-            }
+            pendingRewards = 1;
+            experience = Math.min(experience, getExperienceForNextLevel() - 1);
         }
         return gained;
     }
 
-    boolean deferRewardsUntilNextLevel() {
-        if (!hasOfferableReward()) {
-            return false;
+    int awardRacecraftExperience(int amount, int lapExperienceCap) {
+        return awardRacecraftExperience(null, amount, lapExperienceCap);
+    }
+
+    int awardRacecraftExperience(
+            RogueliteExperienceAwards.Reason reason,
+            int amount,
+            int lapExperienceCap) {
+        int remaining = Math.max(0, lapExperienceCap - lapExperience);
+        int gained = awardExperience(Math.min(amount, remaining));
+        lapExperience += gained;
+        recordRaceAward(reason, gained);
+        return gained;
+    }
+
+    void resetLapExperience() {
+        lapExperience = 0;
+    }
+
+    void resetRaceExperience() {
+        lapExperience = 0;
+        raceExperience = 0;
+        lastExperienceReason = null;
+        lastExperienceAmount = 0;
+    }
+
+    void restoreLapExperience(int restoredLapExperience, int lapExperienceCap) {
+        if (restoredLapExperience < 0
+                || restoredLapExperience > lapExperienceCap) {
+            throw new IllegalArgumentException("Invalid lap experience.");
         }
-        rewardDeferredUntilLevel = level + 1;
-        return true;
+        lapExperience = restoredLapExperience;
     }
 
     boolean consumePendingReward() {
         if (pendingRewards <= 0) {
             return false;
         }
-        pendingRewards--;
-        if (pendingRewards == 0) {
-            rewardDeferredUntilLevel = 0;
-        }
+        pendingRewards = 0;
         return true;
     }
 
     void restore(
             int restoredLevel,
             int restoredExperience,
-            int restoredPendingRewards,
-            int restoredRewardDeferredUntilLevel) {
+            int restoredPendingRewards) {
         if (restoredLevel < 1
                 || restoredExperience < 0
                 || restoredExperience >= experienceForLevel(restoredLevel)
-                || restoredPendingRewards < 0
-                || restoredRewardDeferredUntilLevel < 0
-                || (restoredRewardDeferredUntilLevel > 0
-                        && (restoredPendingRewards == 0
-                                || restoredRewardDeferredUntilLevel
-                                        <= restoredLevel))) {
+                || restoredPendingRewards < 0) {
             throw new IllegalArgumentException("Invalid roguelite competitor progress.");
         }
         level = restoredLevel;
         experience = restoredExperience;
-        pendingRewards = restoredPendingRewards;
-        rewardDeferredUntilLevel = restoredRewardDeferredUntilLevel;
+        pendingRewards = restoredPendingRewards > 0 ? 1 : 0;
     }
 
     static int experienceForPosition(int position, int fieldSize) {
@@ -129,6 +166,19 @@ public final class RogueliteCompetitorProgress {
         return Math.round(
                 LAST_PLACE_XP
                         + (FIRST_PLACE_XP - LAST_PLACE_XP) * finishRatio);
+    }
+
+    private void recordRaceAward(
+            RogueliteExperienceAwards.Reason reason,
+            int gained) {
+        if (gained <= 0) {
+            return;
+        }
+        raceExperience += gained;
+        if (reason != null) {
+            lastExperienceReason = reason;
+            lastExperienceAmount = gained;
+        }
     }
 
     private int experienceForLevel(int currentLevel) {

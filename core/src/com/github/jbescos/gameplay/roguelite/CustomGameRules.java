@@ -9,18 +9,16 @@ import java.util.Set;
 
 /** Rules selected for a custom run. */
 public final class CustomGameRules {
-    public static final int DEFAULT_LAPS = 3;
-    public static final int DEFAULT_LEVEL_XP_INCREMENT = 40;
-    public static final int DEFAULT_CHAMPIONSHIP_COUNT = 3;
-    public static final int DEFAULT_ELIMINATIONS_PER_CHAMPIONSHIP = 3;
+    public static final int DEFAULT_LAPS = 5;
+    public static final int DEFAULT_LEVEL_XP_INCREMENT = 2;
     public static final int MIN_LAPS = 1;
     public static final int MAX_LAPS = 20;
     public static final int MIN_LEVEL_XP_INCREMENT = 0;
     public static final int MAX_LEVEL_XP_INCREMENT = 200;
-    public static final int MIN_CHAMPIONSHIP_COUNT = 1;
-    public static final int MAX_CHAMPIONSHIP_COUNT = 10;
-    public static final int MIN_ELIMINATIONS_PER_CHAMPIONSHIP = 0;
-    public static final int MAX_ELIMINATIONS_PER_CHAMPIONSHIP = 9;
+    public static final int MIN_RACECRAFT_XP_PER_LAP_CAP = 5;
+    public static final int MAX_RACECRAFT_XP_PER_LAP_CAP = 200;
+    public static final int MIN_RACECRAFT_XP_AWARD = 0;
+    public static final int MAX_RACECRAFT_XP_AWARD = 50;
 
     private final EnumSet<RogueliteSlotType> cardTypes =
             EnumSet.allOf(RogueliteSlotType.class);
@@ -30,12 +28,14 @@ public final class CustomGameRules {
     private final Set<String> mapIds = new LinkedHashSet<String>();
     private int laps = DEFAULT_LAPS;
     private int levelXpIncrement = DEFAULT_LEVEL_XP_INCREMENT;
-    private int championshipCount = DEFAULT_CHAMPIONSHIP_COUNT;
-    private int eliminationsPerChampionship =
-            DEFAULT_ELIMINATIONS_PER_CHAMPIONSHIP;
+    private int racecraftXpPerLapCap =
+            RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP;
+    private final int[] racecraftXpAwards =
+            new int[RogueliteExperienceAwards.Reason.values().length];
 
     public CustomGameRules() {
         selectAllTiers();
+        resetRacecraftXpAwards();
     }
 
     public CustomGameRules(CustomGameRules source) {
@@ -52,8 +52,13 @@ public final class CustomGameRules {
         mapIds.addAll(source.mapIds);
         laps = source.laps;
         levelXpIncrement = source.levelXpIncrement;
-        championshipCount = source.championshipCount;
-        eliminationsPerChampionship = source.eliminationsPerChampionship;
+        racecraftXpPerLapCap = source.racecraftXpPerLapCap;
+        System.arraycopy(
+                source.racecraftXpAwards,
+                0,
+                racecraftXpAwards,
+                0,
+                racecraftXpAwards.length);
     }
 
     public CustomGameRules copy() {
@@ -190,25 +195,33 @@ public final class CustomGameRules {
                 clamp(value, MIN_LEVEL_XP_INCREMENT, MAX_LEVEL_XP_INCREMENT);
     }
 
-    public int getChampionshipCount() {
-        return championshipCount;
+    public int getRacecraftXpPerLapCap() {
+        return racecraftXpPerLapCap;
     }
 
-    public void setChampionshipCount(int value) {
-        championshipCount =
-                clamp(value, MIN_CHAMPIONSHIP_COUNT, MAX_CHAMPIONSHIP_COUNT);
-    }
-
-    public int getEliminationsPerChampionship() {
-        return eliminationsPerChampionship;
-    }
-
-    public void setEliminationsPerChampionship(int value) {
-        eliminationsPerChampionship =
+    public void setRacecraftXpPerLapCap(int value) {
+        racecraftXpPerLapCap =
                 clamp(
                         value,
-                        MIN_ELIMINATIONS_PER_CHAMPIONSHIP,
-                        MAX_ELIMINATIONS_PER_CHAMPIONSHIP);
+                        MIN_RACECRAFT_XP_PER_LAP_CAP,
+                        MAX_RACECRAFT_XP_PER_LAP_CAP);
+    }
+
+    public int getRacecraftXpAward(RogueliteExperienceAwards.Reason reason) {
+        if (reason == null || !reason.isCustomizable()) {
+            return 0;
+        }
+        return racecraftXpAwards[reason.ordinal()];
+    }
+
+    public void setRacecraftXpAward(
+            RogueliteExperienceAwards.Reason reason,
+            int value) {
+        if (reason == null || !reason.isCustomizable()) {
+            return;
+        }
+        racecraftXpAwards[reason.ordinal()] =
+                clamp(value, MIN_RACECRAFT_XP_AWARD, MAX_RACECRAFT_XP_AWARD);
     }
 
     public Snapshot snapshot() {
@@ -227,8 +240,14 @@ public final class CustomGameRules {
         snapshot.mapIds.addAll(mapIds);
         snapshot.laps = laps;
         snapshot.levelXpIncrement = levelXpIncrement;
-        snapshot.championshipCount = championshipCount;
-        snapshot.eliminationsPerChampionship = eliminationsPerChampionship;
+        snapshot.racecraftXpPerLapCap = racecraftXpPerLapCap;
+        for (RogueliteExperienceAwards.Reason reason
+                : RogueliteExperienceAwards.Reason.values()) {
+            if (reason.isCustomizable()) {
+                snapshot.racecraftXpAwards.add(
+                        Integer.valueOf(getRacecraftXpAward(reason)));
+            }
+        }
         return snapshot;
     }
 
@@ -265,6 +284,24 @@ public final class CustomGameRules {
                 || restoredMaps.isEmpty()) {
             return false;
         }
+        int customizableAwardCount = 0;
+        for (RogueliteExperienceAwards.Reason reason
+                : RogueliteExperienceAwards.Reason.values()) {
+            if (reason.isCustomizable()) {
+                customizableAwardCount++;
+            }
+        }
+        if (snapshot.racecraftXpAwards == null
+                || snapshot.racecraftXpAwards.size() != customizableAwardCount) {
+            return false;
+        }
+        for (Integer award : snapshot.racecraftXpAwards) {
+            if (award == null
+                    || award.intValue() < MIN_RACECRAFT_XP_AWARD
+                    || award.intValue() > MAX_RACECRAFT_XP_AWARD) {
+                return false;
+            }
+        }
         cardTypes.clear();
         cardTypes.addAll(restoredCardTypes);
         weatherTypes.clear();
@@ -275,9 +312,23 @@ public final class CustomGameRules {
         mapIds.addAll(restoredMaps);
         laps = snapshot.laps;
         levelXpIncrement = snapshot.levelXpIncrement;
-        championshipCount = snapshot.championshipCount;
-        eliminationsPerChampionship = snapshot.eliminationsPerChampionship;
+        racecraftXpPerLapCap = snapshot.racecraftXpPerLapCap;
+        int awardIndex = 0;
+        for (RogueliteExperienceAwards.Reason reason
+                : RogueliteExperienceAwards.Reason.values()) {
+            if (reason.isCustomizable()) {
+                racecraftXpAwards[reason.ordinal()] =
+                        snapshot.racecraftXpAwards.get(awardIndex++).intValue();
+            }
+        }
         return true;
+    }
+
+    private void resetRacecraftXpAwards() {
+        for (RogueliteExperienceAwards.Reason reason
+                : RogueliteExperienceAwards.Reason.values()) {
+            racecraftXpAwards[reason.ordinal()] = reason.getDefaultExperience();
+        }
     }
 
     private void selectAllTiers() {
@@ -329,9 +380,9 @@ public final class CustomGameRules {
         public List<String> mapIds = new ArrayList<String>();
         public int laps = DEFAULT_LAPS;
         public int levelXpIncrement = DEFAULT_LEVEL_XP_INCREMENT;
-        public int championshipCount = DEFAULT_CHAMPIONSHIP_COUNT;
-        public int eliminationsPerChampionship =
-                DEFAULT_ELIMINATIONS_PER_CHAMPIONSHIP;
+        public int racecraftXpPerLapCap =
+                RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP;
+        public List<Integer> racecraftXpAwards = new ArrayList<Integer>();
 
         public boolean isStructurallyValid() {
             if (cardTypes == null
@@ -346,12 +397,9 @@ public final class CustomGameRules {
                     || laps > MAX_LAPS
                     || levelXpIncrement < MIN_LEVEL_XP_INCREMENT
                     || levelXpIncrement > MAX_LEVEL_XP_INCREMENT
-                    || championshipCount < MIN_CHAMPIONSHIP_COUNT
-                    || championshipCount > MAX_CHAMPIONSHIP_COUNT
-                    || eliminationsPerChampionship
-                            < MIN_ELIMINATIONS_PER_CHAMPIONSHIP
-                    || eliminationsPerChampionship
-                            > MAX_ELIMINATIONS_PER_CHAMPIONSHIP) {
+                    || racecraftXpPerLapCap < MIN_RACECRAFT_XP_PER_LAP_CAP
+                    || racecraftXpPerLapCap > MAX_RACECRAFT_XP_PER_LAP_CAP
+                    || racecraftXpAwards == null) {
                 return false;
             }
             for (int i = 0; i < tiers.size(); i++) {

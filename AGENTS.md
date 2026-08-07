@@ -12,3 +12,10 @@
   random-number consumption, or episode timing.
 - Add focused tests for standalone visual-effect state and run an RL smoke test
   after integrating a visual feature.
+
+## Conversation Context
+
+- If a request appears unrelated to this racing game project or the current
+  task, pause before acting and tell the user it may have been intended for a
+  different Codex conversation. Continue only after the user confirms the
+  context switch.
