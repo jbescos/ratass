@@ -74,8 +74,24 @@ public class RacingHudLayoutTest {
         assertEquals(300f, RacingHudLayout.bottomPanelCarStatsWidth(1000f), 0.001f);
         assertEquals(400f, RacingHudLayout.bottomPanelTelemetryWidth(1000f), 0.001f);
         assertEquals(300f, RacingHudLayout.bottomPanelCardsWidth(1000f), 0.001f);
-        assertEquals(2.5f, RacingHudLayout.cardActivationMarkerRadius(12f), 0.001f);
-        assertEquals(3.6f, RacingHudLayout.cardActivationMarkerRadius(20f), 0.001f);
-        assertEquals(5f, RacingHudLayout.cardActivationMarkerRadius(40f), 0.001f);
+        assertEquals(11f, RacingHudLayout.cardStatusIconSize(12f), 0.001f);
+        assertEquals(13.6f, RacingHudLayout.cardStatusIconSize(20f), 0.001f);
+        assertEquals(20f, RacingHudLayout.cardStatusIconSize(40f), 0.001f);
+    }
+
+    @Test
+    public void carNameMovesAwayFromAnActiveWarning() {
+        assertEquals(
+                100f,
+                RacingHudLayout.carNameBaseline(100f, 16f, 20f, 180f, false),
+                0.001f);
+        assertEquals(
+                122f,
+                RacingHudLayout.carNameBaseline(100f, 16f, 20f, 180f, true),
+                0.001f);
+        assertEquals(
+                138f,
+                RacingHudLayout.carNameBaseline(160f, 16f, 20f, 180f, true),
+                0.001f);
     }
 }

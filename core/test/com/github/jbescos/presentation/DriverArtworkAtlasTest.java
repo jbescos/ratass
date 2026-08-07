@@ -6,6 +6,11 @@ import org.junit.Test;
 
 public class DriverArtworkAtlasTest {
     @Test
+    public void usesThemeScopedArtworkPath() {
+        assertEquals("drivers/driver_art_atlas.png", DriverArtworkAtlas.THEMED_RELATIVE_PATH);
+    }
+
+    @Test
     public void mapsDriverProfilesToRowMajorArtworkCells() {
         assertEquals(0, DriverArtworkAtlas.indexForProfile("profile00"));
         assertEquals(4, DriverArtworkAtlas.indexForProfile("profile04"));

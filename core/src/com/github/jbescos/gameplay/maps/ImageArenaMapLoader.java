@@ -595,7 +595,7 @@ final class ImageArenaMapLoader {
             try {
                 reader = MapCacheSupport.openReader(cacheFile);
                 CachedMapData cached = createCacheJson().fromJson(CachedMapData.class, reader);
-                if (isCacheValid(cached, maskFile, baseName, surfacePath, mapScale, maskSha256)) {
+                if (isCacheValid(cached, maskFile, baseName, mapScale, maskSha256)) {
                     return cached;
                 }
             } catch (RuntimeException ignored) {
@@ -613,13 +613,11 @@ final class ImageArenaMapLoader {
             CachedMapData cached,
             FileHandle maskFile,
             String baseName,
-            String surfacePath,
             float mapScale,
             String maskSha256) {
         if (cached == null
                 || cached.version != CACHE_VERSION
                 || !baseName.equals(cached.baseName)
-                || !surfacePath.equals(cached.surfacePath)
                 || Math.abs(cached.mapScale - mapScale) > 0.0001f
                 || cached.maskLength != maskFile.length()
                 || cached.maskSha256 == null

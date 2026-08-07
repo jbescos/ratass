@@ -8,15 +8,22 @@ public final class AutomaticRecoveryManeuver {
     private static final float USEFUL_ALIGNMENT_GAIN = 0.08f;
     private static final float STALL_SECONDS = 0.85f;
     private static final float ESCAPE_GEAR_LOCK_SECONDS = 0.70f;
+    private static final float MAX_CONTINUOUS_REVERSE_SECONDS = 2.20f;
+    private static final float TURNAROUND_GEAR_LOCK_SECONDS = 2.0f;
+    private static final float TURNAROUND_STEERING_SECONDS = 1.4f;
     private static final float MIN_THROTTLE_FACTOR = 0.32f;
     private static final float APPROACH_BRAKE_SPEED_EPSILON = 0.15f;
     private static final float MIN_APPROACH_THROTTLE_FACTOR = 0.20f;
+    private static final float STEERING_DIRECTION_SPEED_EPSILON = 0.08f;
 
     private boolean active;
     private boolean reversing;
     private boolean replanRequested;
     private float gearLockTimer;
     private float stallTimer;
+    private float continuousReverseTimer;
+    private float turnaroundSteeringTimer;
+    private float turnaroundDirection;
     private float bestDistance;
     private float bestDriveAlignment;
 
@@ -33,12 +40,41 @@ public final class AutomaticRecoveryManeuver {
         return offRoad || !safeToReturnControl;
     }
 
+    public static float calculateShortestForwardTurn(
+            float forwardAlignment, float sideAlignment) {
+        if (!Float.isFinite(forwardAlignment) || !Float.isFinite(sideAlignment)) {
+            return 0f;
+        }
+        float signedAngle = (float) Math.atan2(sideAlignment, forwardAlignment);
+        return Math.max(-1f, Math.min(1f, -signedAngle / ((float) Math.PI * 0.5f)));
+    }
+
+    public static boolean isSafeDirectionalHandoff(
+            boolean onRoad,
+            float roadMargin,
+            float requiredRoadMargin,
+            float totalSpeed,
+            float maximumSpeed,
+            float routeAlignment,
+            float minimumRouteAlignment,
+            float routeForwardSpeed,
+            float minimumRouteForwardSpeed) {
+        return onRoad
+                && roadMargin >= Math.max(0f, requiredRoadMargin)
+                && totalSpeed <= Math.max(0f, maximumSpeed)
+                && routeAlignment >= minimumRouteAlignment
+                && routeForwardSpeed >= Math.max(0f, minimumRouteForwardSpeed);
+    }
+
     public void begin(float targetDistance, float forwardAlignment) {
         active = true;
         reversing = forwardAlignment <= REVERSE_ENTER_ALIGNMENT;
         replanRequested = false;
         gearLockTimer = 0f;
         stallTimer = 0f;
+        continuousReverseTimer = 0f;
+        turnaroundSteeringTimer = 0f;
+        turnaroundDirection = 0f;
         rememberTargetState(targetDistance, forwardAlignment);
     }
 
@@ -57,6 +93,9 @@ public final class AutomaticRecoveryManeuver {
         replanRequested = false;
         gearLockTimer = 0f;
         stallTimer = 0f;
+        continuousReverseTimer = 0f;
+        turnaroundSteeringTimer = 0f;
+        turnaroundDirection = 0f;
         bestDistance = 0f;
         bestDriveAlignment = 0f;
     }
@@ -69,12 +108,29 @@ public final class AutomaticRecoveryManeuver {
 
         float safeDelta = Math.max(0f, delta);
         gearLockTimer = Math.max(0f, gearLockTimer - safeDelta);
+        turnaroundSteeringTimer = Math.max(0f, turnaroundSteeringTimer - safeDelta);
+        continuousReverseTimer = reversing
+                ? continuousReverseTimer + safeDelta
+                : 0f;
+        if (reversing
+                && continuousReverseTimer >= MAX_CONTINUOUS_REVERSE_SECONDS) {
+            reversing = false;
+            continuousReverseTimer = 0f;
+            gearLockTimer = TURNAROUND_GEAR_LOCK_SECONDS;
+            turnaroundSteeringTimer = TURNAROUND_STEERING_SECONDS;
+            turnaroundDirection = 0f;
+            rememberTargetState(targetDistance, forwardAlignment);
+        }
         if (gearLockTimer <= 0f) {
             if (reversing && forwardAlignment >= REVERSE_EXIT_ALIGNMENT) {
                 reversing = false;
+                continuousReverseTimer = 0f;
                 rememberTargetState(targetDistance, forwardAlignment);
             } else if (!reversing && forwardAlignment <= REVERSE_ENTER_ALIGNMENT) {
                 reversing = true;
+                continuousReverseTimer = 0f;
+                turnaroundSteeringTimer = 0f;
+                turnaroundDirection = 0f;
                 rememberTargetState(targetDistance, forwardAlignment);
             }
         }
@@ -95,6 +151,9 @@ public final class AutomaticRecoveryManeuver {
         }
 
         reversing = !reversing;
+        continuousReverseTimer = 0f;
+        turnaroundSteeringTimer = 0f;
+        turnaroundDirection = 0f;
         gearLockTimer = ESCAPE_GEAR_LOCK_SECONDS;
         stallTimer = 0f;
         replanRequested = true;
@@ -124,7 +183,24 @@ public final class AutomaticRecoveryManeuver {
     }
 
     public float calculateTurn(float sideAlignment) {
-        float turn = (reversing ? sideAlignment : -sideAlignment) * 1.35f;
+        return calculateTurn(
+                sideAlignment,
+                reversing ? -STEERING_DIRECTION_SPEED_EPSILON : STEERING_DIRECTION_SPEED_EPSILON);
+    }
+
+    public float calculateTurn(float sideAlignment, float signedForwardSpeed) {
+        boolean movingInReverse =
+                signedForwardSpeed < -STEERING_DIRECTION_SPEED_EPSILON
+                        || (Math.abs(signedForwardSpeed)
+                                        <= STEERING_DIRECTION_SPEED_EPSILON
+                                && reversing);
+        if (!reversing && turnaroundSteeringTimer > 0f) {
+            if (turnaroundDirection == 0f) {
+                turnaroundDirection = sideAlignment >= 0f ? -1f : 1f;
+            }
+            return movingInReverse ? -turnaroundDirection : turnaroundDirection;
+        }
+        float turn = (movingInReverse ? sideAlignment : -sideAlignment) * 1.35f;
         return Math.max(-1f, Math.min(1f, turn));
     }
 

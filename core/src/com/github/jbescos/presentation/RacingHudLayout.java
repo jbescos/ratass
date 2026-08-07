@@ -75,8 +75,25 @@ public final class RacingHudLayout {
                         - bottomPanelTelemetryWidth(availableWidth));
     }
 
-    public static float cardActivationMarkerRadius(float slotHeight) {
-        return clamp(slotHeight * 0.18f, 2.5f, 5f);
+    public static float cardStatusIconSize(float slotHeight) {
+        return clamp(slotHeight * 0.68f, 11f, 20f);
+    }
+
+    public static float carNameBaseline(
+            float normalBaseline,
+            float lineHeight,
+            float minimumBaseline,
+            float maximumBaseline,
+            boolean warningActive) {
+        if (!warningActive) {
+            return normalBaseline;
+        }
+        float clearance = Math.max(18f, Math.max(0f, lineHeight) + 6f);
+        float raisedBaseline = normalBaseline + clearance;
+        if (raisedBaseline <= maximumBaseline) {
+            return raisedBaseline;
+        }
+        return Math.max(minimumBaseline, normalBaseline - clearance);
     }
 
     public static float bottomPanelMetricRowHeight(float screenWidth, float screenHeight) {

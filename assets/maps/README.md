@@ -1,11 +1,31 @@
-# Race Circuit Masks
+# Road Map Gameplay Assets
 
-The current roguelite/race prototype uses mask-only maps. The game can still
-load a decorated image beside a mask when one exists, but for now the mask is
-also used as the visible surface.
+This directory contains only the shared gameplay representation of each map.
+Rendered road artwork is theme-specific and lives under
+`assets/theme/<theme>/maps/`.
 
 - `*_mask.png`: road mask, race checkpoints, and start-grid anchors
 - `*.json.gz`: compressed generated gameplay metadata for the parsed mask
+
+The rendered `mapNNN.png` files must not be placed here. Each theme supplies
+its own presentation image while every theme continues to use the same mask
+and metadata.
+
+For GT3, the presentation theme is "roads of the world": each map uses scenery
+from a distinct real-world region while preserving the shared route exactly.
+Generated artwork must be a road-free background plate. Rebuild the visible
+road from the authoritative mask with the offline compositor:
+
+```bash
+javac -d /tmp tools/AlignRenderedMapToMask.java
+java -cp /tmp AlignRenderedMapToMask \
+  /path/to/road-free-background.png \
+  assets/maps/mapNNN_mask.png \
+  assets/theme/gt3/maps/mapNNN.png
+```
+
+This process keeps road width, boundaries, and the start/finish line aligned
+with gameplay. Do not ask an image generator to draw the playable road.
 
 The `.json.gz` file is a compressed generated cache. It stores only gameplay data
 derived from the mask, not the decorated map image. If it is missing or stale,
@@ -33,13 +53,13 @@ Race-mode car spawns are separate mask markers. The loader expands the two red
 anchors behind the start/finish line into 20 positions on two parallel
 F1-style grid columns.
 
-Regenerate the current circuit masks:
+Regenerate the current road masks:
 
 ```bash
 python3 tools/generate_f1_circuit_masks.py
 ```
 
-`map018` is a dedicated high-speed training circuit with long straights,
+`map018` is a dedicated high-speed training route with long straights,
 hairpins in both directions, chicanes, and broad return corners. Regenerate its
 mask and matching presentation image with:
 
@@ -48,5 +68,5 @@ python3 tools/generate_map018.py
 ```
 
 The generated masks are deliberately simple and high-contrast so training can
-start on road-following and checkpoint completion before decorated circuit art is
+start on road-following and checkpoint completion before decorated road art is
 added.

@@ -53,6 +53,20 @@ public class AutomaticRecoveryManeuverTest {
     }
 
     @Test
+    public void continuousReverseCommitsToATurnaroundUsingActualMotionDirection() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(6f, -1f);
+
+        for (int i = 1; i <= 45; i++) {
+            maneuver.update(0.05f, 6f - i * 0.03f, -1f);
+        }
+
+        assertFalse(maneuver.isReversing());
+        assertTrue(maneuver.calculateTurn(0.2f, -1f) > 0f);
+        assertTrue(maneuver.calculateTurn(0.2f, 1f) < 0f);
+    }
+
+    @Test
     public void usefulDistanceProgressPreventsEscalation() {
         AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
         maneuver.begin(4f, 0.8f);
@@ -132,10 +146,75 @@ public class AutomaticRecoveryManeuverTest {
     }
 
     @Test
+    public void forwardNudgeTakesTheShortestTurnTowardTheRoute() {
+        assertEquals(
+                0f,
+                AutomaticRecoveryManeuver.calculateShortestForwardTurn(1f, 0f),
+                EPSILON);
+        assertTrue(
+                AutomaticRecoveryManeuver.calculateShortestForwardTurn(0.5f, 0.5f) < 0f);
+        assertTrue(
+                AutomaticRecoveryManeuver.calculateShortestForwardTurn(0.5f, -0.5f) > 0f);
+        assertEquals(
+                -1f,
+                AutomaticRecoveryManeuver.calculateShortestForwardTurn(-0.5f, 0.5f),
+                EPSILON);
+        assertEquals(
+                1f,
+                AutomaticRecoveryManeuver.calculateShortestForwardTurn(-0.5f, -0.5f),
+                EPSILON);
+    }
+
+    @Test
+    public void forwardNudgeIgnoresInvalidRouteDirections() {
+        assertEquals(
+                0f,
+                AutomaticRecoveryManeuver.calculateShortestForwardTurn(Float.NaN, 0f),
+                EPSILON);
+        assertEquals(
+                0f,
+                AutomaticRecoveryManeuver.calculateShortestForwardTurn(0f, Float.POSITIVE_INFINITY),
+                EPSILON);
+    }
+
+    @Test
     public void offRoadRecoveryStopsOnlyAtASafeOnRoadHandoff() {
         assertTrue(AutomaticRecoveryManeuver.requiresOffRoadRecovery(true, false));
         assertTrue(AutomaticRecoveryManeuver.requiresOffRoadRecovery(true, true));
         assertTrue(AutomaticRecoveryManeuver.requiresOffRoadRecovery(false, false));
         assertFalse(AutomaticRecoveryManeuver.requiresOffRoadRecovery(false, true));
+    }
+
+    @Test
+    public void handoffRequiresRoadMarginControlledSpeedAndForwardAlignment() {
+        assertTrue(safeHandoff(0.95f, 4f, 2f));
+        assertFalse(safeHandoff(0.70f, 4f, 2f));
+        assertFalse(safeHandoff(0.95f, 9f, 2f));
+        assertFalse(safeHandoff(0.95f, 4f, -0.2f));
+        assertFalse(
+                AutomaticRecoveryManeuver.isSafeDirectionalHandoff(
+                        false,
+                        2f,
+                        1f,
+                        4f,
+                        6f,
+                        0.95f,
+                        0.86f,
+                        2f,
+                        0.5f));
+    }
+
+    private static boolean safeHandoff(
+            float routeAlignment, float speed, float routeForwardSpeed) {
+        return AutomaticRecoveryManeuver.isSafeDirectionalHandoff(
+                true,
+                2f,
+                1f,
+                speed,
+                6f,
+                routeAlignment,
+                0.86f,
+                routeForwardSpeed,
+                0.5f);
     }
 }
