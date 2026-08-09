@@ -1,10 +1,7 @@
 # Card Artwork Atlas
 
-`card_art_atlas_v3.png` is the active 6 by 11 atlas. Cells are addressed in row-major order
+`card_art_atlas_v3.png` is the 6 by 11 artwork atlas. Cells are addressed in row-major order
 by `RogueliteCardDefinition.artworkIndex`.
-
-The legacy `card_art_atlas.png` and `card_art_atlas_v2.png` files are retained as
-artwork references.
 
 | Row | Column 1 | Column 2 | Column 3 | Column 4 | Column 5 | Column 6 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -34,14 +31,13 @@ Mirror, and Cloak. The renderer tints the generated artwork by card type and
 keeps projectiles, physical mirror cars, and cloak transparency on their
 dedicated presentation paths.
 
-`card_shell_atlas_v2.png` is the active 5 by 2 presentation atlas. Columns are
+`card_shell_atlas_v2.png` is the 5 by 2 presentation atlas. Columns are
 Driver, Tuning, Technique, Powerup, and Revenge. The first row contains filled-card
 shells; the second row contains the corresponding empty-slot artwork. Every
 cell reserves the same header badge sockets, a 196 by 196 square artwork socket,
 information panel, and footer tab so the renderer can keep text and images inside
 safe areas. The square socket matches the cells in `card_art_atlas_v3.png` without
-cropping or stretching them. The legacy `card_shell_atlas.png` is retained as the
-original design reference.
+cropping or stretching them.
 
 `card_type_icon_atlas.png` is the active 5 by 1 category icon atlas in the same
 Driver, Tuning, Technique, Powerup, and Revenge order. The renderer uses these

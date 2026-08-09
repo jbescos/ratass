@@ -18,6 +18,30 @@ public final class RecoverySeparationPlan {
             float fallbackForwardX,
             float fallbackForwardY,
             float targetDistance) {
+        beginWithLateralEscape(
+                carX,
+                carY,
+                blockerX,
+                blockerY,
+                fallbackForwardX,
+                fallbackForwardY,
+                0f,
+                0f,
+                targetDistance,
+                0f);
+    }
+
+    public void beginWithLateralEscape(
+            float carX,
+            float carY,
+            float blockerX,
+            float blockerY,
+            float fallbackForwardX,
+            float fallbackForwardY,
+            float lateralX,
+            float lateralY,
+            float targetDistance,
+            float lateralDistance) {
         float awayX = carX - blockerX;
         float awayY = carY - blockerY;
         float awayLength = length(awayX, awayY);
@@ -34,11 +58,36 @@ public final class RecoverySeparationPlan {
 
         directionX = awayX / awayLength;
         directionY = awayY / awayLength;
+        float safeLateralDistance = Math.max(0f, lateralDistance);
+        if (safeLateralDistance > 0f) {
+            float lateralAlongAway = lateralX * directionX + lateralY * directionY;
+            lateralX -= directionX * lateralAlongAway;
+            lateralY -= directionY * lateralAlongAway;
+            float lateralLength = length(lateralX, lateralY);
+            if (lateralLength > 0.0001f) {
+                lateralX /= lateralLength;
+                lateralY /= lateralLength;
+            } else {
+                lateralX = directionY;
+                lateralY = -directionX;
+            }
+        } else {
+            lateralX = 0f;
+            lateralY = 0f;
+        }
+
         startX = carX;
         startY = carY;
         float safeTargetDistance = Math.max(0f, targetDistance);
-        targetX = carX + directionX * safeTargetDistance;
-        targetY = carY + directionY * safeTargetDistance;
+        float escapeX = directionX * safeTargetDistance + lateralX * safeLateralDistance;
+        float escapeY = directionY * safeTargetDistance + lateralY * safeLateralDistance;
+        float escapeLength = length(escapeX, escapeY);
+        if (escapeLength > 0.0001f) {
+            directionX = escapeX / escapeLength;
+            directionY = escapeY / escapeLength;
+        }
+        targetX = carX + escapeX;
+        targetY = carY + escapeY;
         active = true;
     }
 

@@ -49,6 +49,46 @@ if [[ ! -f "$ANDROID_KEYSTORE" ]]; then
     exit 1
 fi
 
+if ! command -v keytool >/dev/null 2>&1; then
+    echo "keytool is required to validate the Android release certificate." >&2
+    exit 1
+fi
+if ! command -v openssl >/dev/null 2>&1; then
+    echo "openssl is required to validate the Android release certificate." >&2
+    exit 1
+fi
+
+certificate_file=$(mktemp)
+cleanup_certificate() {
+    rm -f "$certificate_file"
+}
+trap cleanup_certificate EXIT
+
+if ! keytool \
+        -exportcert \
+        -rfc \
+        -keystore "$ANDROID_KEYSTORE" \
+        -alias "$ANDROID_KEY_ALIAS" \
+        -storepass:env ANDROID_KEYSTORE_PASSWORD \
+        -file "$certificate_file" >/dev/null 2>&1; then
+    echo "Could not read Android release key '$ANDROID_KEY_ALIAS' from $ANDROID_KEYSTORE." >&2
+    echo "Check the alias and keystore password." >&2
+    exit 1
+fi
+
+# Google Play requires signing certificates to remain valid after 22 October 2033.
+play_certificate_cutoff_epoch=2013638400
+seconds_until_cutoff=$((play_certificate_cutoff_epoch - $(date +%s)))
+if (( seconds_until_cutoff > 0 )) \
+        && ! openssl x509 -in "$certificate_file" -noout -checkend "$seconds_until_cutoff" \
+            >/dev/null 2>&1; then
+    certificate_expiry=$(openssl x509 -in "$certificate_file" -noout -enddate | cut -d= -f2-)
+    echo "Android release certificate expires too soon: $certificate_expiry" >&2
+    echo "Google Play requires it to remain valid after 22 October 2033." >&2
+    echo "Create a permanent upload key with tools/release/create-android-upload-key.sh." >&2
+    exit 1
+fi
+
 resolve_android_sdk
 mkdir -p "$target_dir"
 

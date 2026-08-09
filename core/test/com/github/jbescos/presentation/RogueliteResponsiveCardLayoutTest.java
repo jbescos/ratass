@@ -134,6 +134,34 @@ public class RogueliteResponsiveCardLayoutTest {
     }
 
     @Test
+    public void cardSelectionActionsUseLargeResponsiveButtons() {
+        assertEquals(
+                72f,
+                RogueliteResponsiveCardLayout.rewardActionButtonHeight(390f, 844f),
+                0.001f);
+        assertEquals(
+                72f,
+                RogueliteResponsiveCardLayout.rewardActionButtonHeight(844f, 390f),
+                0.001f);
+        assertEquals(
+                93.6f,
+                RogueliteResponsiveCardLayout.rewardActionButtonHeight(1280f, 720f),
+                0.001f);
+        assertEquals(
+                96f,
+                RogueliteResponsiveCardLayout.rewardActionButtonHeight(1920f, 1080f),
+                0.001f);
+        assertEquals(
+                200f,
+                RogueliteResponsiveCardLayout.rewardActionButtonMaximumWidth(844f),
+                0.001f);
+        assertEquals(
+                260f,
+                RogueliteResponsiveCardLayout.rewardActionButtonMaximumWidth(1920f),
+                0.001f);
+    }
+
+    @Test
     public void cardBandTextUsesItsCapHeightForVerticalCentering() {
         assertEquals(
                 117f,

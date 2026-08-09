@@ -52,7 +52,7 @@ public class RacingHudLayoutTest {
         assertEquals(
                 2,
                 RacingHudLayout.sidebarTableRowAt(
-                        134f,
+                        154f,
                         200f,
                         20f,
                         10f,
@@ -91,6 +91,36 @@ public class RacingHudLayoutTest {
                         0f,
                         18f,
                         3));
+    }
+
+    @Test
+    public void tvCameraLabelNamesItsCurrentTargetOnlyWhenActive() {
+        assertEquals(
+                "TV CAMERA: Blitz",
+                RacingHudLayout.tvCameraLabel(true, "Blitz"));
+        assertEquals(
+                "TV CAMERA",
+                RacingHudLayout.tvCameraLabel(false, "Blitz"));
+        assertEquals(
+                "TV CAMERA",
+                RacingHudLayout.tvCameraLabel(true, " "));
+    }
+
+    @Test
+    public void sidebarUsesLargerTextAndRowsThatCanScrollWithoutOverlap() {
+        assertEquals(1.4f, RacingHudLayout.sidebarTextScale(), 0.001f);
+        assertEquals(16.8f, RacingHudLayout.sidebarLineHeight(12f), 0.001f);
+        assertEquals(22f, RacingHudLayout.sidebarTableRowStep(12f), 0.001f);
+        assertEquals(30f, RacingHudLayout.sidebarTableRowStep(20f), 0.001f);
+    }
+
+    @Test
+    public void inGameMenuButtonKeepsAMobileFriendlyTouchTarget() {
+        assertEquals(52f, RacingHudLayout.inGameMenuButtonSize(720f, 390f), 0.001f);
+        assertEquals(64.8f, RacingHudLayout.inGameMenuButtonSize(1280f, 720f), 0.001f);
+        assertEquals(72f, RacingHudLayout.inGameMenuButtonSize(1920f, 1080f), 0.001f);
+        assertEquals(10f, RacingHudLayout.inGameMenuButtonMargin(720f, 390f), 0.001f);
+        assertEquals(18f, RacingHudLayout.inGameMenuButtonMargin(1920f, 1080f), 0.001f);
     }
 
     @Test

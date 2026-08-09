@@ -31,6 +31,35 @@ public final class ButtonTextLayout {
         return Math.max(1f, height - verticalInset(height) * 2f);
     }
 
+    public static float compactHorizontalInset(float width, float height) {
+        if (width <= 0f || height <= 0f) {
+            return 0f;
+        }
+        return Math.max(3f, Math.min(6f, width * 0.14f));
+    }
+
+    public static float compactContentWidth(float width, float height) {
+        if (width <= 0f || height <= 0f) {
+            return 0f;
+        }
+        return Math.max(1f, width - compactHorizontalInset(width, height) * 2f);
+    }
+
+    public static float compactContentHeight(float height) {
+        if (height <= 0f) {
+            return 0f;
+        }
+        float inset = Math.max(4f, Math.min(6f, height * 0.16f));
+        return Math.max(1f, height - inset * 2f);
+    }
+
+    public static float compactTextScale(float height) {
+        if (height <= 0f) {
+            return 1f;
+        }
+        return Math.max(1.15f, Math.min(1.50f, height * 1.50f / 40f));
+    }
+
     public static float preferredTextScale(float height) {
         if (height <= 0f) {
             return 1f;

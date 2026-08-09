@@ -5,18 +5,23 @@ public final class VendettaHookPull {
     private VendettaHookPull() {
     }
 
-    public static float remainingGap(
-            float initialGap,
+    public static float stepFraction(
             float elapsedSeconds,
+            float deltaSeconds,
             float durationSeconds) {
-        if (!Float.isFinite(initialGap)
-                || !Float.isFinite(elapsedSeconds)
+        if (!Float.isFinite(elapsedSeconds)
+                || !Float.isFinite(deltaSeconds)
                 || !Float.isFinite(durationSeconds)
                 || durationSeconds <= 0f) {
-            return 0f;
+            return durationSeconds <= 0f ? 1f : 0f;
         }
-        float progress = Math.max(0f, Math.min(1f, elapsedSeconds / durationSeconds));
-        return Math.max(0f, initialGap) * (1f - progress);
+        float safeElapsed = Math.max(0f, elapsedSeconds);
+        float safeDelta = Math.max(0f, deltaSeconds);
+        if (safeElapsed + safeDelta >= durationSeconds) {
+            return 1f;
+        }
+        float remainingSeconds = durationSeconds - safeElapsed;
+        return Math.max(0f, Math.min(1f, safeDelta / remainingSeconds));
     }
 
     public static boolean isComplete(float elapsedSeconds, float durationSeconds) {
@@ -26,25 +31,26 @@ public final class VendettaHookPull {
                 && elapsedSeconds >= durationSeconds;
     }
 
-    public static float pullDistance(
-            float initialDistance,
+    public static float alignedHeading(
+            float sourceAngleRadians,
+            float targetAngleRadians) {
+        if (Float.isFinite(targetAngleRadians)) {
+            return targetAngleRadians;
+        }
+        return Float.isFinite(sourceAngleRadians) ? sourceAngleRadians : 0f;
+    }
+
+    public static float desiredContactDistance(
+            float currentDistance,
             float contactDistance,
-            float contactOverlap,
-            float elapsedSeconds,
-            float durationSeconds) {
-        float safeInitialDistance = sanitizeDimension(initialDistance);
-        float finalDistance =
-                Math.min(
-                        safeInitialDistance,
-                        Math.max(
-                                0f,
-                                sanitizeDimension(contactDistance)
-                                        - sanitizeDimension(contactOverlap)));
-        return finalDistance
-                + remainingGap(
-                        safeInitialDistance - finalDistance,
-                        elapsedSeconds,
-                        durationSeconds);
+            float contactOverlap) {
+        float safeCurrentDistance = sanitizeDimension(currentDistance);
+        float overlappingContactDistance =
+                Math.max(
+                        0f,
+                        sanitizeDimension(contactDistance)
+                                - sanitizeDimension(contactOverlap));
+        return Math.min(safeCurrentDistance, overlappingContactDistance);
     }
 
     public static float contactDistance(

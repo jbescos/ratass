@@ -26,6 +26,13 @@ public class ButtonTextLayoutTest {
     }
 
     @Test
+    public void preservesReadableSpaceInCompactStepButtons() {
+        assertTrue(ButtonTextLayout.compactContentWidth(34f, 34f) >= 24f);
+        assertTrue(ButtonTextLayout.compactContentHeight(34f) >= 22f);
+        assertTrue(ButtonTextLayout.compactTextScale(34f) >= 1.25f);
+    }
+
+    @Test
     public void centersSingleLineTextByItsVisibleCapHeight() {
         assertEquals(
                 37.75f,

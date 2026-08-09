@@ -80,4 +80,30 @@ public class EventCameraDirectorTest {
 
         assertFalse(director.isLocked());
     }
+
+    @Test
+    public void requestsPlayerOnceAfterFiveSecondsWithoutEvents() {
+        EventCameraDirector director = new EventCameraDirector();
+
+        director.update(4.99f);
+        assertFalse(director.consumePlayerFallbackRequested());
+        director.update(0.01f);
+        assertTrue(director.consumePlayerFallbackRequested());
+        assertFalse(director.consumePlayerFallbackRequested());
+
+        director.update(20f);
+        assertFalse(director.consumePlayerFallbackRequested());
+    }
+
+    @Test
+    public void aNewIncidentRestartsThePlayerFallbackTimer() {
+        EventCameraDirector director = new EventCameraDirector();
+        director.update(4f);
+
+        director.observeIncident();
+        director.update(4.99f);
+        assertFalse(director.consumePlayerFallbackRequested());
+        director.update(0.01f);
+        assertTrue(director.consumePlayerFallbackRequested());
+    }
 }

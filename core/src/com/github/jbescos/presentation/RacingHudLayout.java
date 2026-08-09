@@ -9,6 +9,7 @@ public final class RacingHudLayout {
     private static final int TELEMETRY_ROWS = 6;
     private static final float CAR_STATS_SECTION_RATIO = 0.30f;
     private static final float TELEMETRY_SECTION_RATIO = 0.40f;
+    private static final float SIDEBAR_TEXT_SCALE = 1.4f;
 
     private RacingHudLayout() {}
 
@@ -118,7 +119,7 @@ public final class RacingHudLayout {
             return -1;
         }
         for (int row = 0; row < rowCount; row++) {
-            float rowY = viewportTop - contentOffset - row * rowStep - scrollOffset;
+            float rowY = viewportTop - contentOffset - row * rowStep + scrollOffset;
             if (touchY >= rowY - rowStep + 2f && touchY <= rowY + 4f) {
                 return row;
             }
@@ -128,6 +129,33 @@ public final class RacingHudLayout {
 
     public static float eventCameraRowStep(float leaderboardRowStep) {
         return Math.max(30f, leaderboardRowStep + 10f);
+    }
+
+    public static String tvCameraLabel(boolean active, String followedCarName) {
+        if (!active || followedCarName == null || followedCarName.trim().length() == 0) {
+            return "TV CAMERA";
+        }
+        return "TV CAMERA: " + followedCarName.trim();
+    }
+
+    public static float sidebarTextScale() {
+        return SIDEBAR_TEXT_SCALE;
+    }
+
+    public static float sidebarLineHeight(float unscaledLineHeight) {
+        return Math.max(0f, unscaledLineHeight) * SIDEBAR_TEXT_SCALE;
+    }
+
+    public static float sidebarTableRowStep(float unscaledLineHeight) {
+        return Math.max(22f, sidebarLineHeight(unscaledLineHeight) + 2f);
+    }
+
+    public static float inGameMenuButtonSize(float screenWidth, float screenHeight) {
+        return clamp(Math.min(screenWidth, screenHeight) * 0.09f, 52f, 72f);
+    }
+
+    public static float inGameMenuButtonMargin(float screenWidth, float screenHeight) {
+        return clamp(Math.min(screenWidth, screenHeight) * 0.025f, 10f, 18f);
     }
 
     private static float clamp(float value, float minimum, float maximum) {

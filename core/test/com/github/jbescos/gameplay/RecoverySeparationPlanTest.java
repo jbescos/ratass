@@ -44,6 +44,21 @@ public class RecoverySeparationPlanTest {
         assertTrue(plan.getTargetY() < 3f);
     }
 
+    @Test
+    public void faceToFaceCarsBackIntoOppositeLanes() {
+        RecoverySeparationPlan first = new RecoverySeparationPlan();
+        first.beginWithLateralEscape(
+                0f, 0f, 0f, 1f, 0f, 1f, 1f, 0f, TARGET_DISTANCE, 1f);
+        RecoverySeparationPlan second = new RecoverySeparationPlan();
+        second.beginWithLateralEscape(
+                0f, 1f, 0f, 0f, 0f, -1f, -1f, 0f, TARGET_DISTANCE, 1f);
+
+        assertTrue(first.getTargetX() > 0f);
+        assertTrue(first.getTargetY() < 0f);
+        assertTrue(second.getTargetX() < 0f);
+        assertTrue(second.getTargetY() > 1f);
+    }
+
     private static void assertTargetPointsAway(float blockerX, float blockerY) {
         RecoverySeparationPlan plan = createPlan(blockerX, blockerY);
         float escapeX = plan.getTargetX();

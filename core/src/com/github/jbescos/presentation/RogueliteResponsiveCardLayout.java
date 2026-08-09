@@ -72,6 +72,15 @@ public final class RogueliteResponsiveCardLayout {
         return Math.max(60f, Math.min(84f, screenHeight * 0.105f));
     }
 
+    public static float rewardActionButtonHeight(float width, float height) {
+        float shortSide = Math.max(1f, Math.min(width, height));
+        return Math.max(72f, Math.min(96f, shortSide * 0.13f));
+    }
+
+    public static float rewardActionButtonMaximumWidth(float width) {
+        return Math.max(200f, Math.min(260f, Math.max(1f, width) * 0.22f));
+    }
+
     public static float centeredTextBaseline(
             float bottom,
             float height,

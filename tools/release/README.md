@@ -10,9 +10,22 @@ top-level entry point and invokes the checked-in Android Gradle wrapper for AAR,
 APK, AAB, and signing support. Keep the Play upload key separate from the
 app-signing key managed by Google Play.
 
+Create the permanent upload key once. The helper creates a private PKCS12
+keystore valid for 100 years and prompts for its password and certificate
+identity:
+
+```bash
+tools/release/create-android-upload-key.sh
+```
+
+The default location is
+`~/.config/rogue-circuit/android-upload.p12`. Keep secure backups of the
+keystore and password; never add either to Git. You do not need Google's
+downloadable public certificates to sign an upload.
+
 ```bash
 export ANDROID_SDK_ROOT=/path/to/android-sdk
-export ANDROID_KEYSTORE=/secure/path/upload.p12
+export ANDROID_KEYSTORE="$HOME/.config/rogue-circuit/android-upload.p12"
 export ANDROID_KEY_ALIAS=upload
 export ANDROID_KEYSTORE_PASSWORD=...
 export ANDROID_KEY_PASSWORD=...
@@ -23,7 +36,9 @@ mvn -Pandroid,android-release package \
 
 The signed bundle is written to
 `android/target/ratass-android-1.0-release.aab`. The same build also creates the
-debug APK used for local installation.
+debug APK used for local installation. Before packaging, the release script
+checks that the selected certificate remains valid after 22 October 2033, as
+required by Google Play.
 
 ## Desktop
 
