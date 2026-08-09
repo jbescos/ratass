@@ -33,7 +33,7 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
         super(cardId);
         switch (cardId) {
             case DRAFT_MAGNET:
-                durationSeconds = 1.2f;
+                durationSeconds = 2f;
                 accelerationBonus = 0.12f;
                 maxSpeedBonus = 0.05f;
                 gripBonus = 0.05f;
@@ -69,7 +69,7 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
                 impactCounter = true;
                 break;
             case REPULSOR_SURGE:
-                durationSeconds = 1.8f;
+                durationSeconds = 2f;
                 accelerationBonus = 0.22f;
                 maxSpeedBonus = 0.08f;
                 gripBonus = 0.16f;
@@ -78,7 +78,7 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
                 pushMultiplier = 1.35f;
                 slipstreamRangeMultiplier = 1.25f;
                 slipstreamStrengthMultiplier = 1.20f;
-                draftMagnetRangeMultiplier = 1.35f;
+                draftMagnetRangeMultiplier = 1.75f;
                 draftMagnetForceMultiplier = 1.55f;
                 activationCondition = ActivationCondition.NEARBY_OPPONENT;
                 activationProximity = 0.16f;
@@ -154,7 +154,7 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
                 return false;
             case NEARBY_OPPONENT:
             default:
-                return frame.nearbyOpponentProximity >= activationProximity;
+                return frame.revengeNearbyOpponentProximity >= activationProximity;
         }
     }
 

@@ -9,6 +9,8 @@ import java.util.Arrays;
 public final class ArenaMap {
     public static final float ROUTE_CURVATURE_SAMPLE_RADIUS = 3.20f;
     public static final float ROUTE_CURVATURE_ANGLE_NORMALIZER = 1.35f;
+    public static final float ROUTE_CORNER_SEVERITY_THRESHOLD = 0.14f;
+    public static final float ROUTE_NEXT_CORNER_DISTANCE_NORMALIZER = 44f;
     private static final float APPROXIMATE_SAMPLES_PER_WORLD_UNIT = 12f;
     private static final int APPROXIMATE_MIN_GRID_SIZE = 96;
     private static final int APPROXIMATE_MAX_GRID_SIZE = 384;
@@ -612,6 +614,24 @@ public final class ArenaMap {
         return routeMetadata == null
                 ? 1f
                 : routeMetadata.sampleValue(progress, routeMetadata.nextCornerDistance, 1f);
+    }
+
+    public float getRouteNextCornerDistanceWorld(float progress) {
+        return getRouteNextCornerDistance(progress) * ROUTE_NEXT_CORNER_DISTANCE_NORMALIZER;
+    }
+
+    public float findRouteNextCornerDistanceWorld(
+            float progress,
+            float maximumDistance) {
+        if (routeMetadata == null) {
+            return Math.min(
+                    Math.max(0f, maximumDistance),
+                    getRouteNextCornerDistanceWorld(progress));
+        }
+        return routeMetadata.findNextCornerDistance(
+                progress,
+                maximumDistance,
+                ROUTE_CORNER_SEVERITY_THRESHOLD);
     }
 
     public float getRouteNextCornerDirection(float progress) {
@@ -1831,6 +1851,39 @@ public final class ArenaMap {
             int index = sampleIndexForProgress(progress);
             int nextIndex = wrapSampleIndex(index + 1);
             return MathUtils.lerp(values[index], values[nextIndex], sampleAlpha(progress, index));
+        }
+
+        private float findNextCornerDistance(
+                float progress,
+                float maximumDistance,
+                float cornerThreshold) {
+            int count = sampleCount();
+            float safeMaximumDistance =
+                    Math.min(
+                            Math.max(0f, maximumDistance),
+                            Math.max(0f, routeLength));
+            if (count < 2
+                    || curvature.length < count
+                    || sampleStep <= 0.0001f
+                    || safeMaximumDistance <= 0f) {
+                return safeMaximumDistance;
+            }
+
+            int index = sampleIndexForProgress(progress);
+            if (Math.abs(curvature[index]) >= cornerThreshold) {
+                return 0f;
+            }
+            float distance = sampleStep * (1f - sampleAlpha(progress, index));
+            int samplesScanned = 0;
+            while (distance <= safeMaximumDistance && samplesScanned < count) {
+                index = wrapSampleIndex(index + 1);
+                if (Math.abs(curvature[index]) >= cornerThreshold) {
+                    return distance;
+                }
+                distance += sampleStep;
+                samplesScanned++;
+            }
+            return safeMaximumDistance;
         }
 
         private float sampleAlpha(float progress, int index) {

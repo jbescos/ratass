@@ -222,15 +222,8 @@ public class RandomCardEffectTest {
                 effect.consumeImpactCounter();
                 assertTrue(candidateId + " did not execute", effect.isActive());
                 return;
-            case SENSOR_JAMMER:
-            case GRID_BLACKOUT:
-            case TOTAL_BLACKOUT:
-                assertTrue(candidateId + " did not activate", effect.isActive());
-                assertTrue(
-                        candidateId + " did not expose a blackout",
-                        effect.consumeRaceBlackoutSeconds() > 0f);
-                return;
             case RECOVERY_BEACON:
+            case PAYBACK_SHIELD:
                 effect.advance(3.1f, 3.1f, straightDrivingFrame());
                 break;
             default:
@@ -240,6 +233,14 @@ public class RandomCardEffectTest {
         RogueliteRevengeStrike strike = effect.tryActivateOffenderStrike(42, 3.5f, true);
         assertNotNull(candidateId + " did not execute its strike", strike);
         assertEquals(candidateId, strike.getCardId());
+        if (candidateId == RogueliteCardId.SENSOR_JAMMER
+                || candidateId == RogueliteCardId.GRID_BLACKOUT
+                || candidateId == RogueliteCardId.TOTAL_BLACKOUT) {
+            assertEquals(RogueliteRevengeStrike.Action.CURSE, strike.getAction());
+        }
+        if (candidateId == RogueliteCardId.PAYBACK_SHIELD) {
+            effect.completeOffenderStrike(candidateId);
+        }
     }
 
     private static void assertRerollsAfterExecution(

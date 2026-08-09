@@ -113,8 +113,8 @@ final class ImageArenaMapLoader {
     private static final float ROUTE_METADATA_CLEARANCE_DISTANCE = 24f;
     private static final float ROUTE_METADATA_CLEARANCE_STEP = 0.35f;
     private static final float ROUTE_METADATA_CLEARANCE_EDGE_MARGIN = 0.10f;
-    private static final float ROUTE_METADATA_CORNER_THRESHOLD = 0.14f;
-    private static final float ROUTE_METADATA_CORNER_DISTANCE_NORMALIZER = 44f;
+    private static final float ROUTE_METADATA_CORNER_THRESHOLD =
+            ArenaMap.ROUTE_CORNER_SEVERITY_THRESHOLD;
     private static final float ROUTE_METADATA_LOOKUP_CELLS_PER_WORLD_UNIT = 3.0f;
     private static final int ROUTE_METADATA_LOOKUP_MIN_SIZE = 64;
     private static final int ROUTE_METADATA_LOOKUP_MAX_SIZE = 256;
@@ -1393,7 +1393,10 @@ final class ImageArenaMapLoader {
                 }
             }
             nextCornerDistance[i] =
-                    MathUtils.clamp(distance / ROUTE_METADATA_CORNER_DISTANCE_NORMALIZER, 0f, 1f);
+                    MathUtils.clamp(
+                            distance / ArenaMap.ROUTE_NEXT_CORNER_DISTANCE_NORMALIZER,
+                            0f,
+                            1f);
             nextCornerDirection[i] = bestDirection;
             nextCornerSeverity[i] = MathUtils.clamp(bestSeverity, 0f, 1f);
         }

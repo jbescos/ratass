@@ -52,4 +52,18 @@ public final class RogueliteAbilityEffectAtlas {
                 return 1.82f;
         }
     }
+
+    /** Uses the real affected diameter for circular fields instead of a car-relative size. */
+    public static float worldSize(
+            RogueliteAbilityVisualStyle style,
+            float carRelativeSize,
+            float effectRadius) {
+        if (style == RogueliteAbilityVisualStyle.DRAFT
+                && effectRadius > 0f
+                && !Float.isNaN(effectRadius)
+                && !Float.isInfinite(effectRadius)) {
+            return effectRadius * 2f;
+        }
+        return carRelativeSize;
+    }
 }

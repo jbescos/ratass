@@ -14,6 +14,8 @@ public final class RogueliteCarUpgrades {
     private final RogueliteDrivingFrame frame = new RogueliteDrivingFrame();
     private float timedEffectDecay = 1f;
     private boolean overtakeInjectorEnabled;
+    private RogueliteCardId activeRevengeCardId;
+    private long revengeActivationSequence;
 
     public void configure(RogueliteLoadout loadout) {
         configure(loadout, 0f);
@@ -22,6 +24,7 @@ public final class RogueliteCarUpgrades {
     public void configure(RogueliteLoadout loadout, float powerupCycleOffset) {
         effects.clear();
         activeCardIds.clear();
+        activeRevengeCardId = null;
         frame.clear();
         timedEffectDecay = 1f;
         overtakeInjectorEnabled = false;
@@ -69,6 +72,10 @@ public final class RogueliteCarUpgrades {
 
     public RogueliteCardId getActiveTechniqueCardId() {
         return getActiveCardId(RogueliteSlotType.TECHNIQUE);
+    }
+
+    public long getRevengeActivationSequence() {
+        return revengeActivationSequence;
     }
 
     public RogueliteCardId getActiveAbilityCardId() {
@@ -361,6 +368,48 @@ public final class RogueliteCarUpgrades {
             float nearbyOpponentProximity,
             boolean forwardLaneBlocked,
             float racePositionFactor) {
+        update(
+                delta,
+                throttle,
+                onRoad,
+                adverseWeather,
+                recentlyImpacted,
+                slip,
+                speedRatio,
+                slipstreamBoost,
+                routeProgress,
+                routeLength,
+                safeRecoveryRouteGain,
+                cornerSeverity,
+                nextCornerDistance,
+                nextCornerSeverity,
+                opponentAheadProximity,
+                nearbyOpponentProximity,
+                forwardLaneBlocked,
+                racePositionFactor,
+                nearbyOpponentProximity);
+    }
+
+    public void update(
+            float delta,
+            float throttle,
+            boolean onRoad,
+            boolean adverseWeather,
+            boolean recentlyImpacted,
+            float slip,
+            float speedRatio,
+            float slipstreamBoost,
+            float routeProgress,
+            float routeLength,
+            float safeRecoveryRouteGain,
+            float cornerSeverity,
+            float nextCornerDistance,
+            float nextCornerSeverity,
+            float opponentAheadProximity,
+            float nearbyOpponentProximity,
+            boolean forwardLaneBlocked,
+            float racePositionFactor,
+            float revengeNearbyOpponentProximity) {
         if (effects.isEmpty()) {
             return;
         }
@@ -381,7 +430,8 @@ public final class RogueliteCarUpgrades {
                 RogueliteEffectMath.clamp(opponentAheadProximity, 0f, 1f),
                 RogueliteEffectMath.clamp(nearbyOpponentProximity, 0f, 1f),
                 forwardLaneBlocked,
-                RogueliteEffectMath.clamp(racePositionFactor, 0f, 1f));
+                RogueliteEffectMath.clamp(racePositionFactor, 0f, 1f),
+                RogueliteEffectMath.clamp(revengeNearbyOpponentProximity, 0f, 1f));
         float timerDelta = delta * timedEffectDecay;
         for (int i = 0; i < effects.size(); i++) {
             effects.get(i).advance(delta, timerDelta, frame);
@@ -544,21 +594,13 @@ public final class RogueliteCarUpgrades {
     }
 
     public void consumeImpactCounter() {
+        boolean wasReady = isImpactCounterReady();
+        long activationSequence = revengeActivationSequence;
         for (int i = 0; i < effects.size(); i++) {
             effects.get(i).consumeImpactCounter();
         }
         refreshActiveCards();
-    }
-
-    public float consumeRaceBlackoutSeconds() {
-        float durationSeconds = 0f;
-        for (int i = 0; i < effects.size(); i++) {
-            durationSeconds = Math.max(
-                    durationSeconds,
-                    effects.get(i).consumeRaceBlackoutSeconds());
-        }
-        refreshActiveCards();
-        return durationSeconds;
+        recordRevengeActivationIfMissing(wasReady, activationSequence);
     }
 
     public void onRacePositionImproved(int positionsGained, float slipstreamBoost) {
@@ -625,6 +667,16 @@ public final class RogueliteCarUpgrades {
         return -1;
     }
 
+    public boolean isOffenderCurseArmed() {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            if (effect.isOffenderCurse() && effect.revengeTargetVehicleId() >= 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public RogueliteRevengeStrike tryActivateOffenderStrike(
             int targetVehicleId,
             float distance) {
@@ -635,6 +687,7 @@ public final class RogueliteCarUpgrades {
             int targetVehicleId,
             float distance,
             boolean offenderAhead) {
+        long activationSequence = revengeActivationSequence;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteRevengeStrike strike =
                     effects.get(i).tryActivateOffenderStrike(
@@ -643,10 +696,18 @@ public final class RogueliteCarUpgrades {
                             offenderAhead);
             if (strike != null) {
                 refreshActiveCards();
+                recordRevengeActivationIfMissing(true, activationSequence);
                 return strike;
             }
         }
         return null;
+    }
+
+    public void completeOffenderStrike(RogueliteCardId cardId) {
+        for (int i = 0; i < effects.size(); i++) {
+            effects.get(i).completeOffenderStrike(cardId);
+        }
+        refreshActiveCards();
     }
 
     private void refreshActiveCards() {
@@ -666,6 +727,20 @@ public final class RogueliteCarUpgrades {
                     }
                 }
             }
+        }
+        RogueliteCardId currentRevengeCardId = getActiveCardId(RogueliteSlotType.REVENGE);
+        if (currentRevengeCardId != null
+                && currentRevengeCardId != activeRevengeCardId) {
+            revengeActivationSequence++;
+        }
+        activeRevengeCardId = currentRevengeCardId;
+    }
+
+    private void recordRevengeActivationIfMissing(
+            boolean activated,
+            long previousSequence) {
+        if (activated && revengeActivationSequence == previousSequence) {
+            revengeActivationSequence++;
         }
     }
 }

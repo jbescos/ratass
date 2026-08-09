@@ -126,6 +126,10 @@ public final class RacingHudLayout {
         return -1;
     }
 
+    public static float eventCameraRowStep(float leaderboardRowStep) {
+        return Math.max(30f, leaderboardRowStep + 10f);
+    }
+
     private static float clamp(float value, float minimum, float maximum) {
         return Math.max(minimum, Math.min(maximum, value));
     }

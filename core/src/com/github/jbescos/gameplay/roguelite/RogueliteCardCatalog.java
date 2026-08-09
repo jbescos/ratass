@@ -278,7 +278,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.DRAFT_MAGNET,
                 "Draft Magnet",
                 "A qualified rival hit arms a short pulsing field that forces nearby cars toward the outside.",
-                "Rival hit -> nearby rival: outward field 1.2s",
+                "Rival hit -> nearby rival: outward field 2s",
                 1,
                 RogueliteAbilityVisualStyle.DRAFT));
         cards.add(revenge(
@@ -375,15 +375,15 @@ public final class RogueliteCardCatalog {
         cards.add(revenge(
                 RogueliteCardId.PAYBACK_SHIELD,
                 "Vendetta Hook",
-                "A qualified hit marks its offender. A revenge cable then launches you rapidly back toward them.",
-                "Rival hit -> grapple toward offender | Hooked 20s",
-                2,
+                "A qualified hit marks its offender. After charging, the hook pulls you directly back toward them.",
+                "Rival hit -> after 3s, pull to offender over 5s",
+                1,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
                 RogueliteCardId.REPULSOR_SURGE,
                 "Repulsor Surge",
                 "A qualified rival hit arms a wide high-energy field that clears space for your comeback.",
-                "Rival hit -> nearby rival: wide outward field 1.8s",
+                "Rival hit -> nearby rival: wide outward field 2s",
                 3,
                 RogueliteAbilityVisualStyle.DRAFT));
         cards.add(revenge(
@@ -409,23 +409,23 @@ public final class RogueliteCardCatalog {
                 RogueliteAbilityVisualStyle.RAM));
         cards.add(revenge(
                 RogueliteCardId.SENSOR_JAMMER,
-                "Sensor Jammer",
-                "A hit overloads every rival's car-awareness systems across the circuit.",
-                "Hit taken -> all rivals blind for 10s",
+                "Blind Hex",
+                "Curses the rival who hit you until that offender collides with another car.",
+                "Offender: blind, +5% mass until collision",
                 1,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
                 RogueliteCardId.GRID_BLACKOUT,
-                "Grid Blackout",
-                "A hit floods the circuit with interference that blinds every rival for an extended attack window.",
-                "Hit taken -> all rivals blind for 20s",
+                "Burden Hex",
+                "Chains the rival who hit you to a heavier, blinded car until its next collision.",
+                "Offender: blind, +20% mass until collision",
                 2,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
                 RogueliteCardId.TOTAL_BLACKOUT,
-                "Total Blackout",
-                "A hit collapses every rival's car-awareness systems for a long period of race-wide chaos.",
-                "Hit taken -> all rivals blind for 30s",
+                "Doom Hex",
+                "Crushes the rival who hit you with blindness, extreme weight, and reduced grip until its next collision.",
+                "Offender: blind, +50% mass, -20% grip",
                 3,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(

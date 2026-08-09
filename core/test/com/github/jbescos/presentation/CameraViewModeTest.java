@@ -8,11 +8,12 @@ import org.junit.Test;
 
 public class CameraViewModeTest {
     @Test
-    public void cyclesThroughFollowAndWholeMapModes() {
+    public void cyclesThroughFollowWholeMapAndFreeModes() {
         assertEquals(CameraViewMode.CHASE, CameraViewMode.TOP_DOWN.cycle(1));
         assertEquals(CameraViewMode.WHOLE_MAP, CameraViewMode.CHASE.cycle(1));
-        assertEquals(CameraViewMode.TOP_DOWN, CameraViewMode.WHOLE_MAP.cycle(1));
-        assertEquals(CameraViewMode.WHOLE_MAP, CameraViewMode.TOP_DOWN.cycle(-1));
+        assertEquals(CameraViewMode.FREE, CameraViewMode.WHOLE_MAP.cycle(1));
+        assertEquals(CameraViewMode.TOP_DOWN, CameraViewMode.FREE.cycle(1));
+        assertEquals(CameraViewMode.FREE, CameraViewMode.TOP_DOWN.cycle(-1));
     }
 
     @Test
@@ -20,6 +21,8 @@ public class CameraViewModeTest {
         assertTrue(CameraViewMode.WHOLE_MAP.showsWholeMap());
         assertFalse(CameraViewMode.WHOLE_MAP.followsBehind());
         assertTrue(CameraViewMode.CHASE.followsBehind());
+        assertTrue(CameraViewMode.FREE.isFree());
+        assertFalse(CameraViewMode.TOP_DOWN.isFree());
     }
 
     @Test
@@ -27,6 +30,7 @@ public class CameraViewModeTest {
         assertEquals(
                 CameraViewMode.WHOLE_MAP,
                 CameraViewMode.fromStoredValue("whole map", false));
+        assertEquals(CameraViewMode.FREE, CameraViewMode.fromStoredValue("free", false));
         assertEquals(CameraViewMode.CHASE, CameraViewMode.fromStoredValue(null, true));
         assertEquals(CameraViewMode.TOP_DOWN, CameraViewMode.fromStoredValue("unknown", false));
     }

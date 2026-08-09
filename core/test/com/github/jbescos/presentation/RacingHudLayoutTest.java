@@ -70,6 +70,30 @@ public class RacingHudLayoutTest {
     }
 
     @Test
+    public void eventCameraRowIsLargeAndOffsetsDriverRows() {
+        float eventRowStep = RacingHudLayout.eventCameraRowStep(18f);
+        assertEquals(30f, eventRowStep, 0.001f);
+        assertEquals(
+                0,
+                RacingHudLayout.sidebarTableRowAt(
+                        178f,
+                        200f,
+                        0f,
+                        0f,
+                        eventRowStep,
+                        1));
+        assertEquals(
+                0,
+                RacingHudLayout.sidebarTableRowAt(
+                        146f,
+                        200f,
+                        eventRowStep + 20f,
+                        0f,
+                        18f,
+                        3));
+    }
+
+    @Test
     public void cardsOccupyTheRightThirdOfTheBottomPanel() {
         assertEquals(300f, RacingHudLayout.bottomPanelCarStatsWidth(1000f), 0.001f);
         assertEquals(400f, RacingHudLayout.bottomPanelTelemetryWidth(1000f), 0.001f);

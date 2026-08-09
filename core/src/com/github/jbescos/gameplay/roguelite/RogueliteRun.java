@@ -7,9 +7,9 @@ import java.util.List;
 import java.util.Map;
 
 public final class RogueliteRun {
-    // Level 2 grants the first card. These gates yield 10 Tier 1 and 7 Tier 2 choices.
-    public static final int TIER_TWO_LEVEL = 12;
-    public static final int TIER_THREE_LEVEL = 19;
+    // Level 2 grants the first card; later tiers unlock at these level boundaries.
+    public static final int TIER_TWO_LEVEL = 10;
+    public static final int TIER_THREE_LEVEL = 20;
 
     private DriverProfileCatalog driverCatalog;
     private RogueliteCompetitorProgress player;

@@ -16,8 +16,8 @@ artwork references.
 | 6 | Velocity Shell | Torque Vectoring | Recovery Beacon | Draft Vendetta | Payback Shield | Repulsor Surge |
 | 7 | Tar Tether | EMP Snare | Void Anchor | Ghost Cloak | Phantom Cloak | Void Cloak |
 | 8 | Mirror Trio | Mirror Quartet | Underdog Instinct | Comeback Drive | Last Place Fury | Close Quarters |
-| 9 | Pack Racer | Traffic Dominance | Carbon Panels | Carbon Monocoque | Graphene Chassis | Sensor Jammer |
-| 10 | Grid Blackout | Total Blackout | Lucky Spark | Chaos Relay | Wildcard Core | Loaded Grudge |
+| 9 | Pack Racer | Traffic Dominance | Carbon Panels | Carbon Monocoque | Graphene Chassis | Blind Hex |
+| 10 | Burden Hex | Doom Hex | Lucky Spark | Chaos Relay | Wildcard Core | Loaded Grudge |
 | 11 | Chaos Retort | Fate's Revenge | Unused | Unused | Unused | Unused |
 
 Every non-driver card has a unique artwork cell.

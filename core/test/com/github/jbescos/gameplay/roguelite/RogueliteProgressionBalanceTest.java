@@ -12,13 +12,17 @@ public class RogueliteProgressionBalanceTest {
     private static final int FIELD_SIZE = 10;
 
     @Test
-    public void representativeChampionshipOffersTenSevenAndFiveCardsByTier() {
+    public void representativeChampionshipUsesConfiguredTierLevelThresholds() {
         SimulationResult result = simulateRepresentativeChampionship(1, 3);
 
         assertEquals(23, result.level);
-        assertEquals(10, result.selectionsByTier[1]);
-        assertEquals(7, result.selectionsByTier[2]);
-        assertEquals(5, result.selectionsByTier[3]);
+        assertEquals(RogueliteRun.TIER_TWO_LEVEL - 2, result.selectionsByTier[1]);
+        assertEquals(
+                RogueliteRun.TIER_THREE_LEVEL - RogueliteRun.TIER_TWO_LEVEL,
+                result.selectionsByTier[2]);
+        assertEquals(
+                result.level - RogueliteRun.TIER_THREE_LEVEL + 1,
+                result.selectionsByTier[3]);
     }
 
     @Test

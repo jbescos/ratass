@@ -106,4 +106,5 @@ public class AbilityActivationVisualTest {
         assertEquals(0f, visual.getTechniquePulse(), 0f);
         assertEquals(0f, visual.getPowerupPulse(), 0f);
     }
+
 }

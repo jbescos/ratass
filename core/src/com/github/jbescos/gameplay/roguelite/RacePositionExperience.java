@@ -89,15 +89,19 @@ public final class RacePositionExperience {
                 continue;
             }
             int rivalsPassed = 0;
+            int passedVehicleId = -1;
             for (int rivalIndex = 0; rivalIndex < confirmedOrder.size(); rivalIndex++) {
                 int rivalId = confirmedOrder.get(rivalIndex).intValue();
                 if (rivalIndex < previousIndex
                         && candidateOrder.indexOf(Integer.valueOf(rivalId)) > currentIndex) {
+                    if (passedVehicleId < 0) {
+                        passedVehicleId = rivalId;
+                    }
                     rivalsPassed++;
                 }
             }
             if (rivalsPassed > 0) {
-                overtakes.add(new Overtake(vehicleId, rivalsPassed));
+                overtakes.add(new Overtake(vehicleId, passedVehicleId, rivalsPassed));
             }
         }
     }
@@ -144,15 +148,21 @@ public final class RacePositionExperience {
 
     public static final class Overtake {
         private final int vehicleId;
+        private final int passedVehicleId;
         private final int rivalsPassed;
 
-        private Overtake(int vehicleId, int rivalsPassed) {
+        private Overtake(int vehicleId, int passedVehicleId, int rivalsPassed) {
             this.vehicleId = vehicleId;
+            this.passedVehicleId = passedVehicleId;
             this.rivalsPassed = rivalsPassed;
         }
 
         public int getVehicleId() {
             return vehicleId;
+        }
+
+        public int getPassedVehicleId() {
+            return passedVehicleId;
         }
 
         public int getRivalsPassed() {

@@ -8,7 +8,8 @@ public final class RogueliteRevengeStrike {
         FORCE_BRAKE,
         FORCE_THROTTLE,
         POSITION_SWAP,
-        HOOK
+        HOOK,
+        CURSE
     }
 
     private final RogueliteCardId cardId;
@@ -18,6 +19,7 @@ public final class RogueliteRevengeStrike {
     private final float durationSeconds;
     private final float attackerLaunchSpeedRatio;
     private final float targetPushSpeedRatio;
+    private final float massMultiplier;
 
     RogueliteRevengeStrike(
             RogueliteCardId cardId,
@@ -31,7 +33,7 @@ public final class RogueliteRevengeStrike {
             float speedMultiplier,
             float gripMultiplier,
             float durationSeconds) {
-        this(cardId, Action.DEBUFF, speedMultiplier, gripMultiplier, durationSeconds, 0f, 0f);
+        this(cardId, Action.DEBUFF, speedMultiplier, gripMultiplier, durationSeconds, 0f, 0f, 1f);
     }
 
     private RogueliteRevengeStrike(
@@ -41,7 +43,8 @@ public final class RogueliteRevengeStrike {
             float gripMultiplier,
             float durationSeconds,
             float attackerLaunchSpeedRatio,
-            float targetPushSpeedRatio) {
+            float targetPushSpeedRatio,
+            float massMultiplier) {
         this.cardId = cardId;
         this.action = action;
         this.speedMultiplier = speedMultiplier;
@@ -49,6 +52,7 @@ public final class RogueliteRevengeStrike {
         this.durationSeconds = durationSeconds;
         this.attackerLaunchSpeedRatio = attackerLaunchSpeedRatio;
         this.targetPushSpeedRatio = targetPushSpeedRatio;
+        this.massMultiplier = massMultiplier;
     }
 
     static RogueliteRevengeStrike hardImpact(
@@ -62,7 +66,8 @@ public final class RogueliteRevengeStrike {
                 1f,
                 0f,
                 attackerLaunchSpeedRatio,
-                targetPushSpeedRatio);
+                targetPushSpeedRatio,
+                1f);
     }
 
     static RogueliteRevengeStrike debuff(
@@ -77,7 +82,8 @@ public final class RogueliteRevengeStrike {
                 gripMultiplier,
                 durationSeconds,
                 0f,
-                0f);
+                0f,
+                1f);
     }
 
     static RogueliteRevengeStrike forceThrottle(
@@ -90,7 +96,8 @@ public final class RogueliteRevengeStrike {
                 1f,
                 durationSeconds,
                 0f,
-                0f);
+                0f,
+                1f);
     }
 
     static RogueliteRevengeStrike forceBrake(
@@ -103,7 +110,8 @@ public final class RogueliteRevengeStrike {
                 1f,
                 durationSeconds,
                 0f,
-                0f);
+                0f,
+                1f);
     }
 
     static RogueliteRevengeStrike positionSwap(RogueliteCardId cardId) {
@@ -114,21 +122,35 @@ public final class RogueliteRevengeStrike {
                 1f,
                 0f,
                 0f,
-                0f);
+                0f,
+                1f);
     }
 
-    static RogueliteRevengeStrike hook(
-            RogueliteCardId cardId,
-            float attackerLaunchSpeedRatio,
-            float durationSeconds) {
+    static RogueliteRevengeStrike hook(RogueliteCardId cardId) {
         return new RogueliteRevengeStrike(
                 cardId,
                 Action.HOOK,
                 1f,
                 1f,
-                durationSeconds,
-                attackerLaunchSpeedRatio,
-                0f);
+                0f,
+                0f,
+                0f,
+                1f);
+    }
+
+    static RogueliteRevengeStrike curse(
+            RogueliteCardId cardId,
+            float massMultiplier,
+            float gripMultiplier) {
+        return new RogueliteRevengeStrike(
+                cardId,
+                Action.CURSE,
+                1f,
+                gripMultiplier,
+                0f,
+                0f,
+                0f,
+                massMultiplier);
     }
 
     public RogueliteCardId getCardId() {
@@ -161,5 +183,9 @@ public final class RogueliteRevengeStrike {
 
     public float getTargetPushSpeedRatio() {
         return targetPushSpeedRatio;
+    }
+
+    public float getMassMultiplier() {
+        return massMultiplier;
     }
 }

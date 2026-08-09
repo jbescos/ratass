@@ -24,7 +24,7 @@ final class RogueliteEffectFactory {
         if (id == RogueliteCardId.SENSOR_JAMMER
                 || id == RogueliteCardId.GRID_BLACKOUT
                 || id == RogueliteCardId.TOTAL_BLACKOUT) {
-            return new RaceBlackoutRevengeEffect(id);
+            return new OffenderCurseRevengeEffect(id);
         }
         RogueliteCardDefinition definition = RogueliteCardCatalog.get(id);
         switch (definition.getSlotType()) {

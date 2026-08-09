@@ -24,4 +24,29 @@ public class RogueliteAbilityEffectAtlasTest {
         assertEquals(-1, RogueliteAbilityEffectAtlas.indexFor(null));
         assertEquals(0f, RogueliteAbilityEffectAtlas.sizeScale(null), 0f);
     }
+
+    @Test
+    public void draftFieldUsesItsGameplayDiameter() {
+        assertEquals(
+                12f,
+                RogueliteAbilityEffectAtlas.worldSize(
+                        RogueliteAbilityVisualStyle.DRAFT,
+                        3f,
+                        6f),
+                0f);
+        assertEquals(
+                3f,
+                RogueliteAbilityEffectAtlas.worldSize(
+                        RogueliteAbilityVisualStyle.NITRO,
+                        3f,
+                        6f),
+                0f);
+        assertEquals(
+                3f,
+                RogueliteAbilityEffectAtlas.worldSize(
+                        RogueliteAbilityVisualStyle.DRAFT,
+                        3f,
+                        Float.NaN),
+                0f);
+    }
 }

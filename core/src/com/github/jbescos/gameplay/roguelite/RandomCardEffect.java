@@ -106,6 +106,11 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    boolean isOffenderCurse() {
+        return delegate.isOffenderCurse();
+    }
+
+    @Override
     float readiness() {
         return delegate.readiness();
     }
@@ -252,11 +257,6 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
-    float consumeRaceBlackoutSeconds() {
-        return delegate.consumeRaceBlackoutSeconds();
-    }
-
-    @Override
     void onRacePositionImproved(int positionsGained, float slipstreamBoost) {
         boolean wasActive = delegate.isActive();
         delegate.onRacePositionImproved(positionsGained, slipstreamBoost);
@@ -320,6 +320,11 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
             markCycleExecuted();
         }
         return strike;
+    }
+
+    @Override
+    void completeOffenderStrike(RogueliteCardId cardId) {
+        delegate.completeOffenderStrike(cardId);
     }
 
     private void observeActivation(boolean wasActive) {

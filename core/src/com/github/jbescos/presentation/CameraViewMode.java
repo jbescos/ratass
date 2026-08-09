@@ -6,7 +6,8 @@ import java.util.Locale;
 public enum CameraViewMode {
     TOP_DOWN("top_down", "Top Down"),
     CHASE("chase", "Chase"),
-    WHOLE_MAP("whole_map", "Whole Map");
+    WHOLE_MAP("whole_map", "Whole Map"),
+    FREE("free", "Free");
 
     private final String storedValue;
     private final String displayName;
@@ -30,6 +31,10 @@ public enum CameraViewMode {
 
     public boolean showsWholeMap() {
         return this == WHOLE_MAP;
+    }
+
+    public boolean isFree() {
+        return this == FREE;
     }
 
     public CameraViewMode cycle(int direction) {

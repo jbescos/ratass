@@ -20,6 +20,7 @@ public class RacePositionExperienceTest {
 
         assertEquals(1, overtakes.size());
         assertEquals(2, overtakes.get(0).getVehicleId());
+        assertEquals(1, overtakes.get(0).getPassedVehicleId());
         assertEquals(1, overtakes.get(0).getRivalsPassed());
         assertTrue(tracker.update(order(2, 1, 3), 2f).isEmpty());
     }
@@ -45,6 +46,7 @@ public class RacePositionExperienceTest {
 
         assertEquals(1, overtakes.size());
         assertEquals(4, overtakes.get(0).getVehicleId());
+        assertEquals(1, overtakes.get(0).getPassedVehicleId());
         assertEquals(3, overtakes.get(0).getRivalsPassed());
     }
 

@@ -4,8 +4,7 @@ package com.github.jbescos.gameplay.roguelite;
 final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
     private static final float POSITION_SWAP_MIN_DISTANCE = 3.2f;
     private static final float POSITION_SWAP_DELAY_SECONDS = 3f;
-    private static final float HOOK_MIN_DISTANCE = 2.8f;
-    private static final float HOOK_MAX_DISTANCE = 24f;
+    private static final float HOOK_TRIGGER_DELAY_SECONDS = 3f;
 
     private final float effectDurationSeconds;
     private final float targetSpeedMultiplier;
@@ -14,6 +13,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
     private int offenderVehicleId = -1;
     private float activeTimer;
     private float armedAge;
+    private boolean awaitingCompletion;
 
     TargetedRevengeEffect(RogueliteCardId cardId) {
         super(cardId);
@@ -44,7 +44,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
                 targetGripMultiplier = 1f;
                 break;
             case PAYBACK_SHIELD:
-                effectDurationSeconds = 20f;
+                effectDurationSeconds = 0f;
                 targetSpeedMultiplier = 1f;
                 targetGripMultiplier = 1f;
                 break;
@@ -56,15 +56,15 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
 
     @Override
     boolean isActive() {
-        return activeTimer > 0f;
+        return activeTimer > 0f || awaitingCompletion;
     }
 
     @Override
     boolean isReady() {
         return offenderVehicleId >= 0
                 && activeTimer <= 0f
-                && (getCardId() != RogueliteCardId.RECOVERY_BEACON
-                        || armedAge >= POSITION_SWAP_DELAY_SECONDS);
+                && !awaitingCompletion
+                && armedAge >= triggerDelaySeconds();
     }
 
     @Override
@@ -74,10 +74,11 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
 
     @Override
     float readiness() {
-        if (getCardId() != RogueliteCardId.RECOVERY_BEACON) {
+        float delaySeconds = triggerDelaySeconds();
+        if (delaySeconds <= 0f) {
             return 1f;
         }
-        return Math.max(0f, Math.min(1f, armedAge / POSITION_SWAP_DELAY_SECONDS));
+        return Math.max(0f, Math.min(1f, armedAge / delaySeconds));
     }
 
     @Override
@@ -93,7 +94,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
     @Override
     void update(float delta, float timerDelta, RogueliteDrivingFrame frame) {
         activeTimer = Math.max(0f, activeTimer - timerDelta);
-        if (offenderVehicleId >= 0 && activeTimer <= 0f) {
+        if (offenderVehicleId >= 0 && activeTimer <= 0f && !awaitingCompletion) {
             armedAge += Math.max(0f, delta);
         }
     }
@@ -103,6 +104,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
         if (vehicleId >= 0
                 && impactStrength > 0f
                 && activeTimer <= 0f
+                && !awaitingCompletion
                 && offenderVehicleId < 0) {
             offenderVehicleId = vehicleId;
             armedAge = 0f;
@@ -141,13 +143,8 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
                 strike = RogueliteRevengeStrike.positionSwap(getCardId());
                 break;
             case PAYBACK_SHIELD:
-                if (distance < HOOK_MIN_DISTANCE || distance > HOOK_MAX_DISTANCE) {
-                    return null;
-                }
-                strike = RogueliteRevengeStrike.hook(
-                        getCardId(),
-                        0.42f,
-                        effectDurationSeconds);
+                strike = RogueliteRevengeStrike.hook(getCardId());
+                awaitingCompletion = true;
                 break;
             default:
                 strike = RogueliteRevengeStrike.debuff(
@@ -162,5 +159,23 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
         armedAge = 0f;
         activeTimer = effectDurationSeconds;
         return strike;
+    }
+
+    @Override
+    void completeOffenderStrike(RogueliteCardId cardId) {
+        if (getCardId() == cardId) {
+            awaitingCompletion = false;
+            activeTimer = 0f;
+        }
+    }
+
+    private float triggerDelaySeconds() {
+        if (getCardId() == RogueliteCardId.RECOVERY_BEACON) {
+            return POSITION_SWAP_DELAY_SECONDS;
+        }
+        if (getCardId() == RogueliteCardId.PAYBACK_SHIELD) {
+            return HOOK_TRIGGER_DELAY_SECONDS;
+        }
+        return 0f;
     }
 }

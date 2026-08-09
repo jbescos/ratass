@@ -557,6 +557,7 @@ public class RogueliteCarUpgradesTest {
     @Test
     public void draftMagnetBecomesReadyOnlyAfterAQualifiedRivalHit() {
         RogueliteCarUpgrades upgrades = configured(RogueliteCardId.DRAFT_MAGNET);
+        long initialActivationSequence = upgrades.getRevengeActivationSequence();
 
         update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertFalse(upgrades.isDraftMagnetActive());
@@ -581,9 +582,13 @@ public class RogueliteCarUpgradesTest {
         update(upgrades, 0.1f, 0f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0.80f);
         assertEquals(RogueliteCardId.DRAFT_MAGNET, upgrades.getActiveAbilityCardId());
         assertTrue(upgrades.isDraftMagnetActive());
-        assertTrue(
-                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.DRAFT_MAGNET)
-                        > 0f);
+        assertEquals(
+                initialActivationSequence + 1L,
+                upgrades.getRevengeActivationSequence());
+        assertEquals(
+                2f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.DRAFT_MAGNET),
+                EPSILON);
         assertEquals(
                 0f,
                 upgrades.getCooldownTimeRemainingSeconds(RogueliteCardId.DRAFT_MAGNET),
@@ -591,6 +596,9 @@ public class RogueliteCarUpgradesTest {
 
         update(upgrades, 0.1f, 0f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0.80f);
         assertTrue(upgrades.isDraftMagnetActive());
+        assertEquals(
+                initialActivationSequence + 1L,
+                upgrades.getRevengeActivationSequence());
 
         for (int i = 0; i < 20; i++) {
             update(upgrades, 0.1f, 0f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0.80f);
@@ -602,6 +610,41 @@ public class RogueliteCarUpgradesTest {
                 upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.DRAFT_MAGNET),
                 EPSILON);
         assertFalse(upgrades.isRevengeArmed());
+    }
+
+    @Test
+    public void radialRevengeUsesPhysicalProximityWhenOpponentAwarenessIsBlind() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.DRAFT_MAGNET,
+                RogueliteCardId.MIRROR_DUO);
+        upgrades.onHitBy(42, 12f);
+
+        for (int i = 0; i < 2; i++) {
+            upgrades.update(
+                    0.1f,
+                    1f,
+                    true,
+                    false,
+                    false,
+                    0f,
+                    0.65f,
+                    0f,
+                    10f,
+                    100f,
+                    2f,
+                    0f,
+                    1f,
+                    0f,
+                    0f,
+                    0f,
+                    false,
+                    0f,
+                    0.8f);
+        }
+
+        assertEquals(RogueliteCardId.DRAFT_MAGNET, upgrades.getActiveAbilityCardId());
+        assertTrue(upgrades.isDraftMagnetActive());
+        assertNull(upgrades.getActivePowerupCardId());
     }
 
     @Test
@@ -722,6 +765,8 @@ public class RogueliteCarUpgradesTest {
     @Test
     public void targetedRevengeCardsEmitDistinctActionsAgainstTheRecordedOffender() {
         RogueliteCarUpgrades positionSwap = configured(RogueliteCardId.RECOVERY_BEACON);
+        long positionSwapActivationSequence =
+                positionSwap.getRevengeActivationSequence();
         armRevenge(positionSwap);
         positionSwap.onHitBy(7, 12f);
         assertEquals(42, positionSwap.getRevengeTargetVehicleId());
@@ -738,8 +783,12 @@ public class RogueliteCarUpgradesTest {
                 positionSwap.tryActivateOffenderStrike(42, 4f, true);
         assertNotNull(swapStrike);
         assertEquals(RogueliteRevengeStrike.Action.POSITION_SWAP, swapStrike.getAction());
+        assertEquals(
+                positionSwapActivationSequence + 1L,
+                positionSwap.getRevengeActivationSequence());
 
         RogueliteCarUpgrades redline = configured(RogueliteCardId.DRAFT_VENDETTA);
+        long redlineActivationSequence = redline.getRevengeActivationSequence();
         armRevenge(redline);
         assertNull(redline.tryActivateOffenderStrike(7, 4f));
         RogueliteRevengeStrike throttleStrike =
@@ -747,19 +796,34 @@ public class RogueliteCarUpgradesTest {
         assertNotNull(throttleStrike);
         assertEquals(RogueliteRevengeStrike.Action.FORCE_THROTTLE, throttleStrike.getAction());
         assertEquals(5f, throttleStrike.getDurationSeconds(), EPSILON);
+        assertEquals(
+                redlineActivationSequence + 1L,
+                redline.getRevengeActivationSequence());
 
         RogueliteCarUpgrades hook = configured(RogueliteCardId.PAYBACK_SHIELD);
         armRevenge(hook);
-        assertNull(hook.tryActivateOffenderStrike(42, 2f));
-        RogueliteRevengeStrike hookStrike = hook.tryActivateOffenderStrike(42, 6f);
+        assertEquals(1, RogueliteCardCatalog.get(RogueliteCardId.PAYBACK_SHIELD).getTier());
+        assertFalse(hook.isRevengeReady());
+        update(hook, 2.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertNull(hook.tryActivateOffenderStrike(42, 6f));
+        update(hook, 0.2f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertTrue(hook.isRevengeReady());
+        long hookActivationSequence = hook.getRevengeActivationSequence();
+        RogueliteRevengeStrike hookStrike = hook.tryActivateOffenderStrike(42, 30f);
         assertNotNull(hookStrike);
         assertEquals(RogueliteRevengeStrike.Action.HOOK, hookStrike.getAction());
-        assertTrue(hookStrike.getAttackerLaunchSpeedRatio() > 0.40f);
-        assertEquals(20f, hookStrike.getDurationSeconds(), EPSILON);
+        assertEquals(0f, hookStrike.getDurationSeconds(), EPSILON);
+        assertEquals(0f, hookStrike.getAttackerLaunchSpeedRatio(), EPSILON);
         assertEquals(RogueliteCardId.PAYBACK_SHIELD, hook.getActiveAbilityCardId());
-        update(hook, 19.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertEquals(
+                hookActivationSequence + 1L,
+                hook.getRevengeActivationSequence());
+        update(hook, 20f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertEquals(RogueliteCardId.PAYBACK_SHIELD, hook.getActiveAbilityCardId());
-        update(hook, 0.2f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertEquals(
+                hookActivationSequence + 1L,
+                hook.getRevengeActivationSequence());
+        hook.completeOffenderStrike(RogueliteCardId.PAYBACK_SHIELD);
         assertNull(hook.getActiveAbilityCardId());
 
         RogueliteCarUpgrades repulsor = configured(RogueliteCardId.REPULSOR_SURGE);
@@ -767,7 +831,11 @@ public class RogueliteCarUpgradesTest {
         update(repulsor, 0.1f, 0f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0.20f);
         assertEquals(RogueliteCardId.REPULSOR_SURGE, repulsor.getActiveAbilityCardId());
         assertTrue(repulsor.isDraftMagnetActive());
-        assertEquals(1.35f, repulsor.getDraftMagnetRangeMultiplier(), EPSILON);
+        assertEquals(
+                2f,
+                repulsor.getActiveTimeRemainingSeconds(RogueliteCardId.REPULSOR_SURGE),
+                EPSILON);
+        assertEquals(1.75f, repulsor.getDraftMagnetRangeMultiplier(), EPSILON);
         assertEquals(1.55f, repulsor.getDraftMagnetForceMultiplier(), EPSILON);
     }
 
@@ -836,10 +904,10 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
-    public void raceBlackoutTriggersImmediatelyAtItsTierDurationWithoutCooldown() {
-        assertRaceBlackoutDuration(RogueliteCardId.SENSOR_JAMMER, 10f);
-        assertRaceBlackoutDuration(RogueliteCardId.GRID_BLACKOUT, 20f);
-        assertRaceBlackoutDuration(RogueliteCardId.TOTAL_BLACKOUT, 30f);
+    public void offenderCurseTargetsOnlyTheCarThatLandedTheHit() {
+        assertOffenderCurse(RogueliteCardId.SENSOR_JAMMER, 1.05f, 1f);
+        assertOffenderCurse(RogueliteCardId.GRID_BLACKOUT, 1.20f, 1f);
+        assertOffenderCurse(RogueliteCardId.TOTAL_BLACKOUT, 1.50f, 0.80f);
     }
 
     @Test
@@ -1011,25 +1079,24 @@ public class RogueliteCarUpgradesTest {
         return configured(new RogueliteCardId[] {cardId});
     }
 
-    private static void assertRaceBlackoutDuration(
+    private static void assertOffenderCurse(
             RogueliteCardId cardId,
-            float durationSeconds) {
+            float massMultiplier,
+            float gripMultiplier) {
         RogueliteCarUpgrades upgrades = configured(cardId);
         upgrades.onHitBy(42, 12f);
 
-        assertEquals(cardId, upgrades.getActiveAbilityCardId());
-        assertEquals(durationSeconds, upgrades.consumeRaceBlackoutSeconds(), EPSILON);
-        assertEquals(0f, upgrades.consumeRaceBlackoutSeconds(), EPSILON);
-
-        update(upgrades, durationSeconds * 0.5f, 1f, true, 0f, 0.5f,
-                0f, 0f, 1f, 0f, 0f, 0f);
-        upgrades.onHitBy(7, 8f);
-        assertEquals(durationSeconds, upgrades.consumeRaceBlackoutSeconds(), EPSILON);
-        assertEquals(durationSeconds, upgrades.getActiveTimeRemainingSeconds(cardId), EPSILON);
-
-        update(upgrades, durationSeconds + 0.1f, 1f, true, 0f, 0.5f,
-                0f, 0f, 1f, 0f, 0f, 0f);
-        assertNull(upgrades.getActiveAbilityCardId());
+        assertTrue(upgrades.isRevengeArmed());
+        assertEquals(42, upgrades.getRevengeTargetVehicleId());
+        assertNull(upgrades.tryActivateOffenderStrike(7, 1f));
+        RogueliteRevengeStrike strike = upgrades.tryActivateOffenderStrike(42, 100f);
+        assertNotNull(strike);
+        assertEquals(RogueliteRevengeStrike.Action.CURSE, strike.getAction());
+        assertEquals(cardId, strike.getCardId());
+        assertEquals(massMultiplier, strike.getMassMultiplier(), EPSILON);
+        assertEquals(gripMultiplier, strike.getGripMultiplier(), EPSILON);
+        assertFalse(upgrades.isRevengeArmed());
+        assertEquals(-1, upgrades.getRevengeTargetVehicleId());
     }
 
     private static RogueliteCarUpgrades configured(RogueliteCardId... cardIds) {

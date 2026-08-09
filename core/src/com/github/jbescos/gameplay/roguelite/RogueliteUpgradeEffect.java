@@ -37,6 +37,10 @@ abstract class RogueliteUpgradeEffect {
         return false;
     }
 
+    boolean isOffenderCurse() {
+        return false;
+    }
+
     float readiness() {
         return 0f;
     }
@@ -142,10 +146,6 @@ abstract class RogueliteUpgradeEffect {
     void consumeImpactCounter() {
     }
 
-    float consumeRaceBlackoutSeconds() {
-        return 0f;
-    }
-
     void onRacePositionImproved(int positionsGained, float slipstreamBoost) {
     }
 
@@ -174,5 +174,8 @@ abstract class RogueliteUpgradeEffect {
             float distance,
             boolean offenderAhead) {
         return null;
+    }
+
+    void completeOffenderStrike(RogueliteCardId cardId) {
     }
 }
