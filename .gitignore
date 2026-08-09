@@ -121,6 +121,13 @@ __pycache__/
 ## Generated assets
 /assets/theme/themes.txt
 
+## Local marketing footage and rendered video
+/marketing/trailer/raw/
+/marketing/trailer/stills/
+/marketing/trailer/output/*.mp4
+/marketing/trailer/output/*-contact.png
+/marketing/trailer/output/poster-candidates.png
+
 ## OS Specific
 .DS_Store
 Thumbs.db

@@ -38,6 +38,13 @@ case "$os_name" in
         ;;
 esac
 
+case "$platform" in
+    linux) default_icon="$repo_dir/assets/branding/rogue-circuit-icon.png" ;;
+    windows) default_icon="$repo_dir/assets/branding/rogue-circuit.ico" ;;
+    macos) default_icon="$repo_dir/assets/branding/rogue-circuit.icns" ;;
+esac
+icon_path=${JPACKAGE_ICON:-$default_icon}
+
 package_dir="$output_root/$platform-$arch_name"
 input_dir="$repo_dir/desktop/target/jpackage-input"
 rm -rf "$package_dir" "$input_dir"
@@ -73,13 +80,11 @@ jpackage_args=(
 if [[ "$platform" == macos ]]; then
     jpackage_args+=(--java-options "-XstartOnFirstThread")
 fi
-if [[ -n ${JPACKAGE_ICON:-} ]]; then
-    if [[ ! -f "$JPACKAGE_ICON" ]]; then
-        echo "JPACKAGE_ICON does not exist: $JPACKAGE_ICON" >&2
-        exit 1
-    fi
-    jpackage_args+=(--icon "$JPACKAGE_ICON")
+if [[ ! -f "$icon_path" ]]; then
+    echo "Desktop package icon does not exist: $icon_path" >&2
+    exit 1
 fi
+jpackage_args+=(--icon "$icon_path")
 
 "$jpackage_bin" "${jpackage_args[@]}"
 
