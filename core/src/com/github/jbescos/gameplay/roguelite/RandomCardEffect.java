@@ -307,6 +307,28 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    boolean expireOffenderStrikeIfConditionFailed(
+            int targetVehicleId,
+            boolean offenderAhead) {
+        if (!delegate.expireOffenderStrikeIfConditionFailed(
+                targetVehicleId,
+                offenderAhead)) {
+            return false;
+        }
+        selectNextDelegate();
+        return true;
+    }
+
+    @Override
+    RogueliteRevengeStrike tryActivateOffenderHit(int targetVehicleId) {
+        RogueliteRevengeStrike strike = delegate.tryActivateOffenderHit(targetVehicleId);
+        if (strike != null) {
+            markCycleExecuted();
+        }
+        return strike;
+    }
+
+    @Override
     RogueliteRevengeStrike tryActivateOffenderStrike(
             int targetVehicleId,
             float distance,

@@ -127,17 +127,6 @@ public final class RacingHudLayout {
         return -1;
     }
 
-    public static float eventCameraRowStep(float leaderboardRowStep) {
-        return Math.max(30f, leaderboardRowStep + 10f);
-    }
-
-    public static String tvCameraLabel(boolean active, String followedCarName) {
-        if (!active || followedCarName == null || followedCarName.trim().length() == 0) {
-            return "TV CAMERA";
-        }
-        return "TV CAMERA: " + followedCarName.trim();
-    }
-
     public static float sidebarTextScale() {
         return SIDEBAR_TEXT_SCALE;
     }
@@ -156,6 +145,22 @@ public final class RacingHudLayout {
 
     public static float inGameMenuButtonMargin(float screenWidth, float screenHeight) {
         return clamp(Math.min(screenWidth, screenHeight) * 0.025f, 10f, 18f);
+    }
+
+    public static float inGameButtonGap(float screenWidth, float screenHeight) {
+        return Math.max(7f, inGameMenuButtonMargin(screenWidth, screenHeight) * 0.55f);
+    }
+
+    public static float inGameControlStripWidth(
+            float screenWidth,
+            float screenHeight,
+            int buttonCount) {
+        int count = Math.max(0, buttonCount);
+        if (count == 0) {
+            return 0f;
+        }
+        return inGameMenuButtonSize(screenWidth, screenHeight) * count
+                + inGameButtonGap(screenWidth, screenHeight) * (count - 1);
     }
 
     private static float clamp(float value, float minimum, float maximum) {

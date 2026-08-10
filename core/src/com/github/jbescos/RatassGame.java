@@ -92,8 +92,10 @@ import com.github.jbescos.gameplay.roguelite.save.RogueliteSaveRepository;
 import com.github.jbescos.presentation.AbilityActivationVisual;
 import com.github.jbescos.presentation.ButtonTextLayout;
 import com.github.jbescos.presentation.CameraMapFit;
+import com.github.jbescos.presentation.CameraTargetTransition;
 import com.github.jbescos.presentation.CameraViewMode;
 import com.github.jbescos.presentation.CircuitLoadingTransition;
+import com.github.jbescos.presentation.CrownBreakerLinkVisual;
 import com.github.jbescos.presentation.CrownBreakerStarVisual;
 import com.github.jbescos.presentation.DebuffTargetIconAtlas;
 import com.github.jbescos.presentation.DebuffTargetVisual;
@@ -103,10 +105,12 @@ import com.github.jbescos.presentation.EventCameraDirector;
 import com.github.jbescos.presentation.FreeCameraPan;
 import com.github.jbescos.presentation.GameLanguage;
 import com.github.jbescos.presentation.GameText;
+import com.github.jbescos.presentation.GameVersionLabel;
 import com.github.jbescos.presentation.ImpactReversalReadyVisual;
 import com.github.jbescos.presentation.MenuButtonSkinAtlas;
 import com.github.jbescos.presentation.PlayerDisplayName;
 import com.github.jbescos.presentation.PlayerNameEditor;
+import com.github.jbescos.presentation.PositionHijackLinkVisual;
 import com.github.jbescos.presentation.PresentationViewportLayout;
 import com.github.jbescos.presentation.RaceParticleEffects;
 import com.github.jbescos.presentation.RacingHudLayout;
@@ -194,6 +198,16 @@ public class RatassGame extends ApplicationAdapter {
     private static final ThemeChoice[] FALLBACK_THEME_CHOICES = new ThemeChoice[] {
             new ThemeChoice("gt3", "GT3")
     };
+
+    private final String gameVersionLabel;
+
+    public RatassGame() {
+        this("1.0");
+    }
+
+    public RatassGame(String versionName) {
+        gameVersionLabel = GameVersionLabel.format(versionName);
+    }
 
     private static Rectangle[] createRectangleArray(int count) {
         Rectangle[] rectangles = new Rectangle[count];
@@ -333,6 +347,8 @@ public class RatassGame extends ApplicationAdapter {
             Color.valueOf("f7d45a");
     private static final Color ROGUELITE_END_LOSS_COLOR =
             Color.valueOf("e66352");
+    private static final Color SIDEBAR_PLAYER_NAME_COLOR =
+            Color.valueOf("58d8ff");
     private static final Color[] VICTORY_FIREWORK_COLORS = {
         Color.valueOf("ffd34e"),
         Color.valueOf("58d8ff"),
@@ -437,8 +453,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float PLAYER_CAMERA_LOOK_AHEAD_TIME = 0.15f;
     private static final float PLAYER_CAMERA_MAX_LOOK_AHEAD = 2.35f;
     private static final float PLAYER_CAMERA_FOLLOW_LERP_SPEED = 7.5f;
-    private static final float CAMERA_TARGET_SWITCH_DURATION = 0.95f;
-    private static final float CAMERA_TARGET_SWITCH_LERP_SPEED = 2.4f;
+    private static final float CAMERA_TARGET_SWITCH_DURATION = 0.80f;
     private static final float CAMERA_TARGET_SWITCH_ZOOM_OUT = 0.28f;
     private static final float WHOLE_MAP_CAMERA_PADDING = 1.05f;
     private static final int SANDBOX_PHYSICS_HORSE_POWER = 0;
@@ -1132,6 +1147,9 @@ public class RatassGame extends ApplicationAdapter {
     private DragScrollGesture sidebarTablesDragGesture;
     private final Rectangle inGameMenuButtonBounds = new Rectangle();
     private Rectangle inGamePanelsButtonBounds;
+    private final Rectangle inGameTvCameraButtonBounds = new Rectangle();
+    private final Rectangle inGamePreviousCarButtonBounds = new Rectangle();
+    private final Rectangle inGameNextCarButtonBounds = new Rectangle();
     private final Rectangle sidebarTablesScrollbarBounds = new Rectangle();
     private final Rectangle rogueliteCardsButtonBounds = new Rectangle();
     private final Rectangle raceResultsContinueBounds = new Rectangle();
@@ -1172,9 +1190,11 @@ public class RatassGame extends ApplicationAdapter {
     private final Matrix4 hudTransform = new Matrix4();
     private final Vector2 cameraTargetPosition = new Vector2();
     private final Vector2 cameraSmoothedPosition = new Vector2();
+    private final Vector2 cameraTargetTransitionStartPosition = new Vector2();
     private final Vector2 cameraLookAhead = new Vector2();
     private final Vector2 cameraForwardDirection = new Vector2();
     private final Vector2 cameraSmoothedForwardDirection = new Vector2(0f, 1f);
+    private final Vector2 cameraTargetTransitionStartForwardDirection = new Vector2(0f, 1f);
     private final Vector2 cameraChaseOffset = new Vector2();
     private final Vector2 cameraRightDirection = new Vector2(1f, 0f);
     private final Vector3 hudTouchPoint = new Vector3();
@@ -1316,6 +1336,7 @@ public class RatassGame extends ApplicationAdapter {
     private long engineSoundId = -1L;
     private long slipSoundId = -1L;
     private float smoothedCameraZoom = 1f;
+    private float cameraTargetTransitionStartZoom = 1f;
     private float cameraTargetTransitionTimer;
     private float raceFinishTimer;
     private float weatherTimeRemaining;
@@ -3498,10 +3519,8 @@ public class RatassGame extends ApplicationAdapter {
             long displaySequence = raceIncidentPopup.getDisplaySequence();
             if (displaySequence != lastAutoFollowedRaceIncidentSequence) {
                 lastAutoFollowedRaceIncidentSequence = displaySequence;
-                eventCameraDirector.observeIncident();
-                setCameraTargetTemplate(
-                        findTemplateByVehicleId(raceIncidentPopup.getPrimaryVehicleId()),
-                        true);
+                eventCameraDirector.observeIncident(
+                        raceIncidentPopup.getPrimaryVehicleId());
                 return;
             }
         }
@@ -3861,10 +3880,12 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         if (handleInGameMenuButtonInput()) {
-            updateMenuLayout(hudViewport.getWorldWidth(), hudViewport.getWorldHeight());
             renderWorld();
             renderHud();
-            renderInGameMenuOverlay();
+            if (isInGameMenuOpen()) {
+                updateMenuLayout(hudViewport.getWorldWidth(), hudViewport.getWorldHeight());
+                renderInGameMenuOverlay();
+            }
             return;
         }
 
@@ -4033,6 +4054,18 @@ public class RatassGame extends ApplicationAdapter {
         hudViewport.unproject(hudTouchPoint);
         if (inGamePanelsButtonBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
             toggleHudPanels();
+            return true;
+        }
+        if (inGameTvCameraButtonBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            selectEventCamera();
+            return true;
+        }
+        if (inGamePreviousCarButtonBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            changeCameraTarget(-1);
+            return true;
+        }
+        if (inGameNextCarButtonBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            changeCameraTarget(1);
             return true;
         }
         if (inGameMenuButtonBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
@@ -4479,26 +4512,11 @@ public class RatassGame extends ApplicationAdapter {
         float viewportTop = sidebarTablesViewportBounds.y + sidebarTablesViewportBounds.height - 2f;
         float rowStep = getSidebarCompactLeaderboardRowStep();
         float headerStep = Math.max(16f, rowStep + 1f);
-        float eventCameraStep = RacingHudLayout.eventCameraRowStep(rowStep);
         boolean overflow = getSidebarTablesMaxScroll(sidebarX, sidebarWidth, hudHeight) > 0.5f;
         float contentWidth =
                 Math.max(1f, sidebarWidth - SIDEBAR_CONTENT_MARGIN * 2f - (overflow ? 12f : 0f));
 
-        float contentY = 0f;
-        if (touchX >= x && touchX <= x + contentWidth
-                && RacingHudLayout.sidebarTableRowAt(
-                                touchY,
-                                viewportTop,
-                                contentY,
-                                sidebarTablesScrollOffset,
-                                eventCameraStep,
-                                1)
-                        == 0) {
-            selectEventCamera();
-            return true;
-        }
-
-        contentY += eventCameraStep + headerStep;
+        float contentY = headerStep;
         if (touchX >= x && touchX <= x + contentWidth) {
             int raceRow =
                     RacingHudLayout.sidebarTableRowAt(
@@ -6443,11 +6461,7 @@ public class RatassGame extends ApplicationAdapter {
             int nextIndex = wrapLeaderboardIndex(startIndex + direction * step);
             CarTemplate template = leaderboardEntries.get(nextIndex);
             if (template != null && isCameraFollowable(template.currentCar)) {
-                int rosterIndex = findRosterIndex(template);
-                if (rosterIndex >= 0) {
-                    eventCameraSelected = false;
-                    setCameraTargetRosterIndex(rosterIndex, true);
-                }
+                selectPlayerCameraTarget(template, true);
                 return;
             }
         }
@@ -6611,6 +6625,14 @@ public class RatassGame extends ApplicationAdapter {
         }
         cameraTargetRosterIndex = rosterIndex;
         if (animate && cameraInitialized) {
+            cameraTargetTransitionStartPosition.set(cameraSmoothedPosition);
+            cameraTargetTransitionStartForwardDirection.set(cameraSmoothedForwardDirection);
+            if (cameraTargetTransitionStartForwardDirection.isZero(0.0001f)) {
+                cameraTargetTransitionStartForwardDirection.set(0f, 1f);
+            } else {
+                cameraTargetTransitionStartForwardDirection.nor();
+            }
+            cameraTargetTransitionStartZoom = smoothedCameraZoom;
             cameraTargetTransitionTimer = CAMERA_TARGET_SWITCH_DURATION;
         } else {
             cameraTargetTransitionTimer = 0f;
@@ -7094,6 +7116,23 @@ public class RatassGame extends ApplicationAdapter {
         for (int i = 0; i < menuLanguageFlagBounds.length; i++) {
             drawLanguageFlag(menuLanguageFlagBounds[i], languages[i]);
         }
+
+        spriteBatch.begin();
+        tint.set(0.78f, 0.82f, 0.85f, 0.92f);
+        float versionMargin = MathUtils.clamp(Math.min(hudWidth, hudHeight) * 0.025f, 12f, 28f);
+        float versionHeight = MathUtils.clamp(hudHeight * 0.065f, 34f, 54f);
+        drawFittedTextWithShadow(
+                hudFont,
+                gameVersionLabel,
+                versionMargin,
+                versionMargin + versionHeight * 0.72f,
+                Math.max(180f, hudWidth * 0.40f),
+                versionHeight,
+                tint,
+                1.12f,
+                0.90f,
+                Align.left);
+        spriteBatch.end();
     }
 
     private void drawNewGameTierMenu(float hudWidth, float hudHeight) {
@@ -9362,13 +9401,29 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void destroyMirrorCar(int index) {
-        Car mirror = mirrorCars.removeIndex(index);
+        Car mirror = mirrorCars.get(index);
+        Car owner = mirror.mirrorOwner;
+        replaceVendettaHookTarget(mirror, owner);
+        mirror.transferRevengeHookPullToOwner();
+        mirrorCars.removeIndex(index);
         mirror.active = false;
         if (mirror.body != null) {
             world.destroyBody(mirror.body);
             mirror.body = null;
         }
         mirror.mirrorOwner = null;
+    }
+
+    private void replaceVendettaHookTarget(Car previousTarget, Car replacementTarget) {
+        if (previousTarget == null || replacementTarget == null) {
+            return;
+        }
+        for (int i = 0; i < cars.size; i++) {
+            cars.get(i).replaceRevengeHookTarget(previousTarget, replacementTarget);
+        }
+        for (int i = 0; i < mirrorCars.size; i++) {
+            mirrorCars.get(i).replaceRevengeHookTarget(previousTarget, replacementTarget);
+        }
     }
 
     private void collapseAllMirrorFamilies() {
@@ -9387,21 +9442,28 @@ public class RatassGame extends ApplicationAdapter {
                 continue;
             }
             int targetVehicleId = source.rogueliteUpgrades.getRevengeTargetVehicleId();
-            boolean offenderCurse = source.rogueliteUpgrades.isOffenderCurseArmed();
-            if (targetVehicleId < 0
-                    || (!offenderCurse && !isCarOnRoad(source))) {
+            if (targetVehicleId < 0) {
                 continue;
             }
 
             Car target = findActiveCarByVehicleId(targetVehicleId);
+            boolean offenderAhead = isOffenderStrictlyAhead(source, target);
+            if (source.rogueliteUpgrades.expireOffenderStrikeIfConditionFailed(
+                    targetVehicleId,
+                    offenderAhead)) {
+                source.clearPendingRevengeParticipants();
+                continue;
+            }
+
+            boolean offenderCurse = source.rogueliteUpgrades.isOffenderCurseArmed();
             if (target == null
                     || target.body == null
+                    || (!offenderCurse && !isCarOnRoad(source))
                     || target.rogueliteUpgrades.blocksHostileEffects()
                     || (!offenderCurse && !isCarOnRoad(target))) {
                 continue;
             }
             float distance = source.body.getPosition().dst(target.body.getPosition());
-            boolean offenderAhead = isOffenderStrictlyAhead(source, target);
             RogueliteRevengeStrike strike =
                     source.rogueliteUpgrades.tryActivateOffenderStrike(
                             targetVehicleId,
@@ -9410,6 +9472,8 @@ public class RatassGame extends ApplicationAdapter {
             if (strike == null) {
                 continue;
             }
+            Car physicalSource = source.consumePendingRevengeOrigin();
+            Car physicalTarget = source.consumePendingRevengeTarget(target);
 
             float impactStrength = 0f;
             switch (strike.getAction()) {
@@ -9430,7 +9494,10 @@ public class RatassGame extends ApplicationAdapter {
                     source.swapRevengePosition(target, strike.getCardId());
                     break;
                 case HOOK:
-                    source.applyRevengeHook(target, strike.getCardId());
+                    physicalSource.applyRevengeHook(
+                            physicalTarget,
+                            strike.getCardId(),
+                            source);
                     break;
                 case CURSE:
                     target.applyOffenderCurse(
@@ -9476,12 +9543,65 @@ public class RatassGame extends ApplicationAdapter {
                             ROGUELITE_REVENGE_COLOR.b);
                 } else {
                     source.showRevengeProjectile(
-                            target,
+                            strike.getAction() == RogueliteRevengeStrike.Action.HOOK
+                                    ? physicalTarget
+                                    : target,
                             strike.getCardId(),
-                            RogueliteCardCatalog.get(strike.getCardId()).getTier());
+                            RogueliteCardCatalog.get(strike.getCardId()).getTier(),
+                            strike.getAction() == RogueliteRevengeStrike.Action.HOOK
+                                    ? physicalSource
+                                    : source);
                 }
             }
         }
+    }
+
+    private void activateCrownBreakerReturnHit(Car source, Car target) {
+        if (source == null
+                || target == null
+                || source.template == null
+                || target.template == null
+                || source.body == null
+                || target.body == null) {
+            return;
+        }
+        RogueliteRevengeStrike strike =
+                source.effectiveRogueliteUpgrades().tryActivateOffenderHit(
+                        target.template.vehicleId);
+        if (strike == null || strike.getCardId() != RogueliteCardId.CROWN_ENGINE) {
+            return;
+        }
+
+        Car upgradeOwner = source.mirrorOwner == null ? source : source.mirrorOwner;
+        upgradeOwner.clearPendingRevengeParticipants();
+        float impactStrength = source.applyTargetedRevengeRam(target, strike, currentMap);
+        awardRogueliteExperience(source.template, Reason.REVENGE);
+        playRevengeActivationSound(upgradeOwner);
+        showRevengeCommentary(source, target, strike.getCardId());
+        playImpactSound(impactStrength);
+        if (!isPresentationEnabled()) {
+            return;
+        }
+
+        Vector2 sourcePosition = source.body.getPosition();
+        Vector2 targetPosition = target.body.getPosition();
+        float directionX = targetPosition.x - sourcePosition.x;
+        float directionY = targetPosition.y - sourcePosition.y;
+        float directionLength = (float) Math.sqrt(
+                directionX * directionX + directionY * directionY);
+        if (directionLength > 0.0001f) {
+            directionX /= directionLength;
+            directionY /= directionLength;
+        }
+        raceParticleEffects.emitImpact(
+                (sourcePosition.x + targetPosition.x) * 0.5f,
+                (sourcePosition.y + targetPosition.y) * 0.5f,
+                directionX,
+                directionY,
+                impactStrength * 1.45f,
+                ROGUELITE_REVENGE_COLOR.r,
+                ROGUELITE_REVENGE_COLOR.g,
+                ROGUELITE_REVENGE_COLOR.b);
     }
 
     private void recordRevengeHit(
@@ -9598,6 +9718,9 @@ public class RatassGame extends ApplicationAdapter {
     private void updateVendettaHookPulls(float delta) {
         for (int i = 0; i < cars.size; i++) {
             cars.get(i).updateRevengeHookPull(delta);
+        }
+        for (int i = 0; i < mirrorCars.size; i++) {
+            mirrorCars.get(i).updateRevengeHookPull(delta);
         }
     }
 
@@ -11005,6 +11128,13 @@ public class RatassGame extends ApplicationAdapter {
                 !wholeMapCameraActive
                         && cameraTargetTransitionTimer > 0f
                         && cameraInitialized;
+        float cameraTargetTransitionProgress =
+                cameraTargetTransitionActive
+                        ? CameraTargetTransition.nextEasedProgress(
+                                cameraTargetTransitionTimer,
+                                CAMERA_TARGET_SWITCH_DURATION,
+                                delta)
+                        : 1f;
 
         Car cameraTargetCar =
                 finishWinnerCameraActive
@@ -11048,7 +11178,22 @@ public class RatassGame extends ApplicationAdapter {
                     cameraForwardDirection.set(cameraSmoothedForwardDirection);
                 }
 
-                if (!cameraInitialized || delta <= 0f) {
+                if (cameraTargetTransitionActive) {
+                    float startAngle =
+                            MathUtils.atan2(
+                                    cameraTargetTransitionStartForwardDirection.y,
+                                    cameraTargetTransitionStartForwardDirection.x);
+                    float targetAngle =
+                            MathUtils.atan2(cameraForwardDirection.y, cameraForwardDirection.x);
+                    float directionAngle =
+                            MathUtils.lerpAngle(
+                                    startAngle,
+                                    targetAngle,
+                                    cameraTargetTransitionProgress);
+                    cameraSmoothedForwardDirection.set(
+                            MathUtils.cos(directionAngle),
+                            MathUtils.sin(directionAngle));
+                } else if (!cameraInitialized || delta <= 0f) {
                     cameraSmoothedForwardDirection.set(cameraForwardDirection);
                 } else if (carSpeed >= PLAYER_CAMERA_DIRECTION_MIN_SPEED) {
                     float spinDamping =
@@ -11114,7 +11259,11 @@ public class RatassGame extends ApplicationAdapter {
             targetZoom =
                     Math.min(
                             PLAYER_CAMERA_MAX_ZOOM / MIN_CAMERA_ZOOM,
-                            targetZoom + CAMERA_TARGET_SWITCH_ZOOM_OUT);
+                            targetZoom
+                                    + CAMERA_TARGET_SWITCH_ZOOM_OUT
+                                            * MathUtils.sin(
+                                                    MathUtils.PI
+                                                            * cameraTargetTransitionProgress));
         }
         if (!StableCameraState.isUsable(
                 cameraTargetPosition.x,
@@ -11135,12 +11284,18 @@ public class RatassGame extends ApplicationAdapter {
             cameraSmoothedPosition.set(cameraTargetPosition);
             smoothedCameraZoom = targetZoom;
             cameraInitialized = true;
+        } else if (cameraTargetTransitionActive) {
+            cameraSmoothedPosition
+                    .set(cameraTargetTransitionStartPosition)
+                    .lerp(cameraTargetPosition, cameraTargetTransitionProgress);
+            smoothedCameraZoom =
+                    MathUtils.lerp(
+                            cameraTargetTransitionStartZoom,
+                            targetZoom,
+                            cameraTargetTransitionProgress);
         } else {
-            float followSpeed =
-                    cameraTargetTransitionActive
-                            ? CAMERA_TARGET_SWITCH_LERP_SPEED
-                            : PLAYER_CAMERA_FOLLOW_LERP_SPEED;
-            float alpha = 1f - (float) Math.exp(-followSpeed * delta);
+            float alpha =
+                    1f - (float) Math.exp(-PLAYER_CAMERA_FOLLOW_LERP_SPEED * delta);
             cameraSmoothedPosition.lerp(cameraTargetPosition, alpha);
             smoothedCameraZoom += (targetZoom - smoothedCameraZoom) * alpha;
         }
@@ -13376,8 +13531,123 @@ public class RatassGame extends ApplicationAdapter {
         if (!isPresentationEnabled()) {
             return;
         }
+        drawPositionHijackLinks();
+        drawCrownBreakerLinks();
         drawCarEffects(cars);
         drawCarEffects(mirrorCars);
+    }
+
+    private void drawCrownBreakerLinks() {
+        for (int i = 0; i < cars.size; i++) {
+            Car cardOwner = cars.get(i);
+            RogueliteCarUpgrades upgrades = cardOwner.rogueliteUpgrades;
+            int targetVehicleId = upgrades.getRevengeTargetVehicleId();
+            Car fallbackTarget = findActiveCarByVehicleId(targetVehicleId);
+            Car source = cardOwner.getPendingRevengeOriginOrSelf();
+            Car target = cardOwner.getPendingRevengeTargetOr(fallbackTarget);
+            if (!CrownBreakerLinkVisual.shouldDraw(
+                    upgrades.getRevengeCardId(),
+                    upgrades.isRevengeArmed(),
+                    source != null && source.active && source.body != null,
+                    target != null && target.active && target.body != null)) {
+                continue;
+            }
+
+            Vector2 start = source.getRenderPosition();
+            Vector2 end = target.getRenderPosition();
+            float dx = end.x - start.x;
+            float dy = end.y - start.y;
+            float distance = (float) Math.sqrt(dx * dx + dy * dy);
+            if (distance <= 0.001f) {
+                continue;
+            }
+
+            float pulse = CrownBreakerLinkVisual.pulse(effectClock);
+            float timeoutAlpha = CrownBreakerLinkVisual.timeoutAlpha(
+                    upgrades.getRevengeActiveTimeRemainingSeconds());
+            float alpha = timeoutAlpha * (0.62f + pulse * 0.30f);
+            shapeRenderer.setColor(0.22f, 0.015f, 0.025f, alpha * 0.72f);
+            shapeRenderer.rectLine(start.x, start.y, end.x, end.y, 0.19f);
+
+            int segmentCount = MathUtils.clamp((int) (distance / 1.7f), 5, 18);
+            float segmentLength = Math.min(0.62f, distance / (segmentCount * 1.45f));
+            float normalX = -dy / distance;
+            float normalY = dx / distance;
+            float travel = (effectClock * 0.85f) % 1f;
+            for (int segment = 0; segment < segmentCount; segment++) {
+                float progress = (segment / (float) segmentCount + travel) % 1f;
+                float centerX = MathUtils.lerp(start.x, end.x, progress);
+                float centerY = MathUtils.lerp(start.y, end.y, progress);
+                float wave = (float) Math.sin(
+                        progress * MathUtils.PI2 * 3f - effectClock * 8f);
+                centerX += normalX * wave * (0.10f + pulse * 0.06f);
+                centerY += normalY * wave * (0.10f + pulse * 0.06f);
+                float halfDx = dx / distance * segmentLength * 0.5f;
+                float halfDy = dy / distance * segmentLength * 0.5f;
+                shapeRenderer.setColor(1f, 0.72f, 0.12f, alpha);
+                shapeRenderer.rectLine(
+                        centerX - halfDx,
+                        centerY - halfDy,
+                        centerX + halfDx,
+                        centerY + halfDy,
+                        0.055f + pulse * 0.025f);
+            }
+        }
+    }
+
+    private void drawPositionHijackLinks() {
+        for (int i = 0; i < cars.size; i++) {
+            Car cardOwner = cars.get(i);
+            int targetVehicleId = cardOwner.rogueliteUpgrades.getRevengeTargetVehicleId();
+            Car fallbackTarget = findActiveCarByVehicleId(targetVehicleId);
+            Car source = cardOwner.getPendingRevengeOriginOrSelf();
+            Car target = cardOwner.getPendingRevengeTargetOr(fallbackTarget);
+            if (!PositionHijackLinkVisual.shouldDraw(
+                    cardOwner.rogueliteUpgrades.getRevengeCardId(),
+                    cardOwner.rogueliteUpgrades.isRevengeArmed(),
+                    source != null && source.active && source.body != null,
+                    target != null && target.active && target.body != null)) {
+                continue;
+            }
+
+            Vector2 start = source.getRenderPosition();
+            Vector2 end = target.getRenderPosition();
+            float dx = end.x - start.x;
+            float dy = end.y - start.y;
+            float distance = (float) Math.sqrt(dx * dx + dy * dy);
+            if (distance <= 0.001f) {
+                continue;
+            }
+            float charge = PositionHijackLinkVisual.charge(
+                    cardOwner.rogueliteUpgrades.getRevengeReadiness());
+            float pulse = PositionHijackLinkVisual.pulse(effectClock, charge);
+            float outerWidth = 0.13f + charge * 0.09f;
+            float innerWidth = 0.035f + pulse * 0.030f;
+            shapeRenderer.setColor(0.42f, 0.015f, 0.08f, 0.48f + pulse * 0.28f);
+            shapeRenderer.rectLine(start.x, start.y, end.x, end.y, outerWidth);
+            shapeRenderer.setColor(1f, 0.34f + charge * 0.32f, 0.16f, 0.76f + pulse * 0.22f);
+            shapeRenderer.rectLine(start.x, start.y, end.x, end.y, innerWidth);
+
+            float rayAngle = MathUtils.atan2(dy, dx) * MathUtils.radiansToDegrees;
+            int sparkCount = MathUtils.clamp((int) (distance / 2.2f), 4, 10);
+            for (int spark = 0; spark < sparkCount; spark++) {
+                float progress = (effectClock * (0.72f + charge * 0.38f)
+                                + spark / (float) sparkCount)
+                        % 1f;
+                float x = MathUtils.lerp(start.x, end.x, progress);
+                float y = MathUtils.lerp(start.y, end.y, progress);
+                drawRotatedRect(
+                        x,
+                        y,
+                        0.11f + pulse * 0.05f,
+                        0.28f + charge * 0.12f,
+                        rayAngle + 45f,
+                        1f,
+                        0.76f,
+                        0.24f,
+                        0.82f);
+            }
+        }
     }
 
     private void drawCarEffects(Array<Car> drawnCars) {
@@ -13460,7 +13730,13 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
-        Vector2 start = source.getRenderPosition();
+        Car projectileOrigin = source.revengeProjectileOrigin;
+        if (projectileOrigin == null
+                || !projectileOrigin.active
+                || projectileOrigin.body == null) {
+            projectileOrigin = source;
+        }
+        Vector2 start = projectileOrigin.getRenderPosition();
         Vector2 end = target.getRenderPosition();
         float dx = end.x - start.x;
         float dy = end.y - start.y;
@@ -14106,34 +14382,29 @@ public class RatassGame extends ApplicationAdapter {
         if (texture == null) {
             return;
         }
-        drawCrownBreakerStarSprites(cars, texture);
-        drawCrownBreakerStarSprites(mirrorCars, texture);
+        for (int i = 0; i < cars.size; i++) {
+            Car cardOwner = cars.get(i);
+            RogueliteCarUpgrades upgrades = cardOwner.rogueliteUpgrades;
+            Car source = cardOwner.getPendingRevengeOriginOrSelf();
+            if (source == null
+                    || !source.active
+                    || source.body == null
+                    || !CrownBreakerStarVisual.isVisible(
+                            upgrades.getRevengeCardId(),
+                            upgrades.getActiveAbilityCardId(),
+                            upgrades.isRevengeArmed())) {
+                continue;
+            }
+            drawCrownBreakerStarSprite(
+                    source,
+                    texture,
+                    0.5f + 0.5f * MathUtils.sin(effectClock * 5.5f));
+        }
         spriteBatch.setColor(Color.WHITE);
     }
 
-    private void drawCrownBreakerStarSprites(Array<Car> drawnCars, Texture texture) {
-        for (int i = 0; i < drawnCars.size; i++) {
-            Car car = drawnCars.get(i);
-            if (!car.active || car.body == null) {
-                continue;
-            }
-            drawCrownBreakerStarSprite(car, texture);
-        }
-    }
-
-    private void drawCrownBreakerStarSprite(Car car, Texture texture) {
-        AbilityActivationVisual visual = car.abilityActivationVisual;
-        if (visual == null
-                || !CrownBreakerStarVisual.isVisible(
-                        car.rogueliteUpgrades.getRevengeCardId(),
-                        visual.getActiveCardId(),
-                        visual.isRevengeArmed())) {
-            return;
-        }
+    private void drawCrownBreakerStarSprite(Car car, Texture texture, float pulse) {
         Vector2 renderPosition = car.getRenderPosition();
-        float pulse = visual.getActiveCardId() == RogueliteCardId.CROWN_ENGINE
-                ? Math.max(visual.getPulse(), visual.getRevengeArmedPulse())
-                : visual.getRevengeArmedPulse();
         float radius = Math.max(car.getWidth() * 1.15f, car.getHeight() * 0.78f)
                 * CrownBreakerStarVisual.radiusScale(pulse);
         float alpha = 0.68f + MathUtils.clamp(pulse, 0f, 1f) * 0.26f;
@@ -19079,9 +19350,6 @@ public class RatassGame extends ApplicationAdapter {
             if (position == 1) {
                 shapeRenderer.setColor(0.98f, 0.76f, 0.24f, 0.18f);
                 shapeRenderer.rect(left, rowBottom, width, rowStep);
-            } else if (isChampionshipLosingPosition(position)) {
-                shapeRenderer.setColor(0.84f, 0.12f, 0.12f, 0.30f);
-                shapeRenderer.rect(left, rowBottom, width, rowStep);
             } else if (template != null && template.playerControlled) {
                 shapeRenderer.setColor(0.30f, 0.72f, 1f, 0.16f);
                 shapeRenderer.rect(left, rowBottom, width, rowStep);
@@ -20427,14 +20695,29 @@ public class RatassGame extends ApplicationAdapter {
     private void updateInGameMenuButtonLayout(float hudWidth, float hudHeight) {
         float size = RacingHudLayout.inGameMenuButtonSize(hudWidth, hudHeight);
         float margin = RacingHudLayout.inGameMenuButtonMargin(hudWidth, hudHeight);
+        float gap = RacingHudLayout.inGameButtonGap(hudWidth, hudHeight);
         inGameMenuButtonBounds.set(
                 playfieldHudX + margin,
                 hudHeight - margin - size,
                 size,
                 size);
-        float gap = Math.max(7f, margin * 0.55f);
         inGamePanelsButtonBounds.set(
                 inGameMenuButtonBounds.x + size + gap,
+                inGameMenuButtonBounds.y,
+                size,
+                size);
+        inGameTvCameraButtonBounds.set(
+                inGamePanelsButtonBounds.x + size + gap,
+                inGameMenuButtonBounds.y,
+                size,
+                size);
+        inGamePreviousCarButtonBounds.set(
+                inGameTvCameraButtonBounds.x + size + gap,
+                inGameMenuButtonBounds.y,
+                size,
+                size);
+        inGameNextCarButtonBounds.set(
+                inGamePreviousCarButtonBounds.x + size + gap,
                 inGameMenuButtonBounds.y,
                 size,
                 size);
@@ -20444,6 +20727,9 @@ public class RatassGame extends ApplicationAdapter {
         if (!isPresentationEnabled() || gameMode != GameMode.PLAYING) {
             inGameMenuButtonBounds.set(0f, 0f, 0f, 0f);
             inGamePanelsButtonBounds.set(0f, 0f, 0f, 0f);
+            inGameTvCameraButtonBounds.set(0f, 0f, 0f, 0f);
+            inGamePreviousCarButtonBounds.set(0f, 0f, 0f, 0f);
+            inGameNextCarButtonBounds.set(0f, 0f, 0f, 0f);
             return;
         }
         updateInGameMenuButtonLayout(hudWidth, hudHeight);
@@ -20454,14 +20740,28 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawInGameButtonBackground(inGameMenuButtonBounds);
         drawInGameButtonBackground(inGamePanelsButtonBounds);
+        drawInGameButtonBackground(inGameTvCameraButtonBounds, eventCameraSelected);
+        drawInGameButtonBackground(inGamePreviousCarButtonBounds);
+        drawInGameButtonBackground(inGameNextCarButtonBounds);
         drawInGameMenuIcon();
         drawInGamePanelsIcon();
+        drawInGameTvCameraIcon();
+        drawInGameCarStepIcon(inGamePreviousCarButtonBounds, -1);
+        drawInGameCarStepIcon(inGameNextCarButtonBounds, 1);
         shapeRenderer.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
     }
 
     private void drawInGameButtonBackground(Rectangle bounds) {
-        shapeRenderer.setColor(0.035f, 0.050f, 0.065f, 0.88f);
+        drawInGameButtonBackground(bounds, false);
+    }
+
+    private void drawInGameButtonBackground(Rectangle bounds, boolean selected) {
+        shapeRenderer.setColor(
+                selected ? 0.30f : 0.035f,
+                selected ? 0.22f : 0.050f,
+                selected ? 0.06f : 0.065f,
+                selected ? 0.94f : 0.88f);
         shapeRenderer.rect(
                 bounds.x,
                 bounds.y,
@@ -20526,6 +20826,66 @@ public class RatassGame extends ApplicationAdapter {
                     iconY + line,
                     line);
         }
+    }
+
+    private void drawInGameTvCameraIcon() {
+        Rectangle bounds = inGameTvCameraButtonBounds;
+        float bodyX = bounds.x + bounds.width * 0.21f;
+        float bodyY = bounds.y + bounds.height * 0.34f;
+        float bodyWidth = bounds.width * 0.42f;
+        float bodyHeight = bounds.height * 0.32f;
+        float lensX = bodyX + bodyWidth;
+        float lensCenterY = bodyY + bodyHeight * 0.5f;
+
+        shapeRenderer.setColor(0.94f, 0.96f, 0.97f, 0.96f);
+        shapeRenderer.rect(bodyX, bodyY, bodyWidth, bodyHeight);
+        shapeRenderer.triangle(
+                lensX,
+                bodyY + bodyHeight * 0.18f,
+                bounds.x + bounds.width * 0.79f,
+                bodyY + bodyHeight * 0.02f,
+                lensX,
+                lensCenterY);
+        shapeRenderer.triangle(
+                lensX,
+                lensCenterY,
+                bounds.x + bounds.width * 0.79f,
+                bodyY + bodyHeight * 0.98f,
+                lensX,
+                bodyY + bodyHeight * 0.82f);
+        shapeRenderer.setColor(0.98f, 0.84f, 0.28f, 0.98f);
+        shapeRenderer.circle(
+                bodyX + bodyWidth * 0.22f,
+                bodyY + bodyHeight * 0.72f,
+                Math.max(1.5f, bounds.width * 0.038f),
+                12);
+    }
+
+    private void drawInGameCarStepIcon(Rectangle bounds, int direction) {
+        float carWidth = bounds.width * 0.22f;
+        float carHeight = bounds.height * 0.46f;
+        float carX = bounds.x
+                + (direction < 0 ? bounds.width * 0.57f : bounds.width * 0.21f);
+        float carY = bounds.y + (bounds.height - carHeight) * 0.5f;
+        float line = Math.max(2f, bounds.width * 0.045f);
+
+        shapeRenderer.setColor(0.94f, 0.96f, 0.97f, 0.96f);
+        shapeRenderer.rect(carX, carY, carWidth, carHeight);
+        shapeRenderer.setColor(0.98f, 0.84f, 0.28f, 0.98f);
+        float arrowTipX = bounds.x
+                + (direction < 0 ? bounds.width * 0.20f : bounds.width * 0.80f);
+        float arrowTailX = bounds.x
+                + (direction < 0 ? bounds.width * 0.48f : bounds.width * 0.52f);
+        float centerY = bounds.y + bounds.height * 0.5f;
+        shapeRenderer.rectLine(arrowTailX, centerY, arrowTipX, centerY, line);
+        float arrowSize = bounds.width * 0.13f;
+        shapeRenderer.triangle(
+                arrowTipX,
+                centerY,
+                arrowTipX - direction * arrowSize,
+                centerY + arrowSize,
+                arrowTipX - direction * arrowSize,
+                centerY - arrowSize);
     }
 
     private void drawSidebarTelemetrySignalBars(
@@ -20992,7 +21352,6 @@ public class RatassGame extends ApplicationAdapter {
         float viewportBottom = sidebarTablesViewportBounds.y + 2f;
         float rowStep = getSidebarCompactLeaderboardRowStep();
         float headerStep = Math.max(16f, rowStep + 1f);
-        float eventCameraStep = RacingHudLayout.eventCameraRowStep(rowStep);
         boolean overflow = getSidebarTablesMaxScroll(sidebarX, sidebarWidth, hudHeight) > 0.5f;
         float contentWidth =
                 Math.max(1f, sidebarWidth - SIDEBAR_CONTENT_MARGIN * 2f - (overflow ? 12f : 0f));
@@ -21023,34 +21382,10 @@ public class RatassGame extends ApplicationAdapter {
                 viewportTop,
                 viewportBottom,
                 contentWidth,
-                eventCameraStep,
                 headerStep,
                 rowStep);
 
         float y = viewportTop - contentY + sidebarTablesScrollOffset;
-        font.setColor(
-                eventCameraSelected ? 1f : 0.78f,
-                eventCameraSelected ? 0.94f : 0.84f,
-                eventCameraSelected ? 0.54f : 0.90f,
-                1f);
-        float eventTextBaseline = y
-                - Math.max(4f, (eventCameraStep - font.getLineHeight()) * 0.5f);
-        Car eventCameraTarget = getCameraTargetCar();
-        String eventCameraLabel = RacingHudLayout.tvCameraLabel(
-                eventCameraSelected,
-                eventCameraTarget == null
-                        ? null
-                        : getRaceCarDisplayName(eventCameraTarget));
-        drawSidebarTableText(
-                font,
-                truncateTextToWidth(font, eventCameraLabel, contentWidth),
-                x,
-                eventTextBaseline,
-                viewportBottom,
-                viewportTop);
-        contentY += eventCameraStep;
-
-        y = viewportTop - contentY + sidebarTablesScrollOffset;
         font.setColor(0.98f, 0.95f, 0.84f, 1f);
         drawSidebarTableRightAlignedText(
                 font,
@@ -21068,15 +21403,9 @@ public class RatassGame extends ApplicationAdapter {
             CarTemplate template = leaderboardEntries.get(i);
             boolean active = template.currentCar != null && template.currentCar.active;
             boolean cameraTarget = !eventCameraSelected && isCameraTargetTemplate(template);
-            boolean raceWinner =
-                    roundOver
-                            && winner != null
-                            && winner.template == template;
             y = viewportTop - contentY + sidebarTablesScrollOffset;
 
-            if (raceWinner) {
-                font.setColor(1f, 0.82f, 0.28f, 1f);
-            } else if (cameraTarget) {
+            if (cameraTarget) {
                 font.setColor(1f, 0.94f, 0.54f, 1f);
             } else if (!active && !roundOver) {
                 font.setColor(0.66f, 0.72f, 0.78f, 1f);
@@ -21096,7 +21425,14 @@ public class RatassGame extends ApplicationAdapter {
                     y,
                     viewportBottom,
                     viewportTop);
-            drawSidebarTableText(font, player, nameX, y, viewportBottom, viewportTop);
+            drawSidebarPlayerNameText(
+                    font,
+                    player,
+                    nameX,
+                    y,
+                    viewportBottom,
+                    viewportTop,
+                    template.playerControlled);
             drawSidebarTableRightAlignedText(font, buildBestLapText(template), bestLapX, y, viewportBottom, viewportTop);
             drawSidebarTableRightAlignedText(
                     font,
@@ -21167,10 +21503,6 @@ public class RatassGame extends ApplicationAdapter {
                 y = viewportTop - contentY + sidebarTablesScrollOffset;
                 if (!eventCameraSelected && isCameraTargetTemplate(template)) {
                     font.setColor(1f, 0.94f, 0.54f, 1f);
-                } else if (template.playerControlled) {
-                    font.setColor(0.62f, 0.84f, 1f, 1f);
-                } else if (position == 1) {
-                    font.setColor(1f, 0.82f, 0.28f, 1f);
                 } else {
                     font.setColor(0.84f, 0.90f, 0.94f, 1f);
                 }
@@ -21181,7 +21513,7 @@ public class RatassGame extends ApplicationAdapter {
                         y,
                         viewportBottom,
                         viewportTop);
-                drawSidebarTableText(
+                drawSidebarPlayerNameText(
                         font,
                         truncateTextToWidth(
                                 font,
@@ -21190,7 +21522,8 @@ public class RatassGame extends ApplicationAdapter {
                         championshipNameX,
                         y,
                         viewportBottom,
-                        viewportTop);
+                        viewportTop,
+                        template.playerControlled);
                 drawSidebarTableRightAlignedText(
                         font,
                         formatChampionshipPositionChange(template, position),
@@ -21273,7 +21606,6 @@ public class RatassGame extends ApplicationAdapter {
             float viewportTop,
             float viewportBottom,
             float contentWidth,
-            float eventCameraStep,
             float headerStep,
             float rowStep) {
         spriteBatch.end();
@@ -21282,16 +21614,7 @@ public class RatassGame extends ApplicationAdapter {
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        drawSidebarCameraButtonBackground(
-                x,
-                viewportTop,
-                viewportBottom,
-                contentWidth,
-                0f,
-                eventCameraStep,
-                eventCameraSelected);
-
-        float contentY = eventCameraStep + headerStep;
+        float contentY = headerStep;
         for (int i = 0; i < leaderboardEntries.size; i++) {
             CarTemplate template = leaderboardEntries.get(i);
             drawSidebarCameraButtonBackground(
@@ -21365,6 +21688,25 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
         font.draw(spriteBatch, text, x, y);
+    }
+
+    private void drawSidebarPlayerNameText(
+            BitmapFont font,
+            String text,
+            float x,
+            float y,
+            float viewportBottom,
+            float viewportTop,
+            boolean playerControlled) {
+        float red = font.getColor().r;
+        float green = font.getColor().g;
+        float blue = font.getColor().b;
+        float alpha = font.getColor().a;
+        if (playerControlled) {
+            font.setColor(SIDEBAR_PLAYER_NAME_COLOR);
+        }
+        drawSidebarTableText(font, text, x, y, viewportBottom, viewportTop);
+        font.setColor(red, green, blue, alpha);
     }
 
     private void drawSidebarTableRightAlignedText(
@@ -22503,7 +22845,6 @@ public class RatassGame extends ApplicationAdapter {
         refreshLeaderboardEntries();
         float rowStep = getSidebarCompactLeaderboardRowStep();
         float headerStep = Math.max(16f, rowStep + 1f);
-        float eventCameraStep = RacingHudLayout.eventCameraRowStep(rowStep);
         float championshipHeight =
                 shouldShowSidebarChampionshipStandings()
                         ? SIDEBAR_MINIMAP_GAP
@@ -22511,8 +22852,7 @@ public class RatassGame extends ApplicationAdapter {
                                 + rowStep
                                 + roster.size * rowStep
                         : 0f;
-        return eventCameraStep
-                + headerStep
+        return headerStep
                 + leaderboardEntries.size * rowStep
                 + championshipHeight
                 + SIDEBAR_MINIMAP_GAP
@@ -23695,6 +24035,14 @@ public class RatassGame extends ApplicationAdapter {
             boolean carAEmpoweredHit = carARamHit || (carADominant && carA.hasGrowthBoost());
             boolean carBEmpoweredHit = carBRamHit || (carBDominant && carB.hasGrowthBoost());
 
+            if (!roundOver && preRoundCountdownTimer <= 0f) {
+                if (carADominant) {
+                    activateCrownBreakerReturnHit(carA, carB);
+                } else if (carBDominant) {
+                    activateCrownBreakerReturnHit(carB, carA);
+                }
+            }
+
             carA.clearOffenderCurseOnQualifiedCollision();
             carB.clearOffenderCurseOnQualifiedCollision();
 
@@ -24101,8 +24449,12 @@ public class RatassGame extends ApplicationAdapter {
         private AbilityActivationVisual abilityActivationVisual;
         private RevengeProjectileVisual revengeProjectileVisual;
         private Car revengeProjectileTarget;
+        private Car revengeProjectileOrigin;
         private RogueliteCardId revengeProjectileCardId;
         private Car revengeHookTarget;
+        private Car revengeHookUpgradeOwner;
+        private Car pendingRevengeOrigin;
+        private Car pendingRevengeTarget;
         private float revengeHookElapsedSeconds;
         private float revengeHookDirectionX;
         private float revengeHookDirectionY = 1f;
@@ -24231,6 +24583,8 @@ public class RatassGame extends ApplicationAdapter {
                 RogueliteLoadout loadout,
                 boolean presentationEnabled) {
             clearRevengeHookPull();
+            pendingRevengeOrigin = null;
+            pendingRevengeTarget = null;
             float cycleOffset = ((template.vehicleId * 37) % 101) / 100f;
             float previousMassMultiplier = rogueliteUpgrades.getMassMultiplier();
             rogueliteUpgrades.configure(loadout, cycleOffset);
@@ -24246,6 +24600,7 @@ public class RatassGame extends ApplicationAdapter {
                 abilityActivationVisual = null;
                 revengeProjectileVisual = null;
                 revengeProjectileTarget = null;
+                revengeProjectileOrigin = null;
                 revengeProjectileCardId = null;
                 return;
             }
@@ -24266,10 +24621,12 @@ public class RatassGame extends ApplicationAdapter {
                 }
                 revengeProjectileVisual.reset();
                 revengeProjectileTarget = null;
+                revengeProjectileOrigin = null;
                 revengeProjectileCardId = null;
             } else {
                 revengeProjectileVisual = null;
                 revengeProjectileTarget = null;
+                revengeProjectileOrigin = null;
                 revengeProjectileCardId = null;
             }
         }
@@ -24294,6 +24651,7 @@ public class RatassGame extends ApplicationAdapter {
                 revengeProjectileVisual.update(delta);
                 if (!revengeProjectileVisual.isActive()) {
                     revengeProjectileTarget = null;
+                    revengeProjectileOrigin = null;
                     revengeProjectileCardId = null;
                 }
             }
@@ -24337,11 +24695,13 @@ public class RatassGame extends ApplicationAdapter {
         private void showRevengeProjectile(
                 Car target,
                 RogueliteCardId cardId,
-                int tier) {
+                int tier,
+                Car origin) {
             if (revengeProjectileVisual == null || target == null) {
                 return;
             }
             revengeProjectileTarget = target;
+            revengeProjectileOrigin = origin;
             revengeProjectileCardId = cardId;
             if (cardId == RogueliteCardId.PAYBACK_SHIELD) {
                 revengeProjectileVisual.startTether(
@@ -24518,7 +24878,8 @@ public class RatassGame extends ApplicationAdapter {
 
         private void applyRevengeHook(
                 Car target,
-                RogueliteCardId cardId) {
+                RogueliteCardId cardId,
+                Car upgradeOwner) {
             if (target == null
                     || body == null
                     || target.body == null
@@ -24526,6 +24887,7 @@ public class RatassGame extends ApplicationAdapter {
                 return;
             }
             revengeHookTarget = target;
+            revengeHookUpgradeOwner = upgradeOwner == null ? this : upgradeOwner;
             float directionX = target.body.getPosition().x - body.getPosition().x;
             float directionY = target.body.getPosition().y - body.getPosition().y;
             float distance = (float) Math.sqrt(directionX * directionX + directionY * directionY);
@@ -24623,14 +24985,93 @@ public class RatassGame extends ApplicationAdapter {
             revengeHookTarget.clearDebuffTargetIcon(RogueliteCardId.PAYBACK_SHIELD);
             revengeHookTarget = null;
             revengeHookElapsedSeconds = 0f;
-            rogueliteUpgrades.completeOffenderStrike(RogueliteCardId.PAYBACK_SHIELD);
-            if (revengeProjectileCardId == RogueliteCardId.PAYBACK_SHIELD) {
-                if (revengeProjectileVisual != null) {
-                    revengeProjectileVisual.reset();
+            Car upgradeOwner = revengeHookUpgradeOwner == null ? this : revengeHookUpgradeOwner;
+            revengeHookUpgradeOwner = null;
+            upgradeOwner.rogueliteUpgrades.completeOffenderStrike(
+                    RogueliteCardId.PAYBACK_SHIELD);
+            if (upgradeOwner.revengeProjectileCardId == RogueliteCardId.PAYBACK_SHIELD) {
+                if (upgradeOwner.revengeProjectileVisual != null) {
+                    upgradeOwner.revengeProjectileVisual.reset();
                 }
-                revengeProjectileTarget = null;
-                revengeProjectileCardId = null;
+                upgradeOwner.revengeProjectileTarget = null;
+                upgradeOwner.revengeProjectileOrigin = null;
+                upgradeOwner.revengeProjectileCardId = null;
             }
+        }
+
+        private void transferRevengeHookPullToOwner() {
+            if (revengeHookTarget == null
+                    || mirrorOwner == null
+                    || mirrorOwner.body == null) {
+                return;
+            }
+            mirrorOwner.revengeHookTarget = revengeHookTarget;
+            mirrorOwner.revengeHookUpgradeOwner = revengeHookUpgradeOwner;
+            mirrorOwner.revengeHookElapsedSeconds = revengeHookElapsedSeconds;
+            mirrorOwner.revengeHookDirectionX = revengeHookDirectionX;
+            mirrorOwner.revengeHookDirectionY = revengeHookDirectionY;
+            revengeHookTarget = null;
+            revengeHookUpgradeOwner = null;
+            revengeHookElapsedSeconds = 0f;
+        }
+
+        private void replaceRevengeHookTarget(
+                Car previousTarget,
+                Car replacementTarget) {
+            if (revengeHookTarget != previousTarget
+                    || replacementTarget == null
+                    || !replacementTarget.active
+                    || replacementTarget.body == null) {
+                return;
+            }
+            revengeHookTarget = replacementTarget;
+            replacementTarget.activateDebuffTargetIcon(
+                    RogueliteCardId.PAYBACK_SHIELD,
+                    Math.max(
+                            0f,
+                            VENDETTA_HOOK_PULL_DURATION
+                                    - revengeHookElapsedSeconds));
+        }
+
+        private Car consumePendingRevengeOrigin() {
+            Car origin = pendingRevengeOrigin;
+            pendingRevengeOrigin = null;
+            if (origin == null || !origin.active || origin.body == null) {
+                return this;
+            }
+            return origin;
+        }
+
+        private Car getPendingRevengeOriginOrSelf() {
+            if (pendingRevengeOrigin == null
+                    || !pendingRevengeOrigin.active
+                    || pendingRevengeOrigin.body == null) {
+                return this;
+            }
+            return pendingRevengeOrigin;
+        }
+
+        private Car consumePendingRevengeTarget(Car fallback) {
+            Car target = pendingRevengeTarget;
+            pendingRevengeTarget = null;
+            if (target == null || !target.active || target.body == null) {
+                return fallback;
+            }
+            return target;
+        }
+
+        private Car getPendingRevengeTargetOr(Car fallback) {
+            if (pendingRevengeTarget == null
+                    || !pendingRevengeTarget.active
+                    || pendingRevengeTarget.body == null) {
+                return fallback;
+            }
+            return pendingRevengeTarget;
+        }
+
+        private void clearPendingRevengeParticipants() {
+            pendingRevengeOrigin = null;
+            pendingRevengeTarget = null;
         }
 
         private void clearDebuffTargetIcon(RogueliteCardId cardId) {
@@ -27708,10 +28149,18 @@ public class RatassGame extends ApplicationAdapter {
             if (attacker == null || attacker.template == null || impactStrength <= 0f) {
                 return;
             }
-            effectiveRogueliteUpgrades().onHitBy(
+            RogueliteCarUpgrades upgrades = effectiveRogueliteUpgrades();
+            upgrades.onHitBy(
                     attacker.template.vehicleId,
                     impactStrength,
                     canArmRevenge);
+            if (canArmRevenge
+                    && upgrades.getRevengeTargetVehicleId()
+                            == attacker.template.vehicleId) {
+                Car upgradeOwner = mirrorOwner == null ? this : mirrorOwner;
+                upgradeOwner.pendingRevengeOrigin = this;
+                upgradeOwner.pendingRevengeTarget = attacker;
+            }
         }
 
         private float getCollisionReboundMultiplierAgainst(Car other) {
@@ -27857,6 +28306,8 @@ public class RatassGame extends ApplicationAdapter {
             forcedBrakeTimer = 0f;
             resetOffenderCurse();
             clearRevengeHookPull();
+            pendingRevengeOrigin = null;
+            pendingRevengeTarget = null;
             if (debuffTargetVisual != null) {
                 debuffTargetVisual.reset();
             }

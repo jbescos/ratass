@@ -7,6 +7,7 @@ import java.util.Set;
 
 /** Selects immediate camera targets without retaining incidents that happen while locked. */
 public final class EventCameraDirector {
+    static final float MINIMUM_SHOT_SECONDS = 2f;
     static final float REVENGE_PREPARATION_SECONDS = 3f;
     static final float REVENGE_TARGET_SECONDS = 2f;
     static final float PLAYER_FALLBACK_SECONDS = 5f;
@@ -23,7 +24,9 @@ public final class EventCameraDirector {
     private Mode mode = Mode.IDLE;
     private int revengeSourceVehicleId = -1;
     private int requestedVehicleId = -1;
+    private int deferredVehicleId = -1;
     private float lockTimeRemaining;
+    private float shotTimeRemaining;
     private float secondsSinceEvent;
     private boolean playerFallbackRequested;
     private boolean playerFallbackIssued;
@@ -39,12 +42,17 @@ public final class EventCameraDirector {
             playerFallbackIssued = true;
         }
 
-        if (mode == Mode.IDLE) {
-            return;
+        shotTimeRemaining = Math.max(0f, shotTimeRemaining - elapsed);
+        if (mode != Mode.IDLE) {
+            lockTimeRemaining = Math.max(0f, lockTimeRemaining - elapsed);
+            if (lockTimeRemaining == 0f) {
+                clearLock();
+            }
         }
-        lockTimeRemaining = Math.max(0f, lockTimeRemaining - elapsed);
-        if (lockTimeRemaining == 0f) {
-            clearLock();
+        if (shotTimeRemaining == 0f && deferredVehicleId >= 0) {
+            int vehicleId = deferredVehicleId;
+            deferredVehicleId = -1;
+            requestVehicleNow(vehicleId);
         }
     }
 
@@ -66,8 +74,8 @@ public final class EventCameraDirector {
             markEventObserved();
             mode = Mode.REVENGE_PREPARATION;
             revengeSourceVehicleId = vehicleId;
-            lockTimeRemaining = REVENGE_PREPARATION_SECONDS;
-            requestedVehicleId = vehicleId;
+            lockTimeRemaining = shotTimeRemaining + REVENGE_PREPARATION_SECONDS;
+            requestVehicle(vehicleId, true);
         }
     }
 
@@ -93,13 +101,20 @@ public final class EventCameraDirector {
         markEventObserved();
         mode = Mode.REVENGE_TARGET;
         revengeSourceVehicleId = sourceVehicleId;
-        lockTimeRemaining = REVENGE_TARGET_SECONDS;
-        requestedVehicleId = targetVehicleId;
+        lockTimeRemaining = shotTimeRemaining + REVENGE_TARGET_SECONDS;
+        requestVehicle(targetVehicleId, true);
         return true;
     }
 
     public void observeIncident() {
         markEventObserved();
+    }
+
+    public void observeIncident(int vehicleId) {
+        markEventObserved();
+        if (mode == Mode.IDLE && shotTimeRemaining == 0f) {
+            requestVehicle(vehicleId, false);
+        }
     }
 
     public int consumeRequestedVehicleId() {
@@ -122,6 +137,7 @@ public final class EventCameraDirector {
         observedArmedVehicles.clear();
         observedRevengeExecutions.clear();
         clearLock();
+        shotTimeRemaining = 0f;
         secondsSinceEvent = 0f;
         playerFallbackRequested = false;
         playerFallbackIssued = false;
@@ -137,6 +153,23 @@ public final class EventCameraDirector {
         mode = Mode.IDLE;
         revengeSourceVehicleId = -1;
         requestedVehicleId = -1;
+        deferredVehicleId = -1;
         lockTimeRemaining = 0f;
+    }
+
+    private void requestVehicle(int vehicleId, boolean defer) {
+        if (vehicleId < 0) {
+            return;
+        }
+        if (shotTimeRemaining == 0f) {
+            requestVehicleNow(vehicleId);
+        } else if (defer) {
+            deferredVehicleId = vehicleId;
+        }
+    }
+
+    private void requestVehicleNow(int vehicleId) {
+        requestedVehicleId = vehicleId;
+        shotTimeRemaining = MINIMUM_SHOT_SECONDS;
     }
 }

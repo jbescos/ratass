@@ -2,12 +2,13 @@ package com.github.jbescos.gameplay.roguelite;
 
 /** Stores the rival who landed a qualified hit and arms a targeted counterattack. */
 final class CrownBreakerRevengeEffect extends RogueliteUpgradeEffect {
-    private static final float ACTIVATION_RANGE = 3.6f;
+    static final float ARMED_DURATION_SECONDS = 30f;
     private static final float ATTACKER_LAUNCH_SPEED_RATIO = 0.48f;
     private static final float TARGET_PUSH_SPEED_RATIO = 0.72f;
     private static final float RAM_CONTACT_ACQUIRE_SECONDS = 1f;
 
     private int offenderVehicleId = -1;
+    private float armedTimeRemaining;
     private int suppressedRamVehicleId = -1;
     private float ramContactAcquireTimer;
     private boolean ramContactObserved;
@@ -37,12 +38,23 @@ final class CrownBreakerRevengeEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    float activeTimeRemainingSeconds() {
+        return armedTimeRemaining;
+    }
+
+    @Override
     int activeDisplayPriority() {
         return 6;
     }
 
     @Override
     void update(float delta, float timerDelta, RogueliteDrivingFrame frame) {
+        if (offenderVehicleId >= 0) {
+            armedTimeRemaining = Math.max(0f, armedTimeRemaining - Math.max(0f, delta));
+            if (armedTimeRemaining <= 0f) {
+                offenderVehicleId = -1;
+            }
+        }
         if (suppressedRamVehicleId < 0 || ramContactObserved) {
             return;
         }
@@ -82,6 +94,7 @@ final class CrownBreakerRevengeEffect extends RogueliteUpgradeEffect {
                 && impactStrength > 0f
                 && offenderVehicleId < 0) {
             offenderVehicleId = vehicleId;
+            armedTimeRemaining = ARMED_DURATION_SECONDS;
         }
     }
 
@@ -98,19 +111,16 @@ final class CrownBreakerRevengeEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
-    RogueliteRevengeStrike tryActivateOffenderStrike(
-            int targetVehicleId,
-            float distance,
-            boolean offenderAhead) {
+    RogueliteRevengeStrike tryActivateOffenderHit(int targetVehicleId) {
         if (!isReady()
-                || targetVehicleId != offenderVehicleId
-                || distance > ACTIVATION_RANGE) {
+                || targetVehicleId != offenderVehicleId) {
             return null;
         }
         suppressedRamVehicleId = offenderVehicleId;
         ramContactAcquireTimer = RAM_CONTACT_ACQUIRE_SECONDS;
         ramContactObserved = false;
         offenderVehicleId = -1;
+        armedTimeRemaining = 0f;
         return RogueliteRevengeStrike.hardImpact(
                 getCardId(),
                 ATTACKER_LAUNCH_SPEED_RATIO,

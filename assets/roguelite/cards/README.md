@@ -8,11 +8,11 @@ by `RogueliteCardDefinition.artworkIndex`.
 | 1 | Club Tune | Corner Exit | Draft Hunter | Nitro Pulse | Grip Fan | Sport Tune |
 | 2 | Clean Momentum | Recovery Launch | Ram Reactor | Draft Magnet | Race Tune | Drift Slingshot |
 | 3 | Slipstream Slingshot | Phase Shield | Rocket Exhaust | Heavyweight Tune | Overtake Surge | Apex Slingshot |
-| 4 | Gravity Well | Mirror Duo | Championship Tune | Perfect Lap | Racecraft Mastery | Hyperdrive |
+| 4 | Gravity Well | Quantum Duo | Championship Tune | Perfect Lap | Racecraft Mastery | Hyperdrive |
 | 5 | Crown Engine | Streamline Kit | Short-Ratio Gearbox | Le Mans Body | Drift Differential | Ground Effect |
 | 6 | Velocity Shell | Torque Vectoring | Recovery Beacon | Draft Vendetta | Payback Shield | Repulsor Surge |
 | 7 | Tar Tether | EMP Snare | Void Anchor | Ghost Cloak | Phantom Cloak | Void Cloak |
-| 8 | Mirror Trio | Mirror Quartet | Underdog Instinct | Comeback Drive | Last Place Fury | Close Quarters |
+| 8 | Quantum Trio | Quantum Quartet | Underdog Instinct | Comeback Drive | Last Place Fury | Close Quarters |
 | 9 | Pack Racer | Traffic Dominance | Carbon Panels | Carbon Monocoque | Graphene Chassis | Blind Hex |
 | 10 | Burden Hex | Doom Hex | Lucky Spark | Chaos Relay | Wildcard Core | Loaded Grudge |
 | 11 | Chaos Retort | Fate's Revenge | Unused | Unused | Unused | Unused |

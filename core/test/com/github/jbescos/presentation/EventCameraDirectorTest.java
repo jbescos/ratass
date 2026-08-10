@@ -32,6 +32,10 @@ public class EventCameraDirectorTest {
 
         assertTrue(director.revengeExecuted(4, 7, 1L));
 
+        assertEquals(-1, director.consumeRequestedVehicleId());
+        director.update(1.99f);
+        assertEquals(-1, director.consumeRequestedVehicleId());
+        director.update(0.01f);
         assertEquals(7, director.consumeRequestedVehicleId());
         director.observeRevengeArmed(4, false);
         director.update(1.99f);
@@ -105,5 +109,22 @@ public class EventCameraDirectorTest {
         assertFalse(director.consumePlayerFallbackRequested());
         director.update(0.01f);
         assertTrue(director.consumePlayerFallbackRequested());
+    }
+
+    @Test
+    public void ordinaryIncidentsCannotMoveCameraMoreOftenThanEveryTwoSeconds() {
+        EventCameraDirector director = new EventCameraDirector();
+
+        director.observeIncident(2);
+        assertEquals(2, director.consumeRequestedVehicleId());
+
+        director.update(1f);
+        director.observeIncident(5);
+        assertEquals(-1, director.consumeRequestedVehicleId());
+
+        director.update(1f);
+        assertEquals(-1, director.consumeRequestedVehicleId());
+        director.observeIncident(8);
+        assertEquals(8, director.consumeRequestedVehicleId());
     }
 }

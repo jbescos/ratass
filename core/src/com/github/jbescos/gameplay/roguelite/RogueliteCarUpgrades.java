@@ -149,6 +149,17 @@ public final class RogueliteCarUpgrades {
         return 0f;
     }
 
+    public float getRevengeActiveTimeRemainingSeconds() {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            if (RogueliteCardCatalog.get(effect.getCardId()).getSlotType()
+                    == RogueliteSlotType.REVENGE) {
+                return effect.activeTimeRemainingSeconds();
+            }
+        }
+        return 0f;
+    }
+
     public RogueliteCardId getRevengeCardId() {
         for (int i = 0; i < effects.size(); i++) {
             RogueliteCardId cardId = effects.get(i).behaviorCardId();
@@ -675,6 +686,34 @@ public final class RogueliteCarUpgrades {
             }
         }
         return false;
+    }
+
+    public boolean expireOffenderStrikeIfConditionFailed(
+            int targetVehicleId,
+            boolean offenderAhead) {
+        for (int i = 0; i < effects.size(); i++) {
+            if (effects.get(i).expireOffenderStrikeIfConditionFailed(
+                    targetVehicleId,
+                    offenderAhead)) {
+                refreshActiveCards();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public RogueliteRevengeStrike tryActivateOffenderHit(int targetVehicleId) {
+        long activationSequence = revengeActivationSequence;
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteRevengeStrike strike =
+                    effects.get(i).tryActivateOffenderHit(targetVehicleId);
+            if (strike != null) {
+                refreshActiveCards();
+                recordRevengeActivationIfMissing(true, activationSequence);
+                return strike;
+            }
+        }
+        return null;
     }
 
     public RogueliteRevengeStrike tryActivateOffenderStrike(

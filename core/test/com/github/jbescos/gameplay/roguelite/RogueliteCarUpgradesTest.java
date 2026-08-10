@@ -721,6 +721,10 @@ public class RogueliteCarUpgradesTest {
         assertTrue(upgrades.isRevengeArmed());
         assertFalse(upgrades.isImpactCounterReady());
         assertEquals(42, upgrades.getRevengeTargetVehicleId());
+        assertEquals(
+                30f,
+                upgrades.getRevengeActiveTimeRemainingSeconds(),
+                EPSILON);
         assertTrue(upgrades.getAccelerationMultiplier() > 1.50f);
         assertTrue(upgrades.getMaxSpeedMultiplier() > 1.20f);
         assertEquals(1f, upgrades.getGripMultiplier(0f), EPSILON);
@@ -728,14 +732,14 @@ public class RogueliteCarUpgradesTest {
         upgrades.onHitBy(7, 12f);
         assertEquals(42, upgrades.getRevengeTargetVehicleId());
 
-        for (int i = 0; i < 130; i++) {
+        for (int i = 0; i < 299; i++) {
             update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         }
         assertTrue(upgrades.isRevengeArmed());
         assertNull(upgrades.tryActivateOffenderStrike(7, 1f));
-        assertNull(upgrades.tryActivateOffenderStrike(42, 4f));
+        assertNull(upgrades.tryActivateOffenderStrike(42, 1f));
 
-        RogueliteRevengeStrike strike = upgrades.tryActivateOffenderStrike(42, 3f);
+        RogueliteRevengeStrike strike = upgrades.tryActivateOffenderHit(42);
         assertNotNull(strike);
         assertTrue(strike.isHardImpact());
         assertEquals(RogueliteCardId.CROWN_ENGINE, strike.getCardId());
@@ -748,7 +752,7 @@ public class RogueliteCarUpgradesTest {
         assertEquals(1f, upgrades.getGripMultiplier(0f), EPSILON);
         assertEquals(
                 0f,
-                upgrades.getCooldownTimeRemainingSeconds(RogueliteCardId.CROWN_ENGINE),
+                upgrades.getRevengeActiveTimeRemainingSeconds(),
                 EPSILON);
 
         upgrades.onHitBy(42, 12f);
@@ -760,6 +764,25 @@ public class RogueliteCarUpgradesTest {
         upgrades.onHitBy(42, 12f);
         assertTrue(upgrades.isRevengeArmed());
         assertEquals(42, upgrades.getRevengeTargetVehicleId());
+    }
+
+    @Test
+    public void crownBreakerBuffAndTargetExpireAfterThirtySeconds() {
+        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.CROWN_ENGINE);
+        upgrades.onHitBy(42, 12f);
+
+        update(upgrades, 29.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertTrue(upgrades.isRevengeArmed());
+        assertTrue(upgrades.getAccelerationMultiplier() > 1f);
+        assertTrue(upgrades.getMaxSpeedMultiplier() > 1f);
+
+        update(upgrades, 0.2f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertFalse(upgrades.isRevengeArmed());
+        assertFalse(upgrades.isRevengeReady());
+        assertEquals(-1, upgrades.getRevengeTargetVehicleId());
+        assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f, upgrades.getMaxSpeedMultiplier(), EPSILON);
+        assertNull(upgrades.tryActivateOffenderHit(42));
     }
 
     @Test
@@ -775,9 +798,6 @@ public class RogueliteCarUpgradesTest {
         assertNull(positionSwap.tryActivateOffenderStrike(42, 4f, true));
         update(positionSwap, 0.2f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertTrue(positionSwap.isRevengeReady());
-        assertNull(positionSwap.tryActivateOffenderStrike(42, 4f, false));
-        assertTrue(positionSwap.isRevengeArmed());
-        assertEquals(42, positionSwap.getRevengeTargetVehicleId());
         assertNull(positionSwap.tryActivateOffenderStrike(42, 2f, true));
         RogueliteRevengeStrike swapStrike =
                 positionSwap.tryActivateOffenderStrike(42, 4f, true);
@@ -837,6 +857,22 @@ public class RogueliteCarUpgradesTest {
                 EPSILON);
         assertEquals(1.75f, repulsor.getDraftMagnetRangeMultiplier(), EPSILON);
         assertEquals(1.55f, repulsor.getDraftMagnetForceMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void positionHijackExpiresWithoutTriggeringWhenOffenderIsNotAheadAfterCharge() {
+        RogueliteCarUpgrades positionSwap = configured(RogueliteCardId.RECOVERY_BEACON);
+        long activationSequence = positionSwap.getRevengeActivationSequence();
+        positionSwap.onHitBy(42, 12f);
+        update(positionSwap, 3.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+
+        assertTrue(positionSwap.expireOffenderStrikeIfConditionFailed(42, false));
+        assertFalse(positionSwap.isRevengeArmed());
+        assertFalse(positionSwap.isRevengeReady());
+        assertEquals(-1, positionSwap.getRevengeTargetVehicleId());
+        assertEquals(activationSequence, positionSwap.getRevengeActivationSequence());
+        assertNull(positionSwap.getActiveAbilityCardId());
+        assertFalse(positionSwap.expireOffenderStrikeIfConditionFailed(42, false));
     }
 
     @Test

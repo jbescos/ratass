@@ -241,8 +241,8 @@ public final class RogueliteCardCatalog {
                 RogueliteAbilityVisualStyle.NITRO));
         cards.add(powerup(
                 RogueliteCardId.MIRROR_DUO,
-                "Mirror Duo",
-                "Open road creates a second physical copy that races beside the original.",
+                "Quantum Duo",
+                "A quantum split creates a second physical car that races beside the original.",
                 "Nearby rival on straight: 2 cars for 5s\nCooldown: 10s",
                 1,
                 RogueliteAbilityVisualStyle.MIRROR));
@@ -311,8 +311,8 @@ public final class RogueliteCardCatalog {
                 RogueliteAbilityVisualStyle.NITRO));
         cards.add(powerup(
                 RogueliteCardId.MIRROR_TRIO,
-                "Mirror Trio",
-                "Open road creates two physical copies spread across the track.",
+                "Quantum Trio",
+                "A quantum split creates three physical cars spread across the track.",
                 "Nearby rival on straight: 3 cars for 5s\nCooldown: 10s",
                 2,
                 RogueliteAbilityVisualStyle.MIRROR));
@@ -339,8 +339,8 @@ public final class RogueliteCardCatalog {
                 RogueliteAbilityVisualStyle.GRIP));
         cards.add(powerup(
                 RogueliteCardId.OVERDRIVE_COIL,
-                "Mirror Quartet",
-                "Open road creates three physical copies spread across the track.",
+                "Quantum Quartet",
+                "A quantum split creates four physical cars spread across the track.",
                 "Nearby rival on straight: 4 cars for 5s\nCooldown: 10s",
                 3,
                 RogueliteAbilityVisualStyle.MIRROR));
@@ -368,8 +368,8 @@ public final class RogueliteCardCatalog {
         cards.add(revenge(
                 RogueliteCardId.CROWN_ENGINE,
                 "Crown Breaker",
-                "A qualified rival hit arms a brutal hunt for the offender responsible.",
-                "Hit taken -> Power +55% | Speed +22%\nRecoil -75% | Push +70% | Explosive ram",
+                "A rival hit marks its offender and empowers you until you strike them back.",
+                "30s hunt: Power +55% | Speed +22%\nRecoil -75% | Push +70% | Ram on hit",
                 3,
                 RogueliteAbilityVisualStyle.RAM));
         cards.add(revenge(

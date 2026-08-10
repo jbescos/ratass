@@ -29,6 +29,29 @@ public class VendettaHookPullTest {
     }
 
     @Test
+    public void reachesContactWithAMovingOffenderAtSixtyUpdatesPerSecond() {
+        float sourcePosition = 0f;
+        float offenderPosition = 20f;
+        float contactDistance = 1.6f;
+        float overlap = 0.08f;
+        float delta = 1f / 60f;
+        for (int frame = 0; frame < 300; frame++) {
+            offenderPosition += 4f * delta;
+            float currentDistance = offenderPosition - sourcePosition;
+            float destination =
+                    offenderPosition
+                            - VendettaHookPull.desiredContactDistance(
+                                    currentDistance,
+                                    contactDistance,
+                                    overlap);
+            float fraction = VendettaHookPull.stepFraction(frame * delta, delta, 5f);
+            sourcePosition += (destination - sourcePosition) * fraction;
+        }
+
+        assertEquals(contactDistance - overlap, offenderPosition - sourcePosition, 0.001f);
+    }
+
+    @Test
     public void clampsTimeOutsideTheEffectWindow() {
         assertEquals(0.02f, VendettaHookPull.stepFraction(-2f, 0.1f, 5f), EPSILON);
         assertEquals(1f, VendettaHookPull.stepFraction(7f, 0.1f, 5f), EPSILON);

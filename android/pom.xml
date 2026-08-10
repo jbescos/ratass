@@ -20,7 +20,8 @@
         <android.min.sdk>21</android.min.sdk>
         <android.build.tools.version>36.0.0</android.build.tools.version>
         <android.version.code>1</android.version.code>
-        <android.version.name>${project.version}</android.version.name>
+        <android.release.version.code>auto</android.release.version.code>
+        <android.version.name>${game.version}</android.version.name>
     </properties>
 
     <build>
@@ -107,7 +108,7 @@
                                         <argument>${android.target.sdk}</argument>
                                         <argument>${android.min.sdk}</argument>
                                         <argument>${android.build.tools.version}</argument>
-                                        <argument>${android.version.code}</argument>
+                                        <argument>${android.release.version.code}</argument>
                                         <argument>${android.version.name}</argument>
                                     </arguments>
                                 </configuration>

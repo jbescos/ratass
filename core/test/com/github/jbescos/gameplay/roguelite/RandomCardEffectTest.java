@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.List;
@@ -88,6 +89,22 @@ public class RandomCardEffectTest {
     }
 
     @Test
+    public void randomPositionHijackRerollsWhenItsAheadConditionExpires() {
+        RandomCardEffect effect = effectPreparedAs(
+                RogueliteCardId.CHAOS_RETORT,
+                RogueliteCardId.RECOVERY_BEACON);
+        RogueliteCardId firstCard = effect.preparedCardId();
+        effect.onHitBy(42, 12f);
+        effect.advance(3.1f, 3.1f, straightDrivingFrame());
+
+        assertTrue(effect.expireOffenderStrikeIfConditionFailed(42, false));
+        assertFalse(effect.isArmed());
+        assertFalse(effect.isActive());
+        assertEquals(-1, effect.revengeTargetVehicleId());
+        assertNotEquals(firstCard, effect.preparedCardId());
+    }
+
+    @Test
     public void everyPowerupWildcardCandidateExecutesAndRerolls() {
         assertEveryPowerupCandidateExecutes(RogueliteCardId.LUCKY_SPARK);
         assertEveryPowerupCandidateExecutes(RogueliteCardId.CHAOS_RELAY);
@@ -131,14 +148,15 @@ public class RandomCardEffectTest {
     }
 
     @Test
-    public void instantaneousRandomRevengeDisplaysTheExecutedCard() {
+    public void randomCrownBreakerExecutesOnlyWhenItHitsItsOffender() {
         RandomCardEffect effect = effectPreparedAs(
                 RogueliteCardId.FATES_REVENGE,
                 RogueliteCardId.CROWN_ENGINE);
         effect.onHitBy(42, 12f);
 
-        RogueliteRevengeStrike strike =
-                effect.tryActivateOffenderStrike(42, 3.5f, true);
+        assertEquals(30f, effect.activeTimeRemainingSeconds(), 0.0001f);
+        assertNull(effect.tryActivateOffenderStrike(42, 0.5f, true));
+        RogueliteRevengeStrike strike = effect.tryActivateOffenderHit(42);
 
         assertNotNull(strike);
         assertTrue(effect.isActive());
@@ -226,6 +244,11 @@ public class RandomCardEffectTest {
             case PAYBACK_SHIELD:
                 effect.advance(3.1f, 3.1f, straightDrivingFrame());
                 break;
+            case CROWN_ENGINE:
+                RogueliteRevengeStrike crownStrike = effect.tryActivateOffenderHit(42);
+                assertNotNull(candidateId + " did not execute its return hit", crownStrike);
+                assertEquals(candidateId, crownStrike.getCardId());
+                return;
             default:
                 break;
         }

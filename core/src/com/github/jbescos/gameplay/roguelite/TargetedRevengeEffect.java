@@ -117,6 +117,20 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    boolean expireOffenderStrikeIfConditionFailed(
+            int targetVehicleId,
+            boolean offenderAhead) {
+        if (getCardId() != RogueliteCardId.RECOVERY_BEACON
+                || !isReady()
+                || targetVehicleId != offenderVehicleId
+                || offenderAhead) {
+            return false;
+        }
+        clearOffender();
+        return true;
+    }
+
+    @Override
     RogueliteRevengeStrike tryActivateOffenderStrike(
             int targetVehicleId,
             float distance,
@@ -155,8 +169,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
                 break;
         }
 
-        offenderVehicleId = -1;
-        armedAge = 0f;
+        clearOffender();
         activeTimer = effectDurationSeconds;
         return strike;
     }
@@ -177,5 +190,10 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
             return HOOK_TRIGGER_DELAY_SECONDS;
         }
         return 0f;
+    }
+
+    private void clearOffender() {
+        offenderVehicleId = -1;
+        armedAge = 0f;
     }
 }

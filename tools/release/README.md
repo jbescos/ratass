@@ -30,15 +30,17 @@ export ANDROID_KEY_ALIAS=upload
 export ANDROID_KEYSTORE_PASSWORD=...
 export ANDROID_KEY_PASSWORD=...
 mvn -Pandroid,android-release package \
-  -Dandroid.version.code=1 \
   -Dandroid.version.name=1.0
 ```
 
 The signed bundle is written to
 `android/target/ratass-android-1.0-release.aab`. The same build also creates the
-debug APK used for local installation. Before packaging, the release script
-checks that the selected certificate remains valid after 22 October 2033, as
-required by Google Play.
+debug APK used for local installation. Release builds generate a monotonically
+increasing Google Play `versionCode` automatically and retain the last value in
+`~/.local/state/rogue-circuit/android-version-code`. Use
+`-Dandroid.release.version.code=123` only when an explicit code is required.
+Before packaging, the release script checks that the selected certificate
+remains valid after 22 October 2033, as required by Google Play.
 
 ## Desktop
 

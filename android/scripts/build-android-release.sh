@@ -9,8 +9,56 @@ compile_sdk=$5
 target_sdk=$6
 min_sdk=$7
 build_tools_version=$8
-version_code=$9
+requested_version_code=$9
 version_name=${10}
+
+resolve_release_version_code() {
+    local requested=$1
+    local maximum_version_code=2100000000
+    local version_code
+
+    if [[ "$requested" == "auto" ]]; then
+        local epoch_2020=1577836800
+        local timestamp_code=$(( $(date +%s) - epoch_2020 ))
+        local state_dir=${XDG_STATE_HOME:-"$HOME/.local/state"}/rogue-circuit
+        local state_file="$state_dir/android-version-code"
+        local previous_code=0
+        if [[ -f "$state_file" ]]; then
+            read -r previous_code < "$state_file"
+            if [[ ! "$previous_code" =~ ^[0-9]+$ ]]; then
+                echo "Invalid saved Android version code: $state_file" >&2
+                exit 1
+            fi
+        fi
+
+        version_code=$timestamp_code
+        if (( previous_code >= version_code )); then
+            version_code=$((previous_code + 1))
+        fi
+        if (( version_code > maximum_version_code )); then
+            echo "Generated Android version code exceeds $maximum_version_code." >&2
+            exit 1
+        fi
+
+        umask 077
+        mkdir -p "$state_dir"
+        local temporary_state_file="$state_file.tmp.$$"
+        printf '%s\n' "$version_code" > "$temporary_state_file"
+        mv "$temporary_state_file" "$state_file"
+    else
+        if [[ ! "$requested" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Android release version code must be 'auto' or a positive integer: $requested" >&2
+            exit 1
+        fi
+        version_code=$((10#$requested))
+        if (( version_code > maximum_version_code )); then
+            echo "Android release version code exceeds $maximum_version_code: $version_code" >&2
+            exit 1
+        fi
+    fi
+
+    printf '%s\n' "$version_code"
+}
 
 resolve_android_sdk() {
     local candidates=(
@@ -90,6 +138,8 @@ if (( seconds_until_cutoff > 0 )) \
 fi
 
 resolve_android_sdk
+version_code=$(resolve_release_version_code "$requested_version_code")
+echo "Android release versionCode: $version_code"
 mkdir -p "$target_dir"
 
 "$module_dir/gradlew" \
@@ -112,4 +162,4 @@ if [[ ${#bundles[@]} -ne 1 ]]; then
 fi
 
 cp "${bundles[0]}" "$target_dir/${final_name}-release.aab"
-echo "Built signed Android release AAB: $target_dir/${final_name}-release.aab"
+echo "Built signed Android release AAB: $target_dir/${final_name}-release.aab (versionCode=$version_code)"

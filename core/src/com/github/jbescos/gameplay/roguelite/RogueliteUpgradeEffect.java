@@ -169,6 +169,16 @@ abstract class RogueliteUpgradeEffect {
         return -1;
     }
 
+    boolean expireOffenderStrikeIfConditionFailed(
+            int targetVehicleId,
+            boolean offenderAhead) {
+        return false;
+    }
+
+    RogueliteRevengeStrike tryActivateOffenderHit(int targetVehicleId) {
+        return null;
+    }
+
     RogueliteRevengeStrike tryActivateOffenderStrike(
             int targetVehicleId,
             float distance,

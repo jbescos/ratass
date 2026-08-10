@@ -489,7 +489,7 @@ public final class GameText {
         put(text, "Pack Racer", "Piloto de grupo");
         put(text, "Traffic Dominance", "Dominio del tráfico");
         put(text, "Nitro Pulse", "Pulso nitro");
-        put(text, "Mirror Duo", "Dúo espejo");
+        put(text, "Quantum Duo", "Dúo cuántico");
         put(text, "Grip Fan", "Ventilador de agarre");
         put(text, "Ghost Cloak", "Manto fantasma");
         put(text, "Lucky Spark", "Chispa de suerte");
@@ -499,11 +499,11 @@ public final class GameText {
         put(text, "Redline Hex", "Maldición roja");
         put(text, "Phase Shield", "Escudo de fase");
         put(text, "Rocket Exhaust", "Escape cohete");
-        put(text, "Mirror Trio", "Trío espejo");
+        put(text, "Quantum Trio", "Trío cuántico");
         put(text, "Phantom Cloak", "Manto espectral");
         put(text, "Chaos Relay", "Relé del caos");
         put(text, "Gravity Well", "Pozo de gravedad");
-        put(text, "Mirror Quartet", "Cuarteto espejo");
+        put(text, "Quantum Quartet", "Cuarteto cuántico");
         put(text, "Hyperdrive", "Hiperimpulso");
         put(text, "Void Cloak", "Manto del vacío");
         put(text, "Wildcard Core", "Núcleo comodín");
@@ -576,8 +576,8 @@ public final class GameText {
                 "Aumenta el ritmo con rivales cerca para atacar y defender.");
         put(text, "Kicks the car forward when open road invites a nitro burst.",
                 "Impulsa el coche cuando una recta libre permite usar nitro.");
-        put(text, "Open road creates a second physical copy that races beside the original.",
-                "En recta crea una segunda copia física junto al original.");
+        put(text, "A quantum split creates a second physical car that races beside the original.",
+                "Una división cuántica crea un segundo coche físico junto al original.");
         put(text, "A glowing underbody fan pins the car down as a demanding corner arrives.",
                 "Un ventilador luminoso pega el coche al suelo al llegar una curva exigente.");
         put(text, "The car phases out when traffic is nearby, becoming invisible and intangible to rivals.",
@@ -600,10 +600,10 @@ public final class GameText {
                 "Un escudo de energía absorbe impactos frontales cuando se acerca el tráfico.");
         put(text, "Twin exhaust rockets ignite on a clear straight for a forceful launch.",
                 "Dos cohetes de escape se encienden en recta para dar un gran impulso.");
-        put(text, "Open road creates two physical copies spread across the track.",
-                "En recta crea dos copias físicas repartidas por la pista.");
-        put(text, "Open road creates three physical copies spread across the track.",
-                "En recta crea tres copias físicas repartidas por la pista.");
+        put(text, "A quantum split creates three physical cars spread across the track.",
+                "Una división cuántica crea tres coches físicos repartidos por la pista.");
+        put(text, "A quantum split creates four physical cars spread across the track.",
+                "Una división cuántica crea cuatro coches físicos repartidos por la pista.");
         put(text, "An improved phase field hides the car and prevents rivals from making contact for longer.",
                 "Un campo de fase mejorado oculta el coche e impide contactos durante más tiempo.");
         put(text, "A visible ground field forms in corners or close traffic for extreme stability.",
@@ -612,8 +612,8 @@ public final class GameText {
                 "Una recta libre activa un impulso extremo y convierte el coche en una estela.");
         put(text, "A championship phase system removes the car from sight and contact for an extended attack window.",
                 "Un sistema de fase oculta el coche y evita contactos durante un ataque prolongado.");
-        put(text, "A qualified rival hit arms a brutal hunt for the offender responsible.",
-                "Un golpe rival prepara una caza brutal contra el agresor.");
+        put(text, "A rival hit marks its offender and empowers you until you strike them back.",
+                "Un golpe rival marca al agresor y te potencia hasta que le devuelves el golpe.");
         put(text, "A qualified hit marks its offender. After charging, the hook pulls you directly back toward them.",
                 "Marca al agresor y después te atrae directamente hacia él.");
         put(text, "A qualified rival hit arms a wide high-energy field that clears space for your comeback.",

@@ -18,6 +18,7 @@ public class DesktopLauncher {
 		config.setFullscreenMode(desktopMode);
 		config.setResizable(true);
 		config.setTitle("Rogue Circuit");
-		new Lwjgl3Application(new RatassGame(), config);
+		String versionName = DesktopLauncher.class.getPackage().getImplementationVersion();
+		new Lwjgl3Application(new RatassGame(versionName), config);
 	}
 }

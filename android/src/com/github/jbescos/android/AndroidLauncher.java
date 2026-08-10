@@ -1,5 +1,7 @@
 package com.github.jbescos.android;
 
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.WindowManager;
 import com.badlogic.gdx.backends.android.AndroidApplication;
@@ -18,6 +20,15 @@ public class AndroidLauncher extends AndroidApplication {
         config.useAccelerometer = false;
         config.useCompass = false;
 
-        initialize(new RatassGame(), config);
+        PackageInfo packageInfo = readPackageInfo();
+        initialize(new RatassGame(packageInfo == null ? "1.0" : packageInfo.versionName), config);
+    }
+
+    private PackageInfo readPackageInfo() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0);
+        } catch (PackageManager.NameNotFoundException ignored) {
+            return null;
+        }
     }
 }

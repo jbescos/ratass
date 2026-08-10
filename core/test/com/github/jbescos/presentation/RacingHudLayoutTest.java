@@ -70,43 +70,6 @@ public class RacingHudLayoutTest {
     }
 
     @Test
-    public void eventCameraRowIsLargeAndOffsetsDriverRows() {
-        float eventRowStep = RacingHudLayout.eventCameraRowStep(18f);
-        assertEquals(30f, eventRowStep, 0.001f);
-        assertEquals(
-                0,
-                RacingHudLayout.sidebarTableRowAt(
-                        178f,
-                        200f,
-                        0f,
-                        0f,
-                        eventRowStep,
-                        1));
-        assertEquals(
-                0,
-                RacingHudLayout.sidebarTableRowAt(
-                        146f,
-                        200f,
-                        eventRowStep + 20f,
-                        0f,
-                        18f,
-                        3));
-    }
-
-    @Test
-    public void tvCameraLabelNamesItsCurrentTargetOnlyWhenActive() {
-        assertEquals(
-                "TV CAMERA: Blitz",
-                RacingHudLayout.tvCameraLabel(true, "Blitz"));
-        assertEquals(
-                "TV CAMERA",
-                RacingHudLayout.tvCameraLabel(false, "Blitz"));
-        assertEquals(
-                "TV CAMERA",
-                RacingHudLayout.tvCameraLabel(true, " "));
-    }
-
-    @Test
     public void sidebarUsesLargerTextAndRowsThatCanScrollWithoutOverlap() {
         assertEquals(1.4f, RacingHudLayout.sidebarTextScale(), 0.001f);
         assertEquals(16.8f, RacingHudLayout.sidebarLineHeight(12f), 0.001f);
@@ -121,6 +84,9 @@ public class RacingHudLayoutTest {
         assertEquals(72f, RacingHudLayout.inGameMenuButtonSize(1920f, 1080f), 0.001f);
         assertEquals(10f, RacingHudLayout.inGameMenuButtonMargin(720f, 390f), 0.001f);
         assertEquals(18f, RacingHudLayout.inGameMenuButtonMargin(1920f, 1080f), 0.001f);
+        assertEquals(7f, RacingHudLayout.inGameButtonGap(720f, 390f), 0.001f);
+        assertEquals(288f, RacingHudLayout.inGameControlStripWidth(720f, 390f, 5), 0.001f);
+        assertEquals(0f, RacingHudLayout.inGameControlStripWidth(720f, 390f, 0), 0.001f);
     }
 
     @Test
