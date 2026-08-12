@@ -81,6 +81,22 @@ public final class RogueliteResponsiveCardLayout {
         return Math.max(200f, Math.min(260f, Math.max(1f, width) * 0.22f));
     }
 
+    public static float inspectionCardWidth(
+            float width,
+            float height,
+            float cardAspect) {
+        float safeWidth = Math.max(1f, width);
+        float safeHeight = Math.max(1f, height);
+        float aspect = Math.max(0.1f, cardAspect);
+        float horizontalMargin = Math.max(18f, Math.min(110f, safeWidth * 0.08f));
+        float verticalMargin = Math.max(16f, Math.min(48f, safeHeight * 0.06f));
+        float availableWidth = Math.max(1f, safeWidth - horizontalMargin * 2f);
+        float availableHeight = Math.max(1f, safeHeight - verticalMargin * 2f);
+        return Math.max(
+                1f,
+                Math.min(430f, Math.min(availableWidth, availableHeight / aspect)));
+    }
+
     public static float centeredTextBaseline(
             float bottom,
             float height,

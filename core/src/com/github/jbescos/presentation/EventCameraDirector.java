@@ -10,7 +10,7 @@ public final class EventCameraDirector {
     static final float MINIMUM_SHOT_SECONDS = 2f;
     static final float REVENGE_PREPARATION_SECONDS = 3f;
     static final float REVENGE_TARGET_SECONDS = 2f;
-    static final float PLAYER_FALLBACK_SECONDS = 5f;
+    static final float PLAYER_FALLBACK_SECONDS = 10f;
 
     private enum Mode {
         IDLE,

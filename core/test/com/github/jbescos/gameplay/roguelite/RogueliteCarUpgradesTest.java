@@ -9,6 +9,7 @@ import static org.junit.Assert.fail;
 
 import com.github.jbescos.RatassGame;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -24,6 +25,7 @@ public class RogueliteCarUpgradesTest {
 
         assertFalse(upgrades.isEnabled());
         assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f, upgrades.getDriveForceLimitMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getMaxSpeedMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getDragMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getMassMultiplier(), EPSILON);
@@ -33,6 +35,87 @@ public class RogueliteCarUpgradesTest {
         assertFalse(upgrades.isPowerupReady());
         assertTrue(upgrades.getActiveCardIds().isEmpty());
         assertEquals(0f, upgrades.consumeForwardLaunchSpeedRatio(), EPSILON);
+    }
+
+    @Test
+    public void timeDilationPowerupsShareDurationAndReduceCooldownByTier() {
+        assertTimeDilationPowerup(RogueliteCardId.TIME_RIPPLE, 60f);
+        assertTimeDilationPowerup(RogueliteCardId.CHRONO_SHIFT, 40f);
+        assertTimeDilationPowerup(RogueliteCardId.TEMPORAL_DOMINION, 30f);
+    }
+
+    @Test
+    public void liveLoadoutReconfigurationPreservesEachCarsOwnCardCooldown() {
+        RogueliteLoadout loadout = new RogueliteLoadout("profile00");
+        loadout.equip(RogueliteCardId.CHRONO_SHIFT);
+        RogueliteCarUpgrades firstCar = new RogueliteCarUpgrades();
+        RogueliteCarUpgrades secondCar = new RogueliteCarUpgrades();
+        firstCar.configure(loadout, 0f);
+        secondCar.configure(loadout, 0f);
+
+        update(firstCar, 0.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(secondCar, 0.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(firstCar, 1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        float firstCooldown =
+                firstCar.getCooldownTimeRemainingSeconds(RogueliteCardId.CHRONO_SHIFT);
+        float secondCooldown =
+                secondCar.getCooldownTimeRemainingSeconds(RogueliteCardId.CHRONO_SHIFT);
+        assertTrue(firstCooldown < secondCooldown);
+
+        loadout.equip(RogueliteCardId.AERO_TRIM);
+        firstCar.reconfigurePreservingCardState(loadout, 0f);
+
+        assertEquals(
+                firstCooldown,
+                firstCar.getCooldownTimeRemainingSeconds(RogueliteCardId.CHRONO_SHIFT),
+                EPSILON);
+        assertEquals(
+                secondCooldown,
+                secondCar.getCooldownTimeRemainingSeconds(RogueliteCardId.CHRONO_SHIFT),
+                EPSILON);
+
+        update(firstCar, 0.5f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertEquals(
+                firstCooldown - 0.5f,
+                firstCar.getCooldownTimeRemainingSeconds(RogueliteCardId.CHRONO_SHIFT),
+                EPSILON);
+        assertEquals(
+                secondCooldown,
+                secondCar.getCooldownTimeRemainingSeconds(RogueliteCardId.CHRONO_SHIFT),
+                EPSILON);
+    }
+
+    @Test
+    public void externalAerodynamicPenaltyIncreasesDrag() {
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+
+        assertEquals(1f / 0.95f, upgrades.getDragMultiplier(0.95f), EPSILON);
+        assertEquals(1f / 0.80f, upgrades.getDragMultiplier(0.80f), EPSILON);
+        assertEquals(1f / 0.50f, upgrades.getDragMultiplier(0.50f), EPSILON);
+    }
+
+    @Test
+    public void massMultiplierKeepsOnlyAPositiveTenPercentFloor() {
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+
+        assertEquals(0.25f, upgrades.getMassMultiplier(0.25f), EPSILON);
+        assertEquals(0.10f, upgrades.getMassMultiplier(0.05f), EPSILON);
+    }
+
+    @Test
+    public void topSpeedIsDerivedFromPowerAndAeroWithinSafetyBounds() {
+        assertEquals(
+                (float) Math.cbrt(1.20f * 1.10f),
+                RogueliteCarUpgrades.deriveMaxSpeedMultiplier(1.20f, 1.10f),
+                EPSILON);
+        assertEquals(
+                0.65f,
+                RogueliteCarUpgrades.deriveMaxSpeedMultiplier(0f, 1f),
+                EPSILON);
+        assertEquals(
+                1.35f,
+                RogueliteCarUpgrades.deriveMaxSpeedMultiplier(3f, 3f),
+                EPSILON);
     }
 
     @Test
@@ -59,7 +142,13 @@ public class RogueliteCarUpgradesTest {
             RogueliteCardDefinition card = cards.get(i);
             assertTrue(card.getDescription().trim().length() > 0);
             String[] effectLines = card.getEffectText().split("\\n");
-            assertTrue("Too many effect lines for " + card.getId(), effectLines.length <= 2);
+            int maximumLines =
+                    card.getSlotType() == RogueliteSlotType.TECHNIQUE
+                            ? 5
+                            : card.getSlotType() == RogueliteSlotType.TUNING ? 3 : 2;
+            assertTrue(
+                    "Too many effect lines for " + card.getId(),
+                    effectLines.length <= maximumLines);
             for (int line = 0; line < effectLines.length; line++) {
                 assertTrue(
                         "Effect line is too long for " + card.getId(),
@@ -69,16 +158,112 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
+    public void cloakCardsExplainCancellationWithoutClaimingToClearDebuffs() {
+        RogueliteCardId[] cloakCards = {
+                RogueliteCardId.GHOST_CLOAK,
+                RogueliteCardId.PHANTOM_CLOAK,
+                RogueliteCardId.VOID_CLOAK
+        };
+        for (int i = 0; i < cloakCards.length; i++) {
+            String effectText = RogueliteCardCatalog.get(cloakCards[i]).getEffectText();
+            assertTrue(effectText.contains("Cancels targeting Revenge"));
+            assertTrue(effectText.contains("Debuffs remain"));
+        }
+    }
+
+    @Test
+    public void quantumCardsExplainIndependentDrivingAndSharedRevenge() {
+        RogueliteCardId[] quantumCards = {
+                RogueliteCardId.MIRROR_DUO,
+                RogueliteCardId.MIRROR_TRIO,
+                RogueliteCardId.OVERDRIVE_COIL
+        };
+        for (int i = 0; i < quantumCards.length; i++) {
+            RogueliteCardDefinition card = RogueliteCardCatalog.get(quantumCards[i]);
+            assertTrue(card.getDescription().contains("drives independently"));
+            assertTrue(card.getDescription().contains("shares the same cards"));
+            assertTrue(card.getDescription().contains("executes Revenge with the group"));
+            assertTrue(card.getDescription().contains("hit to any copy arms it"));
+            assertTrue(card.getEffectText().contains("Shared cards and Revenge"));
+        }
+    }
+
+    @Test
+    public void techniqueCatalogContainsTenTimedAndTwoPassiveCardsPerTier() {
+        List<RogueliteCardDefinition> techniques = cardsForSlot(RogueliteSlotType.TECHNIQUE);
+        assertEquals(36, techniques.size());
+        for (int tier = 1; tier <= 3; tier++) {
+            int cardsInTier = 0;
+            for (int i = 0; i < techniques.size(); i++) {
+                if (techniques.get(i).getTier() == tier) {
+                    cardsInTier++;
+                }
+            }
+            assertEquals("Technique cards in Tier " + tier, 12, cardsInTier);
+        }
+    }
+
+    @Test
+    public void timedTechniquesUseTwoStatsAndCoverEveryPairInEveryTier() {
+        Set<RogueliteCardId> passiveExceptions = new HashSet<RogueliteCardId>();
+        Collections.addAll(
+                passiveExceptions,
+                RogueliteCardId.UNDERDOG_INSTINCT,
+                RogueliteCardId.COMEBACK_DRIVE,
+                RogueliteCardId.LAST_PLACE_FURY,
+                RogueliteCardId.CLOSE_QUARTERS,
+                RogueliteCardId.PACK_RACER,
+                RogueliteCardId.TRAFFIC_DOMINANCE);
+        Set<RogueliteCardId> rallyExceptions = new HashSet<RogueliteCardId>();
+        Collections.addAll(
+                rallyExceptions,
+                RogueliteCardId.RALLY_FOCUS,
+                RogueliteCardId.RALLY_EXPERT,
+                RogueliteCardId.RALLY_MASTER);
+        List<Set<Integer>> pairsByTier = new ArrayList<Set<Integer>>();
+        for (int tier = 0; tier <= 3; tier++) {
+            pairsByTier.add(new HashSet<Integer>());
+        }
+
+        List<RogueliteCardDefinition> techniques =
+                cardsForSlot(RogueliteSlotType.TECHNIQUE);
+        for (int i = 0; i < techniques.size(); i++) {
+            RogueliteCardDefinition card = techniques.get(i);
+            int statMask = RaceTechniqueEffect.amplifiedStatMask(card.getId());
+            assertEquals("Unknown stat bit for " + card.getId(), statMask, statMask & 0x0f);
+            if (passiveExceptions.contains(card.getId())) {
+                assertEquals("Passive card has multiplier targets: " + card.getId(), 0, statMask);
+                continue;
+            }
+            if (rallyExceptions.contains(card.getId())) {
+                assertEquals("Rally must amplify all stats", 4, Integer.bitCount(statMask));
+                continue;
+            }
+
+            assertEquals(
+                    "Timed Technique must amplify two stats: " + card.getId(),
+                    2,
+                    Integer.bitCount(statMask));
+            String[] effectLines = card.getEffectText().split("\\n");
+            assertEquals("Technique text must list two multipliers: " + card.getId(), 3, effectLines.length);
+            assertTrue(effectLines[1].contains(" x"));
+            assertTrue(effectLines[2].contains(" x"));
+            pairsByTier.get(card.getTier()).add(statMask);
+        }
+
+        for (int tier = 1; tier <= 3; tier++) {
+            assertEquals(
+                    "Missing two-stat Technique combination in Tier " + tier,
+                    6,
+                    pairsByTier.get(tier).size());
+        }
+    }
+
+    @Test
     public void rivalPenalizingAbilitiesUseTheRevengeSlot() {
         assertEquals(
                 RogueliteSlotType.REVENGE,
                 RogueliteCardCatalog.get(RogueliteCardId.DRAFT_MAGNET).getSlotType());
-        assertEquals(
-                RogueliteSlotType.REVENGE,
-                RogueliteCardCatalog.get(RogueliteCardId.RAM_REACTOR).getSlotType());
-        assertEquals(
-                1,
-                RogueliteCardCatalog.get(RogueliteCardId.RAM_REACTOR).getTier());
         assertEquals(
                 RogueliteSlotType.REVENGE,
                 RogueliteCardCatalog.get(RogueliteCardId.CROWN_ENGINE).getSlotType());
@@ -94,6 +279,24 @@ public class RogueliteCarUpgradesTest {
         assertEquals(
                 RogueliteSlotType.REVENGE,
                 RogueliteCardCatalog.get(RogueliteCardId.PAYBACK_SHIELD).getSlotType());
+        assertEquals(
+                RogueliteSlotType.REVENGE,
+                RogueliteCardCatalog.get(RogueliteCardId.REPULSOR_WAVE).getSlotType());
+        assertEquals(
+                2,
+                RogueliteCardCatalog.get(RogueliteCardId.REPULSOR_WAVE).getTier());
+        assertEquals(
+                RogueliteSlotType.REVENGE,
+                RogueliteCardCatalog.get(RogueliteCardId.HUNTER_BARRAGE).getSlotType());
+        assertEquals(
+                2,
+                RogueliteCardCatalog.get(RogueliteCardId.HUNTER_BARRAGE).getTier());
+        assertEquals(
+                RogueliteSlotType.REVENGE,
+                RogueliteCardCatalog.get(RogueliteCardId.HUNTER_STORM).getSlotType());
+        assertEquals(
+                3,
+                RogueliteCardCatalog.get(RogueliteCardId.HUNTER_STORM).getTier());
         assertEquals(
                 RogueliteSlotType.REVENGE,
                 RogueliteCardCatalog.get(RogueliteCardId.REPULSOR_SURGE).getSlotType());
@@ -113,61 +316,135 @@ public class RogueliteCarUpgradesTest {
 
     @Test
     public void tuningCardsExposeDistinctMassAndAerodynamicSetups() {
-        RogueliteCarUpgrades lightweight = configured(RogueliteCardId.SPORT_TUNE);
+        RogueliteCarUpgrades lightweight = configured(RogueliteCardId.AGILE_CHASSIS);
         RogueliteCarUpgrades heavyweight = configured(RogueliteCardId.HEAVYWEIGHT_TUNE);
         RogueliteCarUpgrades aero = configured(RogueliteCardId.CHAMPIONSHIP_TUNE);
         RogueliteCarUpgrades streamline = configured(RogueliteCardId.AERO_TRIM);
-        RogueliteCarUpgrades drift = configured(RogueliteCardId.DRIFT_DIFFERENTIAL);
         RogueliteCarUpgrades carbonPanels = configured(RogueliteCardId.CARBON_PANELS);
         RogueliteCarUpgrades carbonMonocoque = configured(RogueliteCardId.CARBON_MONOCOQUE);
         RogueliteCarUpgrades grapheneChassis = configured(RogueliteCardId.GRAPHENE_CHASSIS);
 
-        assertEquals(0.98f, lightweight.getMassMultiplier(), EPSILON);
-        assertEquals(1.10f, heavyweight.getMassMultiplier(), EPSILON);
-        assertTrue(heavyweight.getFrontCollisionPushMultiplier() > 1f);
-        assertEquals(1.07f, aero.getMassMultiplier(), EPSILON);
-        assertEquals(0.86f, aero.getDragMultiplier(), EPSILON);
-        assertTrue(aero.getMaxSpeedMultiplier() > heavyweight.getMaxSpeedMultiplier());
+        assertEquals(0.96f, lightweight.getMassMultiplier(), EPSILON);
+        assertEquals(1.06f, heavyweight.getMassMultiplier(), EPSILON);
+        assertEquals(1f, heavyweight.getFrontCollisionPushMultiplier(), EPSILON);
+        assertEquals(1f, aero.getMassMultiplier(), EPSILON);
+        assertEquals(1f / 1.42f, aero.getDragMultiplier(), EPSILON);
+        assertTrue(aero.getAccelerationMultiplier() > heavyweight.getAccelerationMultiplier());
         assertTrue(streamline.getDragMultiplier() < 1f);
-        assertTrue(streamline.getGripMultiplier(0f) > 1f);
-        assertTrue(drift.getGripMultiplier(0f) > streamline.getGripMultiplier(0f));
-        assertTrue(drift.getGripMultiplier(0.50f) < drift.getGripMultiplier(0f));
-        assertTrue(drift.getSteeringMultiplier(0f) > 1f);
-        assertEquals(0.94f, carbonPanels.getMassMultiplier(), EPSILON);
+        assertTrue(streamline.getGripMultiplier(0f) < 1f);
+        assertEquals(streamline.getGripMultiplier(0f), streamline.getGripMultiplier(0.50f), EPSILON);
+        assertEquals(1f, streamline.getSteeringMultiplier(0f), EPSILON);
+        assertEquals(0.96f, carbonPanels.getMassMultiplier(), EPSILON);
         assertEquals(0.92f, carbonMonocoque.getMassMultiplier(), EPSILON);
-        assertEquals(0.84f, grapheneChassis.getMassMultiplier(), EPSILON);
+        assertEquals(0.94f, grapheneChassis.getMassMultiplier(), EPSILON);
         assertTrue(carbonMonocoque.getAccelerationMultiplier()
                 > carbonPanels.getAccelerationMultiplier());
-        assertTrue(grapheneChassis.getAccelerationMultiplier()
-                > carbonMonocoque.getAccelerationMultiplier());
+        assertTrue(grapheneChassis.getGripMultiplier(0f)
+                > carbonMonocoque.getGripMultiplier(0f));
         assertEquals(1f, carbonPanels.getFrontCollisionRecoilMultiplier(), EPSILON);
         assertEquals(1f, grapheneChassis.getFrontCollisionPushMultiplier(), EPSILON);
     }
 
     @Test
-    public void velocityShellAndTorqueVectoringHaveDistinctDrivingRoles() {
+    public void velocityShellAndPowerMonocoqueBiasDifferentStatsInTheSamePair() {
         RogueliteCarUpgrades velocity = configured(RogueliteCardId.VELOCITY_SHELL);
         RogueliteCarUpgrades vectoring = configured(RogueliteCardId.TORQUE_VECTORING);
 
-        assertTrue(velocity.getMaxSpeedMultiplier() > vectoring.getMaxSpeedMultiplier());
-        assertTrue(velocity.getDragMultiplier() < vectoring.getDragMultiplier());
-        assertEquals(
-                velocity.getGripMultiplier(0f),
-                vectoring.getGripMultiplier(0f),
-                EPSILON);
-        assertTrue(vectoring.getSteeringMultiplier(0f) > velocity.getSteeringMultiplier(0f));
+        assertTrue(velocity.getAccelerationMultiplier() > vectoring.getAccelerationMultiplier());
+        assertTrue(vectoring.getGripMultiplier(0f) > velocity.getGripMultiplier(0f));
+        assertEquals(velocity.getDragMultiplier(), vectoring.getDragMultiplier(), EPSILON);
+        assertEquals(velocity.getMassMultiplier(), vectoring.getMassMultiplier(), EPSILON);
+        assertEquals(velocity.getSteeringMultiplier(0f), vectoring.getSteeringMultiplier(0f), EPSILON);
     }
 
     @Test
-    public void everyTierHasFiveTuningChoices() {
+    public void everyTierHasTwelveTuningChoices() {
         int[] counts = new int[4];
         for (RogueliteCardDefinition card : cardsForSlot(RogueliteSlotType.TUNING)) {
             counts[card.getTier()]++;
         }
 
-        assertEquals(5, counts[1]);
-        assertEquals(5, counts[2]);
-        assertEquals(5, counts[3]);
+        assertEquals(12, counts[1]);
+        assertEquals(12, counts[2]);
+        assertEquals(12, counts[3]);
+    }
+
+    @Test
+    public void tuningCardsHaveUniqueStatSetups() {
+        Set<String> setups = new HashSet<String>();
+        for (RogueliteCardDefinition card : cardsForSlot(RogueliteSlotType.TUNING)) {
+            RogueliteCarUpgrades upgrades = configured(card.getId());
+            String setup = upgrades.getAccelerationMultiplier()
+                    + "|" + upgrades.getGripMultiplier(0f)
+                    + "|" + upgrades.getDragMultiplier()
+                    + "|" + upgrades.getMassMultiplier();
+
+            assertTrue("Duplicate tuning setup for " + card.getId(), setups.add(setup));
+        }
+    }
+
+    @Test
+    public void tuningCardsHaveUniqueSignedStatCombinationsWithinLowerTiers() {
+        List<RogueliteCardDefinition> tuning = cardsForSlot(RogueliteSlotType.TUNING);
+        for (int tier = 1; tier <= 2; tier++) {
+            Set<String> signatures = new HashSet<String>();
+            for (int i = 0; i < tuning.size(); i++) {
+                RogueliteCardDefinition card = tuning.get(i);
+                if (card.getTier() == tier) {
+                    String signature = signedStatSignature(card);
+                    assertTrue(
+                            "Duplicate Tier " + tier + " tuning signature "
+                                    + signature + " on " + card.getId(),
+                            signatures.add(signature));
+                }
+            }
+        }
+    }
+
+    @Test
+    public void techniqueCardsDoNotDuplicateAnActivationAndStatCombinationWithinEachTier() {
+        List<RogueliteCardDefinition> techniques =
+                cardsForSlot(RogueliteSlotType.TECHNIQUE);
+        for (int tier = 1; tier <= 3; tier++) {
+            Set<String> signatures = new HashSet<String>();
+            for (int i = 0; i < techniques.size(); i++) {
+                RogueliteCardDefinition card = techniques.get(i);
+                if (card.getTier() == tier) {
+                    String signature =
+                            techniqueActivationSignature(card)
+                                    + "|"
+                                    + signedStatSignature(card);
+                    assertTrue(
+                            "Duplicate Tier " + tier + " Technique activation and stats "
+                                    + signature + " on " + card.getId(),
+                            signatures.add(signature));
+                }
+            }
+        }
+    }
+
+    @Test
+    public void tuningCardsOnlyModifyPowerGripAeroAndMass() {
+        for (RogueliteCardDefinition card : cardsForSlot(RogueliteSlotType.TUNING)) {
+            RogueliteCarUpgrades upgrades = configured(card.getId());
+
+            assertEquals(card.getId().name(), 1f, upgrades.getSteeringMultiplier(0f), EPSILON);
+            assertEquals(
+                    card.getId().name(),
+                    upgrades.getGripMultiplier(0f),
+                    upgrades.getGripMultiplier(0.50f),
+                    EPSILON);
+            assertEquals(
+                    card.getId().name(),
+                    1f,
+                    upgrades.getFrontCollisionRecoilMultiplier(),
+                    EPSILON);
+            assertEquals(
+                    card.getId().name(),
+                    1f,
+                    upgrades.getFrontCollisionPushMultiplier(),
+                    EPSILON);
+        }
     }
 
     @Test
@@ -193,9 +470,9 @@ public class RogueliteCarUpgradesTest {
                         loadout,
                         RogueliteCardId.LOW_DRAG_BODY);
 
-        assertEquals(1.05f, equipped.getAccelerationMultiplier(), EPSILON);
-        assertEquals(1.21f, preview.getAccelerationMultiplier(), EPSILON);
-        assertEquals(1f / 0.88f, preview.getAerodynamicEfficiency(), EPSILON);
+        assertEquals(1.07f, equipped.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.22f, preview.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.20f, preview.getAerodynamicEfficiency(), EPSILON);
         assertTrue(preview.getMaxSpeedMultiplier() > equipped.getMaxSpeedMultiplier());
     }
 
@@ -208,7 +485,7 @@ public class RogueliteCarUpgradesTest {
         RogueliteCarStatSnapshot withTechniquePreview =
                 RogueliteCarStatSnapshot.from(
                         loadout,
-                        RogueliteCardId.DRIFT_SLINGSHOT);
+                        RogueliteCardId.DRIFT_FOCUS);
 
         assertEquals(
                 tuning.getAccelerationMultiplier(),
@@ -233,7 +510,7 @@ public class RogueliteCarUpgradesTest {
                         upgrades,
                         0f,
                         0.80f,
-                        0.75f,
+                        1f,
                         0.70f,
                         0.90f,
                         1.20f,
@@ -246,7 +523,9 @@ public class RogueliteCarUpgradesTest {
                 live.getAccelerationMultiplier(),
                 EPSILON);
         assertEquals(
-                upgrades.getMaxSpeedMultiplier() * 0.75f,
+                (float) Math.cbrt(
+                        live.getAccelerationMultiplier()
+                                * live.getAerodynamicEfficiency()),
                 live.getMaxSpeedMultiplier(),
                 EPSILON);
         assertEquals(upgrades.getGripMultiplier(0f) * 0.70f,
@@ -264,53 +543,60 @@ public class RogueliteCarUpgradesTest {
     @Test
     public void liveCarStatsTrackAnActivatedTechniqueBoost() {
         RogueliteCarUpgrades upgrades =
-                configured(RogueliteCardId.CORNER_EXIT);
+                configured(
+                        RogueliteCardId.TRACK_WING,
+                        RogueliteCardId.CORNER_FOCUS);
         RogueliteCarStatSnapshot passive =
                 RogueliteCarStatSnapshot.from(
-                        loadout(RogueliteCardId.CORNER_EXIT),
+                        loadout(
+                                RogueliteCardId.TRACK_WING,
+                                RogueliteCardId.CORNER_FOCUS),
                         null);
 
         update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0.20f, 0.5f, 0.2f, 0f, 0f);
-        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0.02f, 0.5f, 0.2f, 0f, 0f);
         RogueliteCarStatSnapshot active =
                 RogueliteCarStatSnapshot.fromLive(
                         upgrades,
                         0f,
                         1f,
-                        1f,
+                        0.58f,
                         1f,
                         1f,
                         1f,
                         1f);
 
-        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_EXIT));
-        assertEquals(RogueliteCardId.CORNER_EXIT, upgrades.getActiveTechniqueCardId());
-        assertTrue(active.getAccelerationMultiplier()
-                > passive.getAccelerationMultiplier());
-        assertTrue(active.getMaxSpeedMultiplier()
-                > passive.getMaxSpeedMultiplier());
+        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_FOCUS));
+        assertEquals(RogueliteCardId.CORNER_FOCUS, upgrades.getActiveTechniqueCardId());
+        assertEquals(
+                passive.getAccelerationMultiplier(),
+                active.getAccelerationMultiplier(),
+                EPSILON);
+        assertEquals(
+                upgrades.getGripMultiplier(0f) * 0.58f,
+                active.getGripMultiplier(),
+                EPSILON);
+        assertTrue(upgrades.getGripMultiplier(0f) > passive.getGripMultiplier());
+        assertTrue(active.getAerodynamicEfficiency()
+                > passive.getAerodynamicEfficiency());
     }
 
     @Test
     public void tuningAndTechniqueEffectsComposeWithoutPairSpecificRules() {
         RogueliteCarUpgrades streamlinedDraft = configured(
                 RogueliteCardId.AERO_TRIM,
-                RogueliteCardId.DRAFT_HUNTER);
-        RogueliteCarUpgrades driftRelease = configured(
-                RogueliteCardId.DRIFT_DIFFERENTIAL,
-                RogueliteCardId.DRIFT_SLINGSHOT);
+                RogueliteCardId.DRAFT_FOCUS);
+        RogueliteCarUpgrades activeDrift = configured(
+                RogueliteCardId.AERO_TRIM,
+                RogueliteCardId.DRIFT_EXPERT);
 
         update(streamlinedDraft, 0.1f, 1f, true, 0.02f, 0.7f, 0.4f, 0f, 1f, 0f, 0.8f, 0f);
-        assertEquals(0.92f, streamlinedDraft.getDragMultiplier(), EPSILON);
-        assertEquals(1.25f, streamlinedDraft.getSlipstreamStrengthMultiplier(), EPSILON);
+        assertEquals(1.24f, streamlinedDraft.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f / 1.28f, streamlinedDraft.getDragMultiplier(), EPSILON);
+        assertEquals(1f, streamlinedDraft.getSlipstreamStrengthMultiplier(), EPSILON);
 
-        for (int i = 0; i < 15; i++) {
-            update(driftRelease, 0.1f, 1f, true, 0.24f, 0.7f, 0f, 0.2f, 0.2f, 0.2f, 0f, 0f);
-        }
-        update(driftRelease, 0.1f, 1f, true, 0.05f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
-        assertTrue(driftRelease.getAccelerationMultiplier() > 1.20f);
-        assertEquals(1.13f, driftRelease.getGripMultiplier(0.05f), EPSILON);
-        assertEquals(1.10f, driftRelease.getGripMultiplier(0.50f), EPSILON);
+        update(activeDrift, 0.1f, 1f, true, 0.24f, 0.7f, 0f, 0.2f, 0.2f, 0.2f, 0f, 0f);
+        assertEquals(1.24f, activeDrift.getAccelerationMultiplier(), EPSILON);
+        assertEquals(0.98f, activeDrift.getGripMultiplier(0.05f), EPSILON);
     }
 
     @Test
@@ -324,8 +610,8 @@ public class RogueliteCarUpgradesTest {
         assertNull(config.benchmarkCard);
         config.withBenchmarkPowerupCard("NITRO_PULSE");
         assertEquals(RogueliteCardId.NITRO_PULSE, config.benchmarkCard);
-        config.withBenchmarkTechniqueCard("CLEAN_MOMENTUM");
-        assertEquals(RogueliteCardId.CLEAN_MOMENTUM, config.benchmarkCard);
+        config.withBenchmarkTechniqueCard("STRAIGHT_FOCUS");
+        assertEquals(RogueliteCardId.STRAIGHT_FOCUS, config.benchmarkCard);
 
         try {
             config.withBenchmarkTuningCard("NITRO_PULSE");
@@ -348,55 +634,477 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
-    public void cornerExitTriggersOnlyAfterLeavingAnOnRoadCorner() {
-        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.CORNER_EXIT);
+    public void cornerTechniqueRunsItsFullWindowAndSamplesAgainWhenItExpires() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.AERO_TRIM,
+                RogueliteCardId.CORNER_FOCUS);
 
         update(upgrades, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0.20f, 0.2f, 0.2f, 0f, 0f);
-        assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.12f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(0.98f, upgrades.getGripMultiplier(0f), EPSILON);
+        assertEquals(1f / 1.21f, upgrades.getDragMultiplier(), EPSILON);
+        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_FOCUS));
+        assertEquals(2f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.CORNER_FOCUS),
+                EPSILON);
+
+        update(upgrades, 0.5f, 1f, true, 0.02f, 0.65f, 0f, 0f, 0.8f, 0f, 0f, 0f);
+        assertEquals(1.5f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.CORNER_FOCUS),
+                EPSILON);
+
+        update(upgrades, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0.20f, 0.2f, 0.2f, 0f, 0f);
+        assertEquals(1.4f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.CORNER_FOCUS),
+                EPSILON);
+
+        update(upgrades, 1.5f, 1f, true, 0.02f, 0.65f, 0f, 0.20f, 0.2f, 0.2f, 0f, 0f);
+        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_FOCUS));
+        assertEquals(2f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.CORNER_FOCUS),
+                EPSILON);
 
         update(upgrades, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0f, 0.8f, 0f, 0f, 0f);
-        assertEquals(1.12f, upgrades.getAccelerationMultiplier(), EPSILON);
-        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_EXIT));
+        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_FOCUS));
+        assertEquals(1.9f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.CORNER_FOCUS),
+                EPSILON);
+
+        update(upgrades, 2f, 1f, true, 0.02f, 0.65f, 0f, 0f, 0.8f, 0f, 0f, 0f);
+        assertFalse(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_FOCUS));
+        assertEquals(0.98f, upgrades.getGripMultiplier(0f), EPSILON);
+        assertEquals(1f / 1.14f, upgrades.getDragMultiplier(), EPSILON);
     }
 
     @Test
-    public void cleanMomentumBuildsOnRoadAndResetsOffRoad() {
-        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.CLEAN_MOMENTUM);
-        for (int i = 0; i < 60; i++) {
-            update(upgrades, 0.1f, 1f, true, 0.01f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
+    public void cornerMasterToleratesCurvatureNoiseAndRearmsItsFourSecondWindow() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.AERO_TRIM,
+                RogueliteCardId.CORNER_MASTER);
+
+        update(upgrades, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0.12f, 0.2f, 0.2f, 0f, 0f);
+        assertEquals(4f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.CORNER_MASTER),
+                EPSILON);
+
+        update(upgrades, 3.9f, 1f, true, 0.02f, 0.65f, 0f, 0.08f, 0.2f, 0.2f, 0f, 0f);
+        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_MASTER));
+        assertEquals(0.1f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.CORNER_MASTER),
+                EPSILON);
+
+        update(upgrades, 0.2f, 1f, true, 0.02f, 0.65f, 0f, 0.08f, 0.2f, 0.2f, 0f, 0f);
+        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_MASTER));
+        assertEquals(4f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.CORNER_MASTER),
+                EPSILON);
+
+        update(upgrades, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0.05f, 0.2f, 0.2f, 0f, 0f);
+        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_MASTER));
+        assertEquals(3.9f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.CORNER_MASTER),
+                EPSILON);
+
+        update(upgrades, 4f, 1f, true, 0.02f, 0.65f, 0f, 0.05f, 0.2f, 0.2f, 0f, 0f);
+        assertFalse(upgrades.getActiveCardIds().contains(RogueliteCardId.CORNER_MASTER));
+        assertEquals(0f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.CORNER_MASTER),
+                EPSILON);
+    }
+
+    @Test
+    public void cornerTechniquesLastOneSecondLessThanDriftTechniques() {
+        RogueliteCardId[] cornerCards = {
+            RogueliteCardId.CORNER_FOCUS,
+            RogueliteCardId.CORNER_EXPERT,
+            RogueliteCardId.CORNER_MASTER
+        };
+        RogueliteCardId[] driftCards = {
+            RogueliteCardId.DRIFT_FOCUS,
+            RogueliteCardId.DRIFT_EXPERT,
+            RogueliteCardId.DRIFT_MASTER
+        };
+        float[] expectedCornerDurations = {2f, 3f, 4f};
+        float[] expectedDriftDurations = {3f, 4f, 5f};
+
+        for (int i = 0; i < cornerCards.length; i++) {
+            RogueliteCarUpgrades corner = configured(RogueliteCardId.AERO_TRIM, cornerCards[i]);
+            update(corner, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0.20f, 0.2f, 0.2f, 0f, 0f);
+            assertEquals(expectedCornerDurations[i],
+                    corner.getActiveTimeRemainingSeconds(cornerCards[i]), EPSILON);
+
+            RogueliteCarUpgrades drift = configured(RogueliteCardId.AERO_TRIM, driftCards[i]);
+            update(drift, 0.1f, 1f, true, 0.24f, 0.65f, 0f, 0f, 0.2f, 0.2f, 0f, 0f);
+            assertEquals(expectedDriftDurations[i],
+                    drift.getActiveTimeRemainingSeconds(driftCards[i]), EPSILON);
         }
-        assertEquals(1.07f, upgrades.getMaxSpeedMultiplier(), EPSILON);
-        assertEquals(1f / 1.03f, upgrades.getDragMultiplier(), EPSILON);
-
-        update(upgrades, 0.1f, 1f, false, 0.01f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
-        assertEquals(1f, upgrades.getMaxSpeedMultiplier(), EPSILON);
-        assertEquals(1f, upgrades.getDragMultiplier(), EPSILON);
     }
 
     @Test
-    public void overtakingCreatesThenExpiresAnAccelerationBurst() {
-        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.OVERTAKE_SURGE);
-
-        assertTrue(upgrades.hasOvertakeInjector());
-        upgrades.onRacePositionImproved(1, 0f);
-        assertEquals(1.24f, upgrades.getAccelerationMultiplier(), EPSILON);
-
-        update(upgrades, 2.1f, 1f, true, 0f, 0.8f, 0f, 0f, 1f, 0f, 0f, 0f);
-        assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
+    public void timedTechniquesSampleTheirConditionsOnlyAtWindowBoundaries() {
+        assertTechniqueWindow(
+                RogueliteCardId.DRAFT_FOCUS,
+                10f,
+                techniqueFrame(true, 0f, 0.65f, 0.20f, false),
+                techniqueFrame(true, 0f, 0.65f, 0f, false));
+        assertTechniqueWindow(
+                RogueliteCardId.STRAIGHT_FOCUS,
+                3f,
+                techniqueFrame(true, 0f, 0.65f, 0f, true),
+                techniqueFrame(true, 0f, 0.65f, 0f, false));
+        assertTechniqueWindow(
+                RogueliteCardId.DRIFT_FOCUS,
+                3f,
+                techniqueFrame(true, 0.24f, 0.65f, 0f, false),
+                techniqueFrame(true, 0f, 0.65f, 0f, false));
+        assertTechniqueWindow(
+                RogueliteCardId.RALLY_FOCUS,
+                10f,
+                techniqueFrame(false, 0f, 0.20f, 0f, false),
+                techniqueFrame(true, 0f, 0.20f, 0f, false));
     }
 
     @Test
-    public void positionTechniquesScaleUsefulStatsWithoutChangingMassOrSteering() {
+    public void quantumCopyTechniqueConditionActivatesTheSharedFamilyEffect() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.SPORT_TUNE,
+                RogueliteCardId.RALLY_FOCUS);
+
+        update(upgrades, 0.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertFalse(upgrades.getActiveCardIds().contains(RogueliteCardId.RALLY_FOCUS));
+
+        upgrades.observeTechniqueConditions(false, 0f, 0.5f, 0f, 0f, false);
+
+        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.RALLY_FOCUS));
+        assertEquals(
+                10f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.RALLY_FOCUS),
+                EPSILON);
+
+        upgrades.observeTechniqueConditions(false, 0f, 0.5f, 0f, 0f, false);
+        assertEquals(
+                10f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.RALLY_FOCUS),
+                EPSILON);
+    }
+
+    @Test
+    public void everyTimedTechniqueTriggerTargetsItsExpectedStats() {
+        RogueliteCarUpgrades draft = configured(
+                RogueliteCardId.AERO_TRIM,
+                RogueliteCardId.DRAFT_FOCUS);
+        update(draft, 0.1f, 1f, true, 0.02f, 0.7f, 0.3f, 0f, 1f, 0f, 0f, 0f);
+        assertEquals(1.24f, draft.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f / 1.28f, draft.getDragMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades straight = configured(
+                RogueliteCardId.SHORT_GEARING,
+                RogueliteCardId.STRAIGHT_EXPERT);
+        update(straight, 0.1f, 1f, true, 0.02f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertEquals(1.26f, straight.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f / 1.26f, straight.getDragMultiplier(), EPSILON);
+        assertEquals(1.05f, straight.getMassMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades drift = configured(
+                RogueliteCardId.CARBON_PROTOTYPE,
+                RogueliteCardId.DRIFT_MASTER);
+        update(drift, 0.1f, 1f, true, 0.24f, 0.7f, 0f, 0.2f, 0.2f, 0.2f, 0f, 0f);
+        assertEquals(1.21f, drift.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f, drift.getGripMultiplier(0f), EPSILON);
+        assertEquals(0.70f, drift.getMassMultiplier(), EPSILON);
+        assertEquals(1f, drift.getDragMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades offRoad = configured(
+                RogueliteCardId.SPORT_TUNE,
+                RogueliteCardId.RALLY_EXPERT);
+        update(offRoad, 0.1f, 1f, false, 0.02f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertEquals(1.12f, offRoad.getGripMultiplier(0f), EPSILON);
+        assertEquals(1.24f, offRoad.getMassMultiplier(), EPSILON);
+        assertEquals(1.888f, offRoad.getMassMultiplier(1.20f), EPSILON);
+    }
+
+    @Test
+    public void uncommonDraftAndOffRoadTriggersUseStrongerTierScaling() {
+        RogueliteCardId[] draftCards = {
+            RogueliteCardId.DRAFT_FOCUS,
+            RogueliteCardId.DRAFT_EXPERT,
+            RogueliteCardId.DRAFT_MASTER
+        };
+        RogueliteCardId[] offRoadCards = {
+            RogueliteCardId.RALLY_FOCUS,
+            RogueliteCardId.RALLY_EXPERT,
+            RogueliteCardId.RALLY_MASTER
+        };
+        float[] expectedDraftPower = {1.24f, 1.36f, 1.48f};
+        float[] expectedOffRoadPower = {1.20f, 1.30f, 1.40f};
+        float[] expectedGrip = {1.08f, 1.12f, 1.16f};
+        float[] expectedMass = {1.16f, 1.24f, 1.32f};
+        float[] expectedDraftScale = {2f, 3f, 4f};
+        float[] expectedOffRoadScale = {2f, 3f, 4f};
+        float[] expectedDuration = {10f, 10f, 10f};
+
+        for (int i = 0; i < expectedDraftPower.length; i++) {
+            RogueliteCarUpgrades draft = configured(
+                    RogueliteCardId.AERO_TRIM,
+                    draftCards[i]);
+            update(draft, 0.1f, 1f, true, 0.02f, 0.7f, 0.3f, 0f, 1f, 0f, 0f, 0f);
+            assertEquals(expectedDraftPower[i], draft.getAccelerationMultiplier(), EPSILON);
+            assertEquals(
+                    expectedDuration[i],
+                    draft.getActiveTimeRemainingSeconds(draftCards[i]),
+                    EPSILON);
+
+            RaceTechniqueEffect draftEffect = new RaceTechniqueEffect(draftCards[i]);
+            draftEffect.advance(0.1f, 0.1f,
+                    techniqueFrame(true, 0f, 0.7f, 0.3f, false));
+            assertEquals(expectedDraftScale[i], draftEffect.powerDeviationScale(), EPSILON);
+            assertEquals(expectedDraftScale[i], draftEffect.aeroDeviationScale(), EPSILON);
+
+            RogueliteCarUpgrades offRoad = configured(
+                    RogueliteCardId.SPORT_TUNE,
+                    offRoadCards[i]);
+            update(offRoad, 0.1f, 1f, false, 0.02f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+            assertEquals(expectedOffRoadPower[i],
+                    offRoad.getAccelerationMultiplier(), EPSILON);
+            assertEquals(expectedGrip[i], offRoad.getGripMultiplier(0f), EPSILON);
+            assertEquals(expectedMass[i], offRoad.getMassMultiplier(), EPSILON);
+            assertEquals(
+                    expectedDuration[i],
+                    offRoad.getActiveTimeRemainingSeconds(offRoadCards[i]),
+                    EPSILON);
+
+            RaceTechniqueEffect effect = new RaceTechniqueEffect(offRoadCards[i]);
+            effect.advance(0.1f, 0.1f,
+                    techniqueFrame(false, 0f, 0.5f, 0f, false));
+            assertEquals(expectedOffRoadScale[i], effect.powerDeviationScale(), EPSILON);
+            assertEquals(expectedOffRoadScale[i], effect.gripDeviationScale(), EPSILON);
+            assertEquals(expectedOffRoadScale[i], effect.aeroDeviationScale(), EPSILON);
+            assertEquals(expectedOffRoadScale[i], effect.massDeviationScale(), EPSILON);
+        }
+    }
+
+    @Test
+    public void alternateTechniqueFamiliesTargetTheirOwnStatPairs() {
+        RogueliteCarUpgrades apex = configured(
+                RogueliteCardId.GROUNDED_AERO,
+                RogueliteCardId.APEX_FOCUS);
+        update(apex, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0.20f, 0.2f, 0.2f, 0f, 0f);
+        assertEquals(1f, apex.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.06f, apex.getGripMultiplier(0f), EPSILON);
+        assertEquals(1f / 1.27f, apex.getDragMultiplier(), EPSILON);
+        assertEquals(1.03f, apex.getMassMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades sprint = configured(
+                RogueliteCardId.CARBON_PROTOTYPE,
+                RogueliteCardId.SPRINT_EXPERT);
+        update(sprint, 0.1f, 1f, true, 0.02f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertEquals(1.14f, sprint.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f, sprint.getDragMultiplier(), EPSILON);
+        assertEquals(0.80f, sprint.getMassMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades slide = configured(
+                RogueliteCardId.CARBON_PROTOTYPE,
+                RogueliteCardId.SLIDE_MASTER);
+        update(slide, 0.1f, 1f, true, 0.24f, 0.7f, 0f, 0.2f, 0.2f, 0.2f, 0f, 0f);
+        assertEquals(1.07f, slide.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f, slide.getGripMultiplier(0f), EPSILON);
+        assertEquals(1f, slide.getDragMultiplier(), EPSILON);
+        assertEquals(0.70f, slide.getMassMultiplier(), EPSILON);
+
+        assertEquals(2f, apex.getActiveTimeRemainingSeconds(RogueliteCardId.APEX_FOCUS), EPSILON);
+        assertEquals(4f, sprint.getActiveTimeRemainingSeconds(RogueliteCardId.SPRINT_EXPERT), EPSILON);
+        assertEquals(5f, slide.getActiveTimeRemainingSeconds(RogueliteCardId.SLIDE_MASTER), EPSILON);
+    }
+
+    @Test
+    public void newCornerTechniqueFamiliesTargetPowerGripAndGripMass() {
+        RogueliteCarUpgrades traction = configured(
+                RogueliteCardId.VELOCITY_SHELL,
+                RogueliteCardId.TRACTION_FOCUS);
+        update(traction, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0.20f, 0.2f, 0.2f, 0f, 0f);
+        assertEquals(1.21f, traction.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.06f, traction.getGripMultiplier(0f), EPSILON);
+        assertEquals(1f, traction.getDragMultiplier(), EPSILON);
+        assertEquals(1f, traction.getMassMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades agility = configured(
+                RogueliteCardId.GRAPHENE_CHASSIS,
+                RogueliteCardId.AGILITY_FOCUS);
+        update(agility, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0.20f, 0.2f, 0.2f, 0f, 0f);
+        assertEquals(1f, agility.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.165f, agility.getGripMultiplier(0f), EPSILON);
+        assertEquals(1f, agility.getDragMultiplier(), EPSILON);
+        assertEquals(0.91f, agility.getMassMultiplier(), EPSILON);
+
+        assertEquals(2f,
+                traction.getActiveTimeRemainingSeconds(RogueliteCardId.TRACTION_FOCUS),
+                EPSILON);
+        assertEquals(2f,
+                agility.getActiveTimeRemainingSeconds(RogueliteCardId.AGILITY_FOCUS),
+                EPSILON);
+    }
+
+    @Test
+    public void activeTechniqueAmplifiesPowerupBonuses() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.STRAIGHT_FOCUS,
+                RogueliteCardId.NITRO_PULSE);
+        for (int i = 0; i < 80 && upgrades.getActivePowerupCardId() == null; i++) {
+            update(upgrades, 0.1f, 1f, true, 0.01f, 0.35f, 0f, 0f, 1f, 0f, 0f, 0f);
+        }
+        assertEquals(RogueliteCardId.NITRO_PULSE, upgrades.getActivePowerupCardId());
+        assertEquals(1.30f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals((float) Math.cbrt(1.30f), upgrades.getMaxSpeedMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void activeTechniqueAmplifiesGripBonusesButNotPenaltiesOrWeather() {
+        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.RALLY_FOCUS);
+        update(upgrades, 0.1f, 1f, false, 0.02f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+
+        assertEquals(0.90f, upgrades.getGripMultiplier(0f, 0.90f), EPSILON);
+        assertEquals(0.58f, upgrades.getGripMultiplier(0f, 0.58f, 1f), EPSILON);
+        assertEquals(0.522f, upgrades.getGripMultiplier(0f, 0.58f, 0.90f), EPSILON);
+        assertEquals(0.80f, upgrades.getMassMultiplier(0.90f), EPSILON);
+        assertEquals(1f, upgrades.getGripMultiplier(0f), EPSILON);
+    }
+
+    @Test
+    public void activeTechniqueAppliesSurfaceGripAfterAmplifyingGripBonus() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.TRACK_WING,
+                RogueliteCardId.CORNER_FOCUS);
+        update(upgrades, 0.1f, 1f, true, 0.02f, 0.65f, 0f, 0.20f, 0.2f, 0.2f, 0f, 0f);
+
+        assertEquals(1.09f, upgrades.getGripMultiplier(0f), EPSILON);
+        assertEquals(0.6322f, upgrades.getGripMultiplier(0f, 0.58f, 1f), EPSILON);
+        assertEquals(0.55332f, upgrades.getGripMultiplier(0f, 0.58f, 0.90f), EPSILON);
+    }
+
+    @Test
+    public void techniqueAmplificationIncreasesStrictlyByTier() {
+        RogueliteCarUpgrades tierOne = configured(
+                RogueliteCardId.AERO_TRIM,
+                RogueliteCardId.STRAIGHT_FOCUS);
+        RogueliteCarUpgrades tierTwo = configured(
+                RogueliteCardId.AERO_TRIM,
+                RogueliteCardId.STRAIGHT_EXPERT);
+        RogueliteCarUpgrades tierThree = configured(
+                RogueliteCardId.AERO_TRIM,
+                RogueliteCardId.STRAIGHT_MASTER);
+
+        update(tierOne, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(tierTwo, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(tierThree, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+
+        assertEquals(1.18f, tierOne.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.24f, tierTwo.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.36f, tierThree.getAccelerationMultiplier(), EPSILON);
+        assertEquals(3f, tierOne.getActiveTimeRemainingSeconds(RogueliteCardId.STRAIGHT_FOCUS), EPSILON);
+        assertEquals(4f, tierTwo.getActiveTimeRemainingSeconds(RogueliteCardId.STRAIGHT_EXPERT), EPSILON);
+        assertEquals(5f, tierThree.getActiveTimeRemainingSeconds(RogueliteCardId.STRAIGHT_MASTER), EPSILON);
+    }
+
+    @Test
+    public void positionTechniquesBoostPowerGripAndAeroWithoutChangingMassOrSteering() {
         assertPositionTechnique(RogueliteCardId.UNDERDOG_INSTINCT, 0.10f);
-        assertPositionTechnique(RogueliteCardId.COMEBACK_DRIVE, 0.15f);
-        assertPositionTechnique(RogueliteCardId.LAST_PLACE_FURY, 0.20f);
+        assertPositionTechnique(RogueliteCardId.COMEBACK_DRIVE, 0.25f);
+        assertPositionTechnique(RogueliteCardId.LAST_PLACE_FURY, 0.50f);
     }
 
     @Test
-    public void nearbyRivalTechniquesBoostUsefulStatsWithoutChangingMassOrSteering() {
+    public void nearbyRivalTechniquesBoostPowerGripAeroAndLowerMassWithoutChangingSteering() {
         assertNearbyRivalTechnique(RogueliteCardId.CLOSE_QUARTERS, 0.05f);
         assertNearbyRivalTechnique(RogueliteCardId.PACK_RACER, 0.10f);
-        assertNearbyRivalTechnique(RogueliteCardId.TRAFFIC_DOMINANCE, 0.15f);
+        assertNearbyRivalTechnique(RogueliteCardId.TRAFFIC_DOMINANCE, 0.20f);
+    }
+
+    @Test
+    public void randomCardsExposeTheirLoadedChildForTheCarPanel() {
+        RogueliteCarUpgrades powerup = configured(RogueliteCardId.LUCKY_SPARK);
+        RogueliteCardId loadedPowerup =
+                powerup.getLoadedCardId(RogueliteSlotType.POWERUP);
+        assertNotNull(loadedPowerup);
+        assertEquals(
+                RogueliteSlotType.POWERUP,
+                RogueliteCardCatalog.get(loadedPowerup).getSlotType());
+        assertEquals(1, RogueliteCardCatalog.get(loadedPowerup).getTier());
+        assertFalse(RandomCardEffect.isRandomCard(loadedPowerup));
+        assertNull(powerup.getLoadedCardId(RogueliteSlotType.REVENGE));
+
+        RogueliteCarUpgrades revenge = configured(RogueliteCardId.CHAOS_RETORT);
+        RogueliteCardId loadedRevenge =
+                revenge.getLoadedCardId(RogueliteSlotType.REVENGE);
+        assertNotNull(loadedRevenge);
+        assertEquals(
+                RogueliteSlotType.REVENGE,
+                RogueliteCardCatalog.get(loadedRevenge).getSlotType());
+        assertEquals(2, RogueliteCardCatalog.get(loadedRevenge).getTier());
+        assertFalse(RandomCardEffect.isRandomCard(loadedRevenge));
+    }
+
+    @Test
+    public void tuningCardsDisplayOneStatModifierPerLine() {
+        List<RogueliteCardDefinition> cards = RogueliteCardCatalog.all();
+        for (int i = 0; i < cards.size(); i++) {
+            RogueliteCardDefinition card = cards.get(i);
+            if (card.getSlotType() == RogueliteSlotType.TUNING) {
+                int expectedLines = card.getTier() == 3 ? 2 : 3;
+                assertEquals(card.getId().name(), expectedLines,
+                        card.getEffectText().split("\\n").length);
+            }
+        }
+    }
+
+    @Test
+    public void techniqueAndRevengeCardsLeadWithTheirActivationCondition() {
+        List<RogueliteCardDefinition> cards = RogueliteCardCatalog.all();
+        for (int i = 0; i < cards.size(); i++) {
+            RogueliteCardDefinition card = cards.get(i);
+            if (card.getSlotType() == RogueliteSlotType.TECHNIQUE) {
+                String[] lines = card.getEffectText().split("\\n");
+                assertTrue(card.getId().name(), lines[0].startsWith("Activation: "));
+                assertTrue(card.getId().name(), lines.length >= 2);
+                assertTrue(card.getId().name(), lines.length <= 5);
+                assertFalse(card.getId().name(), card.getEffectText().toLowerCase().contains("bonus"));
+                assertFalse(card.getId().name(), card.getEffectText().toLowerCase().contains("penalt"));
+                for (int line = 1; line < lines.length; line++) {
+                    assertTrue(
+                            card.getId().name() + ": " + lines[line],
+                            lines[line].matches("^(Power|Grip|Aero|Mass) .+"));
+                }
+            } else if (card.getSlotType() == RogueliteSlotType.REVENGE) {
+                String[] lines = card.getEffectText().split("\\n");
+                assertEquals(card.getId().name(), "Activation: Rival hit", lines[0]);
+                assertEquals(card.getId().name(), 2, lines.length);
+            }
+        }
+    }
+
+    @Test
+    public void bestDriverHotlinesShareDurationAndOnlyImproveCooldownByTier() {
+        RogueliteCarUpgrades tierOne = activateAutomaticPowerup(
+                RogueliteCardId.ACE_HOTLINE);
+        RogueliteCarUpgrades tierTwo = activateAutomaticPowerup(
+                RogueliteCardId.PRIORITY_HOTLINE);
+
+        assertTrue(tierOne.isBestDriverActive());
+        assertTrue(tierTwo.isBestDriverActive());
+        assertEquals(10f, tierOne.getActiveTimeRemainingSeconds(
+                RogueliteCardId.ACE_HOTLINE), EPSILON);
+        assertEquals(10f, tierTwo.getActiveTimeRemainingSeconds(
+                RogueliteCardId.PRIORITY_HOTLINE), EPSILON);
+        assertEquals(20f, tierOne.getCooldownTimeRemainingSeconds(
+                RogueliteCardId.ACE_HOTLINE), EPSILON);
+        assertEquals(15f, tierTwo.getCooldownTimeRemainingSeconds(
+                RogueliteCardId.PRIORITY_HOTLINE), EPSILON);
+        assertEquals(1f, tierOne.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f, tierTwo.getAccelerationMultiplier(), EPSILON);
+
+        update(tierOne, 10.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(tierTwo, 10.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertFalse(tierOne.isBestDriverActive());
+        assertFalse(tierTwo.isBestDriverActive());
     }
 
     @Test
@@ -454,9 +1162,9 @@ public class RogueliteCarUpgradesTest {
         assertEquals(1.20f, nitro.getAccelerationMultiplier(), EPSILON);
         assertEquals(1.32f, rocket.getAccelerationMultiplier(), EPSILON);
         assertEquals(1.38f, hyperdrive.getAccelerationMultiplier(), EPSILON);
-        assertEquals(1.06f, nitro.getMaxSpeedMultiplier(), EPSILON);
-        assertEquals(1.11f, rocket.getMaxSpeedMultiplier(), EPSILON);
-        assertEquals(1.15f, hyperdrive.getMaxSpeedMultiplier(), EPSILON);
+        assertEquals((float) Math.cbrt(1.20f), nitro.getMaxSpeedMultiplier(), EPSILON);
+        assertEquals((float) Math.cbrt(1.32f), rocket.getMaxSpeedMultiplier(), EPSILON);
+        assertEquals((float) Math.cbrt(1.38f), hyperdrive.getMaxSpeedMultiplier(), EPSILON);
         assertEquals(
                 1.4f,
                 nitro.getActiveTimeRemainingSeconds(RogueliteCardId.NITRO_PULSE),
@@ -648,65 +1356,6 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
-    public void impactReversalWaitsForACollisionAndRearmsAfterItsActiveEffect() {
-        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.RAM_REACTOR);
-
-        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
-        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0.8f, 0.8f);
-        assertFalse(upgrades.isRamChargeActive());
-        assertFalse(upgrades.isImpactCounterReady());
-
-        upgrades.onHitBy(42, 12f);
-        assertTrue(upgrades.isRevengeArmed());
-        assertTrue(upgrades.isImpactCounterReady());
-        update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0.8f, 0.8f);
-        assertTrue(upgrades.isImpactCounterReady());
-        assertFalse(upgrades.isRamChargeActive());
-
-        for (int i = 0; i < 130; i++) {
-            update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
-        }
-        assertTrue(upgrades.isImpactCounterReady());
-
-        upgrades.consumeImpactCounter();
-        assertFalse(upgrades.isImpactCounterReady());
-        assertFalse(upgrades.isRevengeArmed());
-        assertEquals(RogueliteCardId.RAM_REACTOR, upgrades.getActiveAbilityCardId());
-        assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
-        assertEquals(1f, upgrades.getMaxSpeedMultiplier(), EPSILON);
-        assertEquals(1f, upgrades.getGripMultiplier(0f), EPSILON);
-
-        upgrades.onHitBy(42, 12f);
-        for (int i = 0; i < 20; i++) {
-            update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0.8f, 0.8f);
-        }
-        assertFalse(upgrades.isImpactCounterReady());
-        assertFalse(upgrades.isRevengeArmed());
-
-        upgrades.onHitBy(7, 12f);
-        assertTrue(upgrades.isImpactCounterReady());
-        assertTrue(upgrades.isRevengeArmed());
-        assertEquals(
-                0f,
-                upgrades.getCooldownTimeRemainingSeconds(RogueliteCardId.RAM_REACTOR),
-                EPSILON);
-    }
-
-    @Test
-    public void reflectedCounterImpactCannotArmAnotherRevengeCard() {
-        RogueliteCarUpgrades upgrades = configured(RogueliteCardId.RAM_REACTOR);
-
-        upgrades.onHitBy(42, 12f, false);
-
-        assertFalse(upgrades.isImpactCounterReady());
-        assertFalse(upgrades.isRevengeArmed());
-
-        upgrades.onHitBy(42, 12f, true);
-        assertTrue(upgrades.isImpactCounterReady());
-        assertTrue(upgrades.isRevengeArmed());
-    }
-
-    @Test
     public void crownBreakerBoostsUntilItRamsTheRecordedOffender() {
         RogueliteCarUpgrades upgrades = configured(RogueliteCardId.CROWN_ENGINE);
 
@@ -717,29 +1366,48 @@ public class RogueliteCarUpgradesTest {
         assertEquals(1f, upgrades.getFrontCollisionPushMultiplier(), EPSILON);
 
         upgrades.onHitBy(42, 12f);
-        assertTrue(upgrades.isRevengeReady());
+        assertFalse(upgrades.isRevengeReady());
         assertTrue(upgrades.isRevengeArmed());
-        assertFalse(upgrades.isImpactCounterReady());
+        assertEquals(0f, upgrades.getRevengeReadiness(), EPSILON);
         assertEquals(42, upgrades.getRevengeTargetVehicleId());
         assertEquals(
                 30f,
                 upgrades.getRevengeActiveTimeRemainingSeconds(),
                 EPSILON);
         assertTrue(upgrades.getAccelerationMultiplier() > 1.50f);
-        assertTrue(upgrades.getMaxSpeedMultiplier() > 1.20f);
+        assertTrue(upgrades.getMaxSpeedMultiplier() > 1.15f);
         assertEquals(1f, upgrades.getGripMultiplier(0f), EPSILON);
         assertEquals(1f, upgrades.getSteeringMultiplier(0f), EPSILON);
-        upgrades.onHitBy(7, 12f);
-        assertEquals(42, upgrades.getRevengeTargetVehicleId());
+        assertNull(upgrades.tryActivateOffenderHit(42));
+        assertNull(upgrades.tryActivateOffenderStrike(
+                42,
+                CrownBreakerRevengeEffect.RAM_TRIGGER_DISTANCE));
 
-        for (int i = 0; i < 299; i++) {
-            update(upgrades, 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
-        }
+        update(upgrades, 2.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertFalse(upgrades.isRevengeReady());
+        assertNull(upgrades.tryActivateOffenderHit(42));
+
+        update(upgrades, 0.2f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertTrue(upgrades.isRevengeReady());
+        assertEquals(1f, upgrades.getRevengeReadiness(), EPSILON);
+
+        upgrades.onHitBy(7, 12f);
+        assertEquals(7, upgrades.getRevengeTargetVehicleId());
+        assertEquals(30f, upgrades.getRevengeActiveTimeRemainingSeconds(), EPSILON);
+        assertFalse(upgrades.isRevengeReady());
+
+        update(upgrades, CrownBreakerRevengeEffect.PREPARATION_SECONDS,
+                1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertTrue(upgrades.isRevengeArmed());
-        assertNull(upgrades.tryActivateOffenderStrike(7, 1f));
+        assertTrue(upgrades.isRevengeReady());
+        assertNull(upgrades.tryActivateOffenderStrike(
+                7,
+                CrownBreakerRevengeEffect.RAM_TRIGGER_DISTANCE + 0.01f));
         assertNull(upgrades.tryActivateOffenderStrike(42, 1f));
 
-        RogueliteRevengeStrike strike = upgrades.tryActivateOffenderHit(42);
+        RogueliteRevengeStrike strike = upgrades.tryActivateOffenderStrike(
+                7,
+                CrownBreakerRevengeEffect.RAM_TRIGGER_DISTANCE);
         assertNotNull(strike);
         assertTrue(strike.isHardImpact());
         assertEquals(RogueliteCardId.CROWN_ENGINE, strike.getCardId());
@@ -755,12 +1423,12 @@ public class RogueliteCarUpgradesTest {
                 upgrades.getRevengeActiveTimeRemainingSeconds(),
                 EPSILON);
 
-        upgrades.onHitBy(42, 12f);
-        upgrades.onHitBy(42, 12f);
+        upgrades.onHitBy(7, 12f);
+        upgrades.onHitBy(7, 12f);
         assertFalse(upgrades.isRevengeArmed());
         assertEquals(-1, upgrades.getRevengeTargetVehicleId());
 
-        upgrades.onContactEnded(42);
+        upgrades.onContactEnded(7);
         upgrades.onHitBy(42, 12f);
         assertTrue(upgrades.isRevengeArmed());
         assertEquals(42, upgrades.getRevengeTargetVehicleId());
@@ -792,15 +1460,15 @@ public class RogueliteCarUpgradesTest {
                 positionSwap.getRevengeActivationSequence();
         armRevenge(positionSwap);
         positionSwap.onHitBy(7, 12f);
-        assertEquals(42, positionSwap.getRevengeTargetVehicleId());
+        assertEquals(7, positionSwap.getRevengeTargetVehicleId());
         assertFalse(positionSwap.isRevengeReady());
         update(positionSwap, 2.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
-        assertNull(positionSwap.tryActivateOffenderStrike(42, 4f, true));
+        assertNull(positionSwap.tryActivateOffenderStrike(7, 4f, true));
         update(positionSwap, 0.2f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertTrue(positionSwap.isRevengeReady());
-        assertNull(positionSwap.tryActivateOffenderStrike(42, 2f, true));
+        assertNull(positionSwap.tryActivateOffenderStrike(7, 2f, true));
         RogueliteRevengeStrike swapStrike =
-                positionSwap.tryActivateOffenderStrike(42, 4f, true);
+                positionSwap.tryActivateOffenderStrike(7, 4f, true);
         assertNotNull(swapStrike);
         assertEquals(RogueliteRevengeStrike.Action.POSITION_SWAP, swapStrike.getAction());
         assertEquals(
@@ -828,8 +1496,10 @@ public class RogueliteCarUpgradesTest {
         assertNull(hook.tryActivateOffenderStrike(42, 6f));
         update(hook, 0.2f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertTrue(hook.isRevengeReady());
+        assertTrue(hook.allowsOffRoadOffenderStrike());
         long hookActivationSequence = hook.getRevengeActivationSequence();
-        RogueliteRevengeStrike hookStrike = hook.tryActivateOffenderStrike(42, 30f);
+        RogueliteRevengeStrike hookStrike =
+                hook.tryActivateOffenderStrike(42, 30f, false);
         assertNotNull(hookStrike);
         assertEquals(RogueliteRevengeStrike.Action.HOOK, hookStrike.getAction());
         assertEquals(0f, hookStrike.getDurationSeconds(), EPSILON);
@@ -855,8 +1525,139 @@ public class RogueliteCarUpgradesTest {
                 2f,
                 repulsor.getActiveTimeRemainingSeconds(RogueliteCardId.REPULSOR_SURGE),
                 EPSILON);
+
+        RogueliteCarUpgrades repulsorWave = configured(RogueliteCardId.REPULSOR_WAVE);
+        armRevenge(repulsorWave);
+        update(repulsorWave, 0.1f, 0f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0.20f);
+        assertEquals(RogueliteCardId.REPULSOR_WAVE, repulsorWave.getActiveAbilityCardId());
+        assertTrue(repulsorWave.isDraftMagnetActive());
+        assertEquals(1.375f, repulsorWave.getDraftMagnetRangeMultiplier(), EPSILON);
+        assertEquals(1.275f, repulsorWave.getDraftMagnetForceMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades triad = configured(RogueliteCardId.TRIAD_COUP);
+        triad.onHitBy(42, 12f);
+        triad.setRevengeSecondaryTargetVehicleId(7);
+        assertEquals(42, triad.getRevengeTargetVehicleId());
+        assertEquals(7, triad.getRevengeSecondaryTargetVehicleId());
+        update(triad, 2.9f, 1f, false, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        assertNull(triad.tryActivateOffenderStrike(42, 100f, false));
+        update(triad, 0.2f, 1f, false, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        RogueliteRevengeStrike triadStrike =
+                triad.tryActivateOffenderStrike(42, 100f, false);
+        assertNotNull(triadStrike);
+        assertEquals(RogueliteRevengeStrike.Action.POSITION_REORDER, triadStrike.getAction());
+        assertEquals(7, triadStrike.getSecondaryTargetVehicleId());
+        assertFalse(triad.isRevengeArmed());
         assertEquals(1.75f, repulsor.getDraftMagnetRangeMultiplier(), EPSILON);
         assertEquals(1.55f, repulsor.getDraftMagnetForceMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void revengeAmplifierPowerupsExposeTheirTierMultipliers() {
+        assertEquals(
+                1.25f,
+                configured(RogueliteCardId.GRUDGE_SPARK)
+                        .getRevengeEffectMultiplier(),
+                EPSILON);
+        assertEquals(
+                1.50f,
+                configured(RogueliteCardId.VENGEANCE_CORE)
+                        .getRevengeEffectMultiplier(),
+                EPSILON);
+        assertEquals(
+                2f,
+                configured(RogueliteCardId.NEMESIS_ENGINE)
+                        .getRevengeEffectMultiplier(),
+                EPSILON);
+    }
+
+    @Test
+    public void revengeAmplifierDoesNotExtendDelayedRevengePreparation() {
+        RogueliteCardId[] delayedCards = {
+                RogueliteCardId.RECOVERY_BEACON,
+                RogueliteCardId.PAYBACK_SHIELD,
+                RogueliteCardId.TRIAD_COUP,
+                RogueliteCardId.CROWN_ENGINE
+        };
+        for (int i = 0; i < delayedCards.length; i++) {
+            RogueliteCarUpgrades upgrades = configured(
+                    RogueliteCardId.NEMESIS_ENGINE,
+                    delayedCards[i]);
+            upgrades.onHitBy(42, 12f);
+            upgrades.setRevengeSecondaryTargetVehicleId(7);
+
+            update(upgrades, 2.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+            float distance = delayedCards[i] == RogueliteCardId.CROWN_ENGINE
+                    ? CrownBreakerRevengeEffect.RAM_TRIGGER_DISTANCE
+                    : 100f;
+            assertNull(upgrades.tryActivateOffenderStrike(42, distance, true));
+
+            update(upgrades, 0.2f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+            assertNotNull(upgrades.tryActivateOffenderStrike(42, distance, true));
+        }
+    }
+
+    @Test
+    public void revengeAmplifierScalesTimedStrikesAndShowsItsPowerup() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.GRUDGE_SPARK,
+                RogueliteCardId.DRAFT_VENDETTA);
+        upgrades.onHitBy(42, 12f);
+
+        RogueliteRevengeStrike strike =
+                upgrades.tryActivateOffenderStrike(42, 1f);
+
+        assertNotNull(strike);
+        assertEquals(6.25f, strike.getDurationSeconds(), EPSILON);
+        assertEquals(1.25f, strike.getEffectMultiplier(), EPSILON);
+        assertEquals(
+                RogueliteCardId.GRUDGE_SPARK,
+                upgrades.getActivePowerupCardId());
+        assertEquals(
+                RogueliteCardId.DRAFT_VENDETTA,
+                upgrades.getActiveCardId(RogueliteSlotType.REVENGE));
+    }
+
+    @Test
+    public void revengeAmplifierScalesOutwardFieldDurationRangeAndForce() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.NEMESIS_ENGINE,
+                RogueliteCardId.REPULSOR_WAVE);
+        upgrades.onHitBy(42, 12f);
+
+        update(upgrades, 0.1f, 0f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0.80f);
+
+        assertEquals(
+                4f,
+                upgrades.getActiveTimeRemainingSeconds(RogueliteCardId.REPULSOR_WAVE),
+                EPSILON);
+        assertEquals(1.75f, upgrades.getDraftMagnetRangeMultiplier(), EPSILON);
+        assertEquals(1.55f, upgrades.getDraftMagnetForceMultiplier(), EPSILON);
+        assertEquals(
+                RogueliteCardId.NEMESIS_ENGINE,
+                upgrades.getActivePowerupCardId());
+    }
+
+    @Test
+    public void revengeAmplifierAddsHunterBarrageShotsAndDuration() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.NEMESIS_ENGINE,
+                RogueliteCardId.HUNTER_BARRAGE);
+        upgrades.onHitBy(42, 12f);
+
+        int shots = 0;
+        for (int step = 0; step < 12; step++) {
+            update(upgrades, 0.5f, 0.5f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+            RogueliteRevengeStrike strike =
+                    upgrades.tryActivateOffenderStrike(42, 1000f, false);
+            if (strike != null) {
+                shots++;
+                assertEquals(2f, strike.getEffectMultiplier(), EPSILON);
+            }
+        }
+
+        assertEquals(12, shots);
+        assertFalse(upgrades.isRevengeArmed());
     }
 
     @Test
@@ -876,14 +1677,17 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
-    public void targetedRevengeKeepsTheFirstOffenderUntilItExecutes() {
+    public void waitingTargetedRevengeRestartsAgainstTheLatestOffender() {
         RogueliteCardId[] targetedCards = {
                 RogueliteCardId.RECOVERY_BEACON,
                 RogueliteCardId.DRAFT_VENDETTA,
                 RogueliteCardId.PAYBACK_SHIELD,
+                RogueliteCardId.HUNTER_BARRAGE,
+                RogueliteCardId.HUNTER_STORM,
                 RogueliteCardId.TAR_TETHER,
                 RogueliteCardId.EMP_SNARE,
-                RogueliteCardId.VOID_ANCHOR
+                RogueliteCardId.VOID_ANCHOR,
+                RogueliteCardId.TRIAD_COUP
         };
         for (int i = 0; i < targetedCards.length; i++) {
             RogueliteCarUpgrades upgrades = configured(targetedCards[i]);
@@ -892,7 +1696,7 @@ public class RogueliteCarUpgradesTest {
             upgrades.onHitBy(7, 18f);
 
             assertTrue(upgrades.isRevengeArmed());
-            assertEquals(42, upgrades.getRevengeTargetVehicleId());
+            assertEquals(7, upgrades.getRevengeTargetVehicleId());
         }
     }
 
@@ -941,32 +1745,69 @@ public class RogueliteCarUpgradesTest {
 
     @Test
     public void offenderCurseTargetsOnlyTheCarThatLandedTheHit() {
-        assertOffenderCurse(RogueliteCardId.SENSOR_JAMMER, 1.05f, 1f);
-        assertOffenderCurse(RogueliteCardId.GRID_BLACKOUT, 1.20f, 1f);
-        assertOffenderCurse(RogueliteCardId.TOTAL_BLACKOUT, 1.50f, 0.80f);
+        assertOffenderCurse(RogueliteCardId.SENSOR_JAMMER, 1.05f, 0.95f, 20f);
+        assertOffenderCurse(RogueliteCardId.GRID_BLACKOUT, 1.10f, 0.90f, 30f);
+        assertOffenderCurse(RogueliteCardId.TOTAL_BLACKOUT, 1.20f, 0.80f, 40f);
     }
 
     @Test
-    public void everyCardCombinationRemainsStableThroughASimulatedRace() {
+    public void tierThreeHexRemainsBoundedWithTierThreeRevengeAmplifier() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.NEMESIS_ENGINE,
+                RogueliteCardId.TOTAL_BLACKOUT);
+        upgrades.onHitBy(42, 12f);
+
+        RogueliteRevengeStrike strike =
+                upgrades.tryActivateOffenderStrike(42, 100f);
+
+        assertNotNull(strike);
+        assertEquals(1.40f, strike.getMassMultiplier(), EPSILON);
+        assertEquals(0.60f, strike.getGripMultiplier(), EPSILON);
+        assertEquals(80f, strike.getDurationSeconds(), EPSILON);
+        assertEquals(2f, strike.getEffectMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void everyCrossSlotCardPairRemainsStableThroughASimulatedRace() {
         List<RogueliteCardDefinition> tuning = cardsForSlot(RogueliteSlotType.TUNING);
         List<RogueliteCardDefinition> techniques = cardsForSlot(RogueliteSlotType.TECHNIQUE);
         List<RogueliteCardDefinition> powerups = cardsForSlot(RogueliteSlotType.POWERUP);
         List<RogueliteCardDefinition> revenge = cardsForSlot(RogueliteSlotType.REVENGE);
 
-        for (int t = 0; t < tuning.size(); t++) {
-            for (int technique = 0; technique < techniques.size(); technique++) {
-                for (int powerup = 0; powerup < powerups.size(); powerup++) {
-                    for (int retaliation = 0; retaliation < revenge.size(); retaliation++) {
+        List<List<RogueliteCardDefinition>> slots =
+                new ArrayList<List<RogueliteCardDefinition>>();
+        slots.add(tuning);
+        slots.add(techniques);
+        slots.add(powerups);
+        slots.add(revenge);
+
+        // Cover every cross-slot pair while rotating the remaining two cards.
+        int scenario = 0;
+        for (int firstSlot = 0; firstSlot < slots.size(); firstSlot++) {
+            for (int secondSlot = firstSlot + 1; secondSlot < slots.size(); secondSlot++) {
+                List<RogueliteCardDefinition> firstCards = slots.get(firstSlot);
+                List<RogueliteCardDefinition> secondCards = slots.get(secondSlot);
+                for (int firstCard = 0; firstCard < firstCards.size(); firstCard++) {
+                    for (int secondCard = 0; secondCard < secondCards.size(); secondCard++) {
+                        int[] selected = new int[slots.size()];
+                        for (int slot = 0; slot < slots.size(); slot++) {
+                            selected[slot] =
+                                    (scenario * 17 + firstCard * 7 + secondCard * 13 + slot)
+                                            % slots.get(slot).size();
+                        }
+                        selected[firstSlot] = firstCard;
+                        selected[secondSlot] = secondCard;
+
                         RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
                         upgrades.configure(
                                 loadout(
-                                        tuning.get(t).getId(),
-                                        techniques.get(technique).getId(),
-                                        powerups.get(powerup).getId(),
-                                        revenge.get(retaliation).getId()),
-                                (t * 1000 + technique * 100 + powerup * 10 + retaliation)
-                                        / 12999f);
+                                        slots.get(0).get(selected[0]).getId(),
+                                        slots.get(1).get(selected[1]).getId(),
+                                        slots.get(2).get(selected[2]).getId(),
+                                        slots.get(3).get(selected[3]).getId()),
+                                (scenario % 997) / 996f);
                         simulateRace(upgrades);
+                        scenario++;
                     }
                 }
             }
@@ -1009,10 +1850,10 @@ public class RogueliteCarUpgradesTest {
                 upgrades.onRacePositionImproved(1, 0.35f);
             }
 
-            assertMultiplier(upgrades.getAccelerationMultiplier(), 0.80f, 1.85f);
-            assertMultiplier(upgrades.getMassMultiplier(), 0.75f, 1.35f);
-            assertMultiplier(upgrades.getMaxSpeedMultiplier(), 0.80f, 1.35f);
-            assertMultiplier(upgrades.getDragMultiplier(), 0.50f, 1.50f);
+            assertMultiplier(upgrades.getAccelerationMultiplier(), 0.50f, 1.85f);
+            assertMultiplier(upgrades.getMassMultiplier(), 0.10f, 2f);
+            assertMultiplier(upgrades.getMaxSpeedMultiplier(), 0.65f, 1.35f);
+            assertMultiplier(upgrades.getDragMultiplier(), 0.10f, 4f);
             assertMultiplier(upgrades.getGripMultiplier(slip), 0.65f, 2f);
             assertMultiplier(upgrades.getSteeringMultiplier(slip), 0.70f, 2f);
             assertMultiplier(upgrades.getSlipstreamRangeMultiplier(), 1f, 2f);
@@ -1045,19 +1886,25 @@ public class RogueliteCarUpgradesTest {
         updateRacePosition(upgrades, 0.5f);
         float midpointBonus = maximumBonus * 0.5f;
         assertEquals(1f + midpointBonus, upgrades.getAccelerationMultiplier(), EPSILON);
-        assertEquals(1f + midpointBonus, upgrades.getMaxSpeedMultiplier(), EPSILON);
+        assertEquals(
+                derivedTopSpeed(1f + midpointBonus, 1f + midpointBonus),
+                upgrades.getMaxSpeedMultiplier(),
+                EPSILON);
         assertEquals(1f / (1f + midpointBonus), upgrades.getDragMultiplier(), EPSILON);
         assertEquals(1f + midpointBonus, upgrades.getGripMultiplier(0f), EPSILON);
-        assertEquals(1f, upgrades.getMassMultiplier(), EPSILON);
+        assertEquals(1f - midpointBonus, upgrades.getMassMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getSteeringMultiplier(0f), EPSILON);
         assertTrue(upgrades.getActiveCardIds().contains(cardId));
 
         updateRacePosition(upgrades, 1f);
         assertEquals(1f + maximumBonus, upgrades.getAccelerationMultiplier(), EPSILON);
-        assertEquals(1f + maximumBonus, upgrades.getMaxSpeedMultiplier(), EPSILON);
+        assertEquals(
+                derivedTopSpeed(1f + maximumBonus, 1f + maximumBonus),
+                upgrades.getMaxSpeedMultiplier(),
+                EPSILON);
         assertEquals(1f / (1f + maximumBonus), upgrades.getDragMultiplier(), EPSILON);
         assertEquals(1f + maximumBonus, upgrades.getGripMultiplier(0f), EPSILON);
-        assertEquals(1f, upgrades.getMassMultiplier(), EPSILON);
+        assertEquals(1f - maximumBonus, upgrades.getMassMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getSteeringMultiplier(0f), EPSILON);
     }
 
@@ -1096,10 +1943,13 @@ public class RogueliteCarUpgradesTest {
 
         update(upgrades, 0.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0.65f);
         assertEquals(1f + bonus, upgrades.getAccelerationMultiplier(), EPSILON);
-        assertEquals(1f + bonus, upgrades.getMaxSpeedMultiplier(), EPSILON);
+        assertEquals(
+                derivedTopSpeed(1f + bonus, 1f + bonus),
+                upgrades.getMaxSpeedMultiplier(),
+                EPSILON);
         assertEquals(1f / (1f + bonus), upgrades.getDragMultiplier(), EPSILON);
         assertEquals(1f + bonus, upgrades.getGripMultiplier(0f), EPSILON);
-        assertEquals(1f, upgrades.getMassMultiplier(), EPSILON);
+        assertEquals(1f - bonus, upgrades.getMassMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getSteeringMultiplier(0f), EPSILON);
         assertTrue(upgrades.getActiveCardIds().contains(cardId));
 
@@ -1108,6 +1958,7 @@ public class RogueliteCarUpgradesTest {
         assertEquals(1f, upgrades.getMaxSpeedMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getDragMultiplier(), EPSILON);
         assertEquals(1f, upgrades.getGripMultiplier(0f), EPSILON);
+        assertEquals(1f, upgrades.getMassMultiplier(), EPSILON);
         assertFalse(upgrades.getActiveCardIds().contains(cardId));
     }
 
@@ -1115,10 +1966,47 @@ public class RogueliteCarUpgradesTest {
         return configured(new RogueliteCardId[] {cardId});
     }
 
+    private static String signedStatSignature(RogueliteCardDefinition card) {
+        String[] lines = card.getEffectText().split("\\n");
+        List<String> signature = new ArrayList<String>();
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (line.startsWith("Activation: ")) {
+                continue;
+            }
+            int separator = line.indexOf(' ');
+            assertTrue(card.getId().name() + ": " + line, separator > 0);
+            String operation;
+            if (line.indexOf(" x", separator) >= 0) {
+                operation = "x";
+            } else if (line.indexOf('-', separator) >= 0) {
+                operation = "-";
+            } else {
+                operation = "+";
+            }
+            signature.add(line.substring(0, separator) + operation);
+        }
+        Collections.sort(signature);
+        return signature.toString();
+    }
+
+    private static String techniqueActivationSignature(RogueliteCardDefinition card) {
+        String activation = card.getEffectText().split("\\n")[0];
+        int durationSeparator = activation.indexOf('|');
+        return durationSeparator < 0
+                ? activation.trim()
+                : activation.substring(0, durationSeparator).trim();
+    }
+
+    private static float derivedTopSpeed(float power, float aero) {
+        return (float) Math.cbrt(power * aero);
+    }
+
     private static void assertOffenderCurse(
             RogueliteCardId cardId,
             float massMultiplier,
-            float gripMultiplier) {
+            float gripMultiplier,
+            float durationSeconds) {
         RogueliteCarUpgrades upgrades = configured(cardId);
         upgrades.onHitBy(42, 12f);
 
@@ -1131,6 +2019,7 @@ public class RogueliteCarUpgradesTest {
         assertEquals(cardId, strike.getCardId());
         assertEquals(massMultiplier, strike.getMassMultiplier(), EPSILON);
         assertEquals(gripMultiplier, strike.getGripMultiplier(), EPSILON);
+        assertEquals(durationSeconds, strike.getDurationSeconds(), EPSILON);
         assertFalse(upgrades.isRevengeArmed());
         assertEquals(-1, upgrades.getRevengeTargetVehicleId());
     }
@@ -1150,6 +2039,95 @@ public class RogueliteCarUpgradesTest {
         assertTrue(upgrades.isPowerupReady());
         update(upgrades, 0.1f, 1f, true, 0f, 0.35f, 0f, 0f, 0.8f, 0f, 0f, 0f);
         return upgrades;
+    }
+
+    private static RogueliteCarUpgrades activateAutomaticPowerup(RogueliteCardId cardId) {
+        RogueliteCarUpgrades upgrades = configured(cardId);
+        for (int i = 0; i < 100 && !upgrades.isBestDriverActive(); i++) {
+            update(upgrades, 0.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        }
+        assertTrue(upgrades.isBestDriverActive());
+        return upgrades;
+    }
+
+    private static void assertTechniqueWindow(
+            RogueliteCardId cardId,
+            float duration,
+            RogueliteDrivingFrame activeFrame,
+            RogueliteDrivingFrame inactiveFrame) {
+        RaceTechniqueEffect effect = new RaceTechniqueEffect(cardId);
+
+        effect.advance(0.1f, 0.1f, activeFrame);
+        assertTrue(cardId.name(), effect.isActive());
+        assertEquals(cardId.name(), duration, effect.activeTimeRemainingSeconds(), EPSILON);
+
+        effect.advance(0.5f, 0.5f, inactiveFrame);
+        assertTrue(cardId.name(), effect.isActive());
+        assertEquals(cardId.name(), duration - 0.5f,
+                effect.activeTimeRemainingSeconds(), EPSILON);
+
+        effect.advance(0.1f, 0.1f, activeFrame);
+        assertEquals(cardId.name(), duration - 0.6f,
+                effect.activeTimeRemainingSeconds(), EPSILON);
+
+        effect.advance(duration, duration, activeFrame);
+        assertTrue(cardId.name(), effect.isActive());
+        assertEquals(cardId.name(), duration, effect.activeTimeRemainingSeconds(), EPSILON);
+
+        effect.advance(duration + 0.1f, duration + 0.1f, inactiveFrame);
+        assertFalse(cardId.name(), effect.isActive());
+        assertEquals(cardId.name(), 0f, effect.activeTimeRemainingSeconds(), EPSILON);
+    }
+
+    private static RogueliteDrivingFrame techniqueFrame(
+            boolean onRoad,
+            float slip,
+            float speedRatio,
+            float slipstreamBoost,
+            boolean longStraight) {
+        RogueliteDrivingFrame frame = new RogueliteDrivingFrame();
+        frame.set(
+                1f,
+                onRoad,
+                false,
+                false,
+                slip,
+                speedRatio,
+                slipstreamBoost,
+                10f,
+                100f,
+                2f,
+                0f,
+                1f,
+                0f,
+                0f,
+                0f,
+                false,
+                0f,
+                0f,
+                longStraight);
+        return frame;
+    }
+
+    private static void assertTimeDilationPowerup(
+            RogueliteCardId cardId,
+            float expectedCooldown) {
+        CooldownPowerupEffect effect = new CooldownPowerupEffect(cardId, 0f);
+        RogueliteDrivingFrame frame = techniqueFrame(true, 0f, 0.5f, 0f, true);
+        for (int step = 0; step < 1000 && !effect.isActive(); step++) {
+            effect.advance(0.1f, 0.1f, frame);
+        }
+
+        assertTrue(cardId.name(), effect.isActive());
+        assertTrue(cardId.name(), effect.acceleratesOwnDecisions());
+        assertEquals(
+                expectedCooldown,
+                effect.cooldownTimeRemainingSeconds(),
+                EPSILON);
+        assertEquals(
+                TimeDilationPowerupSpec.DURATION_SECONDS,
+                effect.activeTimeRemainingSeconds(),
+                EPSILON);
     }
 
     private static RogueliteCarUpgrades activateCloak(RogueliteCardId cardId) {
@@ -1281,8 +2259,12 @@ public class RogueliteCarUpgradesTest {
     private static void assertMultiplier(float value, float minimum, float maximum) {
         assertFalse(Float.isNaN(value));
         assertFalse(Float.isInfinite(value));
-        assertTrue(value >= minimum - EPSILON);
-        assertTrue(value <= maximum + EPSILON);
+        assertTrue(
+                "Multiplier " + value + " is below " + minimum,
+                value >= minimum - EPSILON);
+        assertTrue(
+                "Multiplier " + value + " is above " + maximum,
+                value <= maximum + EPSILON);
     }
 
     private static RogueliteLoadout loadout(RogueliteCardId... cards) {

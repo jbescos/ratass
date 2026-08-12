@@ -11,7 +11,7 @@ public class RogueliteRewardPreviewTest {
     public void pendingModificationAppearsOnlyInItsMatchingSlot() {
         RogueliteLoadout loadout = new RogueliteLoadout("profile00");
         loadout.equip(RogueliteCardId.CLUB_TUNE);
-        loadout.equip(RogueliteCardId.CORNER_EXIT);
+        loadout.equip(RogueliteCardId.CORNER_FOCUS);
         RogueliteCardOffer preview =
                 RogueliteCardOffer.modification(
                         RogueliteCardCatalog.get(RogueliteCardId.RACE_TUNE));
@@ -23,7 +23,7 @@ public class RogueliteRewardPreviewTest {
                         RogueliteSlotType.TUNING,
                         preview));
         assertEquals(
-                RogueliteCardId.CORNER_EXIT,
+                RogueliteCardId.CORNER_FOCUS,
                 RogueliteRewardPreview.resolveCard(
                         loadout,
                         RogueliteSlotType.TECHNIQUE,

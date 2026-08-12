@@ -10,6 +10,11 @@ final class RogueliteEffectFactory {
         if (RandomCardEffect.isRandomCard(id)) {
             return new RandomCardEffect(id, powerupCycleOffset);
         }
+        if (id == RogueliteCardId.GRUDGE_SPARK
+                || id == RogueliteCardId.VENGEANCE_CORE
+                || id == RogueliteCardId.NEMESIS_ENGINE) {
+            return new RevengeAmplifierPowerupEffect(id);
+        }
         if (id == RogueliteCardId.TAR_TETHER
                 || id == RogueliteCardId.EMP_SNARE
                 || id == RogueliteCardId.VOID_ANCHOR
@@ -20,6 +25,13 @@ final class RogueliteEffectFactory {
         }
         if (id == RogueliteCardId.CROWN_ENGINE) {
             return new CrownBreakerRevengeEffect();
+        }
+        if (id == RogueliteCardId.HUNTER_BARRAGE
+                || id == RogueliteCardId.HUNTER_STORM) {
+            return new HunterBarrageRevengeEffect(id);
+        }
+        if (id == RogueliteCardId.TRIAD_COUP) {
+            return new TriadCoupRevengeEffect();
         }
         if (id == RogueliteCardId.SENSOR_JAMMER
                 || id == RogueliteCardId.GRID_BLACKOUT

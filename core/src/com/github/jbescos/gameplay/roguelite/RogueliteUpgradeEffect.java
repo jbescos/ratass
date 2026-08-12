@@ -25,6 +25,13 @@ abstract class RogueliteUpgradeEffect {
         return cardId;
     }
 
+    RogueliteCardId loadedDisplayCardId() {
+        return null;
+    }
+
+    void onLoadedByRandomCard() {
+    }
+
     boolean isActive() {
         return false;
     }
@@ -60,6 +67,9 @@ abstract class RogueliteUpgradeEffect {
     void update(float delta, float timerDelta, RogueliteDrivingFrame frame) {
     }
 
+    void observeTechniqueCondition(RogueliteDrivingFrame frame) {
+    }
+
     float timedEffectDecay() {
         return 1f;
     }
@@ -76,11 +86,19 @@ abstract class RogueliteUpgradeEffect {
         return 0f;
     }
 
-    float maxSpeedBonus() {
-        return 0f;
+    float powerDeviationScale() {
+        return 1f;
+    }
+
+    float driveForceLimitMultiplier() {
+        return 1f;
     }
 
     float dragMultiplier() {
+        return 1f;
+    }
+
+    float aeroDeviationScale() {
         return 1f;
     }
 
@@ -88,8 +106,16 @@ abstract class RogueliteUpgradeEffect {
         return 1f;
     }
 
+    float massDeviationScale() {
+        return 1f;
+    }
+
     float gripBonus(float slip) {
         return 0f;
+    }
+
+    float gripDeviationScale() {
+        return 1f;
     }
 
     float steeringBonus(float slip) {
@@ -139,11 +165,17 @@ abstract class RogueliteUpgradeEffect {
     void consumeRamCharge() {
     }
 
-    boolean isImpactCounterReady() {
-        return false;
+    float revengeEffectMultiplier() {
+        return 1f;
     }
 
-    void consumeImpactCounter() {
+    void onRevengeActivated(float durationSeconds) {
+    }
+
+    void onRevengeFinished() {
+    }
+
+    void amplifyActiveRevenge(float multiplier) {
     }
 
     void onRacePositionImproved(int positionsGained, float slipstreamBoost) {
@@ -152,7 +184,12 @@ abstract class RogueliteUpgradeEffect {
     void onCollision(float impactStrength) {
     }
 
-    void onHitBy(int vehicleId, float impactStrength) {
+    RevengeWorkflow revengeWorkflow() {
+        return null;
+    }
+
+    boolean onHitBy(int vehicleId, float impactStrength) {
+        return false;
     }
 
     void onContactEnded(int vehicleId) {
@@ -162,11 +199,34 @@ abstract class RogueliteUpgradeEffect {
         return false;
     }
 
+    boolean usesBestDriver() {
+        return false;
+    }
+
+    boolean acceleratesOwnDecisions() {
+        return false;
+    }
+
     void deferInvisibilityExpiration() {
     }
 
     int revengeTargetVehicleId() {
         return -1;
+    }
+
+    void setRevengeSecondaryTargetVehicleId(int vehicleId) {
+    }
+
+    int revengeSecondaryTargetVehicleId() {
+        return -1;
+    }
+
+    boolean cancelRevengeTarget(int vehicleId) {
+        return false;
+    }
+
+    boolean allowsOffRoadOffenderStrike() {
+        return false;
     }
 
     boolean expireOffenderStrikeIfConditionFailed(

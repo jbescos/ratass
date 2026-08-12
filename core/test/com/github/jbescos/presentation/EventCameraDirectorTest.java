@@ -86,10 +86,10 @@ public class EventCameraDirectorTest {
     }
 
     @Test
-    public void requestsPlayerOnceAfterFiveSecondsWithoutEvents() {
+    public void requestsPlayerOnceAfterTenSecondsWithoutEvents() {
         EventCameraDirector director = new EventCameraDirector();
 
-        director.update(4.99f);
+        director.update(9.99f);
         assertFalse(director.consumePlayerFallbackRequested());
         director.update(0.01f);
         assertTrue(director.consumePlayerFallbackRequested());
@@ -102,10 +102,10 @@ public class EventCameraDirectorTest {
     @Test
     public void aNewIncidentRestartsThePlayerFallbackTimer() {
         EventCameraDirector director = new EventCameraDirector();
-        director.update(4f);
+        director.update(9f);
 
         director.observeIncident();
-        director.update(4.99f);
+        director.update(9.99f);
         assertFalse(director.consumePlayerFallbackRequested());
         director.update(0.01f);
         assertTrue(director.consumePlayerFallbackRequested());

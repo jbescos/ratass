@@ -13,22 +13,26 @@ public final class RogueliteCarStatSnapshot {
             RogueliteCarUpgrades upgrades,
             float slip,
             float accelerationEffectMultiplier,
-            float maxSpeedEffectMultiplier,
+            float surfaceGripMultiplier,
             float gripEffectMultiplier,
             float steeringEffectMultiplier,
             float massEffectMultiplier,
             float aerodynamicEffectMultiplier) {
         accelerationMultiplier =
-                upgrades.getAccelerationMultiplier() * accelerationEffectMultiplier;
-        maxSpeedMultiplier =
-                upgrades.getMaxSpeedMultiplier() * maxSpeedEffectMultiplier;
-        gripMultiplier = upgrades.getGripMultiplier(slip) * gripEffectMultiplier;
+                upgrades.getAccelerationMultiplier(accelerationEffectMultiplier);
+        aerodynamicEfficiency =
+                upgrades.getAerodynamicEfficiencyMultiplier(
+                        aerodynamicEffectMultiplier);
+        maxSpeedMultiplier = RogueliteCarUpgrades.deriveMaxSpeedMultiplier(
+                accelerationMultiplier,
+                aerodynamicEfficiency);
+        gripMultiplier = upgrades.getGripMultiplier(
+                slip,
+                surfaceGripMultiplier,
+                gripEffectMultiplier);
         steeringMultiplier =
                 upgrades.getSteeringMultiplier(slip) * steeringEffectMultiplier;
-        massMultiplier = upgrades.getMassMultiplier() * massEffectMultiplier;
-        aerodynamicEfficiency =
-                aerodynamicEffectMultiplier
-                        / Math.max(0.01f, upgrades.getDragMultiplier());
+        massMultiplier = upgrades.getMassMultiplier(massEffectMultiplier);
     }
 
     public static RogueliteCarStatSnapshot from(
@@ -55,7 +59,7 @@ public final class RogueliteCarStatSnapshot {
             RogueliteCarUpgrades upgrades,
             float slip,
             float accelerationEffectMultiplier,
-            float maxSpeedEffectMultiplier,
+            float surfaceGripMultiplier,
             float gripEffectMultiplier,
             float steeringEffectMultiplier,
             float massEffectMultiplier,
@@ -66,7 +70,7 @@ public final class RogueliteCarStatSnapshot {
                 liveUpgrades,
                 slip,
                 accelerationEffectMultiplier,
-                maxSpeedEffectMultiplier,
+                surfaceGripMultiplier,
                 gripEffectMultiplier,
                 steeringEffectMultiplier,
                 massEffectMultiplier,

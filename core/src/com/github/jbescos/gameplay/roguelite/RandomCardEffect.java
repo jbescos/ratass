@@ -4,10 +4,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** Delegates one slot to a randomly selected card of the same type and tier. */
+/** Holds and delegates to one random card until that card finishes executing. */
 final class RandomCardEffect extends RogueliteUpgradeEffect {
     private static final float MINIMUM_EXECUTION_SETTLE_SECONDS = 1.2f;
-    private static final float TRIGGER_TIMEOUT_SECONDS = 10f;
 
     private final float cycleOffset;
     private final RogueliteSlotType slotType;
@@ -19,9 +18,6 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     private RogueliteCardId previousCardId;
     private boolean cycleExecuted;
     private float executionSettleTimer;
-    private float triggerWaitTimer;
-    private int revengeTriggerVehicleId = -1;
-    private float revengeTriggerImpactStrength;
 
     RandomCardEffect(RogueliteCardId cardId, float cycleOffset) {
         this(
@@ -90,6 +86,11 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    RogueliteCardId loadedDisplayCardId() {
+        return delegate.behaviorCardId();
+    }
+
+    @Override
     boolean isActive() {
         return delegate.isActive()
                 || cycleExecuted && executionSettleTimer > 0f;
@@ -108,6 +109,11 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     @Override
     boolean isOffenderCurse() {
         return delegate.isOffenderCurse();
+    }
+
+    @Override
+    RevengeWorkflow revengeWorkflow() {
+        return delegate.revengeWorkflow();
     }
 
     @Override
@@ -133,12 +139,8 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     @Override
     void update(float delta, float timerDelta, RogueliteDrivingFrame frame) {
         boolean wasActive = delegate.isActive();
-        boolean wasReady = delegate.isReady();
         delegate.advance(delta, timerDelta, frame);
         observeActivation(wasActive);
-        if (advanceTriggerTimeout(wasReady, timerDelta)) {
-            return;
-        }
         advanceReselection(delta);
     }
 
@@ -163,8 +165,8 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
-    float maxSpeedBonus() {
-        return delegate.maxSpeedBonus();
+    float powerDeviationScale() {
+        return delegate.powerDeviationScale();
     }
 
     @Override
@@ -173,13 +175,28 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    float aeroDeviationScale() {
+        return delegate.aeroDeviationScale();
+    }
+
+    @Override
     float massMultiplier() {
         return delegate.massMultiplier();
     }
 
     @Override
+    float massDeviationScale() {
+        return delegate.massDeviationScale();
+    }
+
+    @Override
     float gripBonus(float slip) {
         return delegate.gripBonus(slip);
+    }
+
+    @Override
+    float gripDeviationScale() {
+        return delegate.gripDeviationScale();
     }
 
     @Override
@@ -245,15 +262,25 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
-    boolean isImpactCounterReady() {
-        return delegate.isImpactCounterReady();
+    float revengeEffectMultiplier() {
+        return delegate.revengeEffectMultiplier();
     }
 
     @Override
-    void consumeImpactCounter() {
+    void onRevengeActivated(float durationSeconds) {
         boolean wasActive = delegate.isActive();
-        delegate.consumeImpactCounter();
+        delegate.onRevengeActivated(durationSeconds);
         observeActivation(wasActive);
+    }
+
+    @Override
+    void onRevengeFinished() {
+        delegate.onRevengeFinished();
+    }
+
+    @Override
+    void amplifyActiveRevenge(float multiplier) {
+        delegate.amplifyActiveRevenge(multiplier);
     }
 
     @Override
@@ -271,19 +298,14 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
-    void onHitBy(int vehicleId, float impactStrength) {
+    boolean onHitBy(int vehicleId, float impactStrength) {
         if (cycleExecuted) {
-            return;
+            return false;
         }
         boolean wasActive = delegate.isActive();
-        boolean wasArmed = delegate.isArmed();
-        delegate.onHitBy(vehicleId, impactStrength);
-        if (!wasArmed
-                && (delegate.isArmed() || delegate.isActive())) {
-            revengeTriggerVehicleId = vehicleId;
-            revengeTriggerImpactStrength = impactStrength;
-        }
+        boolean accepted = delegate.onHitBy(vehicleId, impactStrength);
         observeActivation(wasActive);
+        return accepted;
     }
 
     @Override
@@ -297,6 +319,16 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    boolean usesBestDriver() {
+        return delegate.usesBestDriver();
+    }
+
+    @Override
+    boolean acceleratesOwnDecisions() {
+        return delegate.acceleratesOwnDecisions();
+    }
+
+    @Override
     void deferInvisibilityExpiration() {
         delegate.deferInvisibilityExpiration();
     }
@@ -304,6 +336,30 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     @Override
     int revengeTargetVehicleId() {
         return delegate.revengeTargetVehicleId();
+    }
+
+    @Override
+    void setRevengeSecondaryTargetVehicleId(int vehicleId) {
+        delegate.setRevengeSecondaryTargetVehicleId(vehicleId);
+    }
+
+    @Override
+    int revengeSecondaryTargetVehicleId() {
+        return delegate.revengeSecondaryTargetVehicleId();
+    }
+
+    @Override
+    boolean cancelRevengeTarget(int vehicleId) {
+        if (!delegate.cancelRevengeTarget(vehicleId)) {
+            return false;
+        }
+        selectNextDelegate();
+        return true;
+    }
+
+    @Override
+    boolean allowsOffRoadOffenderStrike() {
+        return delegate.allowsOffRoadOffenderStrike();
     }
 
     @Override
@@ -375,37 +431,7 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
         }
     }
 
-    private boolean advanceTriggerTimeout(
-            boolean wasReady,
-            float timerDelta) {
-        if (cycleExecuted) {
-            triggerWaitTimer = 0f;
-            return false;
-        }
-        boolean waitingForTrigger =
-                slotType == RogueliteSlotType.POWERUP
-                        ? delegate.isReady()
-                        : slotType == RogueliteSlotType.REVENGE
-                                && delegate.isArmed();
-        if (!waitingForTrigger) {
-            triggerWaitTimer = 0f;
-            return false;
-        }
-        if (slotType == RogueliteSlotType.REVENGE || wasReady) {
-            triggerWaitTimer += Math.max(0f, timerDelta);
-        }
-        if (triggerWaitTimer < TRIGGER_TIMEOUT_SECONDS) {
-            return false;
-        }
-        selectNextDelegate(slotType == RogueliteSlotType.REVENGE);
-        return true;
-    }
-
     private void selectNextDelegate() {
-        selectNextDelegate(false);
-    }
-
-    private void selectNextDelegate(boolean preserveRevengeTrigger) {
         int candidateCount = candidates.size();
         int selectedIndex = random.nextInt(
                 previousCardId == null || candidateCount == 1
@@ -420,18 +446,8 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
         }
         previousCardId = selected;
         delegate = RogueliteEffectFactory.create(selected, cycleOffset);
+        delegate.onLoadedByRandomCard();
         cycleExecuted = false;
         executionSettleTimer = 0f;
-        triggerWaitTimer = 0f;
-        if (preserveRevengeTrigger && revengeTriggerVehicleId >= 0) {
-            boolean wasActive = delegate.isActive();
-            delegate.onHitBy(
-                    revengeTriggerVehicleId,
-                    revengeTriggerImpactStrength);
-            observeActivation(wasActive);
-        } else if (!preserveRevengeTrigger) {
-            revengeTriggerVehicleId = -1;
-            revengeTriggerImpactStrength = 0f;
-        }
     }
 }

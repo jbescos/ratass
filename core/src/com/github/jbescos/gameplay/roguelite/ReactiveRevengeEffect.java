@@ -1,17 +1,11 @@
 package com.github.jbescos.gameplay.roguelite;
 
 /** Timed retaliation effects armed by a qualified hit from another car. */
-final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
+final class ReactiveRevengeEffect extends RevengeUpgradeEffect {
     private static final float REVENGE_WINDOW_SECONDS = 12f;
-
-    private enum ActivationCondition {
-        COLLISION,
-        NEARBY_OPPONENT
-    }
 
     private final float durationSeconds;
     private final float accelerationBonus;
-    private final float maxSpeedBonus;
     private final float gripBonus;
     private final float steeringBonus;
     private final float recoilMultiplier;
@@ -20,22 +14,21 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
     private final float slipstreamStrengthMultiplier;
     private final float draftMagnetRangeMultiplier;
     private final float draftMagnetForceMultiplier;
-    private final ActivationCondition activationCondition;
     private final float activationProximity;
     private final boolean draftMagnet;
     private final boolean ramCharge;
-    private final boolean impactCounter;
 
     private float activeTimer;
     private float armedTimer;
+    private float effectMultiplier = 1f;
+    private boolean amplificationApplied;
 
     ReactiveRevengeEffect(RogueliteCardId cardId) {
-        super(cardId);
+        super(cardId, RevengeWorkflow.PROXIMITY);
         switch (cardId) {
             case DRAFT_MAGNET:
                 durationSeconds = 2f;
                 accelerationBonus = 0.12f;
-                maxSpeedBonus = 0.05f;
                 gripBonus = 0.05f;
                 steeringBonus = 0f;
                 recoilMultiplier = 1f;
@@ -44,34 +37,13 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
                 slipstreamStrengthMultiplier = 1.35f;
                 draftMagnetRangeMultiplier = 1f;
                 draftMagnetForceMultiplier = 1f;
-                activationCondition = ActivationCondition.NEARBY_OPPONENT;
                 activationProximity = 0.20f;
                 draftMagnet = true;
                 ramCharge = false;
-                impactCounter = false;
-                break;
-            case RAM_REACTOR:
-                durationSeconds = 0.7f;
-                accelerationBonus = 0f;
-                maxSpeedBonus = 0f;
-                gripBonus = 0f;
-                steeringBonus = 0f;
-                recoilMultiplier = 1f;
-                pushMultiplier = 1f;
-                slipstreamRangeMultiplier = 1f;
-                slipstreamStrengthMultiplier = 1f;
-                draftMagnetRangeMultiplier = 1f;
-                draftMagnetForceMultiplier = 1f;
-                activationCondition = ActivationCondition.COLLISION;
-                activationProximity = 0f;
-                draftMagnet = false;
-                ramCharge = false;
-                impactCounter = true;
                 break;
             case REPULSOR_SURGE:
                 durationSeconds = 2f;
                 accelerationBonus = 0.22f;
-                maxSpeedBonus = 0.08f;
                 gripBonus = 0.16f;
                 steeringBonus = 0.08f;
                 recoilMultiplier = 0.40f;
@@ -80,11 +52,24 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
                 slipstreamStrengthMultiplier = 1.20f;
                 draftMagnetRangeMultiplier = 1.75f;
                 draftMagnetForceMultiplier = 1.55f;
-                activationCondition = ActivationCondition.NEARBY_OPPONENT;
                 activationProximity = 0.16f;
                 draftMagnet = true;
                 ramCharge = false;
-                impactCounter = false;
+                break;
+            case REPULSOR_WAVE:
+                durationSeconds = 2f;
+                accelerationBonus = 0.17f;
+                gripBonus = 0.105f;
+                steeringBonus = 0.04f;
+                recoilMultiplier = 0.70f;
+                pushMultiplier = 1.175f;
+                slipstreamRangeMultiplier = 1.375f;
+                slipstreamStrengthMultiplier = 1.275f;
+                draftMagnetRangeMultiplier = 1.375f;
+                draftMagnetForceMultiplier = 1.275f;
+                activationProximity = 0.18f;
+                draftMagnet = true;
+                ramCharge = false;
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported revenge card: " + cardId);
@@ -98,8 +83,7 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
 
     @Override
     boolean isReady() {
-        return armedTimer > 0f
-                && activeTimer <= 0f;
+        return armedTimer > 0f && activeTimer <= 0f;
     }
 
     @Override
@@ -128,9 +112,7 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
             activeTimer = Math.max(0f, activeTimer - timerDelta);
             return;
         }
-        if (!impactCounter) {
-            armedTimer = Math.max(0f, armedTimer - timerDelta);
-        }
+        armedTimer = Math.max(0f, armedTimer - timerDelta);
         if (armedTimer > 0f
                 && shouldActivate(frame)) {
             activeTimer = durationSeconds;
@@ -139,53 +121,56 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
-    void onHitBy(int vehicleId, float impactStrength) {
-        if (vehicleId >= 0 && impactStrength > 0f && activeTimer <= 0f) {
-            armedTimer = REVENGE_WINDOW_SECONDS;
+    protected void prepareFromHit(int vehicleId, float impactStrength) {
+        armedTimer = REVENGE_WINDOW_SECONDS;
+        effectMultiplier = 1f;
+        amplificationApplied = false;
+    }
+
+    @Override
+    protected boolean isExecutionInProgress() {
+        return activeTimer > 0f;
+    }
+
+    @Override
+    void amplifyActiveRevenge(float multiplier) {
+        if (!isActive() || amplificationApplied) {
+            return;
         }
+        float safeMultiplier = sanitizeAmplifier(multiplier);
+        activeTimer *= safeMultiplier;
+        effectMultiplier = safeMultiplier;
+        amplificationApplied = true;
     }
 
     private boolean shouldActivate(RogueliteDrivingFrame frame) {
-        if (!frame.onRoad) {
-            return false;
-        }
-        switch (activationCondition) {
-            case COLLISION:
-                return false;
-            case NEARBY_OPPONENT:
-            default:
-                return frame.revengeNearbyOpponentProximity >= activationProximity;
-        }
+        return frame.onRoad
+                && frame.revengeNearbyOpponentProximity >= activationProximity;
     }
 
     @Override
     float accelerationBonus() {
-        return isActive() ? accelerationBonus : 0f;
-    }
-
-    @Override
-    float maxSpeedBonus() {
-        return isActive() ? maxSpeedBonus : 0f;
+        return isActive() ? accelerationBonus * effectMultiplier : 0f;
     }
 
     @Override
     float gripBonus(float slip) {
-        return isActive() ? gripBonus : 0f;
+        return isActive() ? gripBonus * effectMultiplier : 0f;
     }
 
     @Override
     float steeringBonus(float slip) {
-        return isActive() ? steeringBonus : 0f;
+        return isActive() ? steeringBonus * effectMultiplier : 0f;
     }
 
     @Override
     float frontCollisionRecoilMultiplier() {
-        return isActive() ? recoilMultiplier : 1f;
+        return isActive() ? amplifyDeviation(recoilMultiplier) : 1f;
     }
 
     @Override
     float frontCollisionPushMultiplier() {
-        return isActive() ? pushMultiplier : 1f;
+        return isActive() ? amplifyDeviation(pushMultiplier) : 1f;
     }
 
     @Override
@@ -195,22 +180,22 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
 
     @Override
     float draftMagnetRangeMultiplier() {
-        return isDraftMagnetActive() ? draftMagnetRangeMultiplier : 1f;
+        return isDraftMagnetActive() ? amplifyDeviation(draftMagnetRangeMultiplier) : 1f;
     }
 
     @Override
     float draftMagnetForceMultiplier() {
-        return isDraftMagnetActive() ? draftMagnetForceMultiplier : 1f;
+        return isDraftMagnetActive() ? amplifyDeviation(draftMagnetForceMultiplier) : 1f;
     }
 
     @Override
     float slipstreamRangeMultiplier() {
-        return isActive() ? slipstreamRangeMultiplier : 1f;
+        return isActive() ? amplifyDeviation(slipstreamRangeMultiplier) : 1f;
     }
 
     @Override
     float slipstreamStrengthMultiplier() {
-        return isActive() ? slipstreamStrengthMultiplier : 1f;
+        return isActive() ? amplifyDeviation(slipstreamStrengthMultiplier) : 1f;
     }
 
     @Override
@@ -225,17 +210,12 @@ final class ReactiveRevengeEffect extends RogueliteUpgradeEffect {
         }
     }
 
-    @Override
-    boolean isImpactCounterReady() {
-        return impactCounter && isReady();
+    private float amplifyDeviation(float value) {
+        return Math.max(0f, 1f + (value - 1f) * effectMultiplier);
     }
 
-    @Override
-    void consumeImpactCounter() {
-        if (!isImpactCounterReady()) {
-            return;
-        }
-        armedTimer = 0f;
-        activeTimer = durationSeconds;
+    private static float sanitizeAmplifier(float multiplier) {
+        return Float.isFinite(multiplier) ? Math.max(1f, multiplier) : 1f;
     }
+
 }

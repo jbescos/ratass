@@ -1,195 +1,19 @@
 package com.github.jbescos.gameplay.roguelite;
 
-/** Permanent race-performance tuning with distinct handling tradeoffs. */
+/** Permanent tuning limited to power, grip, aerodynamic efficiency, and mass. */
 final class TieredTuningEffect extends RogueliteUpgradeEffect {
     private final float accelerationBonus;
-    private final float maxSpeedBonus;
     private final float dragMultiplier;
     private final float massMultiplier;
     private final float gripBonus;
-    private final float slidingGripLoss;
-    private final float steeringBonus;
-    private final float slidingSteeringBonus;
-    private final float recoilMultiplier;
-    private final float pushMultiplier;
 
     TieredTuningEffect(RogueliteCardId cardId) {
         super(cardId);
-        float acceleration;
-        float speed;
-        float drag;
-        float mass;
-        float grip;
-        float slidingGrip = 0f;
-        float steering;
-        float slidingSteering = 0f;
-        float recoil;
-        float push;
-        switch (cardId) {
-            case CLUB_TUNE:
-                acceleration = 0.05f;
-                speed = 0.02f;
-                drag = 1f;
-                mass = 1f;
-                grip = 0.03f;
-                steering = 0.02f;
-                recoil = 1f;
-                push = 1f;
-                break;
-            case SPORT_TUNE:
-                acceleration = 0.08f;
-                speed = 0.03f;
-                drag = 1f;
-                mass = 0.98f;
-                grip = 0.03f;
-                steering = 0.04f;
-                recoil = 1f;
-                push = 1f;
-                break;
-            case AERO_TRIM:
-                acceleration = 0.07f;
-                speed = 0.07f;
-                drag = 0.92f;
-                mass = 1f;
-                grip = 0.03f;
-                steering = 0f;
-                recoil = 1f;
-                push = 1f;
-                break;
-            case SHORT_GEARING:
-                acceleration = 0.08f;
-                speed = -0.02f;
-                drag = 1f;
-                mass = 1f;
-                grip = 0.04f;
-                steering = 0.03f;
-                recoil = 0.98f;
-                push = 1.02f;
-                break;
-            case CARBON_PANELS:
-                acceleration = 0.08f;
-                speed = 0.03f;
-                drag = 0.96f;
-                mass = 0.94f;
-                grip = 0.03f;
-                steering = 0.03f;
-                recoil = 1f;
-                push = 1f;
-                break;
-            case RACE_TUNE:
-                acceleration = 0.18f;
-                speed = 0.08f;
-                drag = 0.96f;
-                mass = 1.03f;
-                grip = 0.11f;
-                steering = 0.04f;
-                recoil = 0.90f;
-                push = 1.09f;
-                break;
-            case HEAVYWEIGHT_TUNE:
-                acceleration = 0.20f;
-                speed = 0.08f;
-                drag = 0.96f;
-                mass = 1.10f;
-                grip = 0.10f;
-                steering = 0.04f;
-                recoil = 0.82f;
-                push = 1.18f;
-                break;
-            case LOW_DRAG_BODY:
-                acceleration = 0.21f;
-                speed = 0.11f;
-                drag = 0.88f;
-                mass = 1.04f;
-                grip = 0.10f;
-                steering = 0.03f;
-                recoil = 0.95f;
-                push = 1.03f;
-                break;
-            case DRIFT_DIFFERENTIAL:
-                acceleration = 0.24f;
-                speed = 0.11f;
-                drag = 0.94f;
-                mass = 1.06f;
-                grip = 0.13f;
-                slidingGrip = 0.03f;
-                steering = 0.04f;
-                recoil = 1f;
-                push = 1.08f;
-                break;
-            case CARBON_MONOCOQUE:
-                acceleration = 0.20f;
-                speed = 0.07f;
-                drag = 0.93f;
-                mass = 0.92f;
-                grip = 0.10f;
-                steering = 0.06f;
-                recoil = 1f;
-                push = 1f;
-                break;
-            case CHAMPIONSHIP_TUNE:
-                acceleration = 0.39f;
-                speed = 0.17f;
-                drag = 0.86f;
-                mass = 1.07f;
-                grip = 0.18f;
-                steering = 0.05f;
-                recoil = 0.76f;
-                push = 1.25f;
-                break;
-            case GROUND_EFFECT:
-                acceleration = 0.40f;
-                speed = 0.17f;
-                drag = 0.93f;
-                mass = 1.09f;
-                grip = 0.18f;
-                steering = 0.05f;
-                recoil = 0.70f;
-                push = 1.20f;
-                break;
-            case VELOCITY_SHELL:
-                acceleration = 0.62f;
-                speed = 0.28f;
-                drag = 0.72f;
-                mass = 1.08f;
-                grip = 0.17f;
-                steering = 0.04f;
-                recoil = 0.90f;
-                push = 1.10f;
-                break;
-            case TORQUE_VECTORING:
-                acceleration = 0.44f;
-                speed = 0.18f;
-                drag = 0.90f;
-                mass = 1.04f;
-                grip = 0.17f;
-                steering = 0.09f;
-                recoil = 0.80f;
-                push = 1.18f;
-                break;
-            case GRAPHENE_CHASSIS:
-                acceleration = 0.48f;
-                speed = 0.22f;
-                drag = 0.80f;
-                mass = 0.84f;
-                grip = 0.19f;
-                steering = 0.12f;
-                recoil = 1f;
-                push = 1f;
-                break;
-            default:
-                throw new IllegalArgumentException("Unsupported tuning card: " + cardId);
-        }
-        accelerationBonus = acceleration;
-        maxSpeedBonus = speed;
-        dragMultiplier = drag;
-        massMultiplier = mass;
-        gripBonus = grip;
-        slidingGripLoss = slidingGrip;
-        steeringBonus = steering;
-        slidingSteeringBonus = slidingSteering;
-        recoilMultiplier = recoil;
-        pushMultiplier = push;
+        TuningSetup setup = setup(cardId);
+        accelerationBonus = setup.powerBonus;
+        dragMultiplier = 1f / (1f + setup.aeroBonus);
+        massMultiplier = setup.massMultiplier;
+        gripBonus = setup.gripBonus;
     }
 
     @Override
@@ -203,8 +27,8 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
-    float maxSpeedBonus() {
-        return maxSpeedBonus;
+    float driveForceLimitMultiplier() {
+        return (1f + accelerationBonus) / massMultiplier;
     }
 
     @Override
@@ -219,26 +43,116 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
 
     @Override
     float gripBonus(float slip) {
-        return gripBonus - slidingGripLoss * slideProgress(slip);
+        return gripBonus;
     }
 
-    @Override
-    float steeringBonus(float slip) {
-        return steeringBonus + slidingSteeringBonus * slideProgress(slip);
+    private static TuningSetup setup(RogueliteCardId cardId) {
+        switch (cardId) {
+            // Tier 1: two benefits and one drawback.
+            case CLUB_TUNE:
+                return tuning(0.07f, 0.03f, -0.08f, 1f);
+            case SPORT_TUNE:
+                return tuning(0.10f, 0.04f, 0f, 1.08f);
+            case AERO_TRIM:
+                return tuning(0.12f, -0.02f, 0.14f, 1f);
+            case SHORT_GEARING:
+                return tuning(0.13f, 0f, 0.13f, 1.05f);
+            case CARBON_PANELS:
+                return tuning(0.10f, -0.03f, 0f, 0.96f);
+            case FEATHERWEIGHT_DRIVE:
+                return tuning(0.07f, 0f, -0.08f, 0.97f);
+            case TRACK_WING:
+                return tuning(-0.03f, 0.06f, 0.15f, 1f);
+            case GROUNDED_AERO:
+                return tuning(0f, 0.06f, 0.18f, 1.02f);
+            case LIGHT_COMPOUND:
+                return tuning(-0.04f, 0.05f, 0f, 0.92f);
+            case AGILE_CHASSIS:
+                return tuning(0f, 0.05f, -0.07f, 0.96f);
+            case STREAMLINED_CHASSIS:
+                return tuning(-0.03f, 0f, 0.18f, 0.90f);
+            case LOW_DRAG_FEATHERWEIGHT:
+                return tuning(0f, -0.02f, 0.18f, 0.90f);
+
+            // Tier 2: the same combinations with stronger benefits.
+            case RACE_TUNE:
+                return tuning(0.14f, 0.05f, -0.08f, 1f);
+            case HEAVYWEIGHT_TUNE:
+                return tuning(0.16f, 0.06f, 0f, 1.06f);
+            case LOW_DRAG_BODY:
+                return tuning(0.22f, -0.03f, 0.20f, 1f);
+            case DRIFT_DIFFERENTIAL:
+                return tuning(0.22f, 0f, 0.24f, 1.05f);
+            case CARBON_MONOCOQUE:
+                return tuning(0.15f, -0.03f, 0f, 0.92f);
+            case TITANIUM_DRIVE:
+                return tuning(0.14f, 0f, -0.05f, 0.96f);
+            case DOWNFORCE_PACKAGE:
+                return tuning(-0.03f, 0.12f, 0.30f, 1f);
+            case GROUNDED_DOWNFORCE:
+                return tuning(0f, 0.12f, 0.30f, 1.03f);
+            case MAGNESIUM_SUSPENSION:
+                return tuning(-0.05f, 0.08f, 0f, 0.90f);
+            case AERO_AGILE_CHASSIS:
+                return tuning(0f, 0.07f, -0.05f, 0.92f);
+            case CARBON_LONGTAIL:
+                return tuning(-0.04f, 0f, 0.32f, 0.82f);
+            case VENTURI_MONOCOQUE:
+                return tuning(0f, -0.02f, 0.32f, 0.82f);
+
+            // Tier 3: two benefits and no drawback. Each attribute pair has two biases.
+            case CHAMPIONSHIP_TUNE:
+                return tuning(0.18f, 0f, 0.42f, 1f);
+            case GROUND_EFFECT:
+                return tuning(0f, 0.13f, 0.28f, 1f);
+            case VELOCITY_SHELL:
+                return tuning(0.14f, 0.04f, 0f, 1f);
+            case TORQUE_VECTORING:
+                return tuning(0.10f, 0.07f, 0f, 1f);
+            case GRAPHENE_CHASSIS:
+                return tuning(0f, 0.11f, 0f, 0.94f);
+            case TITANIUM_SKELETON:
+                return tuning(0.16f, 0f, 0f, 0.96f);
+            case HYPERCAR_CORE:
+                return tuning(0.22f, 0f, 0.24f, 1f);
+            case ACTIVE_AERO_SHELL:
+                return tuning(0f, 0f, 0.58f, 0.84f);
+            case CARBON_PROTOTYPE:
+                return tuning(0.07f, 0f, 0f, 0.90f);
+            case TRACK_VACUUM:
+                return tuning(0f, 0.12f, 0.44f, 1f);
+            case WING_CAR:
+                return tuning(0f, 0f, 0.24f, 0.82f);
+            case FEATHERWEIGHT_GROUND_EFFECT:
+                return tuning(0f, 0.07f, 0f, 0.90f);
+            default:
+                throw new IllegalArgumentException("Unsupported tuning card: " + cardId);
+        }
     }
 
-    @Override
-    float frontCollisionRecoilMultiplier() {
-        return recoilMultiplier;
+    private static TuningSetup tuning(
+            float powerBonus,
+            float gripBonus,
+            float aeroBonus,
+            float massMultiplier) {
+        return new TuningSetup(powerBonus, gripBonus, aeroBonus, massMultiplier);
     }
 
-    @Override
-    float frontCollisionPushMultiplier() {
-        return pushMultiplier;
-    }
+    private static final class TuningSetup {
+        private final float powerBonus;
+        private final float gripBonus;
+        private final float aeroBonus;
+        private final float massMultiplier;
 
-    private static float slideProgress(float slip) {
-        float slide = RogueliteEffectMath.clamp((slip - 0.34f) / 0.16f, 0f, 1f);
-        return slide * slide * (3f - 2f * slide);
+        private TuningSetup(
+                float powerBonus,
+                float gripBonus,
+                float aeroBonus,
+                float massMultiplier) {
+            this.powerBonus = powerBonus;
+            this.gripBonus = gripBonus;
+            this.aeroBonus = aeroBonus;
+            this.massMultiplier = massMultiplier;
+        }
     }
 }

@@ -2,6 +2,8 @@ package com.github.jbescos.gameplay.roguelite;
 
 /** Calculates deterministic movement for a Vendetta Hook pull. */
 public final class VendettaHookPull {
+    public static final float DURATION_SECONDS = 1f;
+
     private VendettaHookPull() {
     }
 

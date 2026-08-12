@@ -6,8 +6,6 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 public final class AbilityActivationVisual {
     private RogueliteCardId activeCardId;
     private float activeAge;
-    private boolean impactCounterReady;
-    private float impactCounterReadyAge;
     private boolean revengeArmed;
     private float revengeArmedAge;
     private boolean techniqueActive;
@@ -18,8 +16,6 @@ public final class AbilityActivationVisual {
     public void reset() {
         activeCardId = null;
         activeAge = 0f;
-        impactCounterReady = false;
-        impactCounterReadyAge = 0f;
         revengeArmed = false;
         revengeArmedAge = 0f;
         techniqueActive = false;
@@ -29,29 +25,16 @@ public final class AbilityActivationVisual {
     }
 
     public void update(float deltaSeconds, RogueliteCardId currentActiveCardId) {
-        update(deltaSeconds, currentActiveCardId, false);
+        update(deltaSeconds, currentActiveCardId, false, false, false);
     }
 
     public void update(
             float deltaSeconds,
             RogueliteCardId currentActiveCardId,
-            boolean currentImpactCounterReady) {
-        update(
-                deltaSeconds,
-                currentActiveCardId,
-                currentImpactCounterReady,
-                currentImpactCounterReady);
-    }
-
-    public void update(
-            float deltaSeconds,
-            RogueliteCardId currentActiveCardId,
-            boolean currentImpactCounterReady,
             boolean currentRevengeArmed) {
         update(
                 deltaSeconds,
                 currentActiveCardId,
-                currentImpactCounterReady,
                 currentRevengeArmed,
                 false,
                 false);
@@ -60,17 +43,10 @@ public final class AbilityActivationVisual {
     public void update(
             float deltaSeconds,
             RogueliteCardId currentActiveCardId,
-            boolean currentImpactCounterReady,
             boolean currentRevengeArmed,
             boolean currentTechniqueActive,
             boolean currentPowerupActive) {
         float delta = sanitizeDelta(deltaSeconds);
-        if (currentImpactCounterReady != impactCounterReady) {
-            impactCounterReady = currentImpactCounterReady;
-            impactCounterReadyAge = 0f;
-        } else if (impactCounterReady) {
-            impactCounterReadyAge += delta;
-        }
         if (currentRevengeArmed != revengeArmed) {
             revengeArmed = currentRevengeArmed;
             revengeArmedAge = 0f;
@@ -110,7 +86,8 @@ public final class AbilityActivationVisual {
     public boolean hasCarCenteredEffect() {
         return activeCardId != null
                 && activeCardId != RogueliteCardId.DRAFT_VENDETTA
-                && activeCardId != RogueliteCardId.TAR_TETHER;
+                && activeCardId != RogueliteCardId.TAR_TETHER
+                && activeCardId != RogueliteCardId.EMP_SNARE;
     }
 
     public float getPulse() {
@@ -121,16 +98,6 @@ public final class AbilityActivationVisual {
 
     public float getActivationFlash() {
         return isActive() ? Math.max(0f, 1f - activeAge / 0.42f) : 0f;
-    }
-
-    public boolean isImpactCounterReady() {
-        return impactCounterReady;
-    }
-
-    public float getImpactCounterPulse() {
-        return impactCounterReady
-                ? 0.5f + 0.5f * (float) Math.sin(impactCounterReadyAge * 7.5f)
-                : 0f;
     }
 
     public boolean isRevengeArmed() {

@@ -13,10 +13,11 @@ public final class BuildAbilityEffectAtlas {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 7) {
+        if (args.length < 7) {
             throw new IllegalArgumentException(
                     "Usage: BuildAbilityEffectAtlas <source> <output>"
-                            + " <crop-x> <crop-y> <crop-width> <crop-height> <columns>");
+                            + " <crop-x> <crop-y> <crop-width> <crop-height> <columns>"
+                            + " [transparent-extra.png ...]");
         }
 
         File sourceFile = new File(args[0]);
@@ -26,13 +27,14 @@ public final class BuildAbilityEffectAtlas {
         int cropWidth = Integer.parseInt(args[4]);
         int cropHeight = Integer.parseInt(args[5]);
         int columns = Integer.parseInt(args[6]);
+        int extraColumns = args.length - 7;
 
         BufferedImage source = ImageIO.read(sourceFile);
         validateCrop(source, cropX, cropY, cropWidth, cropHeight, columns);
 
         BufferedImage output =
                 new BufferedImage(
-                        OUTPUT_CELL_SIZE * columns,
+                        OUTPUT_CELL_SIZE * (columns + extraColumns),
                         OUTPUT_CELL_SIZE,
                         BufferedImage.TYPE_INT_ARGB);
         for (int column = 0; column < columns; column++) {
@@ -67,6 +69,34 @@ public final class BuildAbilityEffectAtlas {
 
             removeGreenScreen(scaled, output, column * OUTPUT_CELL_SIZE);
         }
+
+        Graphics2D extraGraphics = output.createGraphics();
+        extraGraphics.setRenderingHint(
+                RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        extraGraphics.setRenderingHint(
+                RenderingHints.KEY_RENDERING,
+                RenderingHints.VALUE_RENDER_QUALITY);
+        for (int extra = 0; extra < extraColumns; extra++) {
+            BufferedImage image = ImageIO.read(new File(args[7 + extra]));
+            if (image == null) {
+                throw new IllegalArgumentException(
+                        "Transparent extra is not a readable image: " + args[7 + extra]);
+            }
+            int targetX = (columns + extra) * OUTPUT_CELL_SIZE;
+            extraGraphics.drawImage(
+                    image,
+                    targetX,
+                    0,
+                    targetX + OUTPUT_CELL_SIZE,
+                    OUTPUT_CELL_SIZE,
+                    0,
+                    0,
+                    image.getWidth(),
+                    image.getHeight(),
+                    null);
+        }
+        extraGraphics.dispose();
 
         File parent = outputFile.getParentFile();
         if (parent != null) {

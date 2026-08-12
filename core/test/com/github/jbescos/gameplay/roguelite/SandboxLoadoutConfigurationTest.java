@@ -95,7 +95,7 @@ public final class SandboxLoadoutConfigurationTest {
                         findCard(configuration, RogueliteCardId.CLUB_TUNE)));
         assertTrue(
                 configuration.select(
-                        findCard(configuration, RogueliteCardId.CORNER_EXIT)));
+                        findCard(configuration, RogueliteCardId.CORNER_FOCUS)));
         assertTrue(
                 configuration.select(
                         findCard(configuration, RogueliteCardId.NITRO_PULSE)));
@@ -105,6 +105,58 @@ public final class SandboxLoadoutConfigurationTest {
 
         assertTrue(configuration.getLoadout().isFull());
         assertEquals(4, configuration.getLoadout().getModifications().size());
+    }
+
+    @Test
+    public void selectionOnlyChangesTheTargetVehicleLoadout() {
+        SandboxLoadoutConfiguration configuration =
+                new SandboxLoadoutConfiguration(DriverProfileCatalog.fallback());
+        RogueliteCardOffer clubTune =
+                findCard(configuration, RogueliteCardId.CLUB_TUNE);
+
+        assertTrue(configuration.select(2, clubTune));
+        assertEquals(
+                RogueliteCardId.CLUB_TUNE,
+                configuration.getLoadout(2).get(RogueliteSlotType.TUNING));
+        assertNull(configuration.getLoadout(0).get(RogueliteSlotType.TUNING));
+        assertNull(configuration.getLoadout(1).get(RogueliteSlotType.TUNING));
+        assertTrue(configuration.isEquipped(2, clubTune));
+        assertFalse(configuration.isEquipped(0, clubTune));
+    }
+
+    @Test
+    public void propagationCopiesTheSourceLoadoutWithoutSharingMutableState() {
+        DriverProfileCatalog drivers = DriverProfileCatalog.fallback();
+        SandboxLoadoutConfiguration configuration =
+                new SandboxLoadoutConfiguration(drivers);
+        DriverProfileMetadata fastest = drivers.all().get(0);
+        RogueliteCardOffer fastestDriver =
+                findDriver(configuration, fastest.getProfileId());
+        RogueliteCardOffer clubTune =
+                findCard(configuration, RogueliteCardId.CLUB_TUNE);
+        RogueliteCardOffer sportTune =
+                findCard(configuration, RogueliteCardId.SPORT_TUNE);
+
+        assertTrue(configuration.select(2, fastestDriver));
+        assertTrue(configuration.select(2, clubTune));
+        configuration.propagateLoadout(2, 4);
+
+        for (int vehicleId = 0; vehicleId < 4; vehicleId++) {
+            assertEquals(
+                    fastest.getProfileId(),
+                    configuration.getLoadout(vehicleId).getDriverProfileId());
+            assertEquals(
+                    RogueliteCardId.CLUB_TUNE,
+                    configuration.getLoadout(vehicleId).get(RogueliteSlotType.TUNING));
+        }
+
+        assertTrue(configuration.select(1, sportTune));
+        assertEquals(
+                RogueliteCardId.SPORT_TUNE,
+                configuration.getLoadout(1).get(RogueliteSlotType.TUNING));
+        assertEquals(
+                RogueliteCardId.CLUB_TUNE,
+                configuration.getLoadout(2).get(RogueliteSlotType.TUNING));
     }
 
     private static RogueliteCardOffer findDriver(

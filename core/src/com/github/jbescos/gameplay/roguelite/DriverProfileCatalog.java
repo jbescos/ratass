@@ -100,6 +100,10 @@ public final class DriverProfileCatalog {
         return profiles.get(profiles.size() - 1);
     }
 
+    public DriverProfileMetadata getBest() {
+        return profiles.get(0);
+    }
+
     public int getTier(String profileId) {
         for (int i = 0; i < profiles.size(); i++) {
             if (profiles.get(i).getProfileId().equals(profileId)) {

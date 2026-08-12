@@ -41,4 +41,20 @@ public class VoidAnchorVisualTest {
         visual.start(Float.NaN);
         assertFalse(visual.isActive());
     }
+
+    @Test
+    public void persistentAnchorAppearsAfterTheProjectileLands() {
+        VoidAnchorVisual visual = new VoidAnchorVisual();
+
+        visual.start(3f, RevengeProjectileVisual.PROJECTILE_DURATION_SECONDS);
+        visual.update(RevengeProjectileVisual.PROJECTILE_DURATION_SECONDS - 0.01f);
+        assertTrue(visual.isActive());
+        assertFalse(visual.isVisible());
+        assertEquals(0f, visual.getDeployment(), EPSILON);
+
+        visual.update(0.01f);
+        assertTrue(visual.isVisible());
+        visual.update(0.18f);
+        assertEquals(1f, visual.getDeployment(), EPSILON);
+    }
 }

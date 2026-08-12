@@ -4,8 +4,13 @@ package com.github.jbescos.presentation;
 public final class VoidAnchorVisual {
     private float remainingSeconds;
     private float activeAge;
+    private float appearanceDelaySeconds;
 
     public void start(float durationSeconds) {
+        start(durationSeconds, 0f);
+    }
+
+    public void start(float durationSeconds, float appearanceDelaySeconds) {
         float duration = sanitizeDuration(durationSeconds);
         if (duration <= 0f) {
             reset();
@@ -13,6 +18,9 @@ public final class VoidAnchorVisual {
         }
         remainingSeconds = duration;
         activeAge = 0f;
+        this.appearanceDelaySeconds = Math.min(
+                duration,
+                sanitizeDuration(appearanceDelaySeconds));
     }
 
     public void update(float deltaSeconds) {
@@ -27,19 +35,29 @@ public final class VoidAnchorVisual {
     public void reset() {
         remainingSeconds = 0f;
         activeAge = 0f;
+        appearanceDelaySeconds = 0f;
     }
 
     public boolean isActive() {
         return remainingSeconds > 0f;
     }
 
+    public boolean isVisible() {
+        return isActive() && activeAge >= appearanceDelaySeconds;
+    }
+
     public float getDeployment() {
-        return isActive() ? Math.min(1f, activeAge / 0.18f) : 0f;
+        return isVisible()
+                ? Math.min(1f, (activeAge - appearanceDelaySeconds) / 0.18f)
+                : 0f;
     }
 
     public float getPulse() {
-        return isActive()
-                ? 0.5f + 0.5f * (float) Math.sin(activeAge * 8f)
+        return isVisible()
+                ? 0.5f
+                        + 0.5f
+                                * (float) Math.sin(
+                                        (activeAge - appearanceDelaySeconds) * 8f)
                 : 0f;
     }
 

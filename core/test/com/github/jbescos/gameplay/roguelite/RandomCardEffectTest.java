@@ -64,6 +64,36 @@ public class RandomCardEffectTest {
     }
 
     @Test
+    public void randomPowerupDelegatesTemporaryBestDriverControl() {
+        RandomCardEffect effect = effectPreparedAs(
+                RogueliteCardId.LUCKY_SPARK,
+                RogueliteCardId.ACE_HOTLINE);
+        RogueliteDrivingFrame frame = straightDrivingFrame();
+
+        for (int step = 0; step < 250 && !effect.usesBestDriver(); step++) {
+            effect.advance(0.1f, 0.1f, frame);
+        }
+
+        assertTrue(effect.usesBestDriver());
+        assertEquals(RogueliteCardId.ACE_HOTLINE, effect.activeDisplayCardId());
+    }
+
+    @Test
+    public void randomPowerupDelegatesTimeDilation() {
+        RandomCardEffect effect = effectPreparedAs(
+                RogueliteCardId.LUCKY_SPARK,
+                RogueliteCardId.TIME_RIPPLE);
+        RogueliteDrivingFrame frame = straightDrivingFrame();
+
+        for (int step = 0; step < 700 && !effect.acceleratesOwnDecisions(); step++) {
+            effect.advance(0.1f, 0.1f, frame);
+        }
+
+        assertTrue(effect.acceleratesOwnDecisions());
+        assertEquals(RogueliteCardId.TIME_RIPPLE, effect.activeDisplayCardId());
+    }
+
+    @Test
     public void revengeKeepsItsPreparedCardUntilItsStrikeExecutesThenRerolls() {
         RandomCardEffect effect = effectPreparedAs(
                 RogueliteCardId.CHAOS_RETORT,
@@ -119,69 +149,133 @@ public class RandomCardEffectTest {
     }
 
     @Test
-    public void powerupWildcardsRerollAfterTenReadySecondsWithoutATrigger() {
-        assertBlockedPowerupTimesOut(
+    public void powerupWildcardsKeepLoadedConditionalCardsUntilTheyExecute() {
+        assertBlockedPowerupWaitsForTrigger(
                 RogueliteCardId.LUCKY_SPARK,
                 RogueliteCardId.MIRROR_DUO);
-        assertBlockedPowerupTimesOut(
+        assertBlockedPowerupWaitsForTrigger(
                 RogueliteCardId.CHAOS_RELAY,
                 RogueliteCardId.MIRROR_TRIO);
-        assertBlockedPowerupTimesOut(
+        assertBlockedPowerupWaitsForTrigger(
                 RogueliteCardId.WILDCARD_CORE,
                 RogueliteCardId.OVERDRIVE_COIL);
     }
 
     @Test
-    public void revengeWildcardsRerollAfterTenArmedSecondsAndKeepTheOffender() {
+    public void revengeWildcardsKeepTheLoadedCardWhileItWaitsToExecute() {
         RandomCardEffect effect = effectPreparedAs(
                 RogueliteCardId.FATES_REVENGE,
                 RogueliteCardId.CROWN_ENGINE);
         RogueliteCardId firstCard = effect.preparedCardId();
 
         effect.onHitBy(42, 12f);
-        effect.advance(9.9f, 9.9f, straightWithoutTrafficFrame());
-        assertEquals(firstCard, effect.preparedCardId());
-        effect.advance(0.2f, 0.2f, straightWithoutTrafficFrame());
+        effect.advance(20f, 20f, straightWithoutTrafficFrame());
 
-        assertNotEquals(firstCard, effect.preparedCardId());
-        assertTrue(effect.isArmed() || effect.isActive());
+        assertEquals(firstCard, effect.preparedCardId());
+        assertEquals(firstCard, effect.loadedDisplayCardId());
+        assertEquals(42, effect.revengeTargetVehicleId());
+        assertTrue(effect.isArmed());
     }
 
     @Test
-    public void randomCrownBreakerExecutesOnlyWhenItHitsItsOffender() {
+    public void randomCrownBreakerExecutesWhenItGetsCloseToItsOffender() {
         RandomCardEffect effect = effectPreparedAs(
                 RogueliteCardId.FATES_REVENGE,
                 RogueliteCardId.CROWN_ENGINE);
         effect.onHitBy(42, 12f);
 
         assertEquals(30f, effect.activeTimeRemainingSeconds(), 0.0001f);
-        assertNull(effect.tryActivateOffenderStrike(42, 0.5f, true));
-        RogueliteRevengeStrike strike = effect.tryActivateOffenderHit(42);
+        assertNull(effect.tryActivateOffenderStrike(
+                42,
+                CrownBreakerRevengeEffect.RAM_TRIGGER_DISTANCE + 0.01f,
+                true));
+        assertNull(effect.tryActivateOffenderStrike(
+                42,
+                CrownBreakerRevengeEffect.RAM_TRIGGER_DISTANCE,
+                true));
+        effect.advance(2.9f, 2.9f, straightDrivingFrame());
+        assertNull(effect.tryActivateOffenderStrike(
+                42,
+                CrownBreakerRevengeEffect.RAM_TRIGGER_DISTANCE,
+                true));
+        effect.advance(0.2f, 0.2f, straightDrivingFrame());
+        RogueliteRevengeStrike strike = effect.tryActivateOffenderStrike(
+                42,
+                CrownBreakerRevengeEffect.RAM_TRIGGER_DISTANCE,
+                true);
 
         assertNotNull(strike);
         assertTrue(effect.isActive());
         assertEquals(RogueliteCardId.CROWN_ENGINE, effect.activeDisplayCardId());
     }
 
-    private static void assertBlockedPowerupTimesOut(
+    @Test
+    public void randomPowerupDelegatesThePreparedRevengeAmplifier() {
+        RandomCardEffect effect = effectPreparedAs(
+                RogueliteCardId.CHAOS_RELAY,
+                RogueliteCardId.VENGEANCE_CORE);
+
+        assertEquals(1.50f, effect.revengeEffectMultiplier(), 0.0001f);
+        effect.onRevengeActivated(4f);
+        assertTrue(effect.isActive());
+        assertEquals(RogueliteCardId.VENGEANCE_CORE, effect.activeDisplayCardId());
+    }
+
+    @Test
+    public void randomRevengeRetargetsTheLatestHitWhileWaitingToExecute() {
+        RandomCardEffect effect = effectPreparedAs(
+                RogueliteCardId.FATES_REVENGE,
+                RogueliteCardId.CROWN_ENGINE);
+        RogueliteCardId loadedCardId = effect.preparedCardId();
+
+        effect.onHitBy(42, 12f);
+        effect.onHitBy(7, 20f);
+        assertEquals(7, effect.revengeTargetVehicleId());
+
+        effect.advance(10.1f, 10.1f, straightWithoutTrafficFrame());
+
+        assertEquals(loadedCardId, effect.preparedCardId());
+        assertTrue(effect.isArmed());
+        assertEquals(7, effect.revengeTargetVehicleId());
+    }
+
+    @Test
+    public void cancellingRandomRevengeDropsItsStoredTrigger() {
+        RandomCardEffect effect = effectPreparedAs(
+                RogueliteCardId.CHAOS_RETORT,
+                RogueliteCardId.EMP_SNARE);
+        effect.onHitBy(42, 12f);
+
+        assertTrue(effect.cancelRevengeTarget(42));
+
+        assertFalse(effect.isArmed());
+        assertEquals(-1, effect.revengeTargetVehicleId());
+    }
+
+    private static void assertBlockedPowerupWaitsForTrigger(
             RogueliteCardId wildcardId,
             RogueliteCardId blockedCandidateId) {
         RandomCardEffect effect = effectPreparedAs(wildcardId, blockedCandidateId);
+        assertEquals(
+                MirrorPowerupSpec.COOLDOWN_SECONDS,
+                effect.cooldownTimeRemainingSeconds(),
+                0.0001f);
         RogueliteDrivingFrame noTraffic = straightWithoutTrafficFrame();
-        for (int step = 0; step < 200 && !effect.isReady(); step++) {
+        for (int step = 0; step < 700 && !effect.isReady(); step++) {
             effect.advance(0.1f, 0.1f, noTraffic);
         }
         assertTrue(wildcardId + " never became ready", effect.isReady());
         RogueliteCardId firstCard = effect.preparedCardId();
 
-        effect.advance(9.9f, 9.9f, noTraffic);
-        assertEquals(firstCard, effect.preparedCardId());
-        effect.advance(0.2f, 0.2f, noTraffic);
+        effect.advance(30f, 30f, noTraffic);
 
-        assertNotEquals(firstCard, effect.preparedCardId());
-        assertEquals(
-                RogueliteCardCatalog.get(wildcardId).getTier(),
-                RogueliteCardCatalog.get(effect.preparedCardId()).getTier());
+        assertEquals(firstCard, effect.preparedCardId());
+        assertEquals(firstCard, effect.loadedDisplayCardId());
+        assertTrue(effect.isReady());
+
+        effect.advance(0.1f, 0.1f, straightDrivingFrame());
+        assertTrue(blockedCandidateId + " did not execute once its condition was met",
+                effect.isActive());
     }
 
     private static void assertEveryPowerupCandidateExecutes(
@@ -193,7 +287,13 @@ public class RandomCardEffectTest {
             RandomCardEffect effect = effectPreparedAs(wildcardId, candidateId);
             RogueliteCardId firstCard = effect.preparedCardId();
 
-            for (int step = 0; step < 200 && !effect.isActive(); step++) {
+            if (candidateId == RogueliteCardId.GRUDGE_SPARK
+                    || candidateId == RogueliteCardId.VENGEANCE_CORE
+                    || candidateId == RogueliteCardId.NEMESIS_ENGINE) {
+                effect.onRevengeActivated(2f);
+            }
+
+            for (int step = 0; step < 1000 && !effect.isActive(); step++) {
                 effect.advance(
                         0.1f,
                         0.1f,
@@ -228,6 +328,7 @@ public class RandomCardEffectTest {
             RogueliteCardId candidateId) {
         switch (candidateId) {
             case DRAFT_MAGNET:
+            case REPULSOR_WAVE:
             case REPULSOR_SURGE:
                 effect.advance(0.1f, 0.1f, straightDrivingFrame());
                 assertTrue(candidateId + " did not activate", effect.isActive());
@@ -235,19 +336,42 @@ public class RandomCardEffectTest {
                         candidateId + " did not expose its mechanic",
                         effect.isDraftMagnetActive());
                 return;
-            case RAM_REACTOR:
-                assertTrue(candidateId + " did not become ready", effect.isImpactCounterReady());
-                effect.consumeImpactCounter();
-                assertTrue(candidateId + " did not execute", effect.isActive());
-                return;
             case RECOVERY_BEACON:
             case PAYBACK_SHIELD:
+            case TRIAD_COUP:
+                effect.setRevengeSecondaryTargetVehicleId(7);
                 effect.advance(3.1f, 3.1f, straightDrivingFrame());
                 break;
             case CROWN_ENGINE:
-                RogueliteRevengeStrike crownStrike = effect.tryActivateOffenderHit(42);
-                assertNotNull(candidateId + " did not execute its return hit", crownStrike);
+                effect.advance(
+                        CrownBreakerRevengeEffect.PREPARATION_SECONDS,
+                        CrownBreakerRevengeEffect.PREPARATION_SECONDS,
+                        straightDrivingFrame());
+                RogueliteRevengeStrike crownStrike = effect.tryActivateOffenderStrike(
+                        42,
+                        CrownBreakerRevengeEffect.RAM_TRIGGER_DISTANCE,
+                        true);
+                assertNotNull(candidateId + " did not execute its proximity ram", crownStrike);
                 assertEquals(candidateId, crownStrike.getCardId());
+                return;
+            case HUNTER_BARRAGE:
+            case HUNTER_STORM:
+                int shotCount = candidateId == RogueliteCardId.HUNTER_STORM
+                        ? HunterBarrageRevengeEffect.STORM_SHOT_COUNT
+                        : HunterBarrageRevengeEffect.SHOT_COUNT;
+                float shotInterval = candidateId == RogueliteCardId.HUNTER_STORM
+                        ? HunterBarrageRevengeEffect.STORM_SHOT_INTERVAL_SECONDS
+                        : HunterBarrageRevengeEffect.SHOT_INTERVAL_SECONDS;
+                for (int shot = 1; shot <= shotCount; shot++) {
+                    effect.advance(shotInterval, shotInterval, straightDrivingFrame());
+                    RogueliteRevengeStrike barrageStrike =
+                            effect.tryActivateOffenderStrike(42, 1000f, false);
+                    assertNotNull(candidateId + " missed shot " + shot, barrageStrike);
+                    assertEquals(
+                            RogueliteRevengeStrike.Action.PUSH_SHOT,
+                            barrageStrike.getAction());
+                    assertEquals(shot, barrageStrike.getStrikeIndex());
+                }
                 return;
             default:
                 break;

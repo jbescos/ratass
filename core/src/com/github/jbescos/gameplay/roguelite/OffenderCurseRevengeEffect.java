@@ -1,25 +1,28 @@
 package com.github.jbescos.gameplay.roguelite;
 
-/** Arms a collision-terminated blindness and handling curse against the exact offender. */
-final class OffenderCurseRevengeEffect extends RogueliteUpgradeEffect {
+/** Arms a timed blindness and performance curse against the exact offender. */
+final class OffenderCurseRevengeEffect extends RevengeUpgradeEffect {
     private final float offenderMassMultiplier;
-    private final float offenderGripMultiplier;
-    private int offenderVehicleId = -1;
+    private final float offenderPerformanceMultiplier;
+    private final float durationSeconds;
 
     OffenderCurseRevengeEffect(RogueliteCardId cardId) {
-        super(cardId);
+        super(cardId, RevengeWorkflow.TARGET_IMMEDIATE);
         switch (cardId) {
             case SENSOR_JAMMER:
                 offenderMassMultiplier = 1.05f;
-                offenderGripMultiplier = 1f;
+                offenderPerformanceMultiplier = 0.95f;
+                durationSeconds = 20f;
                 break;
             case GRID_BLACKOUT:
-                offenderMassMultiplier = 1.20f;
-                offenderGripMultiplier = 1f;
+                offenderMassMultiplier = 1.10f;
+                offenderPerformanceMultiplier = 0.90f;
+                durationSeconds = 30f;
                 break;
             case TOTAL_BLACKOUT:
-                offenderMassMultiplier = 1.50f;
-                offenderGripMultiplier = 0.80f;
+                offenderMassMultiplier = 1.20f;
+                offenderPerformanceMultiplier = 0.80f;
+                durationSeconds = 40f;
                 break;
             default:
                 throw new IllegalArgumentException(
@@ -29,12 +32,12 @@ final class OffenderCurseRevengeEffect extends RogueliteUpgradeEffect {
 
     @Override
     boolean isReady() {
-        return offenderVehicleId >= 0;
+        return hasTarget();
     }
 
     @Override
     boolean isArmed() {
-        return offenderVehicleId >= 0;
+        return hasTarget();
     }
 
     @Override
@@ -48,15 +51,7 @@ final class OffenderCurseRevengeEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
-    void onHitBy(int vehicleId, float impactStrength) {
-        if (vehicleId >= 0 && impactStrength > 0f) {
-            offenderVehicleId = vehicleId;
-        }
-    }
-
-    @Override
-    int revengeTargetVehicleId() {
-        return offenderVehicleId;
+    protected void prepareFromHit(int vehicleId, float impactStrength) {
     }
 
     @Override
@@ -64,13 +59,14 @@ final class OffenderCurseRevengeEffect extends RogueliteUpgradeEffect {
             int targetVehicleId,
             float distance,
             boolean offenderAhead) {
-        if (!isReady() || targetVehicleId != offenderVehicleId) {
+        if (!isReady() || !targets(targetVehicleId)) {
             return null;
         }
-        offenderVehicleId = -1;
+        clearTarget();
         return RogueliteRevengeStrike.curse(
                 getCardId(),
                 offenderMassMultiplier,
-                offenderGripMultiplier);
+                offenderPerformanceMultiplier,
+                durationSeconds);
     }
 }

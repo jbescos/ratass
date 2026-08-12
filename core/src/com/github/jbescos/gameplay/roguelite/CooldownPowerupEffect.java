@@ -5,7 +5,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
     private final float cooldownSeconds;
     private final float durationSeconds;
     private final float accelerationBonus;
-    private final float maxSpeedBonus;
     private final float gripBonus;
     private final float steeringBonus;
     private final float recoilMultiplier;
@@ -26,7 +25,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
         float cooldown;
         float duration;
         float acceleration;
-        float speed;
         float grip;
         float steering;
         float recoil = 1f;
@@ -34,13 +32,21 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
         float launchSpeedRatio = 0f;
         float launchTargetSpeed = 1f;
         switch (cardId) {
+            case TIME_RIPPLE:
+            case CHRONO_SHIFT:
+            case TEMPORAL_DOMINION:
+                cooldown = TimeDilationPowerupSpec.cooldownSeconds(cardId);
+                duration = TimeDilationPowerupSpec.durationSeconds(cardId);
+                acceleration = 0f;
+                grip = 0f;
+                steering = 0f;
+                break;
             case MIRROR_DUO:
             case MIRROR_TRIO:
             case OVERDRIVE_COIL:
                 cooldown = MirrorPowerupSpec.COOLDOWN_SECONDS;
                 duration = MirrorPowerupSpec.durationSeconds(cardId);
                 acceleration = 0f;
-                speed = 0f;
                 grip = 0f;
                 steering = 0f;
                 break;
@@ -48,17 +54,22 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
                 cooldown = 9f;
                 duration = 1.4f;
                 acceleration = 0.20f;
-                speed = 0.06f;
                 grip = 0.03f;
                 steering = 0f;
                 launchSpeedRatio = 0.18f;
                 launchTargetSpeed = 0.60f;
                 break;
+            case ACE_HOTLINE:
+                cooldown = 20f;
+                duration = 10f;
+                acceleration = 0f;
+                grip = 0f;
+                steering = 0f;
+                break;
             case GRIP_FAN:
                 cooldown = 8.5f;
                 duration = 1.8f;
                 acceleration = 0.15f;
-                speed = 0.04f;
                 grip = 0.10f;
                 steering = 0.06f;
                 break;
@@ -66,7 +77,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
                 cooldown = 6.8f;
                 duration = 2f;
                 acceleration = 0.22f;
-                speed = 0.05f;
                 grip = 0.20f;
                 steering = 0.12f;
                 recoil = 0.20f;
@@ -76,17 +86,22 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
                 cooldown = 6.8f;
                 duration = 2f;
                 acceleration = 0.32f;
-                speed = 0.11f;
                 grip = 0.08f;
                 steering = 0f;
                 launchSpeedRatio = 0.20f;
                 launchTargetSpeed = 0.56f;
                 break;
+            case PRIORITY_HOTLINE:
+                cooldown = 15f;
+                duration = 10f;
+                acceleration = 0f;
+                grip = 0f;
+                steering = 0f;
+                break;
             case GRAVITY_WELL:
                 cooldown = 5.8f;
                 duration = 3.6f;
                 acceleration = 0.40f;
-                speed = 0.16f;
                 grip = 0.22f;
                 steering = 0.12f;
                 recoil = 0.55f;
@@ -96,7 +111,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
                 cooldown = 6.5f;
                 duration = 3.3f;
                 acceleration = 0.38f;
-                speed = 0.15f;
                 grip = 0.16f;
                 steering = 0.08f;
                 recoil = 0.65f;
@@ -108,7 +122,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
                 cooldown = 10f;
                 duration = 3f;
                 acceleration = 0f;
-                speed = 0f;
                 grip = 0f;
                 steering = 0f;
                 break;
@@ -116,7 +129,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
                 cooldown = 10f;
                 duration = 4f;
                 acceleration = 0f;
-                speed = 0f;
                 grip = 0f;
                 steering = 0f;
                 break;
@@ -124,7 +136,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
                 cooldown = 10f;
                 duration = 5f;
                 acceleration = 0f;
-                speed = 0f;
                 grip = 0f;
                 steering = 0f;
                 break;
@@ -134,7 +145,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
         cooldownSeconds = cooldown;
         durationSeconds = duration;
         accelerationBonus = acceleration;
-        maxSpeedBonus = speed;
         gripBonus = grip;
         steeringBonus = steering;
         recoilMultiplier = recoil;
@@ -180,6 +190,15 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    void onLoadedByRandomCard() {
+        activeTimer = 0f;
+        cooldownTimer = cooldownSeconds;
+        pendingForwardLaunchSpeedRatio = 0f;
+        invisibilityExitHeld = false;
+        deferInvisibilityExit = false;
+    }
+
+    @Override
     int activeDisplayPriority() {
         return 3;
     }
@@ -217,6 +236,11 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
     }
 
     private boolean shouldActivate(RogueliteDrivingFrame frame) {
+        if (getCardId() == RogueliteCardId.ACE_HOTLINE
+                || getCardId() == RogueliteCardId.PRIORITY_HOTLINE
+                || TimeDilationPowerupSpec.isTimeDilationCard(getCardId())) {
+            return true;
+        }
         if (!frame.onRoad) {
             return false;
         }
@@ -273,6 +297,18 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    boolean usesBestDriver() {
+        return isActive()
+                && (getCardId() == RogueliteCardId.ACE_HOTLINE
+                        || getCardId() == RogueliteCardId.PRIORITY_HOTLINE);
+    }
+
+    @Override
+    boolean acceleratesOwnDecisions() {
+        return isActive() && TimeDilationPowerupSpec.isTimeDilationCard(getCardId());
+    }
+
+    @Override
     void deferInvisibilityExpiration() {
         if (isInvisible()) {
             deferInvisibilityExit = true;
@@ -282,11 +318,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
     @Override
     float accelerationBonus() {
         return isActive() ? accelerationBonus : 0f;
-    }
-
-    @Override
-    float maxSpeedBonus() {
-        return isActive() ? maxSpeedBonus : 0f;
     }
 
     @Override

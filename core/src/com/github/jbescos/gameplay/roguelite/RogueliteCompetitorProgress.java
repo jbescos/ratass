@@ -1,5 +1,9 @@
 package com.github.jbescos.gameplay.roguelite;
 
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 public final class RogueliteCompetitorProgress {
     private static final int BASE_LEVEL_XP = 80;
     private static final int LAST_PLACE_XP = 30;
@@ -7,6 +11,14 @@ public final class RogueliteCompetitorProgress {
 
     private final RogueliteLoadout loadout;
     private final int levelXpIncrement;
+    private final Set<String> acquiredDriverProfileIds =
+            new LinkedHashSet<String>();
+    private final Set<RogueliteCardId> acquiredModificationCardIds =
+            new LinkedHashSet<RogueliteCardId>();
+    private final Set<String> readOnlyAcquiredDriverProfileIds =
+            Collections.unmodifiableSet(acquiredDriverProfileIds);
+    private final Set<RogueliteCardId> readOnlyAcquiredModificationCardIds =
+            Collections.unmodifiableSet(acquiredModificationCardIds);
     private int level = 1;
     private int experience;
     private int lapExperience;
@@ -23,11 +35,42 @@ public final class RogueliteCompetitorProgress {
             String defaultDriverProfileId,
             int configuredLevelXpIncrement) {
         loadout = new RogueliteLoadout(defaultDriverProfileId);
+        acquiredDriverProfileIds.add(loadout.getDriverProfileId());
         levelXpIncrement = Math.max(0, configuredLevelXpIncrement);
     }
 
     public RogueliteLoadout getLoadout() {
         return loadout;
+    }
+
+    Set<String> getAcquiredDriverProfileIds() {
+        return readOnlyAcquiredDriverProfileIds;
+    }
+
+    Set<RogueliteCardId> getAcquiredModificationCardIds() {
+        return readOnlyAcquiredModificationCardIds;
+    }
+
+    boolean hasAcquiredDriver(String profileId) {
+        return profileId != null && acquiredDriverProfileIds.contains(profileId);
+    }
+
+    boolean hasAcquiredModification(RogueliteCardId cardId) {
+        return cardId != null && acquiredModificationCardIds.contains(cardId);
+    }
+
+    void recordAcquiredDriver(String profileId) {
+        if (profileId == null || profileId.trim().length() == 0) {
+            throw new IllegalArgumentException("Driver profile ID is required.");
+        }
+        acquiredDriverProfileIds.add(profileId.trim());
+    }
+
+    void recordAcquiredModification(RogueliteCardId cardId) {
+        if (cardId == null) {
+            throw new IllegalArgumentException("Card ID is required.");
+        }
+        acquiredModificationCardIds.add(cardId);
     }
 
     public int getLevel() {

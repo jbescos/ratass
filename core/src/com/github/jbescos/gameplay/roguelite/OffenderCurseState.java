@@ -1,36 +1,48 @@
 package com.github.jbescos.gameplay.roguelite;
 
-/** Temporary curse applied to an offender until its next qualified car collision. */
+/** Timed blindness and performance curse applied to an offender. */
 public final class OffenderCurseState {
     private boolean active;
     private float massMultiplier = 1f;
-    private float gripMultiplier = 1f;
+    private float performanceMultiplier = 1f;
+    private float remainingSeconds;
 
-    public boolean apply(float nextMassMultiplier, float nextGripMultiplier) {
+    public boolean apply(
+            float nextMassMultiplier,
+            float nextPerformanceMultiplier,
+            float durationSeconds) {
         float previousMassMultiplier = massMultiplier;
-        active = true;
+        remainingSeconds = Math.max(
+                remainingSeconds,
+                Float.isFinite(durationSeconds) ? Math.max(0f, durationSeconds) : 0f);
+        active = remainingSeconds > 0f;
         massMultiplier = Math.max(
                 massMultiplier,
                 RogueliteEffectMath.clamp(nextMassMultiplier, 1f, 2f));
-        gripMultiplier = Math.min(
-                gripMultiplier,
-                RogueliteEffectMath.clamp(nextGripMultiplier, 0f, 1f));
+        performanceMultiplier = Math.min(
+                performanceMultiplier,
+                RogueliteEffectMath.clamp(nextPerformanceMultiplier, 0f, 1f));
         return Math.abs(previousMassMultiplier - massMultiplier) > 0.0001f;
     }
 
-    public boolean clearOnQualifiedCollision() {
+    public boolean advance(float deltaSeconds) {
         if (!active) {
             return false;
         }
-        boolean massChanged = Math.abs(massMultiplier - 1f) > 0.0001f;
+        float safeDelta = Float.isFinite(deltaSeconds) ? Math.max(0f, deltaSeconds) : 0f;
+        remainingSeconds = Math.max(0f, remainingSeconds - safeDelta);
+        if (remainingSeconds > 0f) {
+            return false;
+        }
         reset();
-        return massChanged;
+        return true;
     }
 
     public void reset() {
         active = false;
         massMultiplier = 1f;
-        gripMultiplier = 1f;
+        performanceMultiplier = 1f;
+        remainingSeconds = 0f;
     }
 
     public boolean isActive() {
@@ -46,6 +58,18 @@ public final class OffenderCurseState {
     }
 
     public float getGripMultiplier() {
-        return gripMultiplier;
+        return performanceMultiplier;
+    }
+
+    public float getPowerMultiplier() {
+        return performanceMultiplier;
+    }
+
+    public float getAerodynamicEfficiencyMultiplier() {
+        return performanceMultiplier;
+    }
+
+    public float getRemainingSeconds() {
+        return remainingSeconds;
     }
 }

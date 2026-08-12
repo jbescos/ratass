@@ -17,6 +17,7 @@ public class DriverProfileCatalogTest {
         assertEquals("fast", catalog.all().get(0).getProfileId());
         assertEquals("middle", catalog.all().get(1).getProfileId());
         assertEquals("slow", catalog.all().get(2).getProfileId());
+        assertEquals("fast", catalog.getBest().getProfileId());
         assertEquals("slow", catalog.getWorst().getProfileId());
         assertEquals(1, catalog.getTier("slow"));
         assertEquals(2, catalog.getTier("middle"));

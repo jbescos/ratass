@@ -137,12 +137,99 @@ public final class BuildRogueliteCardVisuals {
                     "warning".equals(ICON_NAMES[i])
                             ? buildWarningIcon()
                             : requireImage(iconFile);
+            if ("technique".equals(ICON_NAMES[i])
+                    || "revenge".equals(ICON_NAMES[i])) {
+                source = fillDarkIconInterior(source, CATEGORY_COLORS[i]);
+            }
+            if ("revenge".equals(ICON_NAMES[i])) {
+                source = blackenRevengeEyes(source);
+            }
             BufferedImage normalized = normalizeIcon(source);
             graphics.drawImage(normalized, i * ICON_SIZE, 0, null);
             writePng(normalized, iconFile);
         }
         graphics.dispose();
         return atlas;
+    }
+
+    private static BufferedImage fillDarkIconInterior(
+            BufferedImage source,
+            int categoryRgb) {
+        BufferedImage output =
+                new BufferedImage(
+                        source.getWidth(),
+                        source.getHeight(),
+                        BufferedImage.TYPE_INT_ARGB);
+        int categoryRed = (categoryRgb >>> 16) & 0xff;
+        int categoryGreen = (categoryRgb >>> 8) & 0xff;
+        int categoryBlue = categoryRgb & 0xff;
+        int fillRed = Math.round(categoryRed * 0.78f);
+        int fillGreen = Math.round(categoryGreen * 0.78f);
+        int fillBlue = Math.round(categoryBlue * 0.78f);
+        for (int y = 0; y < source.getHeight(); y++) {
+            for (int x = 0; x < source.getWidth(); x++) {
+                int argb = source.getRGB(x, y);
+                int alpha = (argb >>> 24) & 0xff;
+                int red = (argb >>> 16) & 0xff;
+                int green = (argb >>> 8) & 0xff;
+                int blue = argb & 0xff;
+                int maximum = Math.max(red, Math.max(green, blue));
+                int minimum = Math.min(red, Math.min(green, blue));
+                boolean darkInterior =
+                        alpha >= 12
+                                && maximum >= 24
+                                && maximum <= 145
+                                && maximum - minimum <= 55;
+                output.setRGB(
+                        x,
+                        y,
+                        darkInterior
+                                ? (alpha << 24)
+                                        | (fillRed << 16)
+                                        | (fillGreen << 8)
+                                        | fillBlue
+                                : argb);
+            }
+        }
+        return output;
+    }
+
+    private static BufferedImage blackenRevengeEyes(BufferedImage source) {
+        BufferedImage output = copyImage(source);
+        Graphics2D graphics = output.createGraphics();
+        configureHighQuality(graphics);
+        float scaleX = source.getWidth() / 256f;
+        float scaleY = source.getHeight() / 256f;
+        graphics.scale(scaleX, scaleY);
+        graphics.setColor(new Color(0, 0, 0, 255));
+
+        Path2D.Float leftEye = new Path2D.Float();
+        leftEye.moveTo(70f, 124f);
+        leftEye.lineTo(108f, 135f);
+        leftEye.lineTo(99f, 146f);
+        leftEye.lineTo(78f, 142f);
+        leftEye.closePath();
+        graphics.fill(leftEye);
+
+        Path2D.Float rightEye = new Path2D.Float();
+        rightEye.moveTo(186f, 124f);
+        rightEye.lineTo(148f, 135f);
+        rightEye.lineTo(157f, 146f);
+        rightEye.lineTo(178f, 142f);
+        rightEye.closePath();
+        graphics.fill(rightEye);
+        graphics.dispose();
+        return output;
+    }
+
+    private static BufferedImage copyImage(BufferedImage source) {
+        BufferedImage output =
+                new BufferedImage(
+                        source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = output.createGraphics();
+        graphics.drawImage(source, 0, 0, null);
+        graphics.dispose();
+        return output;
     }
 
     private static BufferedImage buildWarningIcon() {

@@ -1,3 +1,13 @@
+Bloodfang
+Lantern
+Wraith
+Grimshift
+Hexfire
+Shroud
+Voltgrave
+Blackguard
+Hellfire
+Nightroot
 Graveburn
 Pumpkin Jack
 Nightshade
@@ -38,13 +48,3 @@ Witchlight
 Bonewheel
 Phantom Grip
 Ghastly
-Black Cat
-Dusk Runner
-Vamp Shift
-Hauntline
-Jack O
-Terrorbyte
-Moonlit
-Graveyard
-Specter
-Candy Fang

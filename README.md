@@ -53,3 +53,8 @@ Build the desktop jar, then run a race-training smoke or curriculum:
 `python tools/rl/train_rllib.py --iterations 1 --max-action-steps 200`
 
 `bash tools/rl/train_forever.sh curriculum`
+
+## License
+
+Rogue Circuit is proprietary software. See [LICENSE](LICENSE) for the end user
+license terms. Third-party components remain under their respective licenses.

@@ -10,211 +10,201 @@ public class AutomaticRecoveryManeuverTest {
     private static final float EPSILON = 0.0001f;
 
     @Test
-    public void gearSelectionUsesHysteresisAroundSidewaysTargets() {
+    public void recoveryRunsTurnDriveAlignInOrder() {
         AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
-        maneuver.begin(4f, -0.8f);
+        maneuver.begin(12f);
 
-        assertTrue(maneuver.isReversing());
+        assertEquals(
+                AutomaticRecoveryManeuver.Phase.TURN_TO_TARGET,
+                maneuver.getPhase());
 
-        maneuver.update(0.1f, 3.9f, -0.20f);
-        assertTrue(maneuver.isReversing());
+        update(maneuver, 12f, 0.99f, 0f);
+        assertEquals(
+                AutomaticRecoveryManeuver.Phase.DRIVE_TO_TARGET,
+                maneuver.getPhase());
 
-        maneuver.update(0.1f, 3.8f, 0.20f);
-        assertFalse(maneuver.isReversing());
+        update(maneuver, 0.5f, 1f, 0f);
+        assertEquals(
+                AutomaticRecoveryManeuver.Phase.ALIGN_TO_ROUTE,
+                maneuver.getPhase());
+
+        update(maneuver, 0.5f, 1f, 0.99f);
+        assertEquals(AutomaticRecoveryManeuver.Phase.IDLE, maneuver.getPhase());
+        assertFalse(maneuver.isActive());
     }
 
     @Test
-    public void sidewaysTargetUsesLessThrottleWhileKeepingStrongSteering() {
-        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
-        maneuver.begin(4f, 1f);
+    public void driveProgressPreventsExplosion() {
+        AutomaticRecoveryManeuver maneuver = drivingManeuver(8f);
 
-        float alignedThrottle = maneuver.calculateThrottle(1f, 0.86f, 0.62f);
-        float sidewaysThrottle = maneuver.calculateThrottle(0f, 0.86f, 0.62f);
-
-        assertEquals(0.86f, alignedThrottle, EPSILON);
-        assertTrue(sidewaysThrottle > 0f);
-        assertTrue(sidewaysThrottle < alignedThrottle * 0.5f);
-        assertEquals(-1f, maneuver.calculateTurn(1f), EPSILON);
-    }
-
-    @Test
-    public void repeatedFailedManeuversKeepReplanningWithOppositeGear() {
-        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
-        maneuver.begin(4f, -0.2f);
-
-        maneuver.update(0.90f, 4f, -0.2f);
-        assertTrue(maneuver.consumeReplanRequest());
-        assertTrue(maneuver.isReversing());
-
-        maneuver.retarget(4f, -0.2f);
-        maneuver.update(0.90f, 4f, -0.2f);
-        assertTrue(maneuver.consumeReplanRequest());
-        assertFalse(maneuver.isReversing());
-    }
-
-    @Test
-    public void continuousReverseCommitsToATurnaroundUsingActualMotionDirection() {
-        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
-        maneuver.begin(6f, -1f);
-
-        for (int i = 1; i <= 45; i++) {
-            maneuver.update(0.05f, 6f - i * 0.03f, -1f);
+        for (int i = 1; i <= 20; i++) {
+            maneuver.update(0.15f, 8f - i * 0.12f, 1f, 0f, 0.8f, 1.5f);
         }
 
-        assertFalse(maneuver.isReversing());
-        assertTrue(maneuver.calculateTurn(0.2f, -1f) > 0f);
-        assertTrue(maneuver.calculateTurn(0.2f, 1f) < 0f);
+        assertFalse(maneuver.consumeExplosionRequest());
+        assertEquals(
+                AutomaticRecoveryManeuver.Phase.DRIVE_TO_TARGET,
+                maneuver.getPhase());
     }
 
     @Test
-    public void usefulDistanceProgressPreventsEscalation() {
+    public void blockedDriveRequestsOneExplosionPerTimeout() {
+        AutomaticRecoveryManeuver maneuver = drivingManeuver(8f);
+
+        maneuver.update(1.49f, 8f, 1f, 0f, 0.8f, 1.5f);
+        assertFalse(maneuver.consumeExplosionRequest());
+
+        maneuver.update(0.02f, 8f, 1f, 0f, 0.8f, 1.5f);
+        assertTrue(maneuver.consumeExplosionRequest());
+        assertFalse(maneuver.consumeExplosionRequest());
+    }
+
+    @Test
+    public void stalledTurningAndAlignmentRequestExplosion() {
         AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
-        maneuver.begin(4f, 0.8f);
+        maneuver.begin(8f);
+        maneuver.update(0f, 8f, 0f, 0f, 0.8f, 1.5f);
+        maneuver.update(10f, 8f, 0f, 0f, 0.8f, 1.5f);
+        assertTrue(maneuver.consumeExplosionRequest());
 
-        for (int i = 1; i <= 8; i++) {
-            maneuver.update(0.25f, 4f - i * 0.15f, 0.8f);
-        }
-
-        assertFalse(maneuver.consumeReplanRequest());
+        update(maneuver, 8f, 1f, 0f);
+        update(maneuver, 0.5f, 1f, 0f);
+        maneuver.update(10f, 0.5f, 1f, 0f, 0.8f, 1.5f);
+        assertTrue(maneuver.consumeExplosionRequest());
     }
 
     @Test
-    public void fastApproachBrakesBeforeCrossingTheTarget() {
+    public void targetIsTwoAndHalfPercentAheadOnTheRoute() {
+        assertEquals(
+                35f,
+                AutomaticRecoveryManeuver.targetRouteProgress(10f, 1000f),
+                EPSILON);
+        assertEquals(
+                10f,
+                AutomaticRecoveryManeuver.targetRouteProgress(10f, -1000f),
+                EPSILON);
+    }
+
+    @Test
+    public void recoverySteeringUsesNormalLeftAndRightControlInputs() {
+        assertEquals(-1f, AutomaticRecoveryManeuver.steeringToward(0f, 1f), EPSILON);
+        assertEquals(1f, AutomaticRecoveryManeuver.steeringToward(0f, -1f), EPSILON);
+        assertEquals(0f, AutomaticRecoveryManeuver.steeringToward(1f, 0f), EPSILON);
+        assertEquals(-1f, AutomaticRecoveryManeuver.steeringToward(-1f, 0f), EPSILON);
+        assertEquals(0f,
+                AutomaticRecoveryManeuver.steeringToward(Float.NaN, 0f),
+                EPSILON);
+    }
+
+    @Test
+    public void recoveryYieldsToTheModelAsSoonAsAssistanceReachesSafeRoad() {
         AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(8f);
 
+        assertFalse(maneuver.beginModelHandoffIfReady(0.5f, false, 1f, 0.35f));
+        assertTrue(maneuver.beginModelHandoffIfReady(0f, true, 1f, 0.35f));
+        assertTrue(maneuver.isModelHandoff());
         assertEquals(
-                -1f,
-                maneuver.limitApproachThrottle(
-                        0.8f,
-                        9f,
-                        9f,
-                        3f,
-                        4f,
-                        0.8f,
-                        6f,
-                        8f),
-                EPSILON);
-        assertEquals(
-                1f,
-                maneuver.limitApproachThrottle(
-                        -0.6f,
-                        -9f,
-                        9f,
-                        3f,
-                        4f,
-                        0.8f,
-                        6f,
-                        8f),
-                EPSILON);
+                AutomaticRecoveryManeuver.Phase.MODEL_HANDOFF,
+                maneuver.getPhase());
     }
 
     @Test
-    public void controlledApproachTapersThrottleNearTheTarget() {
+    public void recoveryKeepsControlOutsideTheSeventyDegreeRouteCone() {
         AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(8f);
 
-        float farThrottle =
-                maneuver.limitApproachThrottle(
-                        0.8f,
-                        2f,
-                        2f,
-                        8f,
-                        0.4f,
-                        0.8f,
-                        6f,
-                        8f);
-        float nearThrottle =
-                maneuver.limitApproachThrottle(
-                        0.8f,
-                        2f,
-                        2f,
-                        2f,
-                        0.4f,
-                        0.8f,
-                        6f,
-                        8f);
+        float alignmentAtSeventyDegrees =
+                (float) Math.cos(Math.toRadians(70f));
+        float alignmentAtSeventyOneDegrees =
+                (float) Math.cos(Math.toRadians(71f));
 
-        assertEquals(0.8f, farThrottle, EPSILON);
-        assertTrue(nearThrottle > 0f);
-        assertTrue(nearThrottle < farThrottle);
-    }
-
-    @Test
-    public void contactRecoveryStopsWhenTheBlockingConditionClears() {
-        assertTrue(AutomaticRecoveryManeuver.requiresContactRecovery(1, false));
-        assertFalse(AutomaticRecoveryManeuver.requiresContactRecovery(0, false));
-        assertFalse(AutomaticRecoveryManeuver.requiresContactRecovery(1, true));
-    }
-
-    @Test
-    public void forwardNudgeTakesTheShortestTurnTowardTheRoute() {
-        assertEquals(
-                0f,
-                AutomaticRecoveryManeuver.calculateShortestForwardTurn(1f, 0f),
-                EPSILON);
-        assertTrue(
-                AutomaticRecoveryManeuver.calculateShortestForwardTurn(0.5f, 0.5f) < 0f);
-        assertTrue(
-                AutomaticRecoveryManeuver.calculateShortestForwardTurn(0.5f, -0.5f) > 0f);
-        assertEquals(
-                -1f,
-                AutomaticRecoveryManeuver.calculateShortestForwardTurn(-0.5f, 0.5f),
-                EPSILON);
-        assertEquals(
-                1f,
-                AutomaticRecoveryManeuver.calculateShortestForwardTurn(-0.5f, -0.5f),
-                EPSILON);
-    }
-
-    @Test
-    public void forwardNudgeIgnoresInvalidRouteDirections() {
-        assertEquals(
-                0f,
-                AutomaticRecoveryManeuver.calculateShortestForwardTurn(Float.NaN, 0f),
-                EPSILON);
-        assertEquals(
-                0f,
-                AutomaticRecoveryManeuver.calculateShortestForwardTurn(0f, Float.POSITIVE_INFINITY),
-                EPSILON);
-    }
-
-    @Test
-    public void offRoadRecoveryStopsOnlyAtASafeOnRoadHandoff() {
-        assertTrue(AutomaticRecoveryManeuver.requiresOffRoadRecovery(true, false));
-        assertTrue(AutomaticRecoveryManeuver.requiresOffRoadRecovery(true, true));
-        assertTrue(AutomaticRecoveryManeuver.requiresOffRoadRecovery(false, false));
-        assertFalse(AutomaticRecoveryManeuver.requiresOffRoadRecovery(false, true));
-    }
-
-    @Test
-    public void handoffRequiresRoadMarginControlledSpeedAndForwardAlignment() {
-        assertTrue(safeHandoff(0.95f, 4f, 2f));
-        assertFalse(safeHandoff(0.70f, 4f, 2f));
-        assertFalse(safeHandoff(0.95f, 9f, 2f));
-        assertFalse(safeHandoff(0.95f, 4f, -0.2f));
-        assertFalse(
-                AutomaticRecoveryManeuver.isSafeDirectionalHandoff(
-                        false,
-                        2f,
-                        1f,
-                        4f,
-                        6f,
-                        0.95f,
-                        0.86f,
-                        2f,
-                        0.5f));
-    }
-
-    private static boolean safeHandoff(
-            float routeAlignment, float speed, float routeForwardSpeed) {
-        return AutomaticRecoveryManeuver.isSafeDirectionalHandoff(
+        assertFalse(maneuver.beginModelHandoffIfReady(
+                0.35f,
                 true,
-                2f,
-                1f,
-                speed,
-                6f,
+                alignmentAtSeventyOneDegrees,
+                0.35f));
+        assertFalse(maneuver.isModelHandoff());
+        assertTrue(maneuver.beginModelHandoffIfReady(
+                0f,
+                true,
+                alignmentAtSeventyDegrees,
+                0.35f));
+        assertTrue(maneuver.isModelHandoff());
+    }
+
+    @Test
+    public void invalidRouteAlignmentCannotStartModelHandoff() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(8f);
+
+        assertFalse(maneuver.beginModelHandoffIfReady(
+                0.35f,
+                true,
+                Float.NaN,
+                0.35f));
+        assertFalse(maneuver.isModelHandoff());
+    }
+
+    @Test
+    public void deliberateDebuffStopDisablesAutomaticRecovery() {
+        assertFalse(AutomaticRecoveryManeuver.isControlAllowed(true, true));
+        assertTrue(AutomaticRecoveryManeuver.isControlAllowed(true, false));
+        assertFalse(AutomaticRecoveryManeuver.isControlAllowed(false, false));
+    }
+
+    @Test
+    public void failedModelHandoffResumesAssistanceUntilTheModelMakesProgress() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(8f);
+        assertTrue(maneuver.beginModelHandoffIfReady(0.35f, true, 1f, 0.35f));
+
+        assertEquals(
+                AutomaticRecoveryManeuver.ModelHandoffResult.YIELDING,
+                maneuver.updateModelHandoff(1.4f, false, true, 1.5f));
+        assertEquals(
+                AutomaticRecoveryManeuver.ModelHandoffResult.RESUME_ASSISTANCE,
+                maneuver.updateModelHandoff(0.2f, false, true, 1.5f));
+        assertFalse(maneuver.isActive());
+
+        maneuver.begin(6f);
+        assertTrue(maneuver.beginModelHandoffIfReady(0.35f, true, 1f, 0.35f));
+        assertEquals(
+                AutomaticRecoveryManeuver.ModelHandoffResult.COMPLETED,
+                maneuver.updateModelHandoff(0.1f, true, true, 1.5f));
+        assertFalse(maneuver.isActive());
+    }
+
+    @Test
+    public void modelHandoffResumesAssistanceImmediatelyAfterLeavingTheRoad() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(8f);
+        assertTrue(maneuver.beginModelHandoffIfReady(0.35f, true, 1f, 0.35f));
+
+        assertEquals(
+                AutomaticRecoveryManeuver.ModelHandoffResult.RESUME_ASSISTANCE,
+                maneuver.updateModelHandoff(0.1f, false, false, 1.5f));
+        assertFalse(maneuver.isActive());
+    }
+
+    private static AutomaticRecoveryManeuver drivingManeuver(float distance) {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(distance);
+        update(maneuver, distance, 1f, 0f);
+        return maneuver;
+    }
+
+    private static void update(
+            AutomaticRecoveryManeuver maneuver,
+            float targetDistance,
+            float targetAlignment,
+            float routeAlignment) {
+        maneuver.update(
+                0.05f,
+                targetDistance,
+                targetAlignment,
                 routeAlignment,
-                0.86f,
-                routeForwardSpeed,
-                0.5f);
+                0.8f,
+                1.5f);
     }
 }

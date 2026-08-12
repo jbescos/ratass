@@ -9,7 +9,7 @@ public class RacingHudLayoutTest {
     public void telemetryUsesOneCompactColumnAtEveryResolution() {
         assertEquals(1, RacingHudLayout.telemetryColumns());
         assertEquals(6, RacingHudLayout.telemetryRows());
-        assertEquals(6, RacingHudLayout.carStatRows());
+        assertEquals(5, RacingHudLayout.carStatRows());
         assertEquals(6, RacingHudLayout.cardRows(5));
         float phoneStandingsWidth =
                 RacingHudLayout.standingsPanelWidth(720f, 260f);
@@ -90,10 +90,12 @@ public class RacingHudLayoutTest {
     }
 
     @Test
-    public void cardsOccupyTheRightThirdOfTheBottomPanel() {
-        assertEquals(300f, RacingHudLayout.bottomPanelCarStatsWidth(1000f), 0.001f);
+    public void compactStatsLeaveMoreWidthForCards() {
+        assertEquals(220f, RacingHudLayout.bottomPanelCarStatsWidth(1000f), 0.001f);
         assertEquals(400f, RacingHudLayout.bottomPanelTelemetryWidth(1000f), 0.001f);
-        assertEquals(300f, RacingHudLayout.bottomPanelCardsWidth(1000f), 0.001f);
+        assertEquals(380f, RacingHudLayout.bottomPanelCardsWidth(1000f), 0.001f);
+        assertEquals(77f, RacingHudLayout.bottomPanelCarStatsWidth(350f), 0.001f);
+        assertEquals(133f, RacingHudLayout.bottomPanelCardsWidth(350f), 0.001f);
         assertEquals(11f, RacingHudLayout.cardStatusIconSize(12f), 0.001f);
         assertEquals(13.6f, RacingHudLayout.cardStatusIconSize(20f), 0.001f);
         assertEquals(20f, RacingHudLayout.cardStatusIconSize(40f), 0.001f);
@@ -113,5 +115,20 @@ public class RacingHudLayoutTest {
                 138f,
                 RacingHudLayout.carNameBaseline(160f, 16f, 20f, 180f, true),
                 0.001f);
+    }
+
+    @Test
+    public void carLabelIncludesItsCurrentRacePosition() {
+        assertEquals("4-Torque", RacingHudLayout.carRaceLabel(4, "Torque"));
+        assertEquals("Torque", RacingHudLayout.carRaceLabel(0, "Torque"));
+    }
+
+    @Test
+    public void carStatToneTreatsLowerMassAsBeneficial() {
+        assertEquals(1, RacingHudLayout.carStatBenefitTone(1.08f, false));
+        assertEquals(-1, RacingHudLayout.carStatBenefitTone(0.92f, false));
+        assertEquals(1, RacingHudLayout.carStatBenefitTone(0.92f, true));
+        assertEquals(-1, RacingHudLayout.carStatBenefitTone(1.08f, true));
+        assertEquals(0, RacingHudLayout.carStatBenefitTone(1.004f, false));
     }
 }

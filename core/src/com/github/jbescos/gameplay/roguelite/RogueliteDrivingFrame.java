@@ -18,6 +18,7 @@ final class RogueliteDrivingFrame {
     float nearbyOpponentProximity;
     float revengeNearbyOpponentProximity;
     boolean forwardLaneBlocked;
+    boolean longStraight;
     float racePositionFactor;
 
     void set(
@@ -78,6 +79,48 @@ final class RogueliteDrivingFrame {
             boolean forwardLaneBlocked,
             float racePositionFactor,
             float revengeNearbyOpponentProximity) {
+        set(
+                throttle,
+                onRoad,
+                adverseWeather,
+                recentlyImpacted,
+                slip,
+                speedRatio,
+                slipstreamBoost,
+                routeProgress,
+                routeLength,
+                safeRecoveryRouteGain,
+                cornerSeverity,
+                nextCornerDistance,
+                nextCornerSeverity,
+                opponentAheadProximity,
+                nearbyOpponentProximity,
+                forwardLaneBlocked,
+                racePositionFactor,
+                revengeNearbyOpponentProximity,
+                false);
+    }
+
+    void set(
+            float throttle,
+            boolean onRoad,
+            boolean adverseWeather,
+            boolean recentlyImpacted,
+            float slip,
+            float speedRatio,
+            float slipstreamBoost,
+            float routeProgress,
+            float routeLength,
+            float safeRecoveryRouteGain,
+            float cornerSeverity,
+            float nextCornerDistance,
+            float nextCornerSeverity,
+            float opponentAheadProximity,
+            float nearbyOpponentProximity,
+            boolean forwardLaneBlocked,
+            float racePositionFactor,
+            float revengeNearbyOpponentProximity,
+            boolean longStraight) {
         this.throttle = throttle;
         this.onRoad = onRoad;
         this.adverseWeather = adverseWeather;
@@ -95,6 +138,7 @@ final class RogueliteDrivingFrame {
         this.nearbyOpponentProximity = nearbyOpponentProximity;
         this.revengeNearbyOpponentProximity = revengeNearbyOpponentProximity;
         this.forwardLaneBlocked = forwardLaneBlocked;
+        this.longStraight = longStraight;
         this.racePositionFactor = racePositionFactor;
     }
 

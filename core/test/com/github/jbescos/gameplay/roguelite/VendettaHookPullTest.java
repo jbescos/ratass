@@ -10,21 +10,27 @@ public class VendettaHookPullTest {
 
     @Test
     public void closesTheCurrentGapByTheRequiredFraction() {
-        assertEquals(0.02f, VendettaHookPull.stepFraction(0f, 0.1f, 5f), EPSILON);
-        assertEquals(0.04f, VendettaHookPull.stepFraction(2.5f, 0.1f, 5f), EPSILON);
-        assertEquals(1f, VendettaHookPull.stepFraction(4.9f, 0.1f, 5f), EPSILON);
+        assertEquals(0.1f, VendettaHookPull.stepFraction(0f, 0.1f, 1f), EPSILON);
+        assertEquals(0.2f, VendettaHookPull.stepFraction(0.5f, 0.1f, 1f), EPSILON);
+        assertEquals(1f, VendettaHookPull.stepFraction(0.9f, 0.1f, 1f), EPSILON);
     }
 
     @Test
     public void reachesAMovingOffenderAtTheEndOfTheEffect() {
         float sourcePosition = 0f;
         float offenderPosition = 10f;
-        for (int second = 0; second < 5; second++) {
-            offenderPosition += 1f;
-            float fraction = VendettaHookPull.stepFraction(second, 1f, 5f);
+        float firstPosition = sourcePosition;
+        for (int frame = 0; frame < 10; frame++) {
+            offenderPosition += 0.1f;
+            float fraction = VendettaHookPull.stepFraction(frame * 0.1f, 0.1f, 1f);
             sourcePosition += (offenderPosition - sourcePosition) * fraction;
+            if (frame == 0) {
+                firstPosition = sourcePosition;
+            }
         }
 
+        assertTrue(firstPosition > 0f);
+        assertTrue(firstPosition < offenderPosition);
         assertEquals(offenderPosition, sourcePosition, EPSILON);
     }
 
@@ -35,7 +41,7 @@ public class VendettaHookPullTest {
         float contactDistance = 1.6f;
         float overlap = 0.08f;
         float delta = 1f / 60f;
-        for (int frame = 0; frame < 300; frame++) {
+        for (int frame = 0; frame < 60; frame++) {
             offenderPosition += 4f * delta;
             float currentDistance = offenderPosition - sourcePosition;
             float destination =
@@ -44,7 +50,7 @@ public class VendettaHookPullTest {
                                     currentDistance,
                                     contactDistance,
                                     overlap);
-            float fraction = VendettaHookPull.stepFraction(frame * delta, delta, 5f);
+            float fraction = VendettaHookPull.stepFraction(frame * delta, delta, 1f);
             sourcePosition += (destination - sourcePosition) * fraction;
         }
 
@@ -53,9 +59,9 @@ public class VendettaHookPullTest {
 
     @Test
     public void clampsTimeOutsideTheEffectWindow() {
-        assertEquals(0.02f, VendettaHookPull.stepFraction(-2f, 0.1f, 5f), EPSILON);
-        assertEquals(1f, VendettaHookPull.stepFraction(7f, 0.1f, 5f), EPSILON);
-        assertTrue(VendettaHookPull.isComplete(5f, 5f));
+        assertEquals(0.1f, VendettaHookPull.stepFraction(-2f, 0.1f, 1f), EPSILON);
+        assertEquals(1f, VendettaHookPull.stepFraction(7f, 0.1f, 1f), EPSILON);
+        assertTrue(VendettaHookPull.isComplete(1f, 1f));
     }
 
     @Test
@@ -94,7 +100,7 @@ public class VendettaHookPullTest {
                 EPSILON);
         assertEquals(
                 0f,
-                VendettaHookPull.stepFraction(2f, Float.NaN, 5f),
+                VendettaHookPull.stepFraction(2f, Float.NaN, 1f),
                 EPSILON);
     }
 

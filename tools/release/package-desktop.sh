@@ -87,5 +87,6 @@ fi
 jpackage_args+=(--icon "$icon_path")
 
 "$jpackage_bin" "${jpackage_args[@]}"
+cp "$repo_dir/LICENSE" "$package_dir/RogueCircuit/LICENSE.txt"
 
 echo "Packaged Rogue Circuit with a bundled runtime: $package_dir/RogueCircuit"

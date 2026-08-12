@@ -162,6 +162,13 @@ public class RogueliteResponsiveCardLayoutTest {
     }
 
     @Test
+    public void inspectedCardKeepsTheNormalPortraitShapeOnEveryScreen() {
+        assertInspectionCardFits(1280f, 720f);
+        assertInspectionCardFits(844f, 390f);
+        assertInspectionCardFits(390f, 844f);
+    }
+
+    @Test
     public void cardBandTextUsesItsCapHeightForVerticalCentering() {
         assertEquals(
                 117f,
@@ -171,6 +178,21 @@ public class RogueliteResponsiveCardLayoutTest {
                 100f,
                 RogueliteResponsiveCardLayout.centeredTextBaseline(100f, -2f, -3f),
                 0.001f);
+    }
+
+    private static void assertInspectionCardFits(float width, float height) {
+        float aspect = 4f / 3f;
+        float cardWidth =
+                RogueliteResponsiveCardLayout.inspectionCardWidth(
+                        width,
+                        height,
+                        aspect);
+        float cardHeight = cardWidth * aspect;
+
+        assertTrue(cardWidth > 0f);
+        assertTrue(cardWidth <= width);
+        assertTrue(cardHeight <= height);
+        assertEquals(aspect, cardHeight / cardWidth, 0.0001f);
     }
 
 }

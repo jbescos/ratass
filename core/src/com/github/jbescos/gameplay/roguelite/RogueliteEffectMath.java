@@ -25,4 +25,12 @@ final class RogueliteEffectMath {
     static float clamp(float value, float minimum, float maximum) {
         return Math.max(minimum, Math.min(value, maximum));
     }
+
+    static float amplifyDeviation(float multiplier, float scale) {
+        return 1f + (multiplier - 1f) * Math.max(0f, scale);
+    }
+
+    static float amplifyPositiveDeviation(float multiplier, float scale) {
+        return multiplier > 1f ? amplifyDeviation(multiplier, scale) : multiplier;
+    }
 }

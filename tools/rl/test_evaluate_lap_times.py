@@ -102,13 +102,13 @@ class LapTimingEnvironmentTest(unittest.TestCase):
             action_repeat=4,
             random_race_spawns=False,
             seed=1,
-            technique_card="CLEAN_MOMENTUM",
+            technique_card="STRAIGHT_FOCUS",
         )
 
         config = make_environment(args, ratass_game, object(), 3, None)
 
         self.assertEqual(
-            config.values["withBenchmarkTechniqueCard"], "CLEAN_MOMENTUM"
+            config.values["withBenchmarkTechniqueCard"], "STRAIGHT_FOCUS"
         )
 
     def test_wall_timeout_preserves_completed_laps(self):

@@ -5,9 +5,9 @@ public final class RacingHudLayout {
     private static final float MIN_PLAYFIELD_WIDTH = 320f;
     private static final float MIN_BOTTOM_PANEL_HEIGHT = 130f;
     private static final float MAX_BOTTOM_PANEL_HEIGHT = 194f;
-    private static final int CAR_STAT_ROWS = 6;
+    private static final int CAR_STAT_ROWS = 5;
     private static final int TELEMETRY_ROWS = 6;
-    private static final float CAR_STATS_SECTION_RATIO = 0.30f;
+    private static final float CAR_STATS_SECTION_RATIO = 0.22f;
     private static final float TELEMETRY_SECTION_RATIO = 0.40f;
     private static final float SIDEBAR_TEXT_SCALE = 1.4f;
 
@@ -35,6 +35,20 @@ public final class RacingHudLayout {
 
     public static int carStatRows() {
         return CAR_STAT_ROWS;
+    }
+
+    public static int carStatBenefitTone(
+            float multiplier,
+            boolean lowerIsBetter) {
+        int displayedPercent = Math.round(multiplier * 100f);
+        if (displayedPercent == 100) {
+            return 0;
+        }
+        boolean beneficial = displayedPercent > 100;
+        if (lowerIsBetter) {
+            beneficial = !beneficial;
+        }
+        return beneficial ? 1 : -1;
     }
 
     public static int cardRows(int loadoutSlotCount) {
@@ -95,6 +109,13 @@ public final class RacingHudLayout {
             return raisedBaseline;
         }
         return Math.max(minimumBaseline, normalBaseline - clearance);
+    }
+
+    public static String carRaceLabel(int racePosition, String carName) {
+        if (racePosition <= 0) {
+            return carName;
+        }
+        return racePosition + "-" + carName;
     }
 
     public static float bottomPanelMetricRowHeight(float screenWidth, float screenHeight) {

@@ -117,5 +117,7 @@ $Executable = Join-Path $PackageRoot "RogueCircuit.exe"
 if (-not (Test-Path -LiteralPath $Executable)) {
     throw "Windows package did not contain the expected executable: $Executable"
 }
+Copy-Item -LiteralPath (Join-Path $RepoDir "LICENSE") `
+    -Destination (Join-Path $PackageRoot "LICENSE.txt")
 
 Write-Host "Packaged Rogue Circuit for Windows: $PackageRoot" -ForegroundColor Green

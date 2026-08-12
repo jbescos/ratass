@@ -74,6 +74,28 @@ public class GameTextTest {
     }
 
     @Test
+    public void translatesRaceCountdownBeforeAddingCircuitProgress() {
+        assertEquals(
+                "GET READY  |  CIRCUIT 3 / 19",
+                GameText.countdownContext(GameLanguage.ENGLISH, 3, 19));
+        assertEquals(
+                "PREPÁRATE  |  CIRCUITO 3 / 19",
+                GameText.countdownContext(GameLanguage.SPANISH, 3, 19));
+        assertEquals(
+                "PRÉPAREZ-VOUS  |  CIRCUIT 3 / 19",
+                GameText.countdownContext(GameLanguage.FRENCH, 3, 19));
+        assertEquals(
+                "BEREIT MACHEN  |  STRECKE 3 / 19",
+                GameText.countdownContext(GameLanguage.GERMAN, 3, 19));
+        assertEquals(
+                "PREPARATI  |  CIRCUITO 3 / 19",
+                GameText.countdownContext(GameLanguage.ITALIAN, 3, 19));
+        assertEquals(
+                "PREPÁRATE",
+                GameText.countdownContext(GameLanguage.SPANISH, 0, 0));
+    }
+
+    @Test
     public void everyCardHasLocalizedTitleDescriptionAndEffectText() {
         GameLanguage[] translatedLanguages = {
             GameLanguage.SPANISH,

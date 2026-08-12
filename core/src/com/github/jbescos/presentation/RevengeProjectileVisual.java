@@ -2,7 +2,7 @@ package com.github.jbescos.presentation;
 
 /** Presentation-only timing for an offender-targeting revenge projectile. */
 public final class RevengeProjectileVisual {
-    private static final float PROJECTILE_DURATION_SECONDS = 0.55f;
+    public static final float PROJECTILE_DURATION_SECONDS = 0.55f;
 
     private float remainingSeconds;
     private float durationSeconds = PROJECTILE_DURATION_SECONDS;

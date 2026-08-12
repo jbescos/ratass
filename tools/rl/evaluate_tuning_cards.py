@@ -28,11 +28,19 @@ def parse_args() -> argparse.Namespace:
         choices=(1, 2, 3),
         help="benchmark one tier; default benchmarks all tiers",
     )
+    parser.add_argument(
+        "--card-id",
+        default="",
+        help="benchmark one tuning-card enum ID; default benchmarks the selected tier",
+    )
     parser.add_argument("--exclude-baseline", action="store_true")
     return parser.parse_args()
 
 
-def tuning_cards(selected_tier: int | None) -> list[tuple[str, str, int]]:
+def tuning_cards(
+    selected_tier: int | None,
+    selected_card_id: str,
+) -> list[tuple[str, str, int]]:
     catalog = lap_eval.jpype.JClass(
         "com.github.jbescos.gameplay.roguelite.RogueliteCardCatalog"
     )
@@ -41,8 +49,11 @@ def tuning_cards(selected_tier: int | None) -> list[tuple[str, str, int]]:
         if str(card.getSlotType().name()) != "TUNING":
             continue
         tier = int(card.getTier())
+        card_id = str(card.getId().name())
+        if selected_card_id and card_id != selected_card_id:
+            continue
         if selected_tier is None or tier == selected_tier:
-            cards.append((str(card.getId().name()), str(card.getTitle()), tier))
+            cards.append((card_id, str(card.getTitle()), tier))
     return cards
 
 
@@ -55,7 +66,10 @@ def main() -> None:
     policy_path = Path(args.policy_root) / args.profile / lap_eval.POLICY_FILE_NAME
     policy = lap_eval.load_policy(policy_path)
     maps = lap_eval.selected_maps(args.map_source, args.map_ids)
-    cards = tuning_cards(args.tier)
+    selected_card_id = args.card_id.strip().upper()
+    cards = tuning_cards(args.tier, selected_card_id)
+    if selected_card_id and not cards:
+        raise ValueError(f"Unknown tuning card for selected tier: {selected_card_id}")
     choices = [] if args.exclude_baseline else [("", "No tuning", 0)]
     choices.extend(cards)
     rows: list[lap_eval.TimedRun] = []

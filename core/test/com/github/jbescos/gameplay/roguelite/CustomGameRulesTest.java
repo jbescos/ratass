@@ -16,7 +16,13 @@ public class CustomGameRulesTest {
 
         for (RogueliteSlotType type : RogueliteSlotType.values()) {
             assertTrue(rules.isCardTypeAllowed(type));
+            for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+                assertTrue(rules.isCardTypeAllowed(tier, type));
+            }
         }
+        assertEquals(1, rules.getTierUnlockLevel(1));
+        assertEquals(10, rules.getTierUnlockLevel(2));
+        assertEquals(20, rules.getTierUnlockLevel(3));
         for (WeatherType weather : WeatherType.values()) {
             assertTrue(rules.isWeatherAllowed(weather));
         }
@@ -34,6 +40,31 @@ public class CustomGameRulesTest {
                         rules.getRacecraftXpAward(reason));
             }
         }
+    }
+
+    @Test
+    public void cardTypesCanBeConfiguredIndependentlyForEveryTier() {
+        CustomGameRules rules = new CustomGameRules();
+
+        assertTrue(rules.toggleTierCardType(2, RogueliteSlotType.POWERUP));
+
+        assertTrue(rules.isCardTypeAllowed(1, RogueliteSlotType.POWERUP));
+        assertFalse(rules.isCardTypeAllowed(2, RogueliteSlotType.POWERUP));
+        assertTrue(rules.isCardTypeAllowed(3, RogueliteSlotType.POWERUP));
+        assertTrue(rules.isCardTypeAllowed(RogueliteSlotType.POWERUP));
+    }
+
+    @Test
+    public void customUnlockLevelsControlTheResolvedTier() {
+        CustomGameRules rules = new CustomGameRules();
+        rules.setTierUnlockLevel(1, 4);
+        rules.setTierUnlockLevel(2, 8);
+        rules.setTierUnlockLevel(3, 12);
+
+        assertEquals(0, rules.resolveTierForLevel(3, 1));
+        assertEquals(1, rules.resolveTierForLevel(4, 1));
+        assertEquals(2, rules.resolveTierForLevel(8, 1));
+        assertEquals(3, rules.resolveTierForLevel(12, 1));
     }
 
     @Test
@@ -65,6 +96,8 @@ public class CustomGameRulesTest {
         original.setRacecraftXpPerLapCap(45);
         original.setRacecraftXpAward(RogueliteExperienceAwards.Reason.OVERTAKE, 7);
         original.setRacecraftXpAward(RogueliteExperienceAwards.Reason.DRIFT, 3);
+        original.toggleTierCardType(2, RogueliteSlotType.REVENGE);
+        original.setTierUnlockLevel(2, 14);
 
         CustomGameRules restored = new CustomGameRules();
 
@@ -76,6 +109,9 @@ public class CustomGameRulesTest {
         assertEquals(7, restored.getLaps());
         assertEquals(90, restored.getLevelXpIncrement());
         assertEquals(45, restored.getRacecraftXpPerLapCap());
+        assertFalse(restored.isCardTypeAllowed(2, RogueliteSlotType.REVENGE));
+        assertTrue(restored.isCardTypeAllowed(1, RogueliteSlotType.REVENGE));
+        assertEquals(14, restored.getTierUnlockLevel(2));
         assertEquals(
                 7,
                 restored.getRacecraftXpAward(

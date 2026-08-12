@@ -32,6 +32,9 @@ public class AbilityActivationVisualTest {
         visual.update(0.1f, RogueliteCardId.TAR_TETHER);
         assertFalse(visual.hasCarCenteredEffect());
 
+        visual.update(0.1f, RogueliteCardId.EMP_SNARE);
+        assertFalse(visual.hasCarCenteredEffect());
+
         visual.update(0.1f, RogueliteCardId.DRAFT_MAGNET);
         assertTrue(visual.hasCarCenteredEffect());
     }
@@ -39,49 +42,30 @@ public class AbilityActivationVisualTest {
     @Test
     public void resetClearsAllPresentationState() {
         AbilityActivationVisual visual = new AbilityActivationVisual();
-        visual.update(0f, RogueliteCardId.RAM_REACTOR, true);
+        visual.update(0f, RogueliteCardId.DRAFT_MAGNET, true);
 
         visual.reset();
 
         assertFalse(visual.isActive());
-        assertFalse(visual.isImpactCounterReady());
         assertFalse(visual.isRevengeArmed());
         assertFalse(visual.isTechniqueActive());
         assertFalse(visual.isPowerupActive());
     }
 
     @Test
-    public void impactCounterReadinessHasPersistentPulsingFeedback() {
-        AbilityActivationVisual visual = new AbilityActivationVisual();
-
-        visual.update(0.1f, null, true);
-        float initialPulse = visual.getImpactCounterPulse();
-        visual.update(0.2f, null, true);
-
-        assertTrue(visual.isImpactCounterReady());
-        assertTrue(visual.getImpactCounterPulse() >= 0f);
-        assertTrue(visual.getImpactCounterPulse() <= 1f);
-        assertTrue(initialPulse != visual.getImpactCounterPulse());
-
-        visual.update(0.1f, null, false);
-        assertFalse(visual.isImpactCounterReady());
-        assertEquals(0f, visual.getImpactCounterPulse(), 0f);
-    }
-
-    @Test
     public void armedRevengeHasPersistentSkullPulse() {
         AbilityActivationVisual visual = new AbilityActivationVisual();
 
-        visual.update(0.1f, null, false, true);
+        visual.update(0.1f, null, true);
         float initialPulse = visual.getRevengeArmedPulse();
-        visual.update(0.2f, null, false, true);
+        visual.update(0.2f, null, true);
 
         assertTrue(visual.isRevengeArmed());
         assertTrue(visual.getRevengeArmedPulse() >= 0f);
         assertTrue(visual.getRevengeArmedPulse() <= 1f);
         assertTrue(initialPulse != visual.getRevengeArmedPulse());
 
-        visual.update(0.1f, null, false, false);
+        visual.update(0.1f, null, false);
         assertFalse(visual.isRevengeArmed());
         assertEquals(0f, visual.getRevengeArmedPulse(), 0f);
     }
@@ -90,9 +74,9 @@ public class AbilityActivationVisualTest {
     public void techniqueAndPowerupActivityHaveIndependentPulses() {
         AbilityActivationVisual visual = new AbilityActivationVisual();
 
-        visual.update(0.1f, null, false, false, true, false);
+        visual.update(0.1f, null, false, true, false);
         float initialTechniquePulse = visual.getTechniquePulse();
-        visual.update(0.2f, null, false, false, true, true);
+        visual.update(0.2f, null, false, true, true);
 
         assertTrue(visual.isTechniqueActive());
         assertTrue(visual.isPowerupActive());
@@ -100,7 +84,7 @@ public class AbilityActivationVisualTest {
         assertTrue(visual.getPowerupPulse() >= 0f);
         assertTrue(visual.getPowerupPulse() <= 1f);
 
-        visual.update(0.1f, null, false, false, false, false);
+        visual.update(0.1f, null, false, false, false);
         assertFalse(visual.isTechniqueActive());
         assertFalse(visual.isPowerupActive());
         assertEquals(0f, visual.getTechniquePulse(), 0f);

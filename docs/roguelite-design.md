@@ -125,9 +125,11 @@ There are no explicit card-pair IDs or hidden combination bonuses. Equipped
 effects act on the same car and can combine naturally, making useful loadouts
 emerge from their behavior instead of from maintained pairing rules.
 
-Every modification has dedicated artwork in
-`assets/roguelite/cards/card_art_atlas_v3.png`. Drivers continue to use their car
-image. The atlas is loaded lazily by presentation code.
+Every modification has dedicated, theme-specific artwork in
+`assets/theme/<theme>/roguelite/cards/card_art_atlas_v3.png`. Each theme depicts
+the card's actual mechanic rather than recoloring another theme's illustration.
+Drivers continue to use their themed portrait. The current theme's atlas is
+loaded lazily by presentation code.
 
 ## Isolation Rules
 

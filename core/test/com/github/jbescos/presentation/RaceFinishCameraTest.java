@@ -8,12 +8,14 @@ import org.junit.Test;
 
 public class RaceFinishCameraTest {
     @Test
-    public void eventCameraFocusesWinnerThroughoutFinishingAndResults() {
-        assertTrue(RaceFinishCamera.shouldFocusWinner(true, true, false, true));
-        assertTrue(RaceFinishCamera.shouldFocusWinner(true, false, true, true));
-        assertFalse(RaceFinishCamera.shouldFocusWinner(false, true, false, true));
-        assertFalse(RaceFinishCamera.shouldFocusWinner(true, false, false, true));
-        assertFalse(RaceFinishCamera.shouldFocusWinner(true, true, false, false));
+    public void eventCameraHoldsWinnerForThreeSecondsThenReleasesEvents() {
+        assertTrue(RaceFinishCamera.shouldFocusWinner(true, true, false, true, 0f));
+        assertTrue(RaceFinishCamera.shouldFocusWinner(true, true, false, true, 2.99f));
+        assertFalse(RaceFinishCamera.shouldFocusWinner(true, true, false, true, 3f));
+        assertTrue(RaceFinishCamera.shouldFocusWinner(true, false, true, true, 3f));
+        assertFalse(RaceFinishCamera.shouldFocusWinner(false, true, false, true, 0f));
+        assertFalse(RaceFinishCamera.shouldFocusWinner(true, false, false, true, 0f));
+        assertFalse(RaceFinishCamera.shouldFocusWinner(true, true, false, false, 0f));
     }
 
     @Test

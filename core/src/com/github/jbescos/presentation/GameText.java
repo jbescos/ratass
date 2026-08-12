@@ -128,6 +128,23 @@ public final class GameText {
         return english;
     }
 
+    public static String countdownContext(
+            GameLanguage language,
+            int currentCircuit,
+            int circuitCount) {
+        String ready = translate(language, "GET READY");
+        if (currentCircuit <= 0 || circuitCount <= 0) {
+            return ready;
+        }
+        return ready
+                + "  |  "
+                + translate(language, "CIRCUIT")
+                + " "
+                + currentCircuit
+                + " / "
+                + circuitCount;
+    }
+
     public static String slotType(GameLanguage language, RogueliteSlotType slotType) {
         if (slotType == null) {
             return "";
@@ -200,6 +217,7 @@ public final class GameText {
 
     private static boolean looksLikeCardEffect(String text) {
         return text.indexOf('|') >= 0
+                || text.indexOf('\n') >= 0
                 || text.indexOf("->") >= 0
                 || text.indexOf(':') >= 0
                 || text.startsWith("Cooldown:")
@@ -223,6 +241,15 @@ public final class GameText {
 
     private static String translateCardEffect(String text) {
         String result = text;
+        result = result.replace("Automatic call", "Llamada automática");
+        result = result.replace("best avg-lap driver", "piloto con mejor vuelta media");
+        result = result.replace("Activation", "Activación");
+        result = result.replace("Revenge activation", "Activación de venganza");
+        result = result.replace("Shared cards and Revenge", "Cartas y Venganza compartidas");
+        result = result.replace("Cancels targeting Revenge", "Cancela venganzas dirigidas");
+        result = result.replace("Debuffs remain", "Los perjuicios continúan");
+        result = result.replace("Intangible", "Intangible");
+        result = result.replace("effect", "efecto");
         result = result.replace("Clear straight", "Recta libre");
         result = result.replace("Fast corner exit", "Salida rápida de curva");
         result = result.replace("Corner exit", "Salida de curva");
@@ -233,14 +260,23 @@ public final class GameText {
         result = result.replace("Nearby rival", "Rival cercano");
         result = result.replace("Rival hit", "Golpe rival");
         result = result.replace("Hit taken", "Golpe recibido");
+        result = result.replace("Hit received", "Golpe recibido");
+        result = result.replace("Long straight", "Recta larga");
+        result = result.replace("Slipstream", "Rebufo");
+        result = result.replace("Corner", "Curva");
+        result = result.replace("Drifting", "Derrape");
+        result = result.replace("Off-road", "Fuera de pista");
         result = result.replace("Each activation", "Cada activación");
+        result = result.replace("In draft", "En rebufo");
         result = result.replace("Stay on-road", "Seguir en pista");
         result = result.replace("Safe re-entry", "Regreso seguro");
         result = result.replace("Drift exit", "Salida de derrape");
         result = result.replace("Leave draft", "Salir del rebufo");
         result = result.replace("Race events", "Eventos de carrera");
+        result = result.replace("Race event", "Evento de carrera");
         result = result.replace("Lower position", "Posición retrasada");
         result = result.replace("Clean lap", "Vuelta limpia");
+        result = result.replace("Clean run", "Conducción limpia");
         result = result.replace("Overtake", "Adelantamiento");
         result = result.replace("Powerup", "Potenciar");
         result = result.replace("Revenge", "Venganza");
@@ -256,6 +292,10 @@ public final class GameText {
         result = result.replace("steering", "dirección");
         result = result.replace("Mass", "Masa");
         result = result.replace("mass", "masa");
+        result = result.replace("Aero", "Aero");
+        result = result.replace("bonuses only", "solo bonificaciones");
+        result = result.replace("bonuses and penalties", "bonificaciones y penalizaciones");
+        result = result.replace("while cornering", "solo en curva");
         result = result.replace("Stronger hits", "Golpes más fuertes");
         result = result.replace("Freer rear while drifting", "Trasera libre al derrapar");
         result = result.replace("reach and boost", "alcance e impulso");
@@ -266,17 +306,20 @@ public final class GameText {
         result = result.replace("random Tier", "azar Nivel");
         result = result.replace("full throttle", "acelerador máximo");
         result = result.replace("full brake", "frenado máximo");
+        result = result.replace("3 impact shots", "3 disparos de impacto");
+        result = result.replace("1s apart", "cada 1s");
         result = result.replace("after 3s", "tras 3s");
         result = result.replace("swap with", "intercambio con");
-        result = result.replace("pull to", "atraer al");
-        result = result.replace("over 5s", "durante 5s");
+        result = result.replace("pull offender to you", "atraer al agresor hacia ti");
+        result = result.replace("over 1s", "durante 1s");
         result = result.replace("reflect impact", "reflejar impacto");
+        result = result.replace("medium outward field", "campo repulsor medio");
         result = result.replace("wide outward field", "campo repulsor amplio");
         result = result.replace("outward field", "campo repulsor");
         result = result.replace("until collision", "hasta colisión");
         result = result.replace("blind", "ciego");
         result = result.replace("random", "aleatoria");
-        result = result.replace("next hit", "siguiente golpe");
+        result = result.replace("immediately", "inmediatamente");
         result = result.replace("Explosive ram", "Embestida explosiva");
         result = result.replace("Recoil", "Retroceso");
         result = result.replace("Push", "Empuje");
@@ -288,6 +331,8 @@ public final class GameText {
         result = result.replace("invisible", "invisible");
         result = result.replace("launch", "impulso");
         result = result.replace("shield", "escudo");
+        result = result.replace("you lead", "quedas delante");
+        result = result.replace("leading rival falls last", "el rival líder queda último");
         return result;
     }
 
@@ -315,12 +360,6 @@ public final class GameText {
         put(text, "MAPS", "MAPAS");
         put(text, "Map", "Mapa");
         put(text, "No maps", "Sin mapas");
-        put(text, "Camera", "Cámara");
-        put(text, "Top Down", "Cenital");
-        put(text, "Chase", "Persecución");
-        put(text, "Whole Map", "Mapa completo");
-        put(text, "Free", "Libre");
-        put(text, "Zoom", "Zoom");
         put(text, "Fit", "Ajustar");
         put(text, "Display", "Pantalla");
         put(text, "Windowed", "Ventana");
@@ -341,8 +380,11 @@ public final class GameText {
         put(text, "Preparing menu", "Preparando menú");
         put(text, "Ready", "Listo");
         put(text, "CARD TYPES", "TIPOS DE CARTA");
+        put(text, "CARD AVAILABILITY", "DISPONIBILIDAD DE CARTAS");
         put(text, "WEATHER", "CLIMA");
         put(text, "CARD TIERS", "NIVELES DE CARTA");
+        put(text, "Tier", "Nivel");
+        put(text, "Unlock lvl", "Nivel desbloqueo");
         put(text, "Laps", "Vueltas");
         put(text, "XP / level", "XP / nivel");
         put(text, "Lap XP cap", "Límite XP vuelta");
@@ -360,7 +402,6 @@ public final class GameText {
         put(text, "LOADOUT", "EQUIPAMIENTO");
         put(text, "ACTIVE CARD EFFECTS", "EFECTOS ACTIVOS");
         put(text, "RACE STATUS", "ESTADO DE CARRERA");
-        put(text, "RACE LOG", "REGISTRO");
         put(text, "IMPACT", "IMPACTO");
         put(text, "OVERTAKE", "ADELANTAMIENTO");
         put(text, "WARNING", "AVISO");
@@ -381,6 +422,8 @@ public final class GameText {
         put(text, "LEVEL UP - CHOOSE AN UPGRADE", "SUBES DE NIVEL - ELIGE UNA MEJORA");
         put(text, "YOUR 5 SLOTS", "TUS 5 HUECOS");
         put(text, "SANDBOX - CHOOSE A CARD", "PRUEBAS - ELIGE UNA CARTA");
+        put(text, "EDITING", "EDITANDO");
+        put(text, "COPY TO ALL", "COPIAR A TODOS");
         put(text, "ACCEPT", "ACEPTAR");
         put(text, "CANCEL", "CANCELAR");
         put(text, "SKIP", "DESCARTAR");
@@ -396,6 +439,7 @@ public final class GameText {
         put(text, "NOW", "AHORA");
         put(text, "MAX", "MÁX");
         put(text, "GET READY", "PREPÁRATE");
+        put(text, "CIRCUIT", "CIRCUITO");
         put(text, "FINISHING RACE", "FINALIZANDO CARRERA");
         put(text, "RACE COMPLETE", "CARRERA TERMINADA");
         put(text, "RACE WINNER", "GANADOR");
@@ -425,6 +469,8 @@ public final class GameText {
                 "ruta magenta  tramo fuera rojo  dirección cian  salidas/metas verdes  marcadores naranjas");
         put(text, "APPLY & RESTART", "APLICAR Y REINICIAR");
         put(text, "sandbox tuning", "ajustes de pruebas");
+        put(text, "sandbox settings", "ajustes de pruebas");
+        put(text, "sensors & route", "sensores y trazada");
         put(text, "control", "control");
         put(text, "weather", "clima");
         put(text, "map", "mapa");
@@ -472,16 +518,61 @@ public final class GameText {
         put(text, "Velocity Shell", "Carrocería veloz");
         put(text, "Torque Vectoring", "Vectorización de par");
         put(text, "Graphene Chassis", "Chasis de grafeno");
-        put(text, "Corner Exit", "Salida de curva");
-        put(text, "Draft Hunter", "Cazador de rebufo");
-        put(text, "Clean Momentum", "Inercia limpia");
-        put(text, "Recovery Launch", "Impulso de recuperación");
-        put(text, "Drift Slingshot", "Tirachinas de derrape");
-        put(text, "Slipstream Slingshot", "Tirachinas de rebufo");
-        put(text, "Overtake Surge", "Impulso de adelantamiento");
-        put(text, "Apex Slingshot", "Tirachinas de vértice");
-        put(text, "Perfect Lap", "Vuelta perfecta");
-        put(text, "Racecraft Mastery", "Maestría de carrera");
+        put(text, "Ballast Sprint", "Sprint lastrado");
+        put(text, "Reinforced Streamliner", "Perfil reforzado");
+        put(text, "Featherweight Drive", "Transmisión ligera");
+        put(text, "Track Wing", "Alerón de pista");
+        put(text, "Grounded Aero", "Aero al suelo");
+        put(text, "Light Compound", "Compuesto ligero");
+        put(text, "Agile Chassis", "Chasis ágil");
+        put(text, "Streamlined Chassis", "Chasis aerodinámico");
+        put(text, "Aero Featherweight", "Peso pluma aero");
+        put(text, "Reinforced Longtail", "Cola larga reforzada");
+        put(text, "Titanium Drive", "Transmisión de titanio");
+        put(text, "Downforce Package", "Paquete de carga");
+        put(text, "Grounded Downforce", "Carga al suelo");
+        put(text, "Magnesium Suspension", "Suspensión de magnesio");
+        put(text, "Aero-Agile Chassis", "Chasis aero ágil");
+        put(text, "Carbon Longtail", "Cola larga de carbono");
+        put(text, "Venturi Monocoque", "Monocasco Venturi");
+        put(text, "Power Monocoque", "Monocasco de potencia");
+        put(text, "Titanium Skeleton", "Esqueleto de titanio");
+        put(text, "Hypercar Core", "Núcleo hipercoche");
+        put(text, "Active Aero Shell", "Carcasa aero activa");
+        put(text, "Carbon Prototype", "Prototipo de carbono");
+        put(text, "Track Vacuum", "Vacío de pista");
+        put(text, "Wing Car", "Coche alado");
+        put(text, "Feather Ground", "Suelo ligero");
+        put(text, "Corner Focus", "Enfoque de curva");
+        put(text, "Draft Focus", "Enfoque de rebufo");
+        put(text, "Straight Focus", "Enfoque de recta");
+        put(text, "Drift Focus", "Enfoque de derrape");
+        put(text, "Rally Focus", "Enfoque de rally");
+        put(text, "Apex Focus", "Enfoque de vértice");
+        put(text, "Sprint Focus", "Enfoque de sprint");
+        put(text, "Slide Focus", "Enfoque de deslizamiento");
+        put(text, "Traction Focus", "Enfoque de tracción");
+        put(text, "Agility Focus", "Enfoque de agilidad");
+        put(text, "Corner Expert", "Experto en curva");
+        put(text, "Draft Expert", "Experto en rebufo");
+        put(text, "Straight Expert", "Experto en recta");
+        put(text, "Drift Expert", "Experto en derrape");
+        put(text, "Rally Expert", "Experto en rally");
+        put(text, "Apex Expert", "Experto en vértice");
+        put(text, "Sprint Expert", "Experto en sprint");
+        put(text, "Slide Expert", "Experto en deslizamiento");
+        put(text, "Traction Expert", "Experto en tracción");
+        put(text, "Agility Expert", "Experto en agilidad");
+        put(text, "Corner Master", "Maestro de curva");
+        put(text, "Draft Master", "Maestro de rebufo");
+        put(text, "Straight Master", "Maestro de recta");
+        put(text, "Drift Master", "Maestro de derrape");
+        put(text, "Rally Master", "Maestro de rally");
+        put(text, "Apex Master", "Maestro de vértice");
+        put(text, "Sprint Master", "Maestro de sprint");
+        put(text, "Slide Master", "Maestro de deslizamiento");
+        put(text, "Traction Master", "Maestro de tracción");
+        put(text, "Agility Master", "Maestro de agilidad");
         put(text, "Underdog Instinct", "Instinto del rezagado");
         put(text, "Comeback Drive", "Remontada");
         put(text, "Last Place Fury", "Furia del último");
@@ -489,26 +580,40 @@ public final class GameText {
         put(text, "Pack Racer", "Piloto de grupo");
         put(text, "Traffic Dominance", "Dominio del tráfico");
         put(text, "Nitro Pulse", "Pulso nitro");
+        put(text, "Ace Hotline", "Línea del as");
+        put(text, "Time Ripple", "Onda temporal");
         put(text, "Quantum Duo", "Dúo cuántico");
         put(text, "Grip Fan", "Ventilador de agarre");
         put(text, "Ghost Cloak", "Manto fantasma");
         put(text, "Lucky Spark", "Chispa de suerte");
-        put(text, "Impact Reversal", "Inversión de impacto");
+        put(text, "Grudge Spark", "Chispa de rencor");
+        put(text, "Rival hit: arm until next rival hit | Reflect impact",
+                "Golpe rival: preparar hasta el siguiente golpe | Reflejar impacto");
         put(text, "Draft Magnet", "Imán de rebufo");
         put(text, "Position Hijack", "Robo de posición");
         put(text, "Redline Hex", "Maldición roja");
         put(text, "Phase Shield", "Escudo de fase");
         put(text, "Rocket Exhaust", "Escape cohete");
+        put(text, "Priority Hotline", "Línea prioritaria");
+        put(text, "Chrono Shift", "Cambio crono");
         put(text, "Quantum Trio", "Trío cuántico");
         put(text, "Phantom Cloak", "Manto espectral");
         put(text, "Chaos Relay", "Relé del caos");
+        put(text, "Vengeance Core", "Núcleo de venganza");
         put(text, "Gravity Well", "Pozo de gravedad");
         put(text, "Quantum Quartet", "Cuarteto cuántico");
         put(text, "Hyperdrive", "Hiperimpulso");
+        put(text, "Temporal Dominion", "Dominio temporal");
         put(text, "Void Cloak", "Manto del vacío");
         put(text, "Wildcard Core", "Núcleo comodín");
+        put(text, "Nemesis Engine", "Motor némesis");
         put(text, "Crown Breaker", "Rompecoronas");
         put(text, "Vendetta Hook", "Gancho de vendetta");
+        put(text, "Repulsor Wave", "Onda repulsora");
+        put(text, "Hunter Barrage", "Ráfaga cazadora");
+        put(text, "Hunter Storm", "Tormenta cazadora");
+        put(text, "Rival hit -> offender: 2 shots/s for 3s",
+                "Golpe rival -> agresor: 2 disparos/s durante 3s");
         put(text, "Repulsor Surge", "Oleada repulsora");
         put(text, "Tar Tether", "Atadura de alquitrán");
         put(text, "EMP Snare", "Trampa PEM");
@@ -519,9 +624,73 @@ public final class GameText {
         put(text, "Loaded Grudge", "Rencor cargado");
         put(text, "Chaos Retort", "Réplica del caos");
         put(text, "Fate's Revenge", "Venganza del destino");
+        put(text, "Triad Coup", "Golpe de tríada");
 
-        put(text, "A dependable first race setup with more power, speed and tire grip.",
-                "Una preparación inicial fiable con más potencia, velocidad y agarre.");
+        put(text, "Cornering amplifies active grip bonuses and every active aero bonus or penalty. Grip penalties and weather stay unchanged.",
+                "En curva amplifica las bonificaciones activas de agarre y cada bonificación o penalización activa de aero. Las penalizaciones de agarre y el clima no cambian.");
+        put(text, "Slipstreaming amplifies every active power and aero bonus or penalty.",
+                "En rebufo amplifica cada bonificación o penalización activa de potencia y aero.");
+        put(text, "A long straight amplifies every active power and aero bonus or penalty.",
+                "En recta larga amplifica cada bonificación o penalización activa de potencia y aero.");
+        put(text, "Drifting amplifies every active power and mass bonus or penalty.",
+                "Al derrapar amplifica cada bonificación o penalización activa de potencia y masa.");
+        put(text, "Leaving the road amplifies every active power, aero, and mass bonus or penalty, plus active grip bonuses. Grip penalties and weather stay unchanged.",
+                "Fuera de pista amplifica cada bonificación o penalización activa de potencia, aero y masa, además de las bonificaciones activas de agarre. Las penalizaciones de agarre y el clima no cambian.");
+        put(text, "Cornering amplifies every active aero and mass bonus or penalty.",
+                "En curva amplifica cada bonificación o penalización activa de aero y masa.");
+        put(text, "A long straight amplifies every active power and mass bonus or penalty.",
+                "En recta larga amplifica cada bonificación o penalización activa de potencia y masa.");
+        put(text, "Drifting amplifies every active aero and mass bonus or penalty.",
+                "Al derrapar amplifica cada bonificación o penalización activa de aero y masa.");
+        put(text, "Cornering amplifies every active power bonus or penalty and active grip bonuses. Grip penalties and weather stay unchanged.",
+                "En curva amplifica cada bonificación o penalización activa de potencia y las bonificaciones activas de agarre. Las penalizaciones de agarre y el clima no cambian.");
+        put(text, "Cornering amplifies active grip bonuses and every active mass bonus or penalty. Grip penalties and weather stay unchanged.",
+                "En curva amplifica las bonificaciones activas de agarre y cada bonificación o penalización activa de masa. Las penalizaciones de agarre y el clima no cambian.");
+
+        put(text, "Power and grip trade aerodynamic efficiency.",
+                "Potencia y agarre sacrifican eficiencia aerodinámica.");
+        put(text, "Power and grip require extra chassis mass.",
+                "Potencia y agarre requieren más masa de chasis.");
+        put(text, "Power and aero efficiency trade tire grip.",
+                "Potencia y eficiencia aero sacrifican agarre.");
+        put(text, "Power and aero efficiency require extra chassis mass.",
+                "Potencia y eficiencia aero requieren más masa de chasis.");
+        put(text, "Power and lower mass trade tire grip.",
+                "Potencia y menor masa sacrifican agarre.");
+        put(text, "Power and lower mass trade aerodynamic efficiency.",
+                "Potencia y menor masa sacrifican eficiencia aerodinámica.");
+        put(text, "Grip and aero efficiency trade engine power.",
+                "Agarre y eficiencia aero sacrifican potencia.");
+        put(text, "Grip and aero efficiency require extra chassis mass.",
+                "Agarre y eficiencia aero requieren más masa de chasis.");
+        put(text, "Grip and lower mass trade engine power.",
+                "Agarre y menor masa sacrifican potencia.");
+        put(text, "Grip and lower mass trade aerodynamic efficiency.",
+                "Agarre y menor masa sacrifican eficiencia aerodinámica.");
+        put(text, "Aero efficiency and lower mass trade engine power.",
+                "Eficiencia aero y menor masa sacrifican potencia.");
+        put(text, "Aero efficiency and lower mass trade tire grip.",
+                "Eficiencia aero y menor masa sacrifican agarre.");
+        put(text, "Power and grip improve together.",
+                "Potencia y agarre mejoran juntos.");
+        put(text, "Power and aero efficiency improve together.",
+                "Potencia y eficiencia aero mejoran juntas.");
+        put(text, "Grip and aero efficiency improve together.",
+                "Agarre y eficiencia aero mejoran juntos.");
+        put(text, "Power and lower mass improve together.",
+                "Potencia y menor masa mejoran juntas.");
+        put(text, "Grip and lower mass improve together.",
+                "Agarre y menor masa mejoran juntos.");
+        put(text, "Aero efficiency and lower mass improve together.",
+                "Eficiencia aero y menor masa mejoran juntas.");
+        put(text, "Power, grip and aero efficiency improve together.",
+                "Potencia, agarre y eficiencia aero mejoran juntos.");
+        put(text, "Power, grip and lower mass improve together.",
+                "Potencia, agarre y menor masa mejoran juntos.");
+        put(text, "Power, aero efficiency and lower mass improve together.",
+                "Potencia, eficiencia aero y menor masa mejoran juntos.");
+        put(text, "Grip, aero efficiency and lower mass improve together.",
+                "Agarre, eficiencia aero y menor masa mejoran juntos.");
         put(text, "A stripped chassis accelerates and changes direction quickly, but gives up tire stability.",
                 "Un chasis aligerado acelera y gira rápido, sacrificando estabilidad.");
         put(text, "An aerodynamically efficient body carries speed on open road at the cost of cornering confidence.",
@@ -550,46 +719,66 @@ public final class GameText {
                 "El reparto activo de par mejora el giro sin perder velocidad ni fuerza de contacto.");
         put(text, "An ultralight structure delivers extreme acceleration, aero efficiency and precise handling.",
                 "Una estructura ultraligera ofrece aceleración extrema, eficiencia aero y manejo preciso.");
-        put(text, "Leaving an on-road corner under power creates a short launch onto the next section.",
-                "Salir acelerando de una curva en pista produce un impulso breve.");
-        put(text, "Finds a rival's wake sooner and turns close following into useful speed.",
-                "Encuentra antes el rebufo y convierte la cercanía en velocidad.");
-        put(text, "Continuous on-road driving builds a speed advantage that is lost by leaving the circuit.",
-                "Conducir sin salir de pista acumula una ventaja de velocidad.");
-        put(text, "A quick legitimate return to the road restores traction and accelerates back into the race.",
-                "Volver rápido y limpiamente a pista recupera agarre y aceleración.");
-        put(text, "Sustained on-road slip stores energy and releases it when the car straightens.",
-                "El derrape sostenido en pista almacena energía que se libera al enderezar.");
-        put(text, "Charges in another car's wake and launches when you pull out to pass.",
-                "Carga energía en el rebufo y la libera al salir para adelantar.");
-        put(text, "Every gained race position immediately provides power to complete the move.",
-                "Cada posición ganada aporta potencia para completar la maniobra.");
-        put(text, "Loads energy through a fast on-road corner and releases it as the road straightens.",
-                "Carga energía en curvas rápidas y la libera al llegar la recta.");
-        put(text, "Clean speed, accurate corner exits and uninterrupted momentum compound throughout the lap.",
-                "Velocidad limpia y buenas salidas de curva se acumulan durante la vuelta.");
-        put(text, "Drafting, corner exits and overtakes each trigger a powerful race-winning response.",
-                "Rebufos, salidas de curva y adelantamientos activan fuertes impulsos.");
+        put(text, "Leaving an on-road corner amplifies the car's tuned power and grip, including weaknesses.",
+                "Salir de una curva amplifica la potencia y el agarre modificados, incluso sus debilidades.");
+        put(text, "A rival's wake amplifies the car's aerodynamic tuning, whether it is beneficial or harmful.",
+                "El rebufo rival amplifica la configuración aerodinámica, sea favorable o perjudicial.");
+        put(text, "Continuous clean driving increasingly amplifies tuned power and aero until the car leaves the road.",
+                "Conducir limpiamente amplifica potencia y aero hasta que el coche sale de pista.");
+        put(text, "A quick legitimate return to the road amplifies the car's current power and grip tuning.",
+                "Un regreso rápido y válido a pista amplifica la potencia y el agarre actuales.");
+        put(text, "Sustained on-road slip stores a multiplier for the car's tuned power and aero.",
+                "El derrape sostenido en pista acumula un multiplicador de potencia y aero.");
+        put(text, "Charges in another car's wake, then amplifies tuned power and aero when pulling out.",
+                "Carga en el rebufo y amplifica potencia y aero al salir de él.");
+        put(text, "Every gained race position amplifies tuned power and grip to consolidate the pass.",
+                "Cada posición ganada amplifica potencia y agarre para asegurar el adelantamiento.");
+        put(text, "A fast corner loads a multiplier for tuned power, grip and aero on exit.",
+                "Una curva rápida carga un multiplicador de potencia, agarre y aero para la salida.");
+        put(text, "Uninterrupted clean speed progressively doubles every tuned performance deviation.",
+                "La velocidad limpia duplica progresivamente cada desviación de rendimiento.");
+        put(text, "Drafting, corner exits and overtakes double tuned performance deviations during their response.",
+                "Rebufos, salidas y adelantamientos duplican las desviaciones mientras responden.");
         put(text, "Reads the field and gains performance as the car falls back, reaching full strength in last place.",
                 "Aumenta el rendimiento cuanto más atrás estás, hasta su máximo en última posición.");
         put(text, "Raises the car's pace whenever a rival is nearby, helping attacks and defensive runs.",
                 "Aumenta el ritmo con rivales cerca para atacar y defender.");
         put(text, "Kicks the car forward when open road invites a nitro burst.",
                 "Impulsa el coche cuando una recta libre permite usar nitro.");
-        put(text, "A quantum split creates a second physical car that races beside the original.",
-                "Una división cuántica crea un segundo coche físico junto al original.");
+        put(text, "Calls the best benchmarked driver, who gives you driving advice for 10 seconds.",
+                "Llama al mejor piloto, que te aconseja durante 10 segundos.");
+        put(text, "Doubles local time for your car and quantum copies; movement and decisions run x2.",
+                "Duplica el tiempo local de tu coche y sus copias cuánticas; movimiento y decisiones x2.");
+        put(text, "Doubles local time for your car and quantum copies, recharging faster.",
+                "Duplica el tiempo local de tu coche y sus copias cuánticas, con recarga más rápida.");
+        put(text, "Doubles local time for your entire quantum family with the fastest recharge.",
+                "Duplica el tiempo local de toda tu familia cuántica con la recarga más rápida.");
+        put(text, "Automatic: local time x2 | 2s\nCooldown: 60s",
+                "Automático: tiempo local x2 | 2s\nRecarga: 60s");
+        put(text, "Automatic: local time x2 | 2s\nCooldown: 40s",
+                "Automático: tiempo local x2 | 2s\nRecarga: 40s");
+        put(text, "Automatic: local time x2 | 2s\nCooldown: 30s",
+                "Automático: tiempo local x2 | 2s\nRecarga: 30s");
+        put(text, "Creates two physical cars. Each drives independently, shares the same cards and executes Revenge with the group; a hit to any copy arms it.",
+                "Crea dos coches físicos. Cada uno conduce de forma independiente, comparte cartas y ejecuta la Venganza con el grupo; golpear cualquier copia la prepara.");
         put(text, "A glowing underbody fan pins the car down as a demanding corner arrives.",
                 "Un ventilador luminoso pega el coche al suelo al llegar una curva exigente.");
         put(text, "The car phases out when traffic is nearby, becoming invisible and intangible to rivals.",
                 "Con tráfico cerca, el coche se vuelve invisible e intangible.");
         put(text, "Prepares a random Tier 1 Powerup and copies its real trigger, effect and cooldown.",
                 "Prepara un Potenciar T1 aleatorio con su activación, efecto y recarga.");
+        put(text, "A green catalyst ignites whenever Revenge activates and strengthens its real effect.",
+                "Un catalizador verde se enciende con cada Venganza y refuerza su efecto real.");
         put(text, "Prepares a random Tier 2 Powerup and copies its real trigger, effect and cooldown.",
                 "Prepara un Potenciar T2 aleatorio con su activación, efecto y recarga.");
+        put(text, "A stronger green core surges whenever Revenge activates and magnifies its outcome.",
+                "Un núcleo verde más potente surge con cada Venganza y amplía su resultado.");
         put(text, "Prepares a random Tier 3 Powerup and copies its real trigger, effect and cooldown.",
                 "Prepara un Potenciar T3 aleatorio con su activación, efecto y recarga.");
-        put(text, "A qualified rival hit arms a counter that throws away the next car to strike you.",
-                "Un golpe rival prepara un contraataque que repele al siguiente coche.");
+        put(text, "An extreme green engine doubles the consequences whenever Revenge activates.",
+                "Un motor verde extremo duplica las consecuencias de cada Venganza.");
+        put(text, "A rival hit arms the counter until the next qualified hit is reflected into its attacker.",
+                "Un golpe rival arma el contraataque hasta que el siguiente golpe válido se refleja contra el atacante.");
         put(text, "A qualified rival hit arms a short pulsing field that forces nearby cars toward the outside.",
                 "Un golpe rival prepara un campo pulsante que expulsa coches cercanos.");
         put(text, "A qualified hit marks its offender. After charging, it exchanges positions only while they are ahead.",
@@ -600,10 +789,12 @@ public final class GameText {
                 "Un escudo de energía absorbe impactos frontales cuando se acerca el tráfico.");
         put(text, "Twin exhaust rockets ignite on a clear straight for a forceful launch.",
                 "Dos cohetes de escape se encienden en recta para dar un gran impulso.");
-        put(text, "A quantum split creates three physical cars spread across the track.",
-                "Una división cuántica crea tres coches físicos repartidos por la pista.");
-        put(text, "A quantum split creates four physical cars spread across the track.",
-                "Una división cuántica crea cuatro coches físicos repartidos por la pista.");
+        put(text, "Calls the best benchmarked driver more often for 10 seconds of driving advice.",
+                "Llama más a menudo al mejor piloto para recibir consejos durante 10 segundos.");
+        put(text, "Creates three physical cars. Each drives independently, shares the same cards and executes Revenge with the group; a hit to any copy arms it.",
+                "Crea tres coches físicos. Cada uno conduce de forma independiente, comparte cartas y ejecuta la Venganza con el grupo; golpear cualquier copia la prepara.");
+        put(text, "Creates four physical cars. Each drives independently, shares the same cards and executes Revenge with the group; a hit to any copy arms it.",
+                "Crea cuatro coches físicos. Cada uno conduce de forma independiente, comparte cartas y ejecuta la Venganza con el grupo; golpear cualquier copia la prepara.");
         put(text, "An improved phase field hides the car and prevents rivals from making contact for longer.",
                 "Un campo de fase mejorado oculta el coche e impide contactos durante más tiempo.");
         put(text, "A visible ground field forms in corners or close traffic for extreme stability.",
@@ -612,10 +803,16 @@ public final class GameText {
                 "Una recta libre activa un impulso extremo y convierte el coche en una estela.");
         put(text, "A championship phase system removes the car from sight and contact for an extended attack window.",
                 "Un sistema de fase oculta el coche y evita contactos durante un ataque prolongado.");
-        put(text, "A rival hit marks its offender and empowers you until you strike them back.",
-                "Un golpe rival marca al agresor y te potencia hasta que le devuelves el golpe.");
-        put(text, "A qualified hit marks its offender. After charging, the hook pulls you directly back toward them.",
-                "Marca al agresor y después te atrae directamente hacia él.");
+        put(text, "A rival hit marks its offender and empowers you until an automatic close-range ram.",
+                "Un golpe rival marca al agresor y te potencia hasta una embestida automática a corta distancia.");
+        put(text, "A qualified hit marks its offender. After charging, the hook pulls them directly back to you.",
+                "Marca al agresor y después lo atrae directamente hacia ti.");
+        put(text, "A qualified rival hit arms a medium-range energy wave that pushes nearby cars away.",
+                "Un golpe rival prepara una onda de alcance medio que aparta los coches cercanos.");
+        put(text, "Marks the rival who hit you, then hunts them anywhere on the circuit with three impact shots.",
+                "Marca al rival que te golpeó y lo caza por todo el circuito con tres disparos de impacto.");
+        put(text, "Marks the rival who hit you, then saturates their position with a rapid impact storm anywhere on the circuit.",
+                "Marca al rival que te golpeó y satura su posición con una rápida tormenta de impactos por todo el circuito.");
         put(text, "A qualified rival hit arms a wide high-energy field that clears space for your comeback.",
                 "Un golpe rival prepara un campo amplio que despeja tu remontada.");
         put(text, "Throws a sticky tether at the rival who hit you and strips all tire traction.",
@@ -624,12 +821,14 @@ public final class GameText {
                 "Lanza una trampa que obliga al agresor a frenar sin retroceder.");
         put(text, "Hurls a heavy energy anchor that forces the rival responsible for hitting you to brake without reversing.",
                 "Lanza un ancla que obliga al agresor a frenar sin retroceder.");
-        put(text, "Curses the rival who hit you until that offender collides with another car.",
-                "Ciega al agresor hasta que choque con otro coche.");
-        put(text, "Chains the rival who hit you to a heavier, blinded car until its next collision.",
-                "Vuelve al agresor pesado y ciego hasta su próxima colisión.");
-        put(text, "Crushes the rival who hit you with blindness, extreme weight, and reduced grip until its next collision.",
-                "Impone ceguera, peso extremo y menos agarre hasta la próxima colisión.");
+        put(text, "Blinds and weakens the rival who hit you for 20 seconds.",
+                "Ciega y debilita durante 20 segundos al rival que te golpeó.");
+        put(text, "Chains the rival who hit you to a heavier, weakened and blinded car for 30 seconds.",
+                "Vuelve pesado, débil y ciego durante 30 segundos al rival que te golpeó.");
+        put(text, "Crushes the rival who hit you with blindness, extreme weight, and severe performance loss for 40 seconds.",
+                "Impone durante 40 segundos ceguera, peso extremo y una gran pérdida de rendimiento al rival que te golpeó.");
+        put(text, "Binds the offender and the car directly behind you, then reverses their places while moving you to the front.",
+                "Une al agresor y al coche justo detrás, invierte sus puestos y te coloca delante.");
         put(text, "A rival hit executes a random Tier 1 Revenge card, then prepares a different retaliation.",
                 "Un golpe ejecuta una Venganza T1 aleatoria y prepara otra.");
         put(text, "A rival hit executes a random Tier 2 Revenge card, then prepares a different retaliation.",

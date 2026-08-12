@@ -23,6 +23,7 @@ public class RogueliteRunTest {
         rules.toggleCardType(RogueliteSlotType.REVENGE);
         rules.toggleTier(1);
         rules.toggleTier(3);
+        rules.setTierUnlockLevel(2, 1);
         rules.setLevelXpIncrement(100);
         run.configureGameRules(rules);
         run.reset();
@@ -44,6 +45,27 @@ public class RogueliteRunTest {
     }
 
     @Test
+    public void customRulesFilterCardTypesWithinTheUnlockedTier() {
+        RogueliteRun run = new RogueliteRun(901L);
+        CustomGameRules rules = new CustomGameRules();
+        for (RogueliteSlotType type : RogueliteSlotType.values()) {
+            if (type != RogueliteSlotType.TUNING) {
+                assertTrue(rules.toggleTierCardType(1, type));
+            }
+        }
+        run.configureGameRules(rules);
+        run.awardPlayerRacePosition(1, 10);
+
+        List<RogueliteCardOffer> offers = run.createOffers(20);
+
+        assertFalse(offers.isEmpty());
+        for (RogueliteCardOffer offer : offers) {
+            assertEquals(1, offer.getTier());
+            assertEquals(RogueliteSlotType.TUNING, offer.getSlotType());
+        }
+    }
+
+    @Test
     public void customRacecraftCapAppliesIndependentlyToEveryCompetitor() {
         RogueliteRun run = new RogueliteRun(91L);
         CustomGameRules rules = new CustomGameRules();
@@ -62,7 +84,7 @@ public class RogueliteRunTest {
         RogueliteLoadout loadout = new RogueliteLoadout("profile00");
 
         assertTrue(loadout.equip(RogueliteCardId.CLUB_TUNE));
-        assertTrue(loadout.equip(RogueliteCardId.CORNER_EXIT));
+        assertTrue(loadout.equip(RogueliteCardId.CORNER_FOCUS));
         assertTrue(loadout.equip(RogueliteCardId.NITRO_PULSE));
         assertTrue(loadout.equip(RogueliteCardId.DRAFT_MAGNET));
         assertTrue(loadout.isFull());
@@ -75,7 +97,7 @@ public class RogueliteRunTest {
                 loadout.get(RogueliteSlotType.TUNING));
         assertFalse(loadout.has(RogueliteCardId.CLUB_TUNE));
         assertEquals(
-                RogueliteCardId.CORNER_EXIT,
+                RogueliteCardId.CORNER_FOCUS,
                 loadout.get(RogueliteSlotType.TECHNIQUE));
         assertEquals(
                 RogueliteCardId.NITRO_PULSE,
@@ -201,7 +223,7 @@ public class RogueliteRunTest {
                 RogueliteCardId.CLUB_TUNE,
                 restored.getPlayerLoadout().get(RogueliteSlotType.TUNING));
         assertEquals(
-                RogueliteCardId.CORNER_EXIT,
+                RogueliteCardId.CORNER_FOCUS,
                 restored.getPlayerLoadout().get(RogueliteSlotType.TECHNIQUE));
         assertEquals(
                 RogueliteCardId.GRIP_FAN,
@@ -272,6 +294,25 @@ public class RogueliteRunTest {
                 assertEquals(1, run.getDriverTier(offer.getDriver().getProfileId()));
             }
         }
+    }
+
+    @Test
+    public void driverIsNotReservedAsOneOfTheThreeOffers() {
+        boolean foundOfferSetWithoutDriver = false;
+        for (long seed = 1L; seed <= 100L; seed++) {
+            RogueliteRun run = new RogueliteRun(seed);
+            earnOneReward(run);
+            List<RogueliteCardOffer> offers = run.createOffers(3);
+            boolean hasDriver = false;
+            for (int i = 0; i < offers.size(); i++) {
+                hasDriver |= offers.get(i).isDriver();
+            }
+            if (!hasDriver) {
+                foundOfferSetWithoutDriver = true;
+                break;
+            }
+        }
+        assertTrue(foundOfferSetWithoutDriver);
     }
 
     @Test
@@ -442,7 +483,7 @@ public class RogueliteRunTest {
     }
 
     @Test
-    public void equippedCardsStayOutOfOffersButReplacedCardsCanReturn() {
+    public void selectedCardsNeverReturnAfterReplacementOrRestore() {
         RogueliteRun run = new RogueliteRun(49L);
 
         earnOneReward(run);
@@ -473,16 +514,17 @@ public class RogueliteRunTest {
         assertTrue(run.select(replacement));
 
         earnOneReward(run);
-        List<RogueliteCardOffer> laterOffers = run.createOffers(20);
-        assertTrue(
-                containsOffer(
-                        laterOffers,
-                        "card:" + replaced.name()));
-        assertFalse(containsOffer(laterOffers, replacement.getOfferId()));
+        RogueliteRun restored = new RogueliteRun(50L);
+        assertTrue(restored.restore(run.snapshot()));
+        for (int attempt = 0; attempt < 10; attempt++) {
+            List<RogueliteCardOffer> laterOffers = restored.createOffers(20);
+            assertFalse(containsOffer(laterOffers, "card:" + replaced.name()));
+            assertFalse(containsOffer(laterOffers, replacement.getOfferId()));
+        }
     }
 
     @Test
-    public void currentDriverStaysOutOfOffersButPreviousDriverCanReturn() {
+    public void selectedDriversNeverReturnAfterReplacementOrRestore() {
         RogueliteRun run = new RogueliteRun(51L);
         CustomGameRules driverOnlyRules = new CustomGameRules();
         for (RogueliteSlotType type : RogueliteSlotType.values()) {
@@ -499,12 +541,12 @@ public class RogueliteRunTest {
         assertTrue(run.select(selectedDriver));
 
         earnOneReward(run);
-        List<RogueliteCardOffer> laterOffers = run.createOffers(20);
+        RogueliteRun restored = new RogueliteRun(52L);
+        restored.configureGameRules(driverOnlyRules);
+        assertTrue(restored.restore(run.snapshot()));
+        List<RogueliteCardOffer> laterOffers = restored.createOffers(20);
         assertFalse(containsOffer(laterOffers, selectedDriver.getOfferId()));
-        assertTrue(
-                containsOffer(
-                        laterOffers,
-                        "driver:" + defaultDriver));
+        assertFalse(containsOffer(laterOffers, "driver:" + defaultDriver));
     }
 
     @Test
@@ -601,7 +643,7 @@ public class RogueliteRunTest {
         RogueliteLoadout loadout = run.getRivalLoadout(2);
         loadout.setDriverProfileId("profile03");
         assertTrue(loadout.equip(RogueliteCardId.CLUB_TUNE));
-        assertTrue(loadout.equip(RogueliteCardId.CORNER_EXIT));
+        assertTrue(loadout.equip(RogueliteCardId.CORNER_FOCUS));
         assertTrue(loadout.equip(RogueliteCardId.NITRO_PULSE));
         run.getRivalProgress(2).restore(RogueliteRun.TIER_TWO_LEVEL, 0, 1);
         run.resolveRivalRewards(Arrays.asList(Integer.valueOf(2)));
@@ -615,6 +657,94 @@ public class RogueliteRunTest {
             }
         }
         assertEquals(1, tierTwoSlots);
+    }
+
+    @Test
+    public void rivalsFillAnEmptySlotBeforeReplacingEquippedCards() {
+        RogueliteRun run = new RogueliteRun(575L);
+        RogueliteCompetitorProgress rival = run.getRivalProgress(2);
+        RogueliteLoadout loadout = rival.getLoadout();
+        assertTrue(loadout.equip(RogueliteCardId.AERO_TRIM));
+        assertTrue(loadout.equip(RogueliteCardId.CORNER_FOCUS));
+        assertTrue(loadout.equip(RogueliteCardId.NITRO_PULSE));
+
+        RogueliteCardOffer selected = run.chooseRivalOffer(
+                rival,
+                Arrays.asList(
+                        modificationOffer(RogueliteCardId.STRAIGHT_FOCUS),
+                        modificationOffer(RogueliteCardId.SPORT_TUNE),
+                        modificationOffer(RogueliteCardId.DRAFT_MAGNET)));
+
+        assertEquals(RogueliteSlotType.REVENGE, selected.getSlotType());
+    }
+
+    @Test
+    public void rivalsUpgradeTheOnlyLowerTierSlotBeforeConsideringSynergy() {
+        RogueliteRun run = new RogueliteRun(576L);
+        RogueliteCompetitorProgress rival = run.getRivalProgress(2);
+        RogueliteLoadout loadout = rival.getLoadout();
+        assertTrue(loadout.equip(RogueliteCardId.RACE_TUNE));
+        assertTrue(loadout.equip(RogueliteCardId.CORNER_EXPERT));
+        assertTrue(loadout.equip(RogueliteCardId.PHASE_SHIELD));
+        assertTrue(loadout.equip(RogueliteCardId.DRAFT_MAGNET));
+
+        RogueliteCardOffer selected = run.chooseRivalOffer(
+                rival,
+                Arrays.asList(
+                        modificationOffer(RogueliteCardId.STRAIGHT_EXPERT),
+                        modificationOffer(RogueliteCardId.LOW_DRAG_BODY),
+                        modificationOffer(RogueliteCardId.EMP_SNARE)));
+
+        assertEquals(RogueliteCardId.EMP_SNARE, selected.getCard().getId());
+    }
+
+    @Test
+    public void rivalsUsuallyChooseTheStrongestSameTierSynergyButStillExplore() {
+        RogueliteRun run = new RogueliteRun(577L);
+        RogueliteCompetitorProgress rival = run.getRivalProgress(2);
+        RogueliteLoadout loadout = rival.getLoadout();
+        assertTrue(loadout.equip(RogueliteCardId.AERO_TRIM));
+        assertTrue(loadout.equip(RogueliteCardId.CORNER_FOCUS));
+        assertTrue(loadout.equip(RogueliteCardId.NITRO_PULSE));
+        assertTrue(loadout.equip(RogueliteCardId.DRAFT_MAGNET));
+        List<RogueliteCardOffer> offers = Arrays.asList(
+                modificationOffer(RogueliteCardId.STRAIGHT_FOCUS),
+                modificationOffer(RogueliteCardId.DRIFT_FOCUS),
+                modificationOffer(RogueliteCardId.SPORT_TUNE));
+
+        int strongestSelections = 0;
+        int exploratorySelections = 0;
+        for (int selection = 0; selection < 1000; selection++) {
+            RogueliteCardOffer selected = run.chooseRivalOffer(rival, offers);
+            if (selected.getCard().getId() == RogueliteCardId.STRAIGHT_FOCUS) {
+                strongestSelections++;
+            } else {
+                exploratorySelections++;
+            }
+        }
+
+        assertTrue(strongestSelections >= 850);
+        assertTrue(exploratorySelections > 0);
+    }
+
+    @Test
+    public void rivalsFallBackToRevengeWhenNoStatSynergyImproves() {
+        RogueliteRun run = new RogueliteRun(578L);
+        RogueliteCompetitorProgress rival = run.getRivalProgress(2);
+        RogueliteLoadout loadout = rival.getLoadout();
+        assertTrue(loadout.equip(RogueliteCardId.AERO_TRIM));
+        assertTrue(loadout.equip(RogueliteCardId.STRAIGHT_FOCUS));
+        assertTrue(loadout.equip(RogueliteCardId.NITRO_PULSE));
+        assertTrue(loadout.equip(RogueliteCardId.DRAFT_MAGNET));
+
+        RogueliteCardOffer selected = run.chooseRivalOffer(
+                rival,
+                Arrays.asList(
+                        modificationOffer(RogueliteCardId.DRIFT_FOCUS),
+                        modificationOffer(RogueliteCardId.MIRROR_DUO),
+                        modificationOffer(RogueliteCardId.TAR_TETHER)));
+
+        assertEquals(RogueliteCardId.TAR_TETHER, selected.getCard().getId());
     }
 
     @Test
@@ -789,6 +919,10 @@ public class RogueliteRunTest {
             }
         }
         throw new AssertionError("Expected a modification offer.");
+    }
+
+    private static RogueliteCardOffer modificationOffer(RogueliteCardId cardId) {
+        return RogueliteCardOffer.modification(RogueliteCardCatalog.get(cardId));
     }
 
     private static RogueliteCardOffer firstModificationForEmptySlot(

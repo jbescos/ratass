@@ -1,7 +1,7 @@
 package com.github.jbescos.gameplay.roguelite;
 
 /** Arms against the exact rival responsible for a qualified hit. */
-final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
+final class TargetedRevengeEffect extends RevengeUpgradeEffect {
     private static final float POSITION_SWAP_MIN_DISTANCE = 3.2f;
     private static final float POSITION_SWAP_DELAY_SECONDS = 3f;
     private static final float HOOK_TRIGGER_DELAY_SECONDS = 3f;
@@ -10,13 +10,11 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
     private final float targetSpeedMultiplier;
     private final float targetGripMultiplier;
 
-    private int offenderVehicleId = -1;
     private float activeTimer;
-    private float armedAge;
     private boolean awaitingCompletion;
 
     TargetedRevengeEffect(RogueliteCardId cardId) {
-        super(cardId);
+        super(cardId, workflowFor(cardId));
         switch (cardId) {
             case TAR_TETHER:
                 effectDurationSeconds = 2f;
@@ -61,15 +59,15 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
 
     @Override
     boolean isReady() {
-        return offenderVehicleId >= 0
+        return hasTarget()
                 && activeTimer <= 0f
                 && !awaitingCompletion
-                && armedAge >= triggerDelaySeconds();
+                && targetAgeSeconds() >= triggerDelaySeconds();
     }
 
     @Override
     boolean isArmed() {
-        return offenderVehicleId >= 0;
+        return hasTarget();
     }
 
     @Override
@@ -78,7 +76,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
         if (delaySeconds <= 0f) {
             return 1f;
         }
-        return Math.max(0f, Math.min(1f, armedAge / delaySeconds));
+        return Math.max(0f, Math.min(1f, targetAgeSeconds() / delaySeconds));
     }
 
     @Override
@@ -94,26 +92,30 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
     @Override
     void update(float delta, float timerDelta, RogueliteDrivingFrame frame) {
         activeTimer = Math.max(0f, activeTimer - timerDelta);
-        if (offenderVehicleId >= 0 && activeTimer <= 0f && !awaitingCompletion) {
-            armedAge += Math.max(0f, delta);
+        if (hasTarget() && activeTimer <= 0f && !awaitingCompletion) {
+            advanceTargetAge(delta);
         }
     }
 
     @Override
-    void onHitBy(int vehicleId, float impactStrength) {
-        if (vehicleId >= 0
-                && impactStrength > 0f
-                && activeTimer <= 0f
-                && !awaitingCompletion
-                && offenderVehicleId < 0) {
-            offenderVehicleId = vehicleId;
-            armedAge = 0f;
-        }
+    protected void prepareFromHit(int vehicleId, float impactStrength) {
+        activeTimer = 0f;
     }
 
     @Override
-    int revengeTargetVehicleId() {
-        return offenderVehicleId;
+    protected boolean isExecutionInProgress() {
+        return activeTimer > 0f || awaitingCompletion;
+    }
+
+    @Override
+    protected void onTargetCancelled() {
+        activeTimer = 0f;
+        awaitingCompletion = false;
+    }
+
+    @Override
+    boolean allowsOffRoadOffenderStrike() {
+        return getCardId() == RogueliteCardId.PAYBACK_SHIELD;
     }
 
     @Override
@@ -122,7 +124,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
             boolean offenderAhead) {
         if (getCardId() != RogueliteCardId.RECOVERY_BEACON
                 || !isReady()
-                || targetVehicleId != offenderVehicleId
+                || !targets(targetVehicleId)
                 || offenderAhead) {
             return false;
         }
@@ -135,7 +137,7 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
             int targetVehicleId,
             float distance,
             boolean offenderAhead) {
-        if (!isReady() || targetVehicleId != offenderVehicleId) {
+        if (!isReady() || !targets(targetVehicleId)) {
             return null;
         }
 
@@ -182,6 +184,17 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
         }
     }
 
+    @Override
+    void amplifyActiveRevenge(float multiplier) {
+        if (activeTimer <= 0f) {
+            return;
+        }
+        float safeMultiplier = Float.isFinite(multiplier)
+                ? Math.max(1f, multiplier)
+                : 1f;
+        activeTimer *= safeMultiplier;
+    }
+
     private float triggerDelaySeconds() {
         if (getCardId() == RogueliteCardId.RECOVERY_BEACON) {
             return POSITION_SWAP_DELAY_SECONDS;
@@ -193,7 +206,13 @@ final class TargetedRevengeEffect extends RogueliteUpgradeEffect {
     }
 
     private void clearOffender() {
-        offenderVehicleId = -1;
-        armedAge = 0f;
+        clearTarget();
+    }
+
+    private static RevengeWorkflow workflowFor(RogueliteCardId cardId) {
+        return cardId == RogueliteCardId.RECOVERY_BEACON
+                        || cardId == RogueliteCardId.PAYBACK_SHIELD
+                ? RevengeWorkflow.TARGET_DELAYED
+                : RevengeWorkflow.TARGET_IMMEDIATE;
     }
 }
