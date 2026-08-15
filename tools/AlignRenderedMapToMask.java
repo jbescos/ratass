@@ -16,12 +16,19 @@ public final class AlignRenderedMapToMask {
     private static final float SHOULDER_PIXELS = 4.5f;
     private static final float GENERATED_MARKER_CLEANUP_PIXELS = 24f;
 
+    private enum RoadStyle {
+        STANDARD,
+        HALLOWEEN
+    }
+
     private AlignRenderedMapToMask() {
     }
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 3) {
-            System.err.println("Usage: AlignRenderedMapToMask <artwork.png> <mask.png> <output.png>");
+        if (args.length < 3 || args.length > 4) {
+            System.err.println(
+                    "Usage: AlignRenderedMapToMask <artwork.png> <mask.png> <output.png>"
+                            + " [standard|halloween]");
             System.exit(2);
         }
 
@@ -36,7 +43,8 @@ public final class AlignRenderedMapToMask {
                             + " mask=" + mask.getWidth() + "x" + mask.getHeight());
         }
 
-        BufferedImage aligned = align(artwork, mask);
+        RoadStyle roadStyle = args.length == 4 ? parseRoadStyle(args[3]) : RoadStyle.STANDARD;
+        BufferedImage aligned = align(artwork, mask, roadStyle);
         File outputFile = new File(args[2]);
         File parent = outputFile.getParentFile();
         if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
@@ -52,6 +60,13 @@ public final class AlignRenderedMapToMask {
     }
 
     static BufferedImage align(BufferedImage artwork, BufferedImage mask) {
+        return align(artwork, mask, RoadStyle.STANDARD);
+    }
+
+    private static BufferedImage align(
+            BufferedImage artwork,
+            BufferedImage mask,
+            RoadStyle roadStyle) {
         int width = mask.getWidth();
         int height = mask.getHeight();
         boolean[] road = new boolean[width * height];
@@ -78,9 +93,9 @@ public final class AlignRenderedMapToMask {
                 int result;
                 if (road[index]) {
                     result = renderRoadPixel(
-                            x, y, distanceToOutside[index], greenStartLine[index]);
+                            x, y, distanceToOutside[index], greenStartLine[index], roadStyle);
                 } else {
-                    result = renderOutsidePixel(x, y, source, distanceToRoad[index]);
+                    result = renderOutsidePixel(x, y, source, distanceToRoad[index], roadStyle);
                 }
                 output.setRGB(x, y, result);
             }
@@ -92,7 +107,8 @@ public final class AlignRenderedMapToMask {
             int x,
             int y,
             int distanceToOutside,
-            boolean greenStartLine) {
+            boolean greenStartLine,
+            RoadStyle roadStyle) {
         if (greenStartLine) {
             int variation = coordinateNoise(x, y, 5);
             return rgb(38 + variation, 226 + variation, 91 + variation);
@@ -101,16 +117,27 @@ public final class AlignRenderedMapToMask {
         float edgeDistance = distanceToOutside / (float) ORTHOGONAL_COST;
         if (edgeDistance <= 1.35f) {
             int variation = coordinateNoise(x, y, 4);
+            if (roadStyle == RoadStyle.HALLOWEEN) {
+                return rgb(54 + variation, 177 + variation, 191 + variation);
+            }
             return rgb(210 + variation, 211 + variation, 207 + variation);
         }
 
         int fineNoise = coordinateNoise(x, y, 5);
         int broadNoise = coordinateNoise(x / 7, y / 7, 4);
         int texture = fineNoise + broadNoise;
+        if (roadStyle == RoadStyle.HALLOWEEN) {
+            return rgb(35 + texture, 38 + texture, 41 + texture);
+        }
         return rgb(48 + texture, 51 + texture, 54 + texture);
     }
 
-    private static int renderOutsidePixel(int x, int y, int source, int distanceToRoad) {
+    private static int renderOutsidePixel(
+            int x,
+            int y,
+            int source,
+            int distanceToRoad,
+            RoadStyle roadStyle) {
         float distance = distanceToRoad / (float) ORTHOGONAL_COST;
         boolean generatedGreenSpill = isGreenMarker(source);
         if (distance > SHOULDER_PIXELS && !generatedGreenSpill) {
@@ -120,7 +147,20 @@ public final class AlignRenderedMapToMask {
             return source & 0x00ffffff;
         }
         int noise = coordinateNoise(x, y, 6) + coordinateNoise(x / 5, y / 5, 4);
+        if (roadStyle == RoadStyle.HALLOWEEN) {
+            return rgb(116 + noise, 94 + noise, 48 + noise);
+        }
         return rgb(107 + noise, 104 + noise, 94 + noise);
+    }
+
+    private static RoadStyle parseRoadStyle(String value) {
+        if ("standard".equalsIgnoreCase(value)) {
+            return RoadStyle.STANDARD;
+        }
+        if ("halloween".equalsIgnoreCase(value)) {
+            return RoadStyle.HALLOWEEN;
+        }
+        throw new IllegalArgumentException("Unknown road style: " + value);
     }
 
     private static boolean isGreenMarker(int rgb) {

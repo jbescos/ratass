@@ -328,6 +328,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         self._java_float_array = jpype.JArray(jpype.JFloat)
         self._env = ratass_game.RlTrainingEnvironment(training_config)
         self._agent_count = int(self._env.getControlledAgentCount())
+        self._single_agent = self._agent_count == 1
         self._agents = [f"learner_{i}" for i in range(self._agent_count)]
         self._agent_indices = {agent: index for index, agent in enumerate(self._agents)}
         self._java_action_buffer = self._java_float_array(self._agent_count * ACTION_SIZE)
@@ -374,7 +375,11 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             training_config.addMap(selected_by_id[map_id])
 
     def reset(self, *, seed=None, options=None):
-        result = self._env.reset()
+        result = (
+            self._env.reset()
+            if self._reward_summary_enabled
+            else self._env.resetFast()
+        )
         self.agents = list(self._agents)
         if self._reward_summary_enabled:
             self._reset_episode_accounting(result)
@@ -382,10 +387,8 @@ class RatassMultiAgentEnv(MultiAgentEnv):
 
     def step(self, action_dict):
         current_agents = self._agents
-        for action_index in range(self._agent_count * ACTION_SIZE):
-            self._java_action_buffer[action_index] = 0.0
-        for agent in current_agents:
-            index = self._agent_indices[agent]
+        if self._single_agent:
+            agent = current_agents[0]
             action = action_dict.get(agent)
             throttle = 0.0
             turn = 0.0
@@ -394,11 +397,30 @@ class RatassMultiAgentEnv(MultiAgentEnv):
                     throttle = float(action[0])
                 if len(action) > 1:
                     turn = float(action[1])
-            action_offset = index * ACTION_SIZE
-            self._java_action_buffer[action_offset] = min(1.0, max(-1.0, throttle))
-            self._java_action_buffer[action_offset + 1] = min(1.0, max(-1.0, turn))
+            self._java_action_buffer[0] = min(1.0, max(-1.0, throttle))
+            self._java_action_buffer[1] = min(1.0, max(-1.0, turn))
+        else:
+            for action_index in range(self._agent_count * ACTION_SIZE):
+                self._java_action_buffer[action_index] = 0.0
+            for agent in current_agents:
+                index = self._agent_indices[agent]
+                action = action_dict.get(agent)
+                throttle = 0.0
+                turn = 0.0
+                if action is not None:
+                    if len(action) > 0:
+                        throttle = float(action[0])
+                    if len(action) > 1:
+                        turn = float(action[1])
+                action_offset = index * ACTION_SIZE
+                self._java_action_buffer[action_offset] = min(1.0, max(-1.0, throttle))
+                self._java_action_buffer[action_offset + 1] = min(1.0, max(-1.0, turn))
 
-        result = self._env.step(self._java_action_buffer)
+        result = (
+            self._env.step(self._java_action_buffer)
+            if self._reward_summary_enabled
+            else self._env.stepFast(self._java_action_buffer)
+        )
         rewards = {
             agent: float(result.rewards[index])
             for index, agent in enumerate(current_agents)
@@ -466,6 +488,8 @@ class RatassMultiAgentEnv(MultiAgentEnv):
 
     def _observations(self, result, agents) -> Dict[str, np.ndarray]:
         flat = np.asarray(result.observations, dtype=np.float32)
+        if self._single_agent:
+            return {agents[0]: flat.copy()}
         observations = flat.reshape((self._agent_count, OBSERVATION_SIZE))
         return {
             agent: observations[self._agent_indices[agent]].copy()

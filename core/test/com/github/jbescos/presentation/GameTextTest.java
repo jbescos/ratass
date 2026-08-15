@@ -1,6 +1,7 @@
 package com.github.jbescos.presentation;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 
 import com.github.jbescos.gameplay.roguelite.CustomGameRules.WeatherType;
@@ -71,6 +72,20 @@ public class GameTextTest {
         assertEquals(
                 "CÁMARA TV: Blitz",
                 GameText.translate(GameLanguage.SPANISH, "TV CAMERA: Blitz"));
+        assertEquals("PASAR", GameText.translate(GameLanguage.SPANISH, "SKIP"));
+        assertEquals("PASAR 30s", GameText.translate(GameLanguage.SPANISH, "SKIP 30s"));
+        assertEquals(
+                "Rival cercano en recta: 2 coches durante 5s\n"
+                        + "Cartas y Venganza compartidas | Recarga: 10s",
+                GameText.translate(
+                        GameLanguage.SPANISH,
+                        "Nearby rival on straight: 2 cars for 5s\n"
+                                + "Shared cards and Revenge | Cooldown: 10s"));
+        assertEquals(
+                "Activación: Golpe rival\nAgresor: frenado máximo durante 2s",
+                GameText.translate(
+                        GameLanguage.SPANISH,
+                        "Activation: Rival hit\nOffender: full brake for 2s"));
     }
 
     @Test
@@ -117,6 +132,47 @@ public class GameTextTest {
                         language + " effect " + card.getId(),
                         card.getEffectText(),
                         GameText.translate(language, card.getEffectText()));
+            }
+        }
+    }
+
+    @Test
+    public void spanishCardEffectsDoNotRetainEnglishControlPhrases() {
+        String[] untranslatedFragments = {
+            "Activation", "Nearby rival", "Rival hit", "Offender", "Cooldown",
+            "Shared cards", "After ", " for ", "Random Tier", "best-driver",
+            " shots", " charge", " hunt", "Powerup"
+        };
+        for (RogueliteCardDefinition card : RogueliteCardCatalog.all()) {
+            String translated = GameText.translate(GameLanguage.SPANISH, card.getEffectText());
+            for (String fragment : untranslatedFragments) {
+                assertFalse(
+                        card.getId() + " retains '" + fragment + "': " + translated,
+                        translated.contains(fragment));
+            }
+        }
+    }
+
+    @Test
+    public void europeanCardEffectsDoNotRetainEnglishControlPhrases() {
+        GameLanguage[] languages = {
+            GameLanguage.FRENCH,
+            GameLanguage.GERMAN,
+            GameLanguage.ITALIAN
+        };
+        String[] untranslatedFragments = {
+            "best-driver", "Nearby rival", "Rival hit", "Offender", "Cooldown",
+            "Shared cards", "After ", " for ", "Random Tier", " shots/s", "Powerup"
+        };
+        for (GameLanguage language : languages) {
+            for (RogueliteCardDefinition card : RogueliteCardCatalog.all()) {
+                String translated = GameText.translate(language, card.getEffectText());
+                for (String fragment : untranslatedFragments) {
+                    assertFalse(
+                            language + " " + card.getId() + " retains '" + fragment
+                                    + "': " + translated,
+                            translated.contains(fragment));
+                }
             }
         }
     }

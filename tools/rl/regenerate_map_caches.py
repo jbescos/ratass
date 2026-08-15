@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate map .json.gz metadata caches from the current mask PNG files."""
+"""Regenerate map .mapcache metadata caches from the current mask PNG files."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def start_jvm(jar_path: Path) -> None:
 
 def remove_cache_files(map_dir: Path) -> int:
     removed = 0
-    for pattern in ("*.json.gz", "*.ser"):
+    for pattern in ("*.mapcache", "*.json.gz", "*.ser"):
         for path in sorted(map_dir.glob(pattern)):
             path.unlink()
             removed += 1

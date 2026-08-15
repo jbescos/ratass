@@ -326,7 +326,7 @@ def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    for pattern in ("map*.json.gz", "map*.ser"):
+    for pattern in ("map*.mapcache", "map*.json.gz", "map*.ser"):
         for path in output_dir.glob(pattern):
             path.unlink()
     for spec in CIRCUITS:

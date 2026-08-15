@@ -5,7 +5,7 @@ Rendered road artwork is theme-specific and lives under
 `assets/theme/<theme>/maps/`.
 
 - `*_mask.png`: road mask, race checkpoints, and start-grid anchors
-- `*.json.gz`: compressed generated gameplay metadata for the parsed mask
+- `*.mapcache`: gzip-compressed generated gameplay metadata for the parsed mask
 
 The rendered `mapNNN.png` files must not be placed here. Each theme supplies
 its own presentation image while every theme continues to use the same mask
@@ -24,13 +24,17 @@ java -cp /tmp AlignRenderedMapToMask \
   assets/theme/gt3/maps/mapNNN.png
 ```
 
+Pass `halloween` as a final argument when compositing a Halloween map. This
+keeps the themed cyan edge and bronze shoulder while using the exact same
+playable road geometry.
+
 This process keeps road width, boundaries, and the start/finish line aligned
 with gameplay. Do not ask an image generator to draw the playable road.
 
-The `.json.gz` file is a compressed generated cache. It stores only gameplay data
+The `.mapcache` file is a compressed generated cache. It stores only gameplay data
 derived from the mask, not the decorated map image. If it is missing or stale,
 the loader rebuilds it from the matching `*_mask.png` and writes a fresh sidecar cache
-when the assets directory is writable. Keep the `.json.gz` next to the map pair
+when the assets directory is writable. Keep the `.mapcache` next to the map pair
 before packaging the game so normal startup does not have to parse the mask
 image and rebuild mask distance fields.
 

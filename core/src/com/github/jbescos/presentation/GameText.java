@@ -75,7 +75,7 @@ public final class GameText {
             return "CONTINUAR " + english.substring("CONTINUE ".length());
         }
         if (english.startsWith("SKIP ")) {
-            return "DESCARTAR " + english.substring("SKIP ".length());
+            return "PASAR " + english.substring("SKIP ".length());
         }
         if (english.startsWith("Starts in ")) {
             return "Empieza en " + english.substring("Starts in ".length());
@@ -96,12 +96,6 @@ public final class GameText {
             return translate(language, english.substring(0, detailSeparator))
                     + " - "
                     + translate(language, english.substring(detailSeparator + 3));
-        }
-        int targetSeparator = english.lastIndexOf(" on ");
-        if (targetSeparator > 0) {
-            return translate(language, english.substring(0, targetSeparator))
-                    + " contra "
-                    + english.substring(targetSeparator + 4);
         }
         if (english.indexOf(" SLAMMED ") >= 0
                 || english.indexOf(" SHOVED ") >= 0
@@ -124,6 +118,12 @@ public final class GameText {
         }
         if (looksLikeCardEffect(english)) {
             return translateCardEffect(english);
+        }
+        int targetSeparator = english.lastIndexOf(" on ");
+        if (targetSeparator > 0) {
+            return translate(language, english.substring(0, targetSeparator))
+                    + " contra "
+                    + english.substring(targetSeparator + 4);
         }
         return english;
     }
@@ -243,6 +243,20 @@ public final class GameText {
         String result = text;
         result = result.replace("Automatic call", "Llamada automática");
         result = result.replace("best avg-lap driver", "piloto con mejor vuelta media");
+        result = result.replace("best-driver advice", "consejos del mejor piloto");
+        result = result.replace("3s charge", "carga de 3s");
+        result = result.replace("30s hunt", "caza de 30s");
+        result = result.replace("After 3s", "Tras 3s");
+        result = result.replace("Offender for", "Agresor durante");
+        result = result.replace("Offender", "Agresor");
+        result = result.replace("Random Tier 1 Revenge", "Venganza T1 aleatoria");
+        result = result.replace("Random Tier 2 Revenge", "Venganza T2 aleatoria");
+        result = result.replace("Random Tier 3 Revenge", "Venganza T3 aleatoria");
+        result = result.replace("random Tier 1 Powerup", "Potenciar T1 aleatorio");
+        result = result.replace("random Tier 2 Powerup", "Potenciar T2 aleatorio");
+        result = result.replace("random Tier 3 Powerup", "Potenciar T3 aleatorio");
+        result = result.replace("Random Tier", "Nivel aleatorio");
+        result = result.replace("Automatic", "Automático");
         result = result.replace("Activation", "Activación");
         result = result.replace("Revenge activation", "Activación de venganza");
         result = result.replace("Shared cards and Revenge", "Cartas y Venganza compartidas");
@@ -303,10 +317,12 @@ public final class GameText {
         result = result.replace("bursts", "en ráfagas");
         result = result.replace("Cooldown after effect", "Recarga tras efecto");
         result = result.replace("Cooldown", "Recarga");
-        result = result.replace("random Tier", "azar Nivel");
+        result = result.replace("random Tier", "Nivel aleatorio");
         result = result.replace("full throttle", "acelerador máximo");
         result = result.replace("full brake", "frenado máximo");
         result = result.replace("3 impact shots", "3 disparos de impacto");
+        result = result.replace("impact shots", "disparos de impacto");
+        result = result.replace("shots/s", "disparos/s");
         result = result.replace("1s apart", "cada 1s");
         result = result.replace("after 3s", "tras 3s");
         result = result.replace("swap with", "intercambio con");
@@ -333,6 +349,7 @@ public final class GameText {
         result = result.replace("shield", "escudo");
         result = result.replace("you lead", "quedas delante");
         result = result.replace("leading rival falls last", "el rival líder queda último");
+        result = result.replace(" for ", " durante ");
         return result;
     }
 
@@ -426,7 +443,7 @@ public final class GameText {
         put(text, "COPY TO ALL", "COPIAR A TODOS");
         put(text, "ACCEPT", "ACEPTAR");
         put(text, "CANCEL", "CANCELAR");
-        put(text, "SKIP", "DESCARTAR");
+        put(text, "SKIP", "PASAR");
         put(text, "EMPTY", "VACÍO");
         put(text, "EMPTY SLOT", "HUECO VACÍO");
         put(text, "No card equipped", "Ninguna carta equipada");

@@ -25,7 +25,8 @@ final class ImageArenaMapLoader {
     private static final String TRAINING_MAPS_DIRECTORY = "tools/rl/trainingMaps";
     private static final String MASK_SUFFIX = "_mask.png";
     private static final String IMAGE_SUFFIX = ".png";
-    private static final String CACHE_SUFFIX = ".json.gz";
+    private static final String CACHE_SUFFIX = ".mapcache";
+    private static final String LEGACY_CACHE_SUFFIX = ".json.gz";
     private static final int CACHE_VERSION = 120;
     private static final boolean USE_ROUTE_LINE_MARKERS = false;
     private static final float BASE_WORLD_HEIGHT = 22f;
@@ -1098,10 +1099,15 @@ final class ImageArenaMapLoader {
         Array<FileHandle> cacheFiles = new Array<FileHandle>();
         HashSet<String> seenPaths = new HashSet<String>();
         addCacheFile(cacheFiles, seenPaths, maskFile.sibling(baseName + CACHE_SUFFIX));
+        addCacheFile(cacheFiles, seenPaths, maskFile.sibling(baseName + LEGACY_CACHE_SUFFIX));
         if (isDefaultMapMask(maskFile)) {
             addCacheFile(cacheFiles, seenPaths,
                     Gdx.files.local("assets/" + MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
             addCacheFile(cacheFiles, seenPaths, Gdx.files.local(MAPS_DIRECTORY + "/" + baseName + CACHE_SUFFIX));
+            addCacheFile(cacheFiles, seenPaths,
+                    Gdx.files.local("assets/" + MAPS_DIRECTORY + "/" + baseName + LEGACY_CACHE_SUFFIX));
+            addCacheFile(cacheFiles, seenPaths,
+                    Gdx.files.local(MAPS_DIRECTORY + "/" + baseName + LEGACY_CACHE_SUFFIX));
         } else {
             addCacheFile(cacheFiles, seenPaths, localCacheBesideMask(maskFile, baseName));
         }

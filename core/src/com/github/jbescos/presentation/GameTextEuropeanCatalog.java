@@ -446,13 +446,6 @@ final class GameTextEuropeanCatalog {
                     + " - "
                     + GameText.translate(language, english.substring(detailSeparator + 3));
         }
-        int targetSeparator = english.lastIndexOf(" on ");
-        if (targetSeparator > 0) {
-            String connector = select(language, " sur ", " gegen ", " su ");
-            return GameText.translate(language, english.substring(0, targetSeparator))
-                    + connector
-                    + english.substring(targetSeparator + 4);
-        }
         if (english.indexOf(" SLAMMED ") >= 0
                 || english.indexOf(" SHOVED ") >= 0
                 || english.indexOf(" CLIPPED ") >= 0
@@ -462,6 +455,13 @@ final class GameTextEuropeanCatalog {
         }
         if (looksLikeCardEffect(english)) {
             return translateCardEffect(language, english);
+        }
+        int targetSeparator = english.lastIndexOf(" on ");
+        if (targetSeparator > 0) {
+            String connector = select(language, " sur ", " gegen ", " su ");
+            return GameText.translate(language, english.substring(0, targetSeparator))
+                    + connector
+                    + english.substring(targetSeparator + 4);
         }
         return english;
     }
@@ -507,8 +507,47 @@ final class GameTextEuropeanCatalog {
                         "Automatic call",
                         select(language, "Appel automatique", "Automatischer Anruf", "Chiamata automatica"))
                 .replace(
+                        "best-driver advice",
+                        select(language, "conseils du meilleur pilote", "Rat des besten Fahrers", "consigli del miglior pilota"))
+                .replace(
                         "best avg-lap driver",
                         select(language, "pilote au meilleur tour moyen", "Fahrer mit bester Durchschnittsrunde", "pilota col miglior giro medio"))
+                .replace(
+                        "3s charge",
+                        select(language, "charge de 3 s", "3 s Ladezeit", "carica di 3 s"))
+                .replace(
+                        "30s hunt",
+                        select(language, "chasse de 30 s", "30 s Jagd", "caccia di 30 s"))
+                .replace(
+                        "After 3s",
+                        select(language, "Après 3 s", "Nach 3 s", "Dopo 3 s"))
+                .replace(
+                        "Offender for",
+                        select(language, "Agresseur pendant", "Angreifer für", "Aggressore per"))
+                .replace(
+                        "Offender",
+                        select(language, "Agresseur", "Angreifer", "Aggressore"))
+                .replace(
+                        "Random Tier 1 Revenge",
+                        select(language, "Vengeance N1 aléatoire", "Zufällige Rache Stufe 1", "Vendetta T1 casuale"))
+                .replace(
+                        "Random Tier 2 Revenge",
+                        select(language, "Vengeance N2 aléatoire", "Zufällige Rache Stufe 2", "Vendetta T2 casuale"))
+                .replace(
+                        "Random Tier 3 Revenge",
+                        select(language, "Vengeance N3 aléatoire", "Zufällige Rache Stufe 3", "Vendetta T3 casuale"))
+                .replace(
+                        "random Tier 1 Powerup",
+                        select(language, "Bonus N1 aléatoire", "Zufälliges Power-up Stufe 1", "Potenziamento T1 casuale"))
+                .replace(
+                        "random Tier 2 Powerup",
+                        select(language, "Bonus N2 aléatoire", "Zufälliges Power-up Stufe 2", "Potenziamento T2 casuale"))
+                .replace(
+                        "random Tier 3 Powerup",
+                        select(language, "Bonus N3 aléatoire", "Zufälliges Power-up Stufe 3", "Potenziamento T3 casuale"))
+                .replace(
+                        "shots/s",
+                        select(language, "tirs/s", "Schüsse/s", "colpi/s"))
                 .replace(
                         "Activation",
                         select(language, "Activation", "Aktivierung", "Attivazione"));
@@ -536,9 +575,12 @@ final class GameTextEuropeanCatalog {
         for (int i = 0; i < source.length; i++) {
             result = result.replace(source[i], replacements[i]);
         }
-        return result.replace(
+        result = result.replace(
                 "bonuses only",
                 select(language, "bonus uniquement", "nur Boni", "solo bonus"));
+        return result.replace(
+                " for ",
+                select(language, " pendant ", " für ", " per "));
     }
 
     private static boolean looksLikeCardEffect(String text) {

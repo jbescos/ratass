@@ -423,7 +423,7 @@ def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    for pattern in ("route*.json.gz", "route*.ser"):
+    for pattern in ("route*.mapcache", "route*.json.gz", "route*.ser"):
         for path in output_dir.glob(pattern):
             path.unlink()
     for path in output_dir.glob("route*_mask.png"):

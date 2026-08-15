@@ -113,6 +113,7 @@ import com.github.jbescos.presentation.FreeCameraPan;
 import com.github.jbescos.presentation.GameLanguage;
 import com.github.jbescos.presentation.GameText;
 import com.github.jbescos.presentation.GameVersionLabel;
+import com.github.jbescos.presentation.HudPanelVisibility;
 import com.github.jbescos.presentation.MenuButtonSkinAtlas;
 import com.github.jbescos.presentation.PlayerDisplayName;
 import com.github.jbescos.presentation.PlayerNameEditor;
@@ -1344,7 +1345,7 @@ public class RatassGame extends ApplicationAdapter {
     private int sidebarTablesScrollbarPointer = -1;
     private boolean customMenuScrollbarDragging;
     private int customMenuScrollbarPointer = -1;
-    private boolean hudPanelsVisible = true;
+    private HudPanelVisibility hudPanelVisibility = HudPanelVisibility.ALL;
     private boolean sandboxMode;
     private boolean sandboxDebugGuidesVisible = true;
     private boolean arenaSurfaceTextureLoadAttempted;
@@ -1679,7 +1680,7 @@ public class RatassGame extends ApplicationAdapter {
                 disposeRosterSpriteTextures();
                 disposeArenaSurfaceTextures();
                 releaseSandboxMenuPreview();
-                disposeMenuCarPreview();
+                disposeMenuPresentationTextures();
                 loadThemeEnemyNames();
                 loadThemeTextures();
                 int clampedPlayerCarIndex =
@@ -3718,12 +3719,12 @@ public class RatassGame extends ApplicationAdapter {
 
         int hudWidth = Math.max(1, Math.round(presentationLayout.logicalWidth));
         int hudHeight = Math.max(1, Math.round(presentationLayout.logicalHeight));
-        sidebarHudWidth = hudPanelsVisible
+        sidebarHudWidth = hudPanelVisibility.isRightPanelVisible()
                 ? RacingHudLayout.standingsPanelWidth(
                         hudWidth,
                         calculateSidebarWidth(hudWidth))
                 : 0f;
-        carPanelHudHeight = hudPanelsVisible
+        carPanelHudHeight = hudPanelVisibility.isBottomPanelVisible()
                 ? RacingHudLayout.bottomPanelHeight(hudHeight)
                 : 0f;
         playfieldHudX = 0f;
@@ -4014,7 +4015,7 @@ public class RatassGame extends ApplicationAdapter {
         boolean buttonPressed = false;
         int clickedSlotIndex = -1;
         RogueliteCardId clickedDebuffCardId = null;
-        if (hudPanelsVisible && Gdx.input.justTouched()) {
+        if (hudPanelVisibility.isBottomPanelVisible() && Gdx.input.justTouched()) {
             hudTouchPoint.set(Gdx.input.getX(), Gdx.input.getY(), 0f);
             hudViewport.unproject(hudTouchPoint);
             buttonPressed =
@@ -4089,7 +4090,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void toggleHudPanels() {
-        hudPanelsVisible = !hudPanelsVisible;
+        hudPanelVisibility = hudPanelVisibility.next();
         cancelSidebarTablesPointerInput();
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     }
@@ -4367,7 +4368,7 @@ public class RatassGame extends ApplicationAdapter {
             changeCameraZoom(-amountY);
             return true;
         }
-        if (!hudPanelsVisible) {
+        if (!hudPanelVisibility.isRightPanelVisible()) {
             return false;
         }
 
@@ -4392,7 +4393,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void handleSidebarTablesPointerInput() {
-        if (!hudPanelsVisible) {
+        if (!hudPanelVisibility.isRightPanelVisible()) {
             cancelSidebarTablesPointerInput();
             return;
         }
@@ -4574,7 +4575,7 @@ public class RatassGame extends ApplicationAdapter {
     private void handleSandboxSettingsPointerInput() {
         if (!sandboxMode
                 || gameMode != GameMode.PLAYING
-                || !hudPanelsVisible
+                || !hudPanelVisibility.isAnyPanelVisible()
                 || !Gdx.input.justTouched()) {
             return;
         }
@@ -5341,6 +5342,7 @@ public class RatassGame extends ApplicationAdapter {
         mainMenuSelection = MAIN_MENU_NEW_GAME_SELECTION;
         disposeGameSounds();
         disposeArenaSurfaceTextures();
+        disposeRacePresentationTextures();
         releaseGameplayMaps();
         releaseSandboxMenuPreview();
         gameMode = GameMode.MAIN_MENU;
@@ -16105,12 +16107,12 @@ public class RatassGame extends ApplicationAdapter {
         boolean championshipIntroductionVisible =
                 shouldDrawChampionshipIntroduction();
 
-        if (hudPanelsVisible && sidebarWidth > 0f) {
+        if (hudPanelVisibility.isRightPanelVisible() && sidebarWidth > 0f) {
             drawSidebarPanel(sidebarX, sidebarWidth, hudHeight);
             drawSidebarMinimap(sidebarX, sidebarWidth, hudHeight, currentTheme());
         }
         drawInGameMenuButton(hudWidth, hudHeight);
-        if (hudPanelsVisible) {
+        if (hudPanelVisibility.isBottomPanelVisible()) {
             drawCarPanel(hudWidth, hudHeight);
             drawRogueliteCardsButton(hudWidth, hudHeight);
         } else {
@@ -16122,10 +16124,12 @@ public class RatassGame extends ApplicationAdapter {
 
         spriteBatch.begin();
 
-        if (hudPanelsVisible) {
+        if (hudPanelVisibility.isRightPanelVisible()) {
             drawSidebarSummary(sidebarX, sidebarWidth, hudHeight);
             drawSidebarTables(sidebarX, sidebarWidth, hudHeight);
             drawSidebarMinimapOverlay(sidebarX, sidebarWidth, hudHeight);
+        }
+        if (hudPanelVisibility.isBottomPanelVisible()) {
             drawCarPanelText(hudWidth, hudHeight);
         }
         drawCarLabels(playfieldWidth);
@@ -16198,7 +16202,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private void updateRogueliteCardsButtonLayout(float hudWidth, float hudHeight) {
         if (rlTrainingMode
-                || !hudPanelsVisible
+                || !hudPanelVisibility.isBottomPanelVisible()
                 || !updateCarPanelLayout(hudWidth, hudHeight)) {
             rogueliteCardsButtonBounds.set(0f, 0f, 0f, 0f);
         }
@@ -21435,26 +21439,26 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.rect(iconX, iconY + iconHeight - line, iconWidth, line);
         shapeRenderer.rect(iconX, iconY, line, iconHeight);
         shapeRenderer.rect(iconX + iconWidth - line, iconY, line, iconHeight);
-        shapeRenderer.setColor(0.98f, 0.84f, 0.28f, 0.96f);
+        shapeRenderer.setColor(
+                hudPanelVisibility.isRightPanelVisible() ? 0.98f : 0.32f,
+                hudPanelVisibility.isRightPanelVisible() ? 0.84f : 0.13f,
+                hudPanelVisibility.isRightPanelVisible() ? 0.28f : 0.15f,
+                0.96f);
         shapeRenderer.rect(
                 iconX + iconWidth * 0.68f,
                 iconY + line,
                 line,
                 iconHeight - line * 2f);
+        shapeRenderer.setColor(
+                hudPanelVisibility.isBottomPanelVisible() ? 0.98f : 0.32f,
+                hudPanelVisibility.isBottomPanelVisible() ? 0.84f : 0.13f,
+                hudPanelVisibility.isBottomPanelVisible() ? 0.28f : 0.15f,
+                0.96f);
         shapeRenderer.rect(
                 iconX + line,
                 iconY + line,
                 iconWidth * 0.68f - line,
                 line);
-        if (hudPanelsVisible) {
-            shapeRenderer.setColor(0.94f, 0.34f, 0.30f, 0.96f);
-            shapeRenderer.rectLine(
-                    iconX + line,
-                    iconY + iconHeight - line,
-                    iconX + iconWidth - line,
-                    iconY + line,
-                    line);
-        }
     }
 
     private void drawFallbackInGameTvCameraIcon() {
@@ -24375,6 +24379,57 @@ public class RatassGame extends ApplicationAdapter {
         disposeTexture(mapDebugMaskTexture);
         mapDebugMaskTexture = null;
         mapDebugMaskTexturePath = "";
+    }
+
+    private void disposeMenuPresentationTextures() {
+        disposeMenuCarPreview();
+        disposeMenuHeroCar();
+        disposeTexture(menuBackgroundTexture);
+        menuBackgroundTexture = null;
+        menuBackgroundLoadAttempted = false;
+        menuBackgroundThemeName = "";
+    }
+
+    private void disposeRacePresentationTextures() {
+        disposeRosterSpriteTextures();
+        disposeTexture(themeCarsTexture);
+        themeCarsTexture = null;
+        disposeTexture(rogueliteCardArtworkTexture);
+        rogueliteCardArtworkTexture = null;
+        rogueliteCardArtworkLoadAttempted = false;
+        disposeTexture(rogueliteDriverArtworkTexture);
+        rogueliteDriverArtworkTexture = null;
+        rogueliteDriverArtworkLoadAttempted = false;
+        disposeTexture(rogueliteAbilityEffectTexture);
+        rogueliteAbilityEffectTexture = null;
+        rogueliteAbilityEffectLoadAttempted = false;
+        disposeTexture(debuffTargetIconTexture);
+        debuffTargetIconTexture = null;
+        debuffTargetIconLoadAttempted = false;
+        disposeTexture(rogueliteCardShellTexture);
+        rogueliteCardShellTexture = null;
+        rogueliteCardShellLoadAttempted = false;
+        disposeTexture(rogueliteCardTypeIconTexture);
+        rogueliteCardTypeIconTexture = null;
+        rogueliteCardTypeIconLoadAttempted = false;
+        disposeTexture(rogueliteTierIconTexture);
+        rogueliteTierIconTexture = null;
+        rogueliteTierIconLoadAttempted = false;
+        disposeTexture(rogueliteDefeatArtworkTexture);
+        rogueliteDefeatArtworkTexture = null;
+        rogueliteDefeatArtworkLoadAttempted = false;
+        disposeTexture(rogueliteCardsButtonTexture);
+        rogueliteCardsButtonTexture = null;
+        rogueliteCardsButtonLoadAttempted = false;
+        disposeTexture(tvCameraButtonTexture);
+        tvCameraButtonTexture = null;
+        tvCameraButtonLoadAttempted = false;
+        disposeTexture(crownBreakerStarTexture);
+        crownBreakerStarTexture = null;
+        crownBreakerStarLoadAttempted = false;
+        disposeTexture(voidAnchorEffectTexture);
+        voidAnchorEffectTexture = null;
+        voidAnchorEffectLoadAttempted = false;
     }
 
     @Override
@@ -29458,6 +29513,20 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
+    public static final class RlFastStepResult {
+        public final float[] observations;
+        public final float[] rewards;
+        public boolean episodeDone;
+        public boolean episodeTerminated;
+        public boolean episodeTruncated;
+        public int actionStep;
+
+        private RlFastStepResult(float[] observations, float[] rewards) {
+            this.observations = observations;
+            this.rewards = rewards;
+        }
+    }
+
     public static final class RlTrainingEnvironment implements AutoCloseable {
         private final RlTrainingConfig config;
         private final RatassGame game = new RatassGame();
@@ -29468,6 +29537,7 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 observationRecovery = new Vector2();
         private final Vector2 observationRouteTarget = new Vector2();
         private final Vector2 raceProgressPreviousPosition = new Vector2();
+        private final RlFastStepResult fastStepResult;
         private final Vector2 raceProgressTargetPosition = new Vector2();
         private final Vector2 snapshotTargetPosition = new Vector2();
         private final Vector2 observationTargetPosition = new Vector2();
@@ -29559,6 +29629,7 @@ public class RatassGame extends ApplicationAdapter {
             offRoadDuringAction = new boolean[controlledAgentCount];
             maxOffRoadDistanceDuringAction = new float[controlledAgentCount];
             dones = new boolean[controlledAgentCount];
+            fastStepResult = new RlFastStepResult(observations, rewards);
         }
 
         public int getControlledAgentCount() {
@@ -29588,6 +29659,11 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         public RlStepResult reset() {
+            resetInternal();
+            return createResult();
+        }
+
+        private void resetInternal() {
             ensureOpen();
             long episodeSeed = config.seed + episodeIndex * 104729L;
             episodeIndex++;
@@ -29632,16 +29708,29 @@ public class RatassGame extends ApplicationAdapter {
             resetCheckpointDeadlines();
             captureSnapshots(afterSnapshots);
             buildObservations();
-            return createResult();
+        }
+
+        /**
+         * Resets using result buffers owned by this environment. The caller must consume or copy
+         * them before invoking the environment again.
+         */
+        public RlFastStepResult resetFast() {
+            resetInternal();
+            return refreshFastResult();
         }
 
         public RlStepResult step(float[] actions) {
+            stepInternal(actions);
+            return createResult();
+        }
+
+        private void stepInternal(float[] actions) {
             ensureOpen();
             if (!episodeStarted) {
-                reset();
+                resetInternal();
             }
             if (episodeDone) {
-                return createResult();
+                return;
             }
 
             clearStepEvents();
@@ -29681,7 +29770,15 @@ public class RatassGame extends ApplicationAdapter {
             episodeDone = episodeTerminated || episodeTruncated;
             buildObservations();
             computeRewards(simulatedPhysicsSteps * PHYSICS_STEP);
-            return createResult();
+        }
+
+        /**
+         * Steps using result buffers owned by this environment. This path intentionally excludes
+         * reward details and debug traces and is used by the high-throughput trainer.
+         */
+        public RlFastStepResult stepFast(float[] actions) {
+            stepInternal(actions);
+            return refreshFastResult();
         }
 
         @Override
@@ -30630,6 +30727,14 @@ public class RatassGame extends ApplicationAdapter {
                     routeProgressDeltasCopy,
                     debugTraceCopy,
                     config.debugTraceEnabled ? RL_DEBUG_TRACE_NAMES : new String[0]);
+        }
+
+        private RlFastStepResult refreshFastResult() {
+            fastStepResult.episodeDone = episodeDone;
+            fastStepResult.episodeTerminated = episodeTerminated;
+            fastStepResult.episodeTruncated = episodeTruncated;
+            fastStepResult.actionStep = actionStep;
+            return fastStepResult;
         }
 
         private void buildDebugTrace(float[] out) {
