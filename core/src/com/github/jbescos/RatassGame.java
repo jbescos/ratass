@@ -30,6 +30,7 @@ import com.badlogic.gdx.physics.box2d.Box2D;
 import com.badlogic.gdx.physics.box2d.Contact;
 import com.badlogic.gdx.physics.box2d.ContactImpulse;
 import com.badlogic.gdx.physics.box2d.ContactListener;
+import com.badlogic.gdx.physics.box2d.EdgeShape;
 import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.FixtureDef;
 import com.badlogic.gdx.physics.box2d.Manifold;
@@ -47,6 +48,7 @@ import com.github.jbescos.ai.rl.RlPolicy;
 import com.github.jbescos.gameplay.AutomaticRecoveryExplosion;
 import com.github.jbescos.gameplay.AutomaticRecoveryManeuver;
 import com.github.jbescos.gameplay.ArenaMap;
+import com.github.jbescos.gameplay.HybridPlayerControl;
 import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.LongStraightThrottleAssist;
 import com.github.jbescos.gameplay.PassingAssistGeometry;
@@ -107,6 +109,8 @@ import com.github.jbescos.presentation.CrownBreakerStarVisual;
 import com.github.jbescos.presentation.DebuffTargetIconAtlas;
 import com.github.jbescos.presentation.DebuffTargetVisual;
 import com.github.jbescos.presentation.DriverArtworkAtlas;
+import com.github.jbescos.presentation.DrivingKeyBindings;
+import com.github.jbescos.presentation.DrivingKeyBindings.Action;
 import com.github.jbescos.presentation.DragScrollGesture;
 import com.github.jbescos.presentation.EventCameraDirector;
 import com.github.jbescos.presentation.FreeCameraPan;
@@ -135,6 +139,7 @@ import com.github.jbescos.presentation.RaceFinishCamera;
 import com.github.jbescos.presentation.RevengeProjectileVisual;
 import com.github.jbescos.presentation.SandboxDebugGuides;
 import com.github.jbescos.presentation.StableCameraState;
+import com.github.jbescos.presentation.SteeringTakeoverIndicator;
 import com.github.jbescos.presentation.SlipstreamVisual;
 import com.github.jbescos.presentation.TelemetryPeakTracker;
 import com.github.jbescos.presentation.ThemedMapArtwork;
@@ -177,6 +182,10 @@ public class RatassGame extends ApplicationAdapter {
     private static final String SOUND_EFFECTS_VOLUME_PREF_KEY = SOUND_EFFECTS_VOLUME_PROPERTY;
     private static final String DISPLAY_WINDOWED_PROPERTY = "display.windowed";
     private static final String DISPLAY_WINDOWED_PREF_KEY = DISPLAY_WINDOWED_PROPERTY;
+    private static final String CONTROL_FORWARD_PREF_KEY = "controls.forward.key";
+    private static final String CONTROL_BACKWARD_PREF_KEY = "controls.backward.key";
+    private static final String CONTROL_LEFT_PREF_KEY = "controls.left.key";
+    private static final String CONTROL_RIGHT_PREF_KEY = "controls.right.key";
     private static final String SANDBOX_MAP_PREF_KEY = "sandbox.map.index";
     private static final String SANDBOX_CAR_COUNT_PREF_KEY = "sandbox.cars.count";
     private static final String SANDBOX_DEBUG_GUIDES_PREF_KEY = "sandbox.debug.guides";
@@ -252,7 +261,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final int OPTIONS_DISPLAY_SELECTION = 0;
     private static final int OPTIONS_MUSIC_SELECTION = 1;
     private static final int OPTIONS_SOUND_EFFECTS_SELECTION = 2;
-    private static final int OPTIONS_BACK_SELECTION = 3;
+    private static final int OPTIONS_LEFT_KEY_SELECTION = 3;
+    private static final int OPTIONS_RIGHT_KEY_SELECTION = 4;
+    private static final int OPTIONS_BACK_SELECTION = 5;
     private static final int MAIN_MENU_CONTINUE_SELECTION = 0;
     private static final int MAIN_MENU_NEW_GAME_SELECTION = 1;
     private static final int MAIN_MENU_SANDBOX_SELECTION = 2;
@@ -647,21 +658,16 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_OFF_ROAD_MAX_PENALTY = 5.0f;
     private static final float RL_EDGE_DANGER_DISTANCE = 2.35f;
     private static final float RL_EDGE_WARNING_DISTANCE = 9.0f;
-    private static final float HUD_SIDEBAR_RATIO = 0.34f;
+    private static final float HUD_SIDEBAR_RATIO = 0.28f;
     private static final float HUD_SIDEBAR_MIN_WIDTH = 200f;
-    private static final float HUD_SIDEBAR_PREFERRED_MIN_WIDTH = 320f;
-    private static final float HUD_SIDEBAR_MAX_WIDTH = 520f;
+    private static final float HUD_SIDEBAR_PREFERRED_MIN_WIDTH = 260f;
+    private static final float HUD_SIDEBAR_MAX_WIDTH = 420f;
     private static final float HUD_MIN_PLAYFIELD_WIDTH = 320f;
     private static final float SIDEBAR_CARD_MARGIN = 12f;
     private static final float SIDEBAR_CONTENT_MARGIN = 18f;
     private static final float SIDEBAR_CONTENT_DRAG_SLOP = 8f;
-    private static final float SIDEBAR_XP_BAR_BOTTOM_INSET = 10f;
     private static final float SIDEBAR_XP_BAR_HEIGHT = 28f;
-    private static final float SIDEBAR_LAP_XP_BAR_GAP = 4f;
-    private static final float SIDEBAR_LEVEL_ROW_GAP = 5f;
     private static final float SIDEBAR_MINIMAP_GAP = 10f;
-    private static final float SIDEBAR_MINIMAP_MIN_HEIGHT = 64f;
-    private static final float SIDEBAR_MINIMAP_LABEL_HEIGHT = 26f;
     private static final float SIDEBAR_MINIMAP_PADDING = 12f;
     private static final float SIDEBAR_MINIMAP_MARKER_RADIUS = 3.2f;
     private static final float SIDEBAR_MINIMAP_PLAYER_RING_RADIUS = 6.2f;
@@ -1104,6 +1110,8 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle optionsSoundEffectsBounds = new Rectangle();
     private final Rectangle optionsSoundEffectsDownBounds = new Rectangle();
     private final Rectangle optionsSoundEffectsUpBounds = new Rectangle();
+    private final Rectangle optionsLeftKeyBounds = new Rectangle();
+    private final Rectangle optionsRightKeyBounds = new Rectangle();
     private final Rectangle optionsBackBounds = new Rectangle();
     private final Rectangle steerPadBounds = new Rectangle();
     private final Rectangle throttlePadBounds = new Rectangle();
@@ -1115,6 +1123,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle carPanelStatsBounds = new Rectangle();
     private final Rectangle carPanelTelemetryBounds = new Rectangle();
     private final Rectangle carPanelCardsBounds = new Rectangle();
+    private final Rectangle raceSummaryBounds = new Rectangle();
     private final Rectangle[] carPanelSlotBounds =
             createRectangleArray(ROGUELITE_LOADOUT_SLOT_COUNT);
     private final Rectangle carPanelDebuffBounds = new Rectangle();
@@ -1289,6 +1298,9 @@ public class RatassGame extends ApplicationAdapter {
     private float effectClock;
     private float frameThrottleInput;
     private float frameTurnInput;
+    private boolean frameTurnOverrideActive;
+    private boolean frameLeftInputActive;
+    private boolean frameRightInputActive;
     private float preRoundCountdownTimer;
     private float roundTimer;
     private float roundFastestLapTime;
@@ -1296,6 +1308,8 @@ public class RatassGame extends ApplicationAdapter {
     private float checkpointTargetRadius;
     private float touchThrottleInput;
     private float touchTurnInput;
+    private boolean touchThrottleOverrideActive;
+    private boolean touchTurnOverrideActive;
     private float growthBoostTimer;
     private float playfieldHudWidth;
     private float playfieldHudHeight;
@@ -1389,6 +1403,9 @@ public class RatassGame extends ApplicationAdapter {
             RogueliteCompetitionMode.CHAMPIONSHIP;
     private int pauseMenuSelection;
     private int optionsMenuSelection;
+    private final DrivingKeyBindings drivingKeyBindings = new DrivingKeyBindings();
+    private Action pendingDrivingKeyBinding;
+    private int optionsInputSuppressionFrames;
     private int cameraTargetRosterIndex = -1;
     private int freeCameraPointer = -1;
     private int freeCameraDragStartScreenX;
@@ -1476,6 +1493,17 @@ public class RatassGame extends ApplicationAdapter {
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean keyDown(int keycode) {
+                if (pendingDrivingKeyBinding != null) {
+                    if (keycode == Input.Keys.ESCAPE || keycode == Input.Keys.BACK) {
+                        pendingDrivingKeyBinding = null;
+                    } else {
+                        drivingKeyBindings.rebind(pendingDrivingKeyBinding, keycode);
+                        pendingDrivingKeyBinding = null;
+                        saveMenuSettings();
+                    }
+                    optionsInputSuppressionFrames = 2;
+                    return true;
+                }
                 if (!playerNameEditor.isEditing()) {
                     return false;
                 }
@@ -2220,6 +2248,26 @@ public class RatassGame extends ApplicationAdapter {
                             soundEffectsVolume);
             windowedMode =
                     preferences.getBoolean(DISPLAY_WINDOWED_PREF_KEY, windowedMode);
+            drivingKeyBindings.set(
+                    Action.FORWARD,
+                    preferences.getInteger(
+                            CONTROL_FORWARD_PREF_KEY,
+                            drivingKeyBindings.get(Action.FORWARD)));
+            drivingKeyBindings.set(
+                    Action.BACKWARD,
+                    preferences.getInteger(
+                            CONTROL_BACKWARD_PREF_KEY,
+                            drivingKeyBindings.get(Action.BACKWARD)));
+            drivingKeyBindings.set(
+                    Action.LEFT,
+                    preferences.getInteger(
+                            CONTROL_LEFT_PREF_KEY,
+                            drivingKeyBindings.get(Action.LEFT)));
+            drivingKeyBindings.set(
+                    Action.RIGHT,
+                    preferences.getInteger(
+                            CONTROL_RIGHT_PREF_KEY,
+                            drivingKeyBindings.get(Action.RIGHT)));
             selectedSandboxMapIndex =
                     preferences.getInteger(SANDBOX_MAP_PREF_KEY, selectedSandboxMapIndex);
             selectedSandboxCarCount =
@@ -2269,6 +2317,18 @@ public class RatassGame extends ApplicationAdapter {
         preferences.putFloat(MUSIC_VOLUME_PREF_KEY, musicVolume);
         preferences.putFloat(SOUND_EFFECTS_VOLUME_PREF_KEY, soundEffectsVolume);
         preferences.putBoolean(DISPLAY_WINDOWED_PREF_KEY, windowedMode);
+        preferences.putInteger(
+                CONTROL_FORWARD_PREF_KEY,
+                drivingKeyBindings.get(Action.FORWARD));
+        preferences.putInteger(
+                CONTROL_BACKWARD_PREF_KEY,
+                drivingKeyBindings.get(Action.BACKWARD));
+        preferences.putInteger(
+                CONTROL_LEFT_PREF_KEY,
+                drivingKeyBindings.get(Action.LEFT));
+        preferences.putInteger(
+                CONTROL_RIGHT_PREF_KEY,
+                drivingKeyBindings.get(Action.RIGHT));
         preferences.putInteger(SANDBOX_MAP_PREF_KEY, selectedSandboxMapIndex);
         preferences.putInteger(SANDBOX_CAR_COUNT_PREF_KEY, selectedSandboxCarCount);
         preferences.putBoolean(
@@ -3910,8 +3970,12 @@ public class RatassGame extends ApplicationAdapter {
         handleCameraTargetInput();
         frameThrottleInput = readPlayerThrottle();
         frameTurnInput = readPlayerTurn();
+        frameTurnOverrideActive = isPlayerTurnOverrideActive();
+        frameLeftInputActive = isPlayerLeftInputActive();
+        frameRightInputActive = isPlayerRightInputActive();
 
         update(delta);
+        followPlayerCarAfterSteeringTakeover();
         renderWorld();
         renderHud();
         if (shouldOfferLiveRogueliteReward()) {
@@ -4748,6 +4812,13 @@ public class RatassGame extends ApplicationAdapter {
             }
             return;
         }
+        if (gameMode == GameMode.OPTIONS_MENU && optionsInputSuppressionFrames > 0) {
+            optionsInputSuppressionFrames--;
+            return;
+        }
+        if (gameMode == GameMode.OPTIONS_MENU && pendingDrivingKeyBinding != null) {
+            return;
+        }
         if (isInGameMenuOpen() && Gdx.input.isKeyJustPressed(Input.Keys.C)) {
             openRogueliteCollection(gameMode);
             return;
@@ -5298,6 +5369,9 @@ public class RatassGame extends ApplicationAdapter {
                 changeMusicVolume(1);
             } else if (optionsMenuSelection == OPTIONS_SOUND_EFFECTS_SELECTION) {
                 changeSoundEffectsVolume(1);
+            } else if (optionsMenuSelection >= OPTIONS_LEFT_KEY_SELECTION
+                    && optionsMenuSelection <= OPTIONS_RIGHT_KEY_SELECTION) {
+                beginDrivingKeyBinding(actionForOptionsSelection(optionsMenuSelection));
             } else {
                 closeOptionsMenu();
             }
@@ -5352,6 +5426,8 @@ public class RatassGame extends ApplicationAdapter {
 
     private void openOptionsMenu(boolean fromPause) {
         optionsOpenedFromPause = fromPause;
+        pendingDrivingKeyBinding = null;
+        optionsInputSuppressionFrames = 0;
         gameMode = GameMode.OPTIONS_MENU;
         optionsMenuSelection = OPTIONS_DISPLAY_SELECTION;
         ensureEnabledOptionsSelection();
@@ -5445,6 +5521,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void closeOptionsMenu() {
+        pendingDrivingKeyBinding = null;
         if (optionsOpenedFromPause) {
             optionsOpenedFromPause = false;
             gameMode = GameMode.PAUSE_MENU;
@@ -5458,8 +5535,13 @@ public class RatassGame extends ApplicationAdapter {
     private void clearPlayerInput() {
         frameThrottleInput = 0f;
         frameTurnInput = 0f;
+        frameTurnOverrideActive = false;
+        frameLeftInputActive = false;
+        frameRightInputActive = false;
         touchThrottleInput = 0f;
         touchTurnInput = 0f;
+        touchThrottleOverrideActive = false;
+        touchTurnOverrideActive = false;
         touchRestartPressed = false;
         touchRestartJustPressed = false;
     }
@@ -5496,8 +5578,31 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private boolean isOptionSelectionEnabled(int selection) {
-        return selection != OPTIONS_DISPLAY_SELECTION
-                || isDesktopDisplayOptionAvailable();
+        if (selection == OPTIONS_DISPLAY_SELECTION) {
+            return isDesktopDisplayOptionAvailable();
+        }
+        if (selection >= OPTIONS_LEFT_KEY_SELECTION
+                && selection <= OPTIONS_RIGHT_KEY_SELECTION) {
+            return isDesktopDisplayOptionAvailable();
+        }
+        return true;
+    }
+
+    private void beginDrivingKeyBinding(Action action) {
+        if (action != null && isDesktopDisplayOptionAvailable()) {
+            pendingDrivingKeyBinding = action;
+        }
+    }
+
+    private static Action actionForOptionsSelection(int selection) {
+        switch (selection) {
+            case OPTIONS_LEFT_KEY_SELECTION:
+                return Action.LEFT;
+            case OPTIONS_RIGHT_KEY_SELECTION:
+                return Action.RIGHT;
+            default:
+                return null;
+        }
     }
 
     private void handleMenuClick(float x, float y) {
@@ -5630,6 +5735,14 @@ public class RatassGame extends ApplicationAdapter {
                 || optionsSoundEffectsBounds.contains(x, y)) {
             optionsMenuSelection = OPTIONS_SOUND_EFFECTS_SELECTION;
             changeSoundEffectsVolume(1);
+        } else if (isDesktopDisplayOptionAvailable()
+                && optionsLeftKeyBounds.contains(x, y)) {
+            optionsMenuSelection = OPTIONS_LEFT_KEY_SELECTION;
+            beginDrivingKeyBinding(Action.LEFT);
+        } else if (isDesktopDisplayOptionAvailable()
+                && optionsRightKeyBounds.contains(x, y)) {
+            optionsMenuSelection = OPTIONS_RIGHT_KEY_SELECTION;
+            beginDrivingKeyBinding(Action.RIGHT);
         } else if (optionsBackBounds.contains(x, y)) {
             optionsMenuSelection = OPTIONS_BACK_SELECTION;
             closeOptionsMenu();
@@ -5929,7 +6042,7 @@ public class RatassGame extends ApplicationAdapter {
                 menuButtonHeight);
 
         boolean desktopDisplayOption = isDesktopDisplayOptionAvailable();
-        int rowCount = desktopDisplayOption ? OPTIONS_BACK_SELECTION + 1 : OPTIONS_BACK_SELECTION;
+        int rowCount = desktopDisplayOption ? OPTIONS_BACK_SELECTION + 1 : 3;
         boolean twoColumnOptions =
                 RogueliteResponsiveCardLayout.isShortLandscape(width, height);
         int optionsColumns = twoColumnOptions ? 2 : 1;
@@ -5989,7 +6102,7 @@ public class RatassGame extends ApplicationAdapter {
         }
         int musicRow = desktopDisplayOption ? 1 : 0;
         int soundEffectsRow = desktopDisplayOption ? 2 : 1;
-        int backRow = desktopDisplayOption ? 3 : 2;
+        int backRow = desktopDisplayOption ? OPTIONS_BACK_SELECTION : 2;
         setMenuOptionRowBounds(
                 optionsMusicBounds,
                 musicRow,
@@ -6030,6 +6143,31 @@ public class RatassGame extends ApplicationAdapter {
                 optionsSoundEffectsBounds.y,
                 stepButtonWidth,
                 rowHeight);
+        if (desktopDisplayOption) {
+            setMenuOptionRowBounds(
+                    optionsLeftKeyBounds,
+                    OPTIONS_LEFT_KEY_SELECTION,
+                    rowX,
+                    rowTopY,
+                    rowWidth,
+                    rowHeight,
+                    rowGap,
+                    columnGap,
+                    optionRowsPerColumn);
+            setMenuOptionRowBounds(
+                    optionsRightKeyBounds,
+                    OPTIONS_RIGHT_KEY_SELECTION,
+                    rowX,
+                    rowTopY,
+                    rowWidth,
+                    rowHeight,
+                    rowGap,
+                    columnGap,
+                    optionRowsPerColumn);
+        } else {
+            optionsLeftKeyBounds.set(0f, 0f, 0f, 0f);
+            optionsRightKeyBounds.set(0f, 0f, 0f, 0f);
+        }
         setMenuOptionRowBounds(
                 optionsBackBounds,
                 backRow,
@@ -6537,6 +6675,26 @@ public class RatassGame extends ApplicationAdapter {
         setCameraTargetRosterIndex(playerIndex >= 0 ? playerIndex : -1, animate);
     }
 
+    private void followPlayerCarAfterSteeringTakeover() {
+        boolean takeoverApplied =
+                frameTurnOverrideActive
+                        && playerCar != null
+                        && playerCar.active
+                        && playerCar.playerSteeringTakeoverApplied;
+        if (!SteeringTakeoverIndicator.shouldClaimCamera(
+                        isPresentationEnabled(),
+                        isPlayerSteeringTakeoverModeEnabled(),
+                        takeoverApplied)
+                || playerCar.template == null) {
+            return;
+        }
+        if (eventCameraSelected
+                || cameraViewMode.isFree()
+                || !isCameraTargetTemplate(playerCar.template)) {
+            selectPlayerCameraTarget(playerCar.template, true);
+        }
+    }
+
     private boolean setCameraTargetTemplate(CarTemplate template, boolean animate) {
         if (template == null || !isCameraFollowable(template.currentCar)) {
             return false;
@@ -6726,9 +6884,12 @@ public class RatassGame extends ApplicationAdapter {
         if (!isPointInPlayfield(x, y)) {
             return false;
         }
+        if (touchControlsEnabled && steerPadBounds.contains(x, y)) {
+            return false;
+        }
         if (touchControlsEnabled
-                && (steerPadBounds.contains(x, y)
-                        || throttlePadBounds.contains(x, y)
+                && shouldShowTouchPedals()
+                && (throttlePadBounds.contains(x, y)
                         || reversePadBounds.contains(x, y))) {
             return false;
         }
@@ -8175,6 +8336,16 @@ public class RatassGame extends ApplicationAdapter {
                 optionsSoundEffectsBounds,
                 optionsMenuSelection == OPTIONS_SOUND_EFFECTS_SELECTION,
                 true);
+        if (isDesktopDisplayOptionAvailable()) {
+            drawOptionRow(
+                    optionsLeftKeyBounds,
+                    optionsMenuSelection == OPTIONS_LEFT_KEY_SELECTION,
+                    true);
+            drawOptionRow(
+                    optionsRightKeyBounds,
+                    optionsMenuSelection == OPTIONS_RIGHT_KEY_SELECTION,
+                    true);
+        }
         drawMenuButton(optionsBackBounds, "Back", optionsMenuSelection == OPTIONS_BACK_SELECTION);
 
         drawMenuStepButton(optionsMusicDownBounds, "-", optionsMenuSelection == OPTIONS_MUSIC_SELECTION);
@@ -8216,7 +8387,19 @@ public class RatassGame extends ApplicationAdapter {
                 true,
                 optionsSoundEffectsDownBounds.width,
                 optionsSoundEffectsUpBounds.width);
+        if (isDesktopDisplayOptionAvailable()) {
+            drawDrivingKeyOption(optionsLeftKeyBounds, "Left", Action.LEFT);
+            drawDrivingKeyOption(optionsRightKeyBounds, "Right", Action.RIGHT);
+        }
         spriteBatch.end();
+    }
+
+    private void drawDrivingKeyOption(Rectangle bounds, String label, Action action) {
+        String value =
+                pendingDrivingKeyBinding == action
+                        ? "Press a key"
+                        : drivingKeyBindings.displayName(action);
+        drawOptionKeyValue(bounds, label, value, true, 0f, 0f);
     }
 
     private void drawLanguageFlag(Rectangle buttonBounds, GameLanguage language) {
@@ -9407,6 +9590,11 @@ public class RatassGame extends ApplicationAdapter {
                     allowControl,
                     frameThrottleInput,
                     frameTurnInput,
+                    frameTurnOverrideActive,
+                    isPresentationEnabled()
+                            && !rlTrainingMode
+                            && isPlayerSteeringTakeoverModeEnabled()
+                            && car == playerCar,
                     targetActive,
                     targetPosition,
                     secondTargetPosition,
@@ -10768,6 +10956,7 @@ public class RatassGame extends ApplicationAdapter {
 
         world = new World(new Vector2(0f, 0f), true);
         world.setContactListener(impactContactListener);
+        createMapWallFixtures();
         cars.clear();
         mirrorCars.clear();
         destructionEffects.clear();
@@ -10878,6 +11067,33 @@ public class RatassGame extends ApplicationAdapter {
             warmArenaSurfaceTextures();
         }
         invalidateLeaderboard();
+    }
+
+    private void createMapWallFixtures() {
+        if (world == null || currentMap == null || currentMap.getWallCount() == 0) {
+            return;
+        }
+
+        BodyDef bodyDef = new BodyDef();
+        bodyDef.type = BodyDef.BodyType.StaticBody;
+        Body wallBody = world.createBody(bodyDef);
+        EdgeShape edge = new EdgeShape();
+        FixtureDef fixtureDef = new FixtureDef();
+        fixtureDef.shape = edge;
+        fixtureDef.friction = 0.55f;
+        fixtureDef.restitution = 0.12f;
+        Vector2 start = new Vector2();
+        Vector2 end = new Vector2();
+        for (int i = 0; i < currentMap.getWallCount(); i++) {
+            currentMap.getWallStart(i, start);
+            currentMap.getWallEnd(i, end);
+            if (start.dst2(end) <= 0.0001f) {
+                continue;
+            }
+            edge.set(start, end);
+            wallBody.createFixture(fixtureDef);
+        }
+        edge.dispose();
     }
 
     private void buildRoundGridOrder(Array<CarTemplate> out) {
@@ -12378,15 +12594,11 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private float readPlayerThrottle() {
-        float throttle = 0f;
-        if (Gdx.input.isKeyPressed(Input.Keys.W) || Gdx.input.isKeyPressed(Input.Keys.UP)) {
-            throttle += 1f;
-        }
-        if (Gdx.input.isKeyPressed(Input.Keys.S) || Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
-            throttle -= 1f;
-        }
+        boolean forwardPressed = Gdx.input.isKeyPressed(drivingKeyBindings.get(Action.FORWARD));
+        boolean backwardPressed = Gdx.input.isKeyPressed(drivingKeyBindings.get(Action.BACKWARD));
+        float throttle = HybridPlayerControl.digitalAxis(forwardPressed, backwardPressed);
 
-        if (Math.abs(touchThrottleInput) > Math.abs(throttle)) {
+        if (touchThrottleOverrideActive) {
             throttle = touchThrottleInput;
         }
 
@@ -12394,19 +12606,31 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private float readPlayerTurn() {
-        float turn = 0f;
-        if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
-            turn += 1f;
-        }
-        if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
-            turn -= 1f;
-        }
+        boolean leftPressed = Gdx.input.isKeyPressed(drivingKeyBindings.get(Action.LEFT));
+        boolean rightPressed = Gdx.input.isKeyPressed(drivingKeyBindings.get(Action.RIGHT));
+        float turn = HybridPlayerControl.digitalAxis(leftPressed, rightPressed);
 
-        if (Math.abs(touchTurnInput) > Math.abs(turn)) {
+        if (touchTurnOverrideActive) {
             turn = touchTurnInput;
         }
 
         return MathUtils.clamp(turn, -1f, 1f);
+    }
+
+    private boolean isPlayerTurnOverrideActive() {
+        return touchTurnOverrideActive
+                || Gdx.input.isKeyPressed(drivingKeyBindings.get(Action.LEFT))
+                || Gdx.input.isKeyPressed(drivingKeyBindings.get(Action.RIGHT));
+    }
+
+    private boolean isPlayerLeftInputActive() {
+        return Gdx.input.isKeyPressed(drivingKeyBindings.get(Action.LEFT))
+                || (touchTurnOverrideActive && touchTurnInput > 0.001f);
+    }
+
+    private boolean isPlayerRightInputActive() {
+        return Gdx.input.isKeyPressed(drivingKeyBindings.get(Action.RIGHT))
+                || (touchTurnOverrideActive && touchTurnInput < -0.001f);
     }
 
     private void updateTouchState() {
@@ -12414,6 +12638,8 @@ public class RatassGame extends ApplicationAdapter {
         if (!touchControlsEnabled) {
             touchThrottleInput = 0f;
             touchTurnInput = 0f;
+            touchThrottleOverrideActive = false;
+            touchTurnOverrideActive = false;
             touchRestartJustPressed = false;
             touchRestartPressed = false;
             return;
@@ -12421,8 +12647,11 @@ public class RatassGame extends ApplicationAdapter {
 
         updateTouchBounds(hudViewport.getWorldWidth(), hudViewport.getWorldHeight());
 
-        float nextThrottle = 0f;
         float nextTurn = 0f;
+        boolean forwardTouched = false;
+        boolean backwardTouched = false;
+        boolean turnTouched = false;
+        boolean pedalsEnabled = shouldShowTouchPedals();
         int maxPointers = Math.min(5, Gdx.input.getMaxPointers());
 
         for (int pointer = 0; pointer < maxPointers; pointer++) {
@@ -12437,18 +12666,23 @@ public class RatassGame extends ApplicationAdapter {
                 float centerX = steerPadBounds.x + steerPadBounds.width * 0.5f;
                 float normalized =
                         (centerX - hudTouchPoint.x) / (steerPadBounds.width * 0.5f);
-                nextTurn = MathUtils.clamp(normalized, -1f, 1f);
-            } else if (throttlePadBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
-                nextThrottle = 1f;
-            } else if (reversePadBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
-                nextThrottle = -1f;
+                nextTurn += MathUtils.clamp(normalized, -1f, 1f);
+                turnTouched = true;
+            } else if (pedalsEnabled
+                    && throttlePadBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+                forwardTouched = true;
+            } else if (pedalsEnabled
+                    && reversePadBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+                backwardTouched = true;
             }
         }
 
         touchRestartJustPressed = false;
         touchRestartPressed = false;
-        touchThrottleInput = nextThrottle;
-        touchTurnInput = nextTurn;
+        touchThrottleOverrideActive = forwardTouched || backwardTouched;
+        touchTurnOverrideActive = turnTouched;
+        touchThrottleInput = HybridPlayerControl.digitalAxis(forwardTouched, backwardTouched);
+        touchTurnInput = MathUtils.clamp(nextTurn, -1f, 1f);
     }
 
     private boolean shouldEnableTouchControls() {
@@ -12462,8 +12696,19 @@ public class RatassGame extends ApplicationAdapter {
         return TouchDrivingControls.shouldEnable(
                 isPresentationEnabled(),
                 touchCapablePlatform,
+                gameMode == GameMode.PLAYING);
+    }
+
+    private boolean isPlayerSteeringTakeoverModeEnabled() {
+        return HybridPlayerControl.isSteeringTakeoverModeEnabled(
                 sandboxMode,
-                gameMode == GameMode.PLAYING,
+                sandboxLoadoutConfiguration != null
+                        && sandboxLoadoutConfiguration.isAutomatic());
+    }
+
+    private boolean shouldShowTouchPedals() {
+        return TouchDrivingControls.shouldShowPedals(
+                sandboxMode,
                 sandboxLoadoutConfiguration != null
                         && !sandboxLoadoutConfiguration.isAutomatic());
     }
@@ -12786,6 +13031,7 @@ public class RatassGame extends ApplicationAdapter {
             drawGrowthPickup();
         }
         drawCarEffects();
+        drawPlayerSteeringTakeoverIndicator();
         shapeRenderer.end();
 
         spriteBatch.begin();
@@ -16109,11 +16355,12 @@ public class RatassGame extends ApplicationAdapter {
 
         if (hudPanelVisibility.isRightPanelVisible() && sidebarWidth > 0f) {
             drawSidebarPanel(sidebarX, sidebarWidth, hudHeight);
-            drawSidebarMinimap(sidebarX, sidebarWidth, hudHeight, currentTheme());
         }
         drawInGameMenuButton(hudWidth, hudHeight);
         if (hudPanelVisibility.isBottomPanelVisible()) {
             drawCarPanel(hudWidth, hudHeight);
+            drawSidebarMinimap(sidebarX, sidebarWidth, hudHeight, currentTheme());
+            drawRaceSummaryPanel(hudWidth, hudHeight);
             drawRogueliteCardsButton(hudWidth, hudHeight);
         } else {
             rogueliteCardsButtonBounds.set(0f, 0f, 0f, 0f);
@@ -16125,12 +16372,11 @@ public class RatassGame extends ApplicationAdapter {
         spriteBatch.begin();
 
         if (hudPanelVisibility.isRightPanelVisible()) {
-            drawSidebarSummary(sidebarX, sidebarWidth, hudHeight);
             drawSidebarTables(sidebarX, sidebarWidth, hudHeight);
-            drawSidebarMinimapOverlay(sidebarX, sidebarWidth, hudHeight);
         }
         if (hudPanelVisibility.isBottomPanelVisible()) {
             drawCarPanelText(hudWidth, hudHeight);
+            drawRaceSummaryText(hudWidth, hudHeight);
         }
         drawCarLabels(playfieldWidth);
         if (shouldDrawSandboxDebugGuides()) {
@@ -16171,7 +16417,6 @@ public class RatassGame extends ApplicationAdapter {
         if (touchControlsEnabled) {
             drawTouchControls();
         }
-
         if (roundOver) {
             drawRaceResultsBackground(playfieldWidth, hudHeight);
             drawButtonBox(
@@ -20341,18 +20586,25 @@ public class RatassGame extends ApplicationAdapter {
             carPanelTelemetryBounds.set(0f, 0f, 0f, 0f);
             carPanelCardsBounds.set(0f, 0f, 0f, 0f);
             carPanelDebuffBounds.set(0f, 0f, 0f, 0f);
+            sidebarMinimapBounds.set(0f, 0f, 0f, 0f);
+            raceSummaryBounds.set(0f, 0f, 0f, 0f);
             rogueliteCardsButtonBounds.set(0f, 0f, 0f, 0f);
             clearRogueliteCardBounds(carPanelSlotBounds);
             return false;
         }
 
-        float panelWidth = Math.min(hudWidth, Math.max(1f, playfieldHudWidth));
+        float panelWidth = hudWidth;
         float panelHeight = Math.min(hudHeight, carPanelHudHeight);
-        carPanelBounds.set(playfieldHudX, 0f, panelWidth, panelHeight);
+        carPanelBounds.set(0f, 0f, panelWidth, panelHeight);
 
         float margin = RacingHudLayout.bottomPanelContentMargin(hudHeight);
         float sectionGap = RacingHudLayout.bottomPanelSectionGap(panelWidth);
         float titleHeight = RacingHudLayout.bottomPanelSectionTitleHeight(hudHeight);
+        float minimapSectionWidth =
+                RacingHudLayout.bottomPanelMinimapWidth(
+                        hudWidth,
+                        calculateSidebarWidth(Math.round(hudWidth)));
+        float informationPanelWidth = Math.max(1f, panelWidth - minimapSectionWidth);
         float cardsButtonSize =
                 Math.min(
                         RogueliteResponsiveCardLayout.cardsButtonSize(
@@ -20362,7 +20614,7 @@ public class RatassGame extends ApplicationAdapter {
         float availableSectionWidth =
                 Math.max(
                         3f,
-                        panelWidth
+                        informationPanelWidth
                                 - margin * 2f
                                 - sectionGap * 3f
                                 - cardsButtonSize);
@@ -20412,6 +20664,11 @@ public class RatassGame extends ApplicationAdapter {
                 carPanelBounds.y + (panelHeight - cardsButtonSize) * 0.5f,
                 cardsButtonSize,
                 cardsButtonSize);
+        sidebarMinimapBounds.set(
+                informationPanelWidth + margin,
+                margin,
+                Math.max(1f, minimapSectionWidth - margin * 2f),
+                Math.max(1f, panelHeight - margin * 2f));
         clearRogueliteCardBounds(carPanelSlotBounds);
         carPanelDebuffBounds.set(0f, 0f, 0f, 0f);
         float slotGap = MathUtils.clamp(rowAreaHeight * 0.012f, 1f, 3f);
@@ -21205,13 +21462,22 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
+        float panelBottom =
+                hudPanelVisibility.isBottomPanelVisible()
+                        ? carPanelHudHeight
+                        : 0f;
+        float panelHeight = Math.max(0f, hudHeight - panelBottom);
+        if (panelHeight <= 0f) {
+            return;
+        }
+
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(0.04f, 0.06f, 0.08f, 0.95f);
-        shapeRenderer.rect(sidebarX, 0f, sidebarWidth, hudHeight);
+        shapeRenderer.rect(sidebarX, panelBottom, sidebarWidth, panelHeight);
 
         shapeRenderer.setColor(0.98f, 0.84f, 0.28f, 0.16f);
         shapeRenderer.rect(sidebarX, hudHeight - 4f, sidebarWidth, 4f);
@@ -21219,83 +21485,9 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.setColor(1f, 1f, 1f, 0.06f);
         shapeRenderer.rect(
                 sidebarX,
-                0f,
+                panelBottom,
                 2f,
-                hudHeight);
-
-        float summaryCardHeight = getSidebarSummaryCardHeight();
-        shapeRenderer.setColor(0.10f, 0.13f, 0.17f, 0.95f);
-        shapeRenderer.rect(
-                sidebarX + SIDEBAR_CARD_MARGIN,
-                hudHeight - 22f - summaryCardHeight,
-                sidebarWidth - SIDEBAR_CARD_MARGIN * 2f,
-                summaryCardHeight);
-        RogueliteCompetitorProgress displayedProgress =
-                getRogueliteCompetitorProgress(getCameraTargetTemplate());
-        if (displayedProgress != null
-                && getSidebarXpBarBounds(
-                sidebarX,
-                sidebarWidth,
-                hudHeight,
-                sidebarXpBarBounds)) {
-            float progressRatio =
-                    displayedProgress.getExperience()
-                            / (float) Math.max(
-                                    1,
-                                    displayedProgress.getExperienceForNextLevel());
-            shapeRenderer.setColor(0.025f, 0.034f, 0.045f, 0.96f);
-            shapeRenderer.rect(
-                    sidebarXpBarBounds.x,
-                    sidebarXpBarBounds.y,
-                    sidebarXpBarBounds.width,
-                    sidebarXpBarBounds.height);
-            shapeRenderer.setColor(0.96f, 0.72f, 0.22f, 0.96f);
-            shapeRenderer.rect(
-                    sidebarXpBarBounds.x,
-                    sidebarXpBarBounds.y,
-                    sidebarXpBarBounds.width
-                            * MathUtils.clamp(
-                                    progressRatio,
-                                    0f,
-                                    1f),
-                    sidebarXpBarBounds.height);
-        }
-        if (displayedProgress != null
-                && getSidebarLapXpBarBounds(
-                sidebarX,
-                sidebarWidth,
-                hudHeight,
-                sidebarLapXpBarBounds)) {
-            int lapExperienceCap = rogueliteRun.getRacecraftXpPerLapCap();
-            float lapProgressRatio =
-                    displayedProgress.getLapExperience()
-                            / (float) Math.max(1, lapExperienceCap);
-            shapeRenderer.setColor(0.025f, 0.034f, 0.045f, 0.96f);
-            shapeRenderer.rect(
-                    sidebarLapXpBarBounds.x,
-                    sidebarLapXpBarBounds.y,
-                    sidebarLapXpBarBounds.width,
-                    sidebarLapXpBarBounds.height);
-            shapeRenderer.setColor(0.22f, 0.72f, 0.86f, 0.96f);
-            shapeRenderer.rect(
-                    sidebarLapXpBarBounds.x,
-                    sidebarLapXpBarBounds.y,
-                    sidebarLapXpBarBounds.width
-                            * MathUtils.clamp(lapProgressRatio, 0f, 1f),
-                    sidebarLapXpBarBounds.height);
-        }
-        if (getSidebarMinimapBounds(
-                sidebarX,
-                sidebarWidth,
-                hudHeight,
-                sidebarMinimapBounds)) {
-            shapeRenderer.setColor(0.025f, 0.035f, 0.045f, 0.96f);
-            shapeRenderer.rect(
-                    sidebarMinimapBounds.x,
-                    sidebarMinimapBounds.y,
-                    sidebarMinimapBounds.width,
-                    sidebarMinimapBounds.height);
-        }
+                panelHeight);
         drawSidebarTablesScrollbar(sidebarX, sidebarWidth, hudHeight);
         shapeRenderer.end();
 
@@ -21769,163 +21961,214 @@ public class RatassGame extends ApplicationAdapter {
                 innerHeight);
     }
 
-    private void drawSidebarSummary(float sidebarX, float sidebarWidth, float hudHeight) {
-        if (sidebarWidth <= 0f) {
-            return;
+    private boolean updateRaceSummaryLayout(float hudWidth, float hudHeight) {
+        if (rlTrainingMode
+                || !hudPanelVisibility.isBottomPanelVisible()
+                || carPanelHudHeight <= 0f
+                || playfieldHudWidth <= 0f) {
+            raceSummaryBounds.set(0f, 0f, 0f, 0f);
+            sidebarXpBarBounds.set(0f, 0f, 0f, 0f);
+            sidebarLapXpBarBounds.set(0f, 0f, 0f, 0f);
+            return false;
+        }
+        float panelHeight = RacingHudLayout.raceSummaryPanelHeight(hudHeight);
+        raceSummaryBounds.set(
+                playfieldHudX,
+                carPanelHudHeight,
+                Math.min(hudWidth, playfieldHudWidth),
+                panelHeight);
+
+        RogueliteCompetitorProgress displayedProgress =
+                !sandboxMode
+                        ? getRogueliteCompetitorProgress(getCameraTargetTemplate())
+                        : null;
+        if (displayedProgress == null) {
+            sidebarXpBarBounds.set(0f, 0f, 0f, 0f);
+            sidebarLapXpBarBounds.set(0f, 0f, 0f, 0f);
+            return true;
         }
 
+        float margin = MathUtils.clamp(panelHeight * 0.16f, 6f, 10f);
+        float gap = MathUtils.clamp(raceSummaryBounds.width * 0.012f, 5f, 10f);
+        float barWidth =
+                MathUtils.clamp(
+                        raceSummaryBounds.width * 0.19f,
+                        72f,
+                        180f);
+        float barHeight = Math.min(SIDEBAR_XP_BAR_HEIGHT, panelHeight - margin * 2f);
+        float barsY = raceSummaryBounds.y + (panelHeight - barHeight) * 0.5f;
+        sidebarLapXpBarBounds.set(
+                raceSummaryBounds.x + raceSummaryBounds.width - margin - barWidth,
+                barsY,
+                barWidth,
+                barHeight);
+        sidebarXpBarBounds.set(
+                sidebarLapXpBarBounds.x - gap - barWidth,
+                barsY,
+                barWidth,
+                barHeight);
+        return true;
+    }
+
+    private void drawRaceSummaryPanel(float hudWidth, float hudHeight) {
+        if (!updateRaceSummaryLayout(hudWidth, hudHeight)) {
+            return;
+        }
         CarTemplate displayedTemplate = getCameraTargetTemplate();
         RogueliteCompetitorProgress displayedProgress =
-                !rlTrainingMode && !sandboxMode
+                !sandboxMode
                         ? getRogueliteCompetitorProgress(displayedTemplate)
                         : null;
-        if (!rlTrainingMode && !sandboxMode && displayedProgress == null) {
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0.025f, 0.035f, 0.045f, 0.74f);
+        shapeRenderer.rect(
+                raceSummaryBounds.x,
+                raceSummaryBounds.y,
+                raceSummaryBounds.width,
+                raceSummaryBounds.height);
+        shapeRenderer.setColor(0.98f, 0.84f, 0.28f, 0.26f);
+        shapeRenderer.rect(
+                raceSummaryBounds.x,
+                raceSummaryBounds.y,
+                raceSummaryBounds.width,
+                2f);
+
+        if (displayedProgress != null) {
+            float progressRatio =
+                    displayedProgress.getExperience()
+                            / (float) Math.max(
+                                    1,
+                                    displayedProgress.getExperienceForNextLevel());
+            drawRaceSummaryBar(
+                    sidebarXpBarBounds,
+                    progressRatio,
+                    0.96f,
+                    0.72f,
+                    0.22f);
+            float lapProgressRatio =
+                    displayedProgress.getLapExperience()
+                            / (float) Math.max(1, rogueliteRun.getRacecraftXpPerLapCap());
+            drawRaceSummaryBar(
+                    sidebarLapXpBarBounds,
+                    lapProgressRatio,
+                    0.22f,
+                    0.72f,
+                    0.86f);
+        }
+        shapeRenderer.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawRaceSummaryBar(
+            Rectangle bounds,
+            float ratio,
+            float red,
+            float green,
+            float blue) {
+        shapeRenderer.setColor(0.025f, 0.034f, 0.045f, 0.96f);
+        shapeRenderer.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+        shapeRenderer.setColor(red, green, blue, 0.96f);
+        shapeRenderer.rect(
+                bounds.x,
+                bounds.y,
+                bounds.width * MathUtils.clamp(ratio, 0f, 1f),
+                bounds.height);
+    }
+
+    private void drawRaceSummaryText(float hudWidth, float hudHeight) {
+        if (!updateRaceSummaryLayout(hudWidth, hudHeight)) {
             return;
         }
+        CarTemplate displayedTemplate = getCameraTargetTemplate();
+        RogueliteCompetitorProgress displayedProgress =
+                !sandboxMode
+                        ? getRogueliteCompetitorProgress(displayedTemplate)
+                        : null;
+        float margin = MathUtils.clamp(raceSummaryBounds.height * 0.16f, 6f, 10f);
+        float gap = MathUtils.clamp(raceSummaryBounds.width * 0.012f, 5f, 10f);
+        float textRight = displayedProgress == null
+                ? raceSummaryBounds.x + raceSummaryBounds.width - margin
+                : sidebarXpBarBounds.x - gap;
+        float textX = raceSummaryBounds.x + margin;
+        float textWidth = Math.max(1f, textRight - textX);
+        float circuitWidth = textWidth * 0.23f;
+        float mapWidth = textWidth * 0.20f;
+        float lapWidth = textWidth * 0.17f;
+        float rewardWidth = Math.max(1f, textWidth - circuitWidth - mapWidth - lapWidth);
+        float baseline =
+                raceSummaryBounds.y
+                        + (raceSummaryBounds.height + leaderboardFont.getLineHeight()) * 0.5f
+                        - 1f;
+
+        leaderboardFont.setColor(0.84f, 0.90f, 0.94f, 1f);
+        drawRaceSummaryLabel(buildRaceSummaryCircuitText(), textX, baseline, circuitWidth - gap);
+        textX += circuitWidth;
+        drawRaceSummaryLabel(buildRaceSummaryMapText(), textX, baseline, mapWidth - gap);
+        textX += mapWidth;
+        drawRaceSummaryLabel(buildRaceSummaryLapText(displayedTemplate), textX, baseline, lapWidth - gap);
+        textX += lapWidth;
+        leaderboardFont.setColor(0.98f, 0.82f, 0.40f, 1f);
+        String rewardText = buildSidebarExperienceText(displayedTemplate);
+        drawRaceSummaryLabel(
+                rewardText.length() == 0 ? "XP --" : rewardText,
+                textX,
+                baseline,
+                rewardWidth);
+
         if (displayedProgress != null) {
-            getSidebarXpBarBounds(
-                    sidebarX,
-                    sidebarWidth,
-                    hudHeight,
-                    sidebarXpBarBounds);
-            getSidebarLapXpBarBounds(
-                    sidebarX,
-                    sidebarWidth,
-                    hudHeight,
-                    sidebarLapXpBarBounds);
-        }
-
-        BitmapFont.BitmapFontData fontData = leaderboardFont.getData();
-        float originalScaleX = fontData.scaleX;
-        float originalScaleY = fontData.scaleY;
-        fontData.setScale(
-                originalScaleX * RacingHudLayout.sidebarTextScale(),
-                originalScaleY * RacingHudLayout.sidebarTextScale());
-        try {
-            float x = sidebarX + 18f;
-            float contentWidth = sidebarWidth - 36f;
-            float y = hudHeight - 24f;
-            float leaderboardLineStep = Math.max(24f, leaderboardFont.getLineHeight() + 3f);
-
-            leaderboardFont.setColor(0.76f, 0.84f, 0.90f, 1f);
-            String circuitText =
-                    mapProgression == null
-                            ? "Circuit --"
-                            : "Circuit "
-                                    + mapProgression.getCurrentMapNumber()
-                                    + "/"
-                                    + mapProgression.getMapCount();
-            drawRogueliteFittedText(
-                    leaderboardFont,
-                    circuitText,
-                    x,
-                    y,
-                    contentWidth,
-                    leaderboardFont.getLineHeight(),
-                    Align.left,
-                    false);
-            y -= leaderboardLineStep;
-            drawRogueliteFittedText(
-                    leaderboardFont,
-                    buildSidebarMapText(displayedTemplate),
-                    x,
-                    y,
-                    contentWidth,
-                    leaderboardFont.getLineHeight(),
-                    Align.left,
-                    false);
-            y -= leaderboardLineStep;
-            drawRogueliteFittedText(
-                    leaderboardFont,
-                    buildSidebarPointsText(displayedTemplate),
-                    x,
-                    y,
-                    contentWidth,
-                    leaderboardFont.getLineHeight(),
-                    Align.left,
-                    false);
-
-            String stateText = buildSidebarExperienceText(displayedTemplate);
-            if (stateText.length() > 0) {
-                leaderboardFont.setColor(0.94f, 0.84f, 0.50f, 1f);
-                y -= leaderboardLineStep;
-                drawRogueliteFittedText(
-                        leaderboardFont,
-                        stateText,
-                        x,
-                        y,
-                        contentWidth,
-                        leaderboardFont.getLineHeight(),
-                        Align.left,
-                        false);
-            }
-            if (!rlTrainingMode && !sandboxMode) {
-                y -= leaderboardLineStep;
-                leaderboardFont.setColor(0.86f, 0.89f, 0.90f, 1f);
-                drawRogueliteFittedText(
-                        leaderboardFont,
-                        "Level "
-                                + displayedProgress.getLevel()
-                                + "  |  Tier "
-                                + getRogueliteUnlockedTier(displayedTemplate),
-                        x,
-                        y,
-                        contentWidth,
-                        leaderboardFont.getLineHeight(),
-                        Align.left,
-                        false);
-                drawSidebarXpBarText(displayedProgress, sidebarXpBarBounds);
-                drawSidebarLapXpBarText(displayedProgress, sidebarLapXpBarBounds);
-            }
-        } finally {
-            fontData.setScale(originalScaleX, originalScaleY);
+            drawSidebarXpBarText(displayedProgress, sidebarXpBarBounds);
+            drawSidebarLapXpBarText(displayedProgress, sidebarLapXpBarBounds);
         }
     }
 
-    private boolean getSidebarXpBarBounds(
-            float sidebarX,
-            float sidebarWidth,
-            float hudHeight,
-            Rectangle out) {
-        if (rlTrainingMode || sandboxMode || sidebarWidth <= 0f) {
-            out.set(0f, 0f, 0f, 0f);
-            return false;
-        }
-        float summaryBottom =
-                hudHeight - 22f - getSidebarSummaryCardHeight();
-        out.set(
-                sidebarX + SIDEBAR_CARD_MARGIN + 12f,
-                summaryBottom + SIDEBAR_XP_BAR_BOTTOM_INSET,
-                Math.max(
-                        1f,
-                        sidebarWidth
-                                - SIDEBAR_CARD_MARGIN * 2f
-                                - 24f),
-                SIDEBAR_XP_BAR_HEIGHT);
-        return true;
+    private void drawRaceSummaryLabel(
+            String text,
+            float x,
+            float baseline,
+            float width) {
+        drawRogueliteFittedText(
+                leaderboardFont,
+                text,
+                x,
+                baseline,
+                Math.max(1f, width),
+                leaderboardFont.getLineHeight(),
+                Align.left,
+                false);
     }
 
-    private boolean getSidebarLapXpBarBounds(
-            float sidebarX,
-            float sidebarWidth,
-            float hudHeight,
-            Rectangle out) {
-        if (!getSidebarXpBarBounds(
-                sidebarX,
-                sidebarWidth,
-                hudHeight,
-                sidebarXpBarBounds)) {
-            out.set(0f, 0f, 0f, 0f);
-            return false;
+    private String buildRaceSummaryCircuitText() {
+        if (sandboxMode && sandboxMenuMaps.size > 0) {
+            return "Circuit "
+                    + (selectedSandboxMapIndex + 1)
+                    + "/"
+                    + sandboxMenuMaps.size;
         }
-        out.set(
-                sidebarXpBarBounds.x,
-                sidebarXpBarBounds.y
-                        + sidebarXpBarBounds.height
-                        + SIDEBAR_LAP_XP_BAR_GAP,
-                sidebarXpBarBounds.width,
-                SIDEBAR_XP_BAR_HEIGHT);
-        return true;
+        return mapProgression == null
+                ? "Circuit --"
+                : "Circuit "
+                        + mapProgression.getCurrentMapNumber()
+                        + "/"
+                        + mapProgression.getMapCount();
+    }
+
+    private String buildRaceSummaryMapText() {
+        return currentMap == null ? "Map --" : currentMap.getName();
+    }
+
+    private String buildRaceSummaryLapText(CarTemplate template) {
+        if (!isLiveLapRaceMode() || template == null) {
+            return "Lap --";
+        }
+        int lap = Math.max(1, template.roundRaceLap + 1);
+        if (sandboxMode) {
+            return "Lap " + lap;
+        }
+        int raceLaps = getRaceLapsToWin();
+        return "Lap " + MathUtils.clamp(lap, 1, raceLaps) + "/" + raceLaps;
     }
 
     private void drawSidebarXpBarText(
@@ -21938,13 +22181,19 @@ public class RatassGame extends ApplicationAdapter {
                         + progress.getExperienceForNextLevel();
         text = ui(text);
         leaderboardFont.setColor(1f, 0.95f, 0.78f, 1f);
-        glyphLayout.setText(leaderboardFont, text);
-        float textX = bounds.x + (bounds.width - glyphLayout.width) * 0.5f;
         float textY =
                 bounds.y
                         + (bounds.height + leaderboardFont.getLineHeight()) * 0.5f
                         - 1f;
-        drawTextWithShadow(leaderboardFont, text, textX, textY);
+        drawRogueliteFittedText(
+                leaderboardFont,
+                text,
+                bounds.x + 3f,
+                textY,
+                Math.max(1f, bounds.width - 6f),
+                leaderboardFont.getLineHeight(),
+                Align.center,
+                false);
     }
 
     private void drawSidebarLapXpBarText(
@@ -21962,13 +22211,19 @@ public class RatassGame extends ApplicationAdapter {
                         + rogueliteRun.getRacecraftXpPerLapCap()
                 : text;
         leaderboardFont.setColor(0.84f, 0.96f, 1f, 1f);
-        glyphLayout.setText(leaderboardFont, text);
-        float textX = bounds.x + (bounds.width - glyphLayout.width) * 0.5f;
         float textY =
                 bounds.y
                         + (bounds.height + leaderboardFont.getLineHeight()) * 0.5f
                         - 1f;
-        drawTextWithShadow(leaderboardFont, text, textX, textY);
+        drawRogueliteFittedText(
+                leaderboardFont,
+                text,
+                bounds.x + 3f,
+                textY,
+                Math.max(1f, bounds.width - 6f),
+                leaderboardFont.getLineHeight(),
+                Align.center,
+                false);
     }
 
     private void drawSidebarTables(float sidebarX, float sidebarWidth, float hudHeight) {
@@ -21998,8 +22253,8 @@ public class RatassGame extends ApplicationAdapter {
         try {
 
         BitmapFont font = labelFont;
-        float currentLapWidth = Math.max(76f, contentWidth * 0.27f);
-        float bestLapWidth = Math.max(56f, contentWidth * 0.21f);
+        float currentLapWidth = Math.max(54f, contentWidth * 0.20f);
+        float bestLapWidth = Math.max(54f, contentWidth * 0.20f);
         float positionWidth = Math.max(24f, contentWidth * 0.08f);
         float positionGap = 4f;
         float gap = 7f;
@@ -22028,8 +22283,17 @@ public class RatassGame extends ApplicationAdapter {
                 viewportBottom,
                 viewportTop);
         drawSidebarTableText(font, "Player", nameX, y, viewportBottom, viewportTop);
-        drawSidebarTableRightAlignedText(font, "Best", bestLapX, y, viewportBottom, viewportTop);
-        drawSidebarTableRightAlignedText(font, "Current", currentLapX, y, viewportBottom, viewportTop);
+        float rowTextScaleX = fontData.scaleX;
+        float rowTextScaleY = fontData.scaleY;
+        fontData.setScale(
+                rowTextScaleX * RacingHudLayout.sidebarTimingHeaderScale(),
+                rowTextScaleY * RacingHudLayout.sidebarTimingHeaderScale());
+        try {
+            drawSidebarTableRightAlignedText(font, "BEST", bestLapX, y, viewportBottom, viewportTop);
+            drawSidebarTableRightAlignedText(font, "LIVE", currentLapX, y, viewportBottom, viewportTop);
+        } finally {
+            fontData.setScale(rowTextScaleX, rowTextScaleY);
+        }
         contentY += headerStep;
 
         for (int i = 0; i < leaderboardEntries.size; i++) {
@@ -22442,8 +22706,7 @@ public class RatassGame extends ApplicationAdapter {
         float innerWidth = sidebarMinimapBounds.width - SIDEBAR_MINIMAP_PADDING * 2f;
         float innerHeight =
                 sidebarMinimapBounds.height
-                        - SIDEBAR_MINIMAP_PADDING * 2f
-                        - SIDEBAR_MINIMAP_LABEL_HEIGHT;
+                        - SIDEBAR_MINIMAP_PADDING * 2f;
         if (innerWidth <= 0f || innerHeight <= 0f || mapBounds.width <= 0f || mapBounds.height <= 0f) {
             return;
         }
@@ -22636,42 +22899,6 @@ public class RatassGame extends ApplicationAdapter {
             return true;
         }
         return false;
-    }
-
-    private void drawSidebarMinimapOverlay(
-            float sidebarX,
-            float sidebarWidth,
-            float hudHeight) {
-        if (!getSidebarMinimapBounds(
-                sidebarX,
-                sidebarWidth,
-                hudHeight,
-                sidebarMinimapBounds)) {
-            return;
-        }
-
-        BitmapFont.BitmapFontData fontData = leaderboardFont.getData();
-        float originalScaleX = fontData.scaleX;
-        float originalScaleY = fontData.scaleY;
-        try {
-            fontData.setScale(
-                    originalScaleX * RacingHudLayout.sidebarTextScale(),
-                    originalScaleY * RacingHudLayout.sidebarTextScale());
-            leaderboardFont.setColor(0.98f, 0.95f, 0.84f, 1f);
-            drawRogueliteFittedText(
-                    leaderboardFont,
-                    "Circuit Map",
-                    sidebarMinimapBounds.x + 6f,
-                    sidebarMinimapBounds.y
-                            + sidebarMinimapBounds.height
-                            - SIDEBAR_MINIMAP_PADDING,
-                    sidebarMinimapBounds.width - 12f,
-                    leaderboardFont.getLineHeight(),
-                    Align.left,
-                    false);
-        } finally {
-            fontData.setScale(originalScaleX, originalScaleY);
-        }
     }
 
     private void drawSidebarTelemetry(
@@ -23403,44 +23630,14 @@ public class RatassGame extends ApplicationAdapter {
         return TextFormat.fixed(value, 2);
     }
 
-    private float getSidebarSummaryCardHeight() {
-        if (rlTrainingMode || sandboxMode) {
-            return Math.max(
-                    102f,
-                    RacingHudLayout.sidebarLineHeight(
-                                    leaderboardFont.getLineHeight())
-                            * 5f);
-        }
-        float leaderboardLineStep =
-                Math.max(
-                        24f,
-                        RacingHudLayout.sidebarLineHeight(
-                                        leaderboardFont.getLineHeight())
-                                + 3f);
-        return Math.max(
-                176f,
-                2f
-                        + leaderboardLineStep * 4f
-                        + SIDEBAR_XP_BAR_BOTTOM_INSET
-                        + SIDEBAR_XP_BAR_HEIGHT * 2f
-                        + SIDEBAR_LAP_XP_BAR_GAP
-                        + SIDEBAR_LEVEL_ROW_GAP
-                        + RacingHudLayout.sidebarLineHeight(
-                                leaderboardFont.getLineHeight()));
-    }
-
     private float getSidebarTelemetryCardHeight() {
         return Math.max(SIDEBAR_TELEMETRY_CARD_HEIGHT, leaderboardFont.getLineHeight() * 14.5f);
-    }
-
-    private float getSidebarLeaderboardStartY(float hudHeight) {
-        return hudHeight - 22f - getSidebarSummaryCardHeight() - 16f;
     }
 
     private float getSidebarCompactLeaderboardRowStep() {
         return Math.max(
                 SIDEBAR_LEADERBOARD_COMPACT_ROW_STEP
-                        * RacingHudLayout.sidebarTextScale(),
+                        * RacingHudLayout.sidebarRowScale(),
                 RacingHudLayout.sidebarTableRowStep(
                         labelFont.getLineHeight()));
     }
@@ -23455,18 +23652,12 @@ public class RatassGame extends ApplicationAdapter {
             return false;
         }
 
-        float top = getSidebarLeaderboardStartY(hudHeight) + 2f;
-        float bottom = 10f;
-        if (getSidebarMinimapBounds(
-                sidebarX,
-                sidebarWidth,
-                hudHeight,
-                sidebarMinimapBounds)) {
-            bottom =
-                    sidebarMinimapBounds.y
-                            + sidebarMinimapBounds.height
-                            + SIDEBAR_MINIMAP_GAP;
-        }
+        float top = hudHeight - 10f;
+        float bottom =
+                (hudPanelVisibility.isBottomPanelVisible()
+                                ? carPanelHudHeight
+                                : 0f)
+                        + 10f;
         float height = top - bottom;
         if (height < Math.max(24f, getSidebarCompactLeaderboardRowStep() * 2f)) {
             out.set(0f, 0f, 0f, 0f);
@@ -23646,17 +23837,12 @@ public class RatassGame extends ApplicationAdapter {
         String suffix = (gameLanguage == GameLanguage.SPANISH ? " (Nv " : " (Lv ")
                 + progress.getLevel()
                 + ")";
-        glyphLayout.setText(font, suffix);
-        float nameWidth = maxWidth - glyphLayout.width;
-        if (nameWidth <= 0f) {
-            return truncateTextToWidth(font, suffix.trim(), maxWidth);
-        }
-        String name =
-                truncateTextToWidth(
-                        font,
-                        template.playerControlled ? playerName : template.name,
-                        nameWidth);
-        return name.length() == 0 ? suffix.trim() : name + suffix;
+        String name = template.playerControlled ? playerName : template.name;
+        String label = name + suffix;
+        glyphLayout.setText(font, label);
+        return glyphLayout.width <= maxWidth
+                ? label
+                : truncateTextToWidth(font, name, maxWidth);
     }
 
     private RogueliteCompetitorProgress getRogueliteCompetitorProgress(
@@ -23774,38 +23960,15 @@ public class RatassGame extends ApplicationAdapter {
             float sidebarWidth,
             float hudHeight,
             Rectangle out) {
-        float bottom = 10f;
-        float summaryBottom = hudHeight - 22f - getSidebarSummaryCardHeight();
-        float availableHeight =
-                summaryBottom
-                        - SIDEBAR_MINIMAP_GAP
-                        - bottom;
-        if (sidebarWidth <= 0f
-                || sidebarWidth <= SIDEBAR_CARD_MARGIN * 2f
-                || availableHeight < SIDEBAR_MINIMAP_MIN_HEIGHT) {
+        float hudWidth = sidebarX + sidebarWidth;
+        if (!hudPanelVisibility.isBottomPanelVisible()
+                || !updateCarPanelLayout(hudWidth, hudHeight)
+                || sidebarMinimapBounds.width <= 0f
+                || sidebarMinimapBounds.height <= 0f) {
             out.set(0f, 0f, 0f, 0f);
             return false;
         }
-
-        float preferredHeight = Math.min(220f, Math.max(SIDEBAR_MINIMAP_MIN_HEIGHT, sidebarWidth * 0.66f));
-        float tableReserve = Math.max(28f, getSidebarCompactLeaderboardRowStep() * 4f);
-        if (availableHeight
-                < SIDEBAR_MINIMAP_MIN_HEIGHT
-                        + SIDEBAR_MINIMAP_GAP
-                        + tableReserve) {
-            out.set(0f, 0f, 0f, 0f);
-            return false;
-        }
-        float height = Math.min(preferredHeight, availableHeight);
-        if (availableHeight - height < tableReserve && height > SIDEBAR_MINIMAP_MIN_HEIGHT) {
-            height = Math.max(SIDEBAR_MINIMAP_MIN_HEIGHT, availableHeight - tableReserve);
-        }
-
-        out.set(
-                sidebarX + SIDEBAR_CARD_MARGIN,
-                bottom,
-                sidebarWidth - SIDEBAR_CARD_MARGIN * 2f,
-                height);
+        out.set(sidebarMinimapBounds);
         return true;
     }
 
@@ -23890,41 +24053,6 @@ public class RatassGame extends ApplicationAdapter {
         return GameText.experienceReason(gameLanguage, reason) + " +" + amount + " XP";
     }
 
-    private String buildSidebarMapText(CarTemplate template) {
-        String mapName = currentMap == null ? "Map" : currentMap.getName();
-        if (!isLiveLapRaceMode() || template == null) {
-            return mapName;
-        }
-
-        int raceLaps = getRaceLapsToWin();
-        int lap = sandboxMode
-                ? Math.max(1, template.roundRaceLap + 1)
-                : MathUtils.clamp(template.roundRaceLap + 1, 1, raceLaps);
-        int progressPercent = template.roundRaceFinished
-                ? 100
-                : MathUtils.round(getRaceLapProgressFraction(template) * 100f);
-        return mapName
-                + "  "
-                + progressPercent
-                + "%  Lap "
-                + lap
-                + (sandboxMode ? "" : "/" + raceLaps);
-    }
-
-    private String buildSidebarPointsText(CarTemplate template) {
-        if (template == null) {
-            return "Cars " + cars.size;
-        }
-        String displayName = template.playerControlled ? playerName : template.name;
-        return "Cars "
-                + cars.size
-                + "  |  "
-                + displayName
-                + " "
-                + template.totalPoints
-                + " pts";
-    }
-
     private String buildObjectiveText() {
         if (preRoundCountdownTimer > 0f) {
             if (sandboxMode && isLiveLapRaceMode()) {
@@ -24006,8 +24134,18 @@ public class RatassGame extends ApplicationAdapter {
 
         shapeRenderer.setColor(0.10f, 0.12f, 0.16f, 0.28f);
         shapeRenderer.rect(steerPadBounds.x, steerPadBounds.y, steerPadBounds.width, steerPadBounds.height);
-        shapeRenderer.rect(throttlePadBounds.x, throttlePadBounds.y, throttlePadBounds.width, throttlePadBounds.height);
-        shapeRenderer.rect(reversePadBounds.x, reversePadBounds.y, reversePadBounds.width, reversePadBounds.height);
+        if (shouldShowTouchPedals()) {
+            shapeRenderer.rect(
+                    throttlePadBounds.x,
+                    throttlePadBounds.y,
+                    throttlePadBounds.width,
+                    throttlePadBounds.height);
+            shapeRenderer.rect(
+                    reversePadBounds.x,
+                    reversePadBounds.y,
+                    reversePadBounds.width,
+                    reversePadBounds.height);
+        }
 
         shapeRenderer.setColor(1f, 1f, 1f, 0.08f);
         float steerCenterX = steerPadBounds.x + steerPadBounds.width * 0.5f;
@@ -24018,14 +24156,142 @@ public class RatassGame extends ApplicationAdapter {
         shapeRenderer.setColor(0.95f, 0.78f, 0.18f, 0.42f);
         shapeRenderer.circle(knobX, knobY, steerPadBounds.width * 0.12f, 28);
 
-        shapeRenderer.setColor(0.73f, 0.88f, 0.97f, touchThrottleInput > 0f ? 0.40f : 0.16f);
-        shapeRenderer.rect(throttlePadBounds.x + 8f, throttlePadBounds.y + 8f, throttlePadBounds.width - 16f, throttlePadBounds.height - 16f);
+        if (shouldShowTouchPedals()) {
+            shapeRenderer.setColor(
+                    0.73f,
+                    0.88f,
+                    0.97f,
+                    touchThrottleInput > 0f ? 0.40f : 0.16f);
+            shapeRenderer.rect(
+                    throttlePadBounds.x + 8f,
+                    throttlePadBounds.y + 8f,
+                    throttlePadBounds.width - 16f,
+                    throttlePadBounds.height - 16f);
 
-        shapeRenderer.setColor(0.95f, 0.64f, 0.36f, touchThrottleInput < 0f ? 0.40f : 0.16f);
-        shapeRenderer.rect(reversePadBounds.x + 8f, reversePadBounds.y + 8f, reversePadBounds.width - 16f, reversePadBounds.height - 16f);
+            shapeRenderer.setColor(
+                    0.95f,
+                    0.64f,
+                    0.36f,
+                    touchThrottleInput < 0f ? 0.40f : 0.16f);
+            shapeRenderer.rect(
+                    reversePadBounds.x + 8f,
+                    reversePadBounds.y + 8f,
+                    reversePadBounds.width - 16f,
+                    reversePadBounds.height - 16f);
+        }
 
         shapeRenderer.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    private void drawPlayerSteeringTakeoverIndicator() {
+        int directions =
+                SteeringTakeoverIndicator.visibleDirections(
+                        isPresentationEnabled(),
+                        isPlayerSteeringTakeoverModeEnabled(),
+                        frameLeftInputActive,
+                        frameRightInputActive);
+        if (directions == 0
+                || roundOver
+                || playerCar == null
+                || !playerCar.active
+                || playerCar.body == null) {
+            return;
+        }
+
+        Vector2 carPosition = playerCar.getRenderPosition();
+        float carWidth = playerCar.getWidth();
+        float revengeIconSize = carWidth * 0.72f;
+        float buttonWidth = carWidth * 0.30f;
+        float buttonHeight = buttonWidth * 0.72f;
+        float gap = carWidth * 0.08f;
+        float centerY =
+                carPosition.y
+                        - playerCar.getHeight() * 0.90f
+                        - revengeIconSize * 0.52f
+                        - buttonHeight * 0.58f;
+        float y = centerY - buttonHeight * 0.5f;
+        boolean both =
+                (directions & SteeringTakeoverIndicator.LEFT) != 0
+                        && (directions & SteeringTakeoverIndicator.RIGHT) != 0;
+        boolean ignored =
+                SteeringTakeoverIndicator.isIgnored(
+                        directions,
+                        playerCar.playerSteeringTakeoverApplied);
+
+        if ((directions & SteeringTakeoverIndicator.LEFT) != 0) {
+            drawSteeringTakeoverArrow(
+                    carPosition.x - gap * 0.5f - buttonWidth,
+                    y,
+                    buttonWidth,
+                    buttonHeight,
+                    true,
+                    both,
+                    ignored);
+        }
+        if ((directions & SteeringTakeoverIndicator.RIGHT) != 0) {
+            drawSteeringTakeoverArrow(
+                    carPosition.x + gap * 0.5f,
+                    y,
+                    buttonWidth,
+                    buttonHeight,
+                    false,
+                    both,
+                    ignored);
+        }
+    }
+
+    private void drawSteeringTakeoverArrow(
+            float x,
+            float y,
+            float width,
+            float height,
+            boolean pointsLeft,
+            boolean neutralized,
+            boolean ignored) {
+        shapeRenderer.setColor(0.02f, 0.04f, 0.06f, 0.72f);
+        shapeRenderer.rect(x, y, width, height);
+
+        if (ignored) {
+            shapeRenderer.setColor(1f, 0.18f, 0.12f, 0.96f);
+        } else if (neutralized) {
+            shapeRenderer.setColor(1f, 0.72f, 0.16f, 0.96f);
+        } else {
+            shapeRenderer.setColor(0.20f, 0.94f, 0.32f, 0.96f);
+        }
+        float centerY = y + height * 0.5f;
+        float headWidth = width * 0.36f;
+        float headHeight = height * 0.58f;
+        float shaftHeight = height * 0.22f;
+        if (pointsLeft) {
+            float tipX = x + width * 0.18f;
+            shapeRenderer.triangle(
+                    tipX,
+                    centerY,
+                    tipX + headWidth,
+                    centerY + headHeight * 0.5f,
+                    tipX + headWidth,
+                    centerY - headHeight * 0.5f);
+            shapeRenderer.rect(
+                    tipX + headWidth * 0.72f,
+                    centerY - shaftHeight * 0.5f,
+                    width * 0.48f,
+                    shaftHeight);
+        } else {
+            float tipX = x + width * 0.82f;
+            shapeRenderer.triangle(
+                    tipX,
+                    centerY,
+                    tipX - headWidth,
+                    centerY + headHeight * 0.5f,
+                    tipX - headWidth,
+                    centerY - headHeight * 0.5f);
+            shapeRenderer.rect(
+                    x + width * 0.16f,
+                    centerY - shaftHeight * 0.5f,
+                    width * 0.48f,
+                    shaftHeight);
+        }
     }
 
     private MapTheme currentTheme() {
@@ -25075,6 +25341,7 @@ public class RatassGame extends ApplicationAdapter {
         private boolean reverseDriveActive;
         private float lastThrottleCommand;
         private float lastTurnCommand;
+        private boolean playerSteeringTakeoverApplied;
         private float previousRenderAngleRad;
         private float renderAngleRad;
         private float[] rlScratchA;
@@ -26153,6 +26420,8 @@ public class RatassGame extends ApplicationAdapter {
                 boolean allowControl,
                 float playerThrottle,
                 float playerTurn,
+                boolean playerTurnOverrideActive,
+                boolean playerTakeoverEnabled,
                 boolean checkpointTargetActive,
                 Vector2 checkpointTargetPosition,
                 Vector2 secondCheckpointPosition,
@@ -26164,6 +26433,9 @@ public class RatassGame extends ApplicationAdapter {
                 float surfaceGripMultiplier,
                 boolean trainingMode,
                 boolean benchmarkCardsEnabled) {
+            if (playerTakeoverEnabled) {
+                playerSteeringTakeoverApplied = false;
+            }
             if (!active || body == null) {
                 return;
             }
@@ -26259,6 +26531,21 @@ public class RatassGame extends ApplicationAdapter {
                     && shouldForceFullThrottleOnLongStraight(arenaMap, trainingMode)) {
                 throttle = 1f;
             }
+            boolean playerTakeoverAllowed =
+                    HybridPlayerControl.isSteeringTakeoverAllowed(
+                            playerTakeoverEnabled
+                                    && playerControlled
+                                    && modelControlled
+                                    && allowControl
+                                    && controlLockTimer <= 0f,
+                            arenaMap,
+                            body.getPosition());
+            turn =
+                    HybridPlayerControl.overrideAxis(
+                            turn,
+                            playerTurn,
+                            playerTurnOverrideActive,
+                            playerTakeoverAllowed);
             if (allowControl && controlLockTimer <= 0f && forcedThrottleTimer > 0f) {
                 throttle = 1f;
             }
@@ -26273,6 +26560,12 @@ public class RatassGame extends ApplicationAdapter {
                 throttle = 0f;
                 turn = 0f;
                 cancelAutomaticControlAssistance();
+            }
+            if (playerTakeoverEnabled) {
+                playerSteeringTakeoverApplied =
+                        playerTakeoverAllowed
+                                && playerTurnOverrideActive
+                                && revengeHookTarget == null;
             }
             updateRogueliteUpgrades(
                     delta,

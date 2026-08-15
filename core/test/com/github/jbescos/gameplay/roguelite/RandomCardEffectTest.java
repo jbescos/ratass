@@ -38,6 +38,14 @@ public class RandomCardEffectTest {
     }
 
     @Test
+    public void randomPowerupsExcludePermanentPriorityHotline() {
+        List<RogueliteCardId> candidates = RandomCardEffect.candidateCardIds(
+                RogueliteSlotType.POWERUP, 2);
+
+        assertFalse(candidates.contains(RogueliteCardId.PRIORITY_HOTLINE));
+    }
+
+    @Test
     public void powerupPreparesADifferentCardAfterTheCurrentEffectExecutes() {
         RandomCardEffect effect = effectPreparedAs(
                 RogueliteCardId.LUCKY_SPARK,

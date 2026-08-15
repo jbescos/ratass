@@ -35,6 +35,9 @@ final class GameTextEuropeanCatalog {
         {"Fullscreen", "Plein écran", "Vollbild", "Schermo intero"},
         {"Music", "Musique", "Musik", "Musica"},
         {"Sound FX", "Effets", "Effekte", "Effetti"},
+        {"Left", "Gauche", "Links", "Sinistra"},
+        {"Right", "Droite", "Rechts", "Destra"},
+        {"Press a key", "Appuyez sur une touche", "Taste drücken", "Premi un tasto"},
         {"TV CAMERA", "CAMÉRA TV", "TV-KAMERA", "REGIA TV"},
         {"Loading settings", "Chargement des réglages", "Einstellungen laden", "Caricamento impostazioni"},
         {"Loading drivers", "Chargement des pilotes", "Fahrer laden", "Caricamento piloti"},
@@ -356,7 +359,7 @@ final class GameTextEuropeanCatalog {
         {"A qualified hit curses its offender's throttle, forcing them to commit through whatever comes next.", "Maudit l'accélérateur de l'agresseur et le force à fond.", "Verflucht das Gas des Angreifers und zwingt ihn auf Vollgas.", "Maledice l'acceleratore dell'aggressore e lo forza al massimo."},
         {"An energy shell forms when traffic closes in, absorbing frontal recoil.", "Une coque d'énergie absorbe les chocs frontaux dans le trafic.", "Eine Energiehülle fängt bei Verkehr frontale Rückstöße ab.", "Un guscio energetico assorbe gli urti frontali nel traffico."},
         {"Twin exhaust rockets ignite on a clear straight for a forceful launch.", "Deux fusées d'échappement donnent une forte poussée en ligne droite.", "Zwei Auspuffraketen liefern auf freier Geraden starken Schub.", "Due razzi di scarico danno una forte spinta sul rettilineo."},
-        {"Calls the best benchmarked driver more often for 10 seconds of driving advice.", "Appelle plus souvent le meilleur pilote pour 10 secondes de conseils.", "Ruft den besten Fahrer häufiger für 10 Sekunden Fahrtipps an.", "Chiama più spesso il miglior pilota per 10 secondi di consigli di guida."},
+        {"Replaces the active driver with the best benchmarked driver while this Powerup is equipped.", "Remplace le pilote actif par le meilleur pilote évalué tant que ce Bonus est équipé.", "Ersetzt den aktiven Fahrer durch den besten bewerteten Fahrer, solange dieses Power-up ausgerüstet ist.", "Sostituisce il pilota attivo con il miglior pilota valutato finché questo Potenziamento è equipaggiato."},
         {"Creates three physical cars. Each drives independently, shares the same cards and executes Revenge with the group; a hit to any copy arms it.", "Crée trois voitures physiques. Chacune conduit seule, partage les cartes et exécute la Vengeance en groupe ; toucher une copie l'arme.", "Erzeugt drei physische Autos. Jedes fährt selbstständig, teilt die Karten und führt Rache gemeinsam aus; ein Treffer auf eine Kopie lädt sie.", "Crea tre auto fisiche. Ognuna guida autonomamente, condivide le carte ed esegue Vendetta col gruppo; colpire una copia la arma."},
         {"Creates four physical cars. Each drives independently, shares the same cards and executes Revenge with the group; a hit to any copy arms it.", "Crée quatre voitures physiques. Chacune conduit seule, partage les cartes et exécute la Vengeance en groupe ; toucher une copie l'arme.", "Erzeugt vier physische Autos. Jedes fährt selbstständig, teilt die Karten und führt Rache gemeinsam aus; ein Treffer auf eine Kopie lädt sie.", "Crea quattro auto fisiche. Ognuna guida autonomamente, condivide le carte ed esegue Vendetta col gruppo; colpire una copia la arma."},
         {"An improved phase field hides the car and prevents rivals from making contact for longer.", "Un champ amélioré cache la voiture et bloque les contacts plus longtemps.", "Ein besseres Phasenfeld versteckt das Auto länger vor Kontakten.", "Un campo migliorato nasconde l'auto e impedisce contatti più a lungo."},
@@ -504,6 +507,12 @@ final class GameTextEuropeanCatalog {
         text = text.replace("Revenge activation", revengeActivation)
                 .replace("effect", translatedEffect);
         text = text.replace(
+                        "Always active",
+                        select(language, "Toujours actif", "Immer aktiv", "Sempre attivo"))
+                .replace(
+                        "Driver: best avg-lap",
+                        select(language, "Pilote : meilleur tour moyen", "Fahrer: beste Durchschnittsrunde", "Pilota: miglior giro medio"))
+                .replace(
                         "Automatic call",
                         select(language, "Appel automatique", "Automatischer Anruf", "Chiamata automatica"))
                 .replace(

@@ -10,6 +10,9 @@ final class RogueliteEffectFactory {
         if (RandomCardEffect.isRandomCard(id)) {
             return new RandomCardEffect(id, powerupCycleOffset);
         }
+        if (id == RogueliteCardId.PRIORITY_HOTLINE) {
+            return new BestDriverOverrideEffect(id);
+        }
         if (id == RogueliteCardId.GRUDGE_SPARK
                 || id == RogueliteCardId.VENGEANCE_CORE
                 || id == RogueliteCardId.NEMESIS_ENGINE) {

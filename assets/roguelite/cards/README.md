@@ -43,7 +43,8 @@ Grip T2, Grip T3, Time T1, Time T2, and Time T3. The renderer tints the generate
 artwork by card type and keeps projectiles, physical mirror cars, and cloak
 transparency on their dedicated presentation paths. Icon-only abilities such as
 the driver hotlines use the active Powerup indicator without consuming a
-centered-effect cell. All effect sprites are loaded and updated only by the
+centered-effect cell; Priority Hotline keeps that indicator active while it is
+equipped. All effect sprites are loaded and updated only by the
 presentation path, so they do not affect RL training.
 
 `card_shell_atlas_v2.png` is the 5 by 2 presentation atlas. Columns are

@@ -40,6 +40,11 @@ public final class ArenaMap {
     private final Array<Vector2> routeMarkerPoints = new Array<Vector2>();
     private float[] routeMarkerProgresses = new float[0];
     private final Array<Vector2> recoveryPoints = new Array<Vector2>();
+    private final Array<Vector2> wallStarts = new Array<Vector2>();
+    private final Array<Vector2> wallEnds = new Array<Vector2>();
+    private final float[] manualSteeringRestrictedCenterX;
+    private final float[] manualSteeringRestrictedCenterY;
+    private final float[] manualSteeringRestrictedRadius;
     private final Rectangle bounds = new Rectangle();
     private final Vector2 scratchCandidate = new Vector2();
     private final Vector2 scratchAdjusted = new Vector2();
@@ -80,6 +85,10 @@ public final class ArenaMap {
             Array<Vector2> routeMarkerPoints,
             float[] routeMarkerProgresses,
             Array<Vector2> recoveryPoints,
+            Array<Vector2> wallStarts,
+            Array<Vector2> wallEnds,
+            Array<Vector2> manualSteeringRestrictedCenters,
+            Array<Float> manualSteeringRestrictedRadii,
             RouteMetadata routeMetadata) {
         this.id = id;
         this.name = name;
@@ -107,6 +116,25 @@ public final class ArenaMap {
 
         for (int i = 0; i < recoveryPoints.size; i++) {
             this.recoveryPoints.add(new Vector2(recoveryPoints.get(i)));
+        }
+        int wallCount = Math.min(wallStarts.size, wallEnds.size);
+        for (int i = 0; i < wallCount; i++) {
+            this.wallStarts.add(new Vector2(wallStarts.get(i)));
+            this.wallEnds.add(new Vector2(wallEnds.get(i)));
+        }
+        int restrictedZoneCount =
+                Math.min(
+                        manualSteeringRestrictedCenters.size,
+                        manualSteeringRestrictedRadii.size);
+        manualSteeringRestrictedCenterX = new float[restrictedZoneCount];
+        manualSteeringRestrictedCenterY = new float[restrictedZoneCount];
+        manualSteeringRestrictedRadius = new float[restrictedZoneCount];
+        for (int i = 0; i < restrictedZoneCount; i++) {
+            Vector2 center = manualSteeringRestrictedCenters.get(i);
+            manualSteeringRestrictedCenterX[i] = center.x;
+            manualSteeringRestrictedCenterY[i] = center.y;
+            manualSteeringRestrictedRadius[i] =
+                    Math.max(0f, manualSteeringRestrictedRadii.get(i));
         }
 
         ArenaShape firstSolid = this.solidZones.first();
@@ -205,6 +233,42 @@ public final class ArenaMap {
 
     public SpawnPoint getCheckpoint(int index) {
         return checkpoints.get(index);
+    }
+
+    public int getWallCount() {
+        return wallStarts.size;
+    }
+
+    public void getWallStart(int index, Vector2 out) {
+        if (out != null) {
+            out.set(wallStarts.get(index));
+        }
+    }
+
+    public void getWallEnd(int index, Vector2 out) {
+        if (out != null) {
+            out.set(wallEnds.get(index));
+        }
+    }
+
+    public int getManualSteeringRestrictedZoneCount() {
+        return manualSteeringRestrictedRadius.length;
+    }
+
+    public boolean isManualSteeringRestricted(Vector2 position) {
+        return position != null && isManualSteeringRestricted(position.x, position.y);
+    }
+
+    public boolean isManualSteeringRestricted(float x, float y) {
+        for (int i = 0; i < manualSteeringRestrictedRadius.length; i++) {
+            float dx = x - manualSteeringRestrictedCenterX[i];
+            float dy = y - manualSteeringRestrictedCenterY[i];
+            float radius = manualSteeringRestrictedRadius[i];
+            if (dx * dx + dy * dy <= radius * radius) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public int getRoutePointCount() {
@@ -1507,6 +1571,10 @@ public final class ArenaMap {
         private final Array<Vector2> routeMarkerPoints = new Array<Vector2>();
         private final Array<Float> routeMarkerProgresses = new Array<Float>();
         private final Array<Vector2> recoveryPoints = new Array<Vector2>();
+        private final Array<Vector2> wallStarts = new Array<Vector2>();
+        private final Array<Vector2> wallEnds = new Array<Vector2>();
+        private final Array<Vector2> manualSteeringRestrictedCenters = new Array<Vector2>();
+        private final Array<Float> manualSteeringRestrictedRadii = new Array<Float>();
         private RouteMetadata routeMetadata;
 
         private Builder(String id, String name) {
@@ -1590,6 +1658,20 @@ public final class ArenaMap {
             return this;
         }
 
+        public Builder wall(float startX, float startY, float endX, float endY) {
+            wallStarts.add(new Vector2(startX, startY));
+            wallEnds.add(new Vector2(endX, endY));
+            return this;
+        }
+
+        public Builder manualSteeringRestrictedZone(float centerX, float centerY, float radius) {
+            if (radius > 0f) {
+                manualSteeringRestrictedCenters.add(new Vector2(centerX, centerY));
+                manualSteeringRestrictedRadii.add(radius);
+            }
+            return this;
+        }
+
         public Builder scale(float factor) {
             if (factor <= 0f) {
                 throw new IllegalArgumentException("Arena map scale must be positive.");
@@ -1625,6 +1707,16 @@ public final class ArenaMap {
             for (int i = 0; i < recoveryPoints.size; i++) {
                 recoveryPoints.get(i).scl(factor);
             }
+            for (int i = 0; i < wallStarts.size; i++) {
+                wallStarts.get(i).scl(factor);
+                wallEnds.get(i).scl(factor);
+            }
+            for (int i = 0; i < manualSteeringRestrictedCenters.size; i++) {
+                manualSteeringRestrictedCenters.get(i).scl(factor);
+                manualSteeringRestrictedRadii.set(
+                        i,
+                        manualSteeringRestrictedRadii.get(i) * factor);
+            }
 
             return this;
         }
@@ -1657,6 +1749,10 @@ public final class ArenaMap {
                     routeMarkerPoints,
                     toFloatArray(routeMarkerProgresses),
                     recoveryPoints,
+                    wallStarts,
+                    wallEnds,
+                    manualSteeringRestrictedCenters,
+                    manualSteeringRestrictedRadii,
                     routeMetadata);
         }
 

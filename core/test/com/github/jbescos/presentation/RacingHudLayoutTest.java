@@ -34,8 +34,22 @@ public class RacingHudLayoutTest {
     public void bottomPanelStopsGrowingOnTallDisplays() {
         assertEquals(151.2f, RacingHudLayout.bottomPanelHeight(720f), 0.001f);
         assertEquals(194f, RacingHudLayout.bottomPanelHeight(1080f), 0.001f);
+        assertEquals(48.96f, RacingHudLayout.raceSummaryPanelHeight(720f), 0.001f);
+        assertEquals(58f, RacingHudLayout.raceSummaryPanelHeight(1080f), 0.001f);
         assertEquals(16f, RacingHudLayout.bottomPanelSectionGap(1920f), 0.001f);
         assertEquals(24f, RacingHudLayout.bottomPanelMetricRowHeight(1920f, 1080f), 0.001f);
+    }
+
+    @Test
+    public void bottomPanelReservesTheSidebarWidthForItsMinimap() {
+        assertEquals(
+                260f,
+                RacingHudLayout.bottomPanelMinimapWidth(720f, 260f),
+                0.001f);
+        assertEquals(
+                420f,
+                RacingHudLayout.bottomPanelMinimapWidth(1920f, 420f),
+                0.001f);
     }
 
     @Test
@@ -70,9 +84,11 @@ public class RacingHudLayoutTest {
     }
 
     @Test
-    public void sidebarUsesLargerTextAndRowsThatCanScrollWithoutOverlap() {
-        assertEquals(1.4f, RacingHudLayout.sidebarTextScale(), 0.001f);
-        assertEquals(16.8f, RacingHudLayout.sidebarLineHeight(12f), 0.001f);
+    public void sidebarUsesCompactTextAndKeepsLargeClickableRows() {
+        assertEquals(1.12f, RacingHudLayout.sidebarTextScale(), 0.001f);
+        assertEquals(1.4f, RacingHudLayout.sidebarRowScale(), 0.001f);
+        assertEquals(0.82f, RacingHudLayout.sidebarTimingHeaderScale(), 0.001f);
+        assertEquals(13.44f, RacingHudLayout.sidebarLineHeight(12f), 0.001f);
         assertEquals(22f, RacingHudLayout.sidebarTableRowStep(12f), 0.001f);
         assertEquals(30f, RacingHudLayout.sidebarTableRowStep(20f), 0.001f);
     }

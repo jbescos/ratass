@@ -64,7 +64,8 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
             RogueliteCardDefinition card = cards.get(i);
             if (card.getSlotType() == slotType
                     && card.getTier() == tier
-                    && !isRandomCard(card.getId())) {
+                    && !isRandomCard(card.getId())
+                    && card.getId() != RogueliteCardId.PRIORITY_HOTLINE) {
                 matches.add(card.getId());
             }
         }

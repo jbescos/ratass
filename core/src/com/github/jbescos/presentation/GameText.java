@@ -241,6 +241,8 @@ public final class GameText {
 
     private static String translateCardEffect(String text) {
         String result = text;
+        result = result.replace("Always active", "Siempre activo");
+        result = result.replace("Driver: best avg-lap", "Piloto: mejor vuelta media");
         result = result.replace("Automatic call", "Llamada automática");
         result = result.replace("best avg-lap driver", "piloto con mejor vuelta media");
         result = result.replace("best-driver advice", "consejos del mejor piloto");
@@ -383,6 +385,9 @@ public final class GameText {
         put(text, "Fullscreen", "Pantalla completa");
         put(text, "Music", "Música");
         put(text, "Sound FX", "Efectos");
+        put(text, "Left", "Izquierda");
+        put(text, "Right", "Derecha");
+        put(text, "Press a key", "Pulsa una tecla");
         put(text, "Language", "Idioma");
         put(text, "TV CAMERA", "CÁMARA TV");
         put(text, "Loading settings", "Cargando ajustes");
@@ -806,8 +811,8 @@ public final class GameText {
                 "Un escudo de energía absorbe impactos frontales cuando se acerca el tráfico.");
         put(text, "Twin exhaust rockets ignite on a clear straight for a forceful launch.",
                 "Dos cohetes de escape se encienden en recta para dar un gran impulso.");
-        put(text, "Calls the best benchmarked driver more often for 10 seconds of driving advice.",
-                "Llama más a menudo al mejor piloto para recibir consejos durante 10 segundos.");
+        put(text, "Replaces the active driver with the best benchmarked driver while this Powerup is equipped.",
+                "Sustituye al piloto activo por el mejor piloto evaluado mientras este Potenciar esté equipado.");
         put(text, "Creates three physical cars. Each drives independently, shares the same cards and executes Revenge with the group; a hit to any copy arms it.",
                 "Crea tres coches físicos. Cada uno conduce de forma independiente, comparte cartas y ejecuta la Venganza con el grupo; golpear cualquier copia la prepara.");
         put(text, "Creates four physical cars. Each drives independently, shares the same cards and executes Revenge with the group; a hit to any copy arms it.",

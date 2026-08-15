@@ -91,13 +91,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
                 launchSpeedRatio = 0.20f;
                 launchTargetSpeed = 0.56f;
                 break;
-            case PRIORITY_HOTLINE:
-                cooldown = 15f;
-                duration = 10f;
-                acceleration = 0f;
-                grip = 0f;
-                steering = 0f;
-                break;
             case GRAVITY_WELL:
                 cooldown = 5.8f;
                 duration = 3.6f;
@@ -237,7 +230,6 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
 
     private boolean shouldActivate(RogueliteDrivingFrame frame) {
         if (getCardId() == RogueliteCardId.ACE_HOTLINE
-                || getCardId() == RogueliteCardId.PRIORITY_HOTLINE
                 || TimeDilationPowerupSpec.isTimeDilationCard(getCardId())) {
             return true;
         }
@@ -298,9 +290,7 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
 
     @Override
     boolean usesBestDriver() {
-        return isActive()
-                && (getCardId() == RogueliteCardId.ACE_HOTLINE
-                        || getCardId() == RogueliteCardId.PRIORITY_HOTLINE);
+        return isActive() && getCardId() == RogueliteCardId.ACE_HOTLINE;
     }
 
     @Override

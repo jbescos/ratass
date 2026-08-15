@@ -5,11 +5,15 @@ public final class RacingHudLayout {
     private static final float MIN_PLAYFIELD_WIDTH = 320f;
     private static final float MIN_BOTTOM_PANEL_HEIGHT = 130f;
     private static final float MAX_BOTTOM_PANEL_HEIGHT = 194f;
+    private static final float MIN_RACE_SUMMARY_HEIGHT = 44f;
+    private static final float MAX_RACE_SUMMARY_HEIGHT = 58f;
     private static final int CAR_STAT_ROWS = 5;
     private static final int TELEMETRY_ROWS = 6;
     private static final float CAR_STATS_SECTION_RATIO = 0.22f;
     private static final float TELEMETRY_SECTION_RATIO = 0.40f;
-    private static final float SIDEBAR_TEXT_SCALE = 1.4f;
+    private static final float SIDEBAR_TEXT_SCALE = 1.12f;
+    private static final float SIDEBAR_ROW_SCALE = 1.4f;
+    private static final float SIDEBAR_TIMING_HEADER_SCALE = 0.82f;
 
     private RacingHudLayout() {}
 
@@ -60,6 +64,19 @@ public final class RacingHudLayout {
                 screenHeight * 0.21f,
                 MIN_BOTTOM_PANEL_HEIGHT,
                 MAX_BOTTOM_PANEL_HEIGHT);
+    }
+
+    public static float raceSummaryPanelHeight(float screenHeight) {
+        return clamp(
+                screenHeight * 0.068f,
+                MIN_RACE_SUMMARY_HEIGHT,
+                MAX_RACE_SUMMARY_HEIGHT);
+    }
+
+    public static float bottomPanelMinimapWidth(
+            float screenWidth,
+            float preferredSidebarWidth) {
+        return standingsPanelWidth(screenWidth, preferredSidebarWidth);
     }
 
     public static float bottomPanelContentMargin(float screenHeight) {
@@ -152,12 +169,20 @@ public final class RacingHudLayout {
         return SIDEBAR_TEXT_SCALE;
     }
 
+    public static float sidebarRowScale() {
+        return SIDEBAR_ROW_SCALE;
+    }
+
+    public static float sidebarTimingHeaderScale() {
+        return SIDEBAR_TIMING_HEADER_SCALE;
+    }
+
     public static float sidebarLineHeight(float unscaledLineHeight) {
         return Math.max(0f, unscaledLineHeight) * SIDEBAR_TEXT_SCALE;
     }
 
     public static float sidebarTableRowStep(float unscaledLineHeight) {
-        return Math.max(22f, sidebarLineHeight(unscaledLineHeight) + 2f);
+        return Math.max(22f, Math.max(0f, unscaledLineHeight) * SIDEBAR_ROW_SCALE + 2f);
     }
 
     public static float inGameMenuButtonSize(float screenWidth, float screenHeight) {

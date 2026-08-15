@@ -1082,21 +1082,21 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
-    public void bestDriverHotlinesShareDurationAndOnlyImproveCooldownByTier() {
+    public void priorityHotlinePermanentlyOverridesTheDriverWithoutTimers() {
         RogueliteCarUpgrades tierOne = activateAutomaticPowerup(
                 RogueliteCardId.ACE_HOTLINE);
-        RogueliteCarUpgrades tierTwo = activateAutomaticPowerup(
-                RogueliteCardId.PRIORITY_HOTLINE);
+        RogueliteCarUpgrades tierTwo = configured(RogueliteCardId.PRIORITY_HOTLINE);
+        update(tierTwo, 0.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
 
         assertTrue(tierOne.isBestDriverActive());
         assertTrue(tierTwo.isBestDriverActive());
         assertEquals(10f, tierOne.getActiveTimeRemainingSeconds(
                 RogueliteCardId.ACE_HOTLINE), EPSILON);
-        assertEquals(10f, tierTwo.getActiveTimeRemainingSeconds(
+        assertEquals(0f, tierTwo.getActiveTimeRemainingSeconds(
                 RogueliteCardId.PRIORITY_HOTLINE), EPSILON);
         assertEquals(20f, tierOne.getCooldownTimeRemainingSeconds(
                 RogueliteCardId.ACE_HOTLINE), EPSILON);
-        assertEquals(15f, tierTwo.getCooldownTimeRemainingSeconds(
+        assertEquals(0f, tierTwo.getCooldownTimeRemainingSeconds(
                 RogueliteCardId.PRIORITY_HOTLINE), EPSILON);
         assertEquals(1f, tierOne.getAccelerationMultiplier(), EPSILON);
         assertEquals(1f, tierTwo.getAccelerationMultiplier(), EPSILON);
@@ -1104,7 +1104,8 @@ public class RogueliteCarUpgradesTest {
         update(tierOne, 10.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
         update(tierTwo, 10.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertFalse(tierOne.isBestDriverActive());
-        assertFalse(tierTwo.isBestDriverActive());
+        assertTrue(tierTwo.isBestDriverActive());
+        assertEquals(RogueliteCardId.PRIORITY_HOTLINE, tierTwo.getActivePowerupCardId());
     }
 
     @Test

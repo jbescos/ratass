@@ -52,6 +52,10 @@ Mask colors:
 - red dots: the two side-by-side anchors for the first start-grid row
 - green lines: ordered race checkpoint gates, perpendicular to the road; the
   start/finish line also defines the grid's forward direction
+- cyan circles: route hints around intersections; manual steering takeover is
+  disabled inside their radius to prevent intersection shortcuts
+- orange lines: solid collision walls; each disconnected line becomes one
+  static barrier and must also be drawn at the same position in every theme
 
 Race-mode car spawns are separate mask markers. The loader expands the two red
 anchors behind the start/finish line into 20 positions on two parallel

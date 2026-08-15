@@ -27,7 +27,7 @@ final class ImageArenaMapLoader {
     private static final String IMAGE_SUFFIX = ".png";
     private static final String CACHE_SUFFIX = ".mapcache";
     private static final String LEGACY_CACHE_SUFFIX = ".json.gz";
-    private static final int CACHE_VERSION = 120;
+    private static final int CACHE_VERSION = 121;
     private static final boolean USE_ROUTE_LINE_MARKERS = false;
     private static final float BASE_WORLD_HEIGHT = 22f;
     private static final String MAP005_ID = "map005";
@@ -36,6 +36,7 @@ final class ImageArenaMapLoader {
     private static final int MAX_SHAPE_MASK_LONG_SIDE = 512;
     private static final int MIN_MARKER_PIXELS = 24;
     private static final int MIN_SPAWN_HINT_PIXELS = 8;
+    private static final int MIN_WALL_MARKER_PIXELS = 8;
     private static final int ROUTE_LINE_MARKER_MIN_PIXELS = 8;
     private static final int ROUTE_LINE_CONTINUOUS_MIN_PIXELS = 96;
     private static final int ROUTE_LINE_SKELETON_MAX_ITERATIONS = 96;
@@ -361,6 +362,15 @@ final class ImageArenaMapLoader {
                     worldWidth,
                     worldHeight,
                     mapScale);
+            addWalls(
+                    builder,
+                    parseResult.wallMarkers,
+                    mask.getWidth(),
+                    mask.getHeight(),
+                    worldMinX,
+                    worldMinY,
+                    worldWidth,
+                    worldHeight);
             ArenaMap routeOrderingMap =
                     buildRouteOrderingMap(baseName, surfacePath, shape, spawnPoints, recoveryPoints);
             Array<SpawnPoint> checkpoints =
@@ -380,6 +390,13 @@ final class ImageArenaMapLoader {
                             worldMinY,
                             worldWidth,
                             worldHeight);
+            for (int i = 0; i < routeHints.size; i++) {
+                RouteHintCircle routeHint = routeHints.get(i);
+                builder.manualSteeringRestrictedZone(
+                        routeHint.centerX,
+                        routeHint.centerY,
+                        routeHint.radius);
+            }
             boolean[] routeLinePixelsForRoute =
                     USE_ROUTE_LINE_MARKERS ? parseResult.routeLinePixels : null;
             Array<MarkerComponent> routeLineMarkersForRoute =
@@ -456,8 +473,10 @@ final class ImageArenaMapLoader {
                         checkpoints,
                         routePoints,
                         routeMarkers,
+                        routeHints,
                         routeMetadata,
-                        recoveryPoints));
+                        recoveryPoints,
+                        parseResult.wallMarkers));
             }
             return map;
         } finally {
@@ -534,6 +553,22 @@ final class ImageArenaMapLoader {
                 builder.routeMarkerPoint(cached.routeMarkerX[i], cached.routeMarkerY[i], progress);
             }
         }
+        if (cached.manualSteeringRestrictedCenterX != null
+                && cached.manualSteeringRestrictedCenterY != null
+                && cached.manualSteeringRestrictedRadius != null) {
+            int restrictedZoneCount =
+                    Math.min(
+                            Math.min(
+                                    cached.manualSteeringRestrictedCenterX.length,
+                                    cached.manualSteeringRestrictedCenterY.length),
+                            cached.manualSteeringRestrictedRadius.length);
+            for (int i = 0; i < restrictedZoneCount; i++) {
+                builder.manualSteeringRestrictedZone(
+                        cached.manualSteeringRestrictedCenterX[i],
+                        cached.manualSteeringRestrictedCenterY[i],
+                        cached.manualSteeringRestrictedRadius[i]);
+            }
+        }
         if (cached.routeSampleX != null && cached.routeSampleY != null) {
             builder.routeMetadata(
                     new ArenaMap.RouteMetadata(
@@ -557,6 +592,21 @@ final class ImageArenaMapLoader {
                             cached.routeLookupCellWidth,
                             cached.routeLookupCellHeight,
                             cached.routeLookupSampleIndex));
+        }
+        if (cached.wallStartX != null
+                && cached.wallStartY != null
+                && cached.wallEndX != null
+                && cached.wallEndY != null) {
+            int wallCount = Math.min(
+                    Math.min(cached.wallStartX.length, cached.wallStartY.length),
+                    Math.min(cached.wallEndX.length, cached.wallEndY.length));
+            for (int i = 0; i < wallCount; i++) {
+                builder.wall(
+                        cached.wallStartX[i],
+                        cached.wallStartY[i],
+                        cached.wallEndX[i],
+                        cached.wallEndY[i]);
+            }
         }
         for (int i = 0; i < cached.recoveryX.length; i++) {
             builder.recoveryPoint(cached.recoveryX[i], cached.recoveryY[i]);
@@ -819,6 +869,7 @@ final class ImageArenaMapLoader {
                 || isRedMarker(pixel)
                 || isBlueMarker(pixel)
                 || isGreenMarker(pixel)
+                || isWallMarker(pixel)
                 || isRouteLineMarker(pixel)
                 || isRouteHintMarker(pixel)
                 || isCheckpointOrderMarker(pixel)
@@ -1197,8 +1248,10 @@ final class ImageArenaMapLoader {
             Array<SpawnPoint> checkpoints,
             Array<Vector2> routePoints,
             Array<RouteLineWaypoint> routeMarkers,
+            Array<RouteHintCircle> routeHints,
             ArenaMap.RouteMetadata routeMetadata,
-            Array<Vector2> recoveryPoints) {
+            Array<Vector2> recoveryPoints,
+            Array<MarkerComponent> wallMarkers) {
         CachedMapData cached = new CachedMapData();
         cached.version = CACHE_VERSION;
         cached.baseName = baseName;
@@ -1267,6 +1320,15 @@ final class ImageArenaMapLoader {
             cached.routeMarkerY[i] = routeMarkerPoint.y;
             cached.routeMarkerProgress[i] = routeMarker.progress;
         }
+        cached.manualSteeringRestrictedCenterX = new float[routeHints.size];
+        cached.manualSteeringRestrictedCenterY = new float[routeHints.size];
+        cached.manualSteeringRestrictedRadius = new float[routeHints.size];
+        for (int i = 0; i < routeHints.size; i++) {
+            RouteHintCircle routeHint = routeHints.get(i);
+            cached.manualSteeringRestrictedCenterX[i] = routeHint.centerX;
+            cached.manualSteeringRestrictedCenterY[i] = routeHint.centerY;
+            cached.manualSteeringRestrictedRadius[i] = routeHint.radius;
+        }
         if (routeMetadata != null) {
             cached.routeSampleStep = routeMetadata.sampleStep;
             cached.routeLength = routeMetadata.routeLength;
@@ -1296,7 +1358,72 @@ final class ImageArenaMapLoader {
             cached.recoveryX[i] = recoveryPoint.x;
             cached.recoveryY[i] = recoveryPoint.y;
         }
+        cached.wallStartX = new float[wallMarkers.size];
+        cached.wallStartY = new float[wallMarkers.size];
+        cached.wallEndX = new float[wallMarkers.size];
+        cached.wallEndY = new float[wallMarkers.size];
+        for (int i = 0; i < wallMarkers.size; i++) {
+            MarkerComponent wall = wallMarkers.get(i);
+            Vector2 start = imageToWorld(
+                    wall.gateStartX,
+                    wall.gateStartY,
+                    imageWidth,
+                    imageHeight,
+                    worldMinX,
+                    worldMinY,
+                    worldWidth,
+                    worldHeight);
+            Vector2 end = imageToWorld(
+                    wall.gateEndX,
+                    wall.gateEndY,
+                    imageWidth,
+                    imageHeight,
+                    worldMinX,
+                    worldMinY,
+                    worldWidth,
+                    worldHeight);
+            cached.wallStartX[i] = start.x;
+            cached.wallStartY[i] = start.y;
+            cached.wallEndX[i] = end.x;
+            cached.wallEndY[i] = end.y;
+        }
         return cached;
+    }
+
+    private static void addWalls(
+            ArenaMap.Builder builder,
+            Array<MarkerComponent> wallMarkers,
+            int imageWidth,
+            int imageHeight,
+            float worldMinX,
+            float worldMinY,
+            float worldWidth,
+            float worldHeight) {
+        for (int i = 0; i < wallMarkers.size; i++) {
+            MarkerComponent wall = wallMarkers.get(i);
+            if (!wall.hasUsableGate()) {
+                continue;
+            }
+            Vector2 start = imageToWorld(
+                    wall.gateStartX,
+                    wall.gateStartY,
+                    imageWidth,
+                    imageHeight,
+                    worldMinX,
+                    worldMinY,
+                    worldWidth,
+                    worldHeight);
+            Vector2 end = imageToWorld(
+                    wall.gateEndX,
+                    wall.gateEndY,
+                    imageWidth,
+                    imageHeight,
+                    worldMinX,
+                    worldMinY,
+                    worldWidth,
+                    worldHeight);
+            builder.wall(start.x, start.y, end.x, end.y);
+        }
     }
 
     private static ArenaMap.RouteMetadata buildRouteMetadata(
@@ -1602,23 +1729,26 @@ final class ImageArenaMapLoader {
         boolean[] greenMarkers = new boolean[width * height];
         boolean[] routeHintMarkers = new boolean[width * height];
         boolean[] routeLineMarkers = new boolean[width * height];
+        boolean[] wallMarkers = new boolean[width * height];
         boolean[] basePlayable = new boolean[width * height];
         boolean[] pathPlayable = new boolean[width * height];
 
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int pixel = mask.getPixel(x, y);
-                boolean routeLine = isRouteLineMarker(pixel);
-                boolean routeHint = !routeLine && isRouteHintMarker(pixel);
-                boolean red = !routeLine && isRedMarker(pixel);
-                boolean blue = !routeLine && !routeHint && isBlueMarker(pixel);
-                boolean green = !routeLine && isGreenMarker(pixel);
+                boolean wall = isWallMarker(pixel);
+                boolean routeLine = !wall && isRouteLineMarker(pixel);
+                boolean routeHint = !wall && !routeLine && isRouteHintMarker(pixel);
+                boolean red = !wall && !routeLine && isRedMarker(pixel);
+                boolean blue = !wall && !routeLine && !routeHint && isBlueMarker(pixel);
+                boolean green = !wall && !routeLine && isGreenMarker(pixel);
                 int index = y * width + x;
                 redMarkers[index] = red;
                 blueMarkers[index] = blue;
                 greenMarkers[index] = green;
                 routeHintMarkers[index] = routeHint;
                 routeLineMarkers[index] = routeLine;
+                wallMarkers[index] = wall;
                 basePlayable[index] = isPlayable(pixel);
             }
         }
@@ -1665,6 +1795,12 @@ final class ImageArenaMapLoader {
                 height,
                 result.routeLineMarkers,
                 ROUTE_LINE_MARKER_MIN_PIXELS);
+        collectMarkerComponents(
+                wallMarkers,
+                width,
+                height,
+                result.wallMarkers,
+                MIN_WALL_MARKER_PIXELS);
         moveBlueRouteHintMarkers(result);
         return result;
     }
@@ -6988,6 +7124,20 @@ final class ImageArenaMapLoader {
                 && green >= blue + 35;
     }
 
+    static boolean isWallMarker(int pixel) {
+        int red = (pixel >>> 24) & 0xff;
+        int green = (pixel >>> 16) & 0xff;
+        int blue = (pixel >>> 8) & 0xff;
+        int alpha = pixel & 0xff;
+        return alpha >= 96
+                && red >= 40
+                && green >= 10
+                && blue <= 40
+                && red >= green + 20
+                && red >= green * 1.6f
+                && green >= blue + 8;
+    }
+
     private static int checkpointOrderValue(int pixel) {
         return (pixel >>> 16) & 0xff;
     }
@@ -7119,6 +7269,7 @@ final class ImageArenaMapLoader {
         private final Array<MarkerComponent> greenMarkers = new Array<MarkerComponent>();
         private final Array<MarkerComponent> routeHintMarkers = new Array<MarkerComponent>();
         private final Array<MarkerComponent> routeLineMarkers = new Array<MarkerComponent>();
+        private final Array<MarkerComponent> wallMarkers = new Array<MarkerComponent>();
         private final Array<CheckpointOrderMarker> checkpointOrderMarkers = new Array<CheckpointOrderMarker>();
         private boolean checkpointOrderByBorder;
 
@@ -7607,6 +7758,9 @@ final class ImageArenaMapLoader {
         private float[] routeMarkerX;
         private float[] routeMarkerY;
         private float[] routeMarkerProgress;
+        private float[] manualSteeringRestrictedCenterX;
+        private float[] manualSteeringRestrictedCenterY;
+        private float[] manualSteeringRestrictedRadius;
         private float routeSampleStep;
         private float routeLength;
         private float[] routeSampleX;
@@ -7629,5 +7783,9 @@ final class ImageArenaMapLoader {
         private int[] routeLookupSampleIndex;
         private float[] recoveryX;
         private float[] recoveryY;
+        private float[] wallStartX;
+        private float[] wallStartY;
+        private float[] wallEndX;
+        private float[] wallEndY;
     }
 }

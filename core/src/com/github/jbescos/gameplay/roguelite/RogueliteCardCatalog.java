@@ -617,8 +617,8 @@ public final class RogueliteCardCatalog {
         cards.add(powerup(
                 RogueliteCardId.PRIORITY_HOTLINE,
                 "Priority Hotline",
-                "Calls the best benchmarked driver more often for 10 seconds of driving advice.",
-                "Automatic call: best-driver advice | 10s\nCooldown: 15s",
+                "Replaces the active driver with the best benchmarked driver while this Powerup is equipped.",
+                "Always active\nDriver: best avg-lap",
                 2,
                 RogueliteAbilityVisualStyle.ICON_ONLY));
         cards.add(powerup(
