@@ -17,9 +17,10 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
 DEFAULT_OUTPUT = REPO_ROOT / "assets" / "ai" / "rl_enemy_policy.json"
+# Retained as the default driver contract for tests and external imports. Export infers
+# dimensions from each checkpoint, so auxiliary policies may use different contracts.
 OBSERVATION_SIZE = 33
 ACTION_SIZE = 2
-
 ACTOR_ENCODER_PREFIXES = (
     "encoder.encoder.net.mlp",
     "encoder.actor_encoder.net.mlp",
@@ -46,12 +47,6 @@ def layer_from_state(state: Dict[str, np.ndarray], prefixes: Iterable[str], acti
     bias = state[f"{prefix}.bias"]
     if len(weights.shape) != 2:
         raise ValueError(f"{prefix}.weight is not a matrix: {weights.shape}")
-    if any(prefix == f"{base}.0" for base in ACTOR_ENCODER_PREFIXES) \
-            and weights.shape[1] != OBSERVATION_SIZE:
-        raise ValueError(
-            f"unsupported actor input size {weights.shape[1]}; expected {OBSERVATION_SIZE}"
-        )
-
     output_size, input_size = weights.shape
     return {
         "inputSize": int(input_size),
@@ -128,15 +123,28 @@ def export_policy(
 ) -> None:
     state = load_policy_state(checkpoint_dir)
     layers = actor_layers(state, hidden_activation)
+    observation_size = int(layers[0]["inputSize"])
+    actor_output_size = int(layers[-1]["outputSize"])
+    if actor_output_size <= 0:
+        raise ValueError(f"PPO actor output size must be positive: {actor_output_size}")
+    if "pi.log_std" in state:
+        action_size = actor_output_size
+    else:
+        if actor_output_size % 2 != 0:
+            raise ValueError(
+                "PPO actor output size must contain mean/log-std pairs when free "
+                f"log-std is disabled: {actor_output_size}"
+            )
+        action_size = actor_output_size // 2
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "format": "ratass-rl-policy-v3",
         "source": "ray-rllib-ppo",
         "objective": objective,
-        "observationSize": OBSERVATION_SIZE,
-        "actionSize": ACTION_SIZE,
-        "output": "first actionSize outputs are deterministic direct throttle and turn controls",
+        "observationSize": observation_size,
+        "actionSize": action_size,
+        "output": "first actionSize outputs are deterministic controls",
         "layers": layers,
     }
     with output_file.open("w", encoding="utf-8") as handle:

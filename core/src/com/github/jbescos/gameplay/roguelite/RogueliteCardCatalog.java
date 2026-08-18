@@ -267,6 +267,27 @@ public final class RogueliteCardCatalog {
                 "Grip +7%\nMass -10%",
                 3,
                 RogueliteSlotType.TUNING));
+        cards.add(card(
+                RogueliteCardId.TECHNIQUE_COUPLER,
+                "Technique Coupler",
+                "A calibrated control unit strengthens the equipped Technique effect.",
+                "Technique effects x1.25",
+                1,
+                RogueliteSlotType.TUNING));
+        cards.add(card(
+                RogueliteCardId.TECHNIQUE_MATRIX,
+                "Technique Matrix",
+                "A racing control matrix greatly strengthens the equipped Technique effect.",
+                "Technique effects x1.5",
+                2,
+                RogueliteSlotType.TUNING));
+        cards.add(card(
+                RogueliteCardId.TECHNIQUE_SINGULARITY,
+                "Technique Singularity",
+                "An experimental control core doubles the equipped Technique effect.",
+                "Technique effects x2",
+                3,
+                RogueliteSlotType.TUNING));
 
         cards.add(card(
                 RogueliteCardId.CORNER_FOCUS,
@@ -520,6 +541,27 @@ public final class RogueliteCardCatalog {
                 "Traffic Dominance",
                 "Raises the car's pace whenever a rival is nearby, helping attacks and defensive runs.",
                 "Activation: Nearby rival\nPower +20%\nGrip +20%\nAero +20%\nMass -20%",
+                3,
+                RogueliteSlotType.TECHNIQUE));
+        cards.add(card(
+                RogueliteCardId.POWERUP_LINK,
+                "Powerup Link",
+                "A passive timing link strengthens Powerups and recharges them faster.",
+                "Activation: Passive\nPowerup effects x1.25\nCooldown recovery x1.25",
+                1,
+                RogueliteSlotType.TECHNIQUE));
+        cards.add(card(
+                RogueliteCardId.POWERUP_MATRIX,
+                "Powerup Matrix",
+                "A passive timing matrix strengthens Powerups and recharges them much faster.",
+                "Activation: Passive\nPowerup effects x1.5\nCooldown recovery x1.5",
+                2,
+                RogueliteSlotType.TECHNIQUE));
+        cards.add(card(
+                RogueliteCardId.POWERUP_NEXUS,
+                "Powerup Nexus",
+                "A passive timing nexus doubles Powerup effects and cooldown recovery.",
+                "Activation: Passive\nPowerup effects x2\nCooldown recovery x2",
                 3,
                 RogueliteSlotType.TECHNIQUE));
 
@@ -1205,6 +1247,18 @@ public final class RogueliteCardCatalog {
                 return 112;
             case AGILITY_MASTER:
                 return 113;
+            case TECHNIQUE_COUPLER:
+                return 114;
+            case TECHNIQUE_MATRIX:
+                return 115;
+            case TECHNIQUE_SINGULARITY:
+                return 116;
+            case POWERUP_LINK:
+                return 117;
+            case POWERUP_MATRIX:
+                return 118;
+            case POWERUP_NEXUS:
+                return 119;
             case REPULSOR_SURGE:
                 return 35;
             case TAR_TETHER:

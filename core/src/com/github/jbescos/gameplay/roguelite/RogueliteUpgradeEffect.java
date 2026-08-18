@@ -74,6 +74,18 @@ abstract class RogueliteUpgradeEffect {
         return 1f;
     }
 
+    float techniqueEffectMultiplier() {
+        return 1f;
+    }
+
+    float powerupEffectMultiplier() {
+        return 1f;
+    }
+
+    float powerupCooldownRateMultiplier() {
+        return 1f;
+    }
+
     boolean tracksRacePosition() {
         return false;
     }

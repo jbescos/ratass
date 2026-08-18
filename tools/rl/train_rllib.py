@@ -46,8 +46,8 @@ from export_policy import export_policy as export_checkpoint_policy
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = REPO_ROOT / "desktop" / "target" / "ratass-desktop-1.0.jar"
 DEFAULT_CHECKPOINT = REPO_ROOT / "rl-checkpoints-race-physics-v1"
-OBSERVATION_SIZE = 33
-ACTION_SIZE = 2
+OBSERVATION_SIZES = {"race": 33, "recovery": 33, "overtaking": 43}
+ACTION_SIZES = {"race": 2, "recovery": 2, "overtaking": 1}
 DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
 DEFAULT_RAY_NODE_IP = "127.0.0.2"
@@ -55,6 +55,7 @@ RAY_REWRITTEN_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 EXPORT_OBJECTIVES = {
     "race": "race-route-progress-v1",
     "recovery": "shared-recovery-v1",
+    "overtaking": "shared-overtaking-v1",
 }
 INCOMPATIBLE_CHECKPOINT_PATTERNS = (
     "Error(s) in loading state_dict",
@@ -290,6 +291,18 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withRaceMode(True)
         training_config.withRecoveryTraining(env_config.get("objective") == "recovery")
         training_config.withRecoveryScenario(env_config.get("recovery_scenario", "mixed"))
+        training_config.withOvertakingTraining(env_config.get("objective") == "overtaking")
+        training_config.withOvertakingScenario(env_config.get("overtaking_scenario", "mixed"))
+        training_config.withOvertakingPolicies(
+            env_config.get("overtaking_base_policy", "profile07"),
+            env_config.get("overtaking_opponent_policy", "profile07"),
+        )
+        training_config.withOvertakingOpponentCount(
+            int(env_config.get("overtaking_opponents", 3))
+        )
+        training_config.withOvertakingOpponentThrottleScale(
+            float(env_config.get("overtaking_opponent_throttle_scale", 0.90))
+        )
         training_config.withRandomRaceSpawns(bool(env_config.get("random_race_spawns", False)))
         base_seed = int(env_config.get("seed", 1))
         worker_index = int(getattr(env_config, "worker_index", 0) or 0)
@@ -335,6 +348,16 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             float(env_config.get("recovery_penalty_stationary", 0.15)),
             float(env_config.get("recovery_reward_success", 125.0)),
         )
+        training_config.withOvertakingRewards(
+            float(env_config.get("overtaking_reward_gap", 4.0)),
+            float(env_config.get("overtaking_reward_safety", 300.0)),
+            float(env_config.get("overtaking_reward_lane", 100.0)),
+            float(env_config.get("overtaking_reward_position", 100.0)),
+            float(env_config.get("overtaking_reward_hold", 1.0)),
+            float(env_config.get("overtaking_reward_success", 500.0)),
+            float(env_config.get("overtaking_failure_penalty", 250.0)),
+            float(env_config.get("overtaking_residual_penalty", 0.02)),
+        )
         self._reward_summary_enabled = bool(env_config.get("reward_summary", True))
         training_config.withRewardBreakdownEnabled(self._reward_summary_enabled)
         training_config.withStepDetailsEnabled(self._reward_summary_enabled)
@@ -343,23 +366,27 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         self._java_float_array = jpype.JArray(jpype.JFloat)
         self._env = ratass_game.RlTrainingEnvironment(training_config)
         self._agent_count = int(self._env.getControlledAgentCount())
+        self._observation_size = int(self._env.getObservationSize())
+        self._action_size = int(self._env.getActionSize())
         self._single_agent = self._agent_count == 1
         self._agents = [f"learner_{i}" for i in range(self._agent_count)]
         self._agent_indices = {agent: index for index, agent in enumerate(self._agents)}
-        self._java_action_buffer = self._java_float_array(self._agent_count * ACTION_SIZE)
+        self._java_action_buffer = self._java_float_array(
+            self._agent_count * self._action_size
+        )
         self.possible_agents = list(self._agents)
         self.agents = list(self._agents)
 
         observation_space = gym.spaces.Box(
             low=-1.0,
             high=1.0,
-            shape=(OBSERVATION_SIZE,),
+            shape=(self._observation_size,),
             dtype=np.float32,
         )
         action_space = gym.spaces.Box(
             low=-1.0,
             high=1.0,
-            shape=(ACTION_SIZE,),
+            shape=(self._action_size,),
             dtype=np.float32,
         )
         self.observation_spaces = {agent: observation_space for agent in self._agents}
@@ -402,34 +429,18 @@ class RatassMultiAgentEnv(MultiAgentEnv):
 
     def step(self, action_dict):
         current_agents = self._agents
-        if self._single_agent:
-            agent = current_agents[0]
+        for action_index in range(self._agent_count * self._action_size):
+            self._java_action_buffer[action_index] = 0.0
+        for agent in current_agents:
+            index = self._agent_indices[agent]
             action = action_dict.get(agent)
-            throttle = 0.0
-            turn = 0.0
-            if action is not None:
-                if len(action) > 0:
-                    throttle = float(action[0])
-                if len(action) > 1:
-                    turn = float(action[1])
-            self._java_action_buffer[0] = min(1.0, max(-1.0, throttle))
-            self._java_action_buffer[1] = min(1.0, max(-1.0, turn))
-        else:
-            for action_index in range(self._agent_count * ACTION_SIZE):
-                self._java_action_buffer[action_index] = 0.0
-            for agent in current_agents:
-                index = self._agent_indices[agent]
-                action = action_dict.get(agent)
-                throttle = 0.0
-                turn = 0.0
-                if action is not None:
-                    if len(action) > 0:
-                        throttle = float(action[0])
-                    if len(action) > 1:
-                        turn = float(action[1])
-                action_offset = index * ACTION_SIZE
-                self._java_action_buffer[action_offset] = min(1.0, max(-1.0, throttle))
-                self._java_action_buffer[action_offset + 1] = min(1.0, max(-1.0, turn))
+            if action is None:
+                continue
+            action_offset = index * self._action_size
+            for component in range(min(len(action), self._action_size)):
+                self._java_action_buffer[action_offset + component] = min(
+                    1.0, max(-1.0, float(action[component]))
+                )
 
         result = (
             self._env.step(self._java_action_buffer)
@@ -505,7 +516,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         flat = np.asarray(result.observations, dtype=np.float32)
         if self._single_agent:
             return {agents[0]: flat.copy()}
-        observations = flat.reshape((self._agent_count, OBSERVATION_SIZE))
+        observations = flat.reshape((self._agent_count, self._observation_size))
         return {
             agent: observations[self._agent_indices[agent]].copy()
             for agent in agents
@@ -571,16 +582,18 @@ class RatassMultiAgentEnv(MultiAgentEnv):
 
 
 def build_algorithm(args):
+    observation_size = OBSERVATION_SIZES[args.objective]
+    action_size = ACTION_SIZES[args.objective]
     observation_space = gym.spaces.Box(
         low=-1.0,
         high=1.0,
-        shape=(OBSERVATION_SIZE,),
+        shape=(observation_size,),
         dtype=np.float32,
     )
     action_space = gym.spaces.Box(
         low=-1.0,
         high=1.0,
-        shape=(ACTION_SIZE,),
+        shape=(action_size,),
         dtype=np.float32,
     )
 
@@ -599,6 +612,11 @@ def build_algorithm(args):
         "map_ids": args.map_ids,
         "objective": args.objective,
         "recovery_scenario": args.recovery_scenario,
+        "overtaking_scenario": args.overtaking_scenario,
+        "overtaking_base_policy": args.overtaking_base_policy,
+        "overtaking_opponent_policy": args.overtaking_opponent_policy,
+        "overtaking_opponents": args.overtaking_opponents,
+        "overtaking_opponent_throttle_scale": args.overtaking_opponent_throttle_scale,
         "reward_summary": not args.no_reward_summary,
         "reward_step_penalty": args.reward_step_penalty,
         "reward_progress": args.reward_progress,
@@ -624,6 +642,12 @@ def build_algorithm(args):
         "recovery_reward_steering": args.recovery_reward_steering,
         "recovery_penalty_stationary": args.recovery_penalty_stationary,
         "recovery_reward_success": args.recovery_reward_success,
+        "overtaking_reward_gap": args.overtaking_reward_gap,
+        "overtaking_reward_position": args.overtaking_reward_position,
+        "overtaking_reward_hold": args.overtaking_reward_hold,
+        "overtaking_reward_success": args.overtaking_reward_success,
+        "overtaking_failure_penalty": args.overtaking_failure_penalty,
+        "overtaking_residual_penalty": args.overtaking_residual_penalty,
     }
     config = (
         PPOConfig()
@@ -634,6 +658,7 @@ def build_algorithm(args):
             model_config=DefaultModelConfig(
                 fcnet_hiddens=[args.hidden_size] * args.hidden_layers,
                 fcnet_activation=args.hidden_activation,
+                free_log_std=args.free_log_std,
             )
         )
     )
@@ -718,16 +743,8 @@ def load_exported_actor_state(policy_file: Path) -> Dict[Tuple[str, ...], np.nda
         payload = json.load(handle)
 
     exported_observation_size = int(payload.get("observationSize", -1))
-    if exported_observation_size != OBSERVATION_SIZE:
-        raise ValueError(
-            f"{policy_file} observationSize={payload.get('observationSize')} is not compatible "
-            f"with current observation size {OBSERVATION_SIZE}"
-        )
-    if int(payload.get("actionSize", -1)) != ACTION_SIZE:
-        raise ValueError(
-            f"{policy_file} actionSize={payload.get('actionSize')} "
-            f"does not match current action size {ACTION_SIZE}"
-        )
+    if exported_observation_size <= 0 or int(payload.get("actionSize", -1)) <= 0:
+        raise ValueError(f"{policy_file} has invalid observation/action dimensions")
 
     layers = payload.get("layers")
     if not isinstance(layers, list) or len(layers) < 2:
@@ -763,6 +780,8 @@ def copy_exported_actor_values(
 
     updated = current.copy()
     if current.ndim == 1:
+        if exported.shape[0] == current.shape[0] * 2:
+            exported = exported[:current.shape[0]]
         if exported.shape[0] > current.shape[0]:
             raise ValueError(
                 f"{key} shape mismatch: exported {exported.shape}, current {current.shape}"
@@ -771,6 +790,9 @@ def copy_exported_actor_values(
         return updated, True
 
     if current.ndim == 2:
+        if (exported.shape[0] == current.shape[0] * 2
+                and exported.shape[1] == current.shape[1]):
+            exported = exported[:current.shape[0], :]
         if exported.shape[0] > current.shape[0] or exported.shape[1] > current.shape[1]:
             raise ValueError(
                 f"{key} shape mismatch: exported {exported.shape}, current {current.shape}"
@@ -828,6 +850,29 @@ def try_initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> b
         )
         return False
     return True
+
+
+def initialize_free_log_std(algorithm, initial_log_std: float) -> None:
+    learner_weights = algorithm.learner_group.get_weights(module_ids=["shared_policy"])
+    policy_weights = dict(learner_weights["shared_policy"])
+    keys = [key for key in policy_weights if key.endswith("pi.log_std")]
+    if len(keys) != 1:
+        raise ValueError(
+            "Expected one free policy log-std parameter, found " + str(keys)
+        )
+    key = keys[0]
+    values = np.asarray(policy_weights[key])
+    policy_weights[key] = np.full_like(values, float(initial_log_std))
+    algorithm.learner_group.set_weights({"shared_policy": policy_weights})
+    algorithm.env_runner_group.sync_weights(
+        from_worker_or_learner_group=algorithm.learner_group,
+        policies=["shared_policy"],
+        inference_only=True,
+    )
+    print(
+        f"initialized_free_log_std={float(initial_log_std):.3f} parameter={key}",
+        flush=True,
+    )
 
 
 def configure_ray_output(checkpoint_dir: Path) -> None:
@@ -958,6 +1003,8 @@ def build_algorithm_with_restore(args, checkpoint_dir: Path):
                     algorithm,
                     Path(args.init_policy).resolve(),
                 )
+            if args.free_log_std:
+                initialize_free_log_std(algorithm, args.initial_log_std)
             return algorithm
         print(f"restored={checkpoint_dir}", flush=True)
         if args.init_policy:
@@ -967,6 +1014,8 @@ def build_algorithm_with_restore(args, checkpoint_dir: Path):
             algorithm,
             Path(args.init_policy).resolve(),
         )
+    if not args.resume and args.free_log_std:
+        initialize_free_log_std(algorithm, args.initial_log_std)
     return algorithm
 
 
@@ -1134,6 +1183,16 @@ def run_policy_evaluation(
         args.objective,
         "--recovery-scenario",
         args.best_eval_recovery_scenario or args.recovery_scenario,
+        "--overtaking-scenario",
+        args.best_eval_overtaking_scenario or args.overtaking_scenario,
+        "--overtaking-base-policy",
+        args.overtaking_base_policy,
+        "--overtaking-opponent-policy",
+        args.overtaking_opponent_policy,
+        "--overtaking-opponents",
+        str(args.overtaking_opponents),
+        "--overtaking-opponent-throttle-scale",
+        str(args.overtaking_opponent_throttle_scale),
         "--controlled-agents",
         str(controlled_agents),
         "--field-size",
@@ -1198,6 +1257,22 @@ def run_policy_evaluation(
         str(args.recovery_penalty_stationary),
         "--recovery-reward-success",
         str(args.recovery_reward_success),
+        "--overtaking-reward-gap",
+        str(args.overtaking_reward_gap),
+        "--overtaking-reward-safety",
+        str(args.overtaking_reward_safety),
+        "--overtaking-reward-lane",
+        str(args.overtaking_reward_lane),
+        "--overtaking-reward-position",
+        str(args.overtaking_reward_position),
+        "--overtaking-reward-hold",
+        str(args.overtaking_reward_hold),
+        "--overtaking-reward-success",
+        str(args.overtaking_reward_success),
+        "--overtaking-failure-penalty",
+        str(args.overtaking_failure_penalty),
+        "--overtaking-residual-penalty",
+        str(args.overtaking_residual_penalty),
     ]
     if episodes_per_map > 0:
         command.extend(["--episodes-per-map", str(episodes_per_map)])
@@ -1759,9 +1834,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
         "--objective",
-        choices=("race", "recovery"),
+        choices=("race", "recovery", "overtaking"),
         default="race",
-        help="race follows route progress; recovery learns to rejoin and unblock",
+        help="race follows the route; recovery rejoins; overtaking learns steering residuals",
     )
     parser.add_argument(
         "--recovery-scenario",
@@ -1774,10 +1849,31 @@ def parse_args() -> argparse.Namespace:
             "offroad_reversed",
             "onroad_misaligned",
             "blocked_front",
+            "nose_to_nose",
         ),
         default="mixed",
         help="recovery spawn curriculum used by the recovery objective",
     )
+    parser.add_argument(
+        "--overtaking-scenario",
+        choices=(
+            "mixed",
+            "progressive",
+            "comprehensive",
+            "closing",
+            "lane_change",
+            "straight",
+            "single_far",
+            "single_medium",
+            "single",
+            "pack",
+        ),
+        default="mixed",
+    )
+    parser.add_argument("--overtaking-base-policy", default="profile07")
+    parser.add_argument("--overtaking-opponent-policy", default="profile07")
+    parser.add_argument("--overtaking-opponents", type=int, default=3)
+    parser.add_argument("--overtaking-opponent-throttle-scale", type=float, default=0.90)
     parser.add_argument(
         "--map-ids",
         default="",
@@ -1807,9 +1903,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recovery-reward-steering", type=float, default=5.0)
     parser.add_argument("--recovery-penalty-stationary", type=float, default=0.15)
     parser.add_argument("--recovery-reward-success", type=float, default=2000.0)
+    parser.add_argument("--overtaking-reward-gap", type=float, default=4.0)
+    parser.add_argument("--overtaking-reward-safety", type=float, default=300.0)
+    parser.add_argument("--overtaking-reward-lane", type=float, default=100.0)
+    parser.add_argument("--overtaking-reward-position", type=float, default=100.0)
+    parser.add_argument("--overtaking-reward-hold", type=float, default=1.0)
+    parser.add_argument("--overtaking-reward-success", type=float, default=500.0)
+    parser.add_argument("--overtaking-failure-penalty", type=float, default=250.0)
+    parser.add_argument("--overtaking-residual-penalty", type=float, default=0.02)
     parser.add_argument("--gamma", type=float, default=0.995)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--entropy-coeff", type=float, default=0.005)
+    parser.add_argument(
+        "--free-log-std",
+        action="store_true",
+        help="learn one state-independent action exploration standard deviation",
+    )
+    parser.add_argument(
+        "--initial-log-std",
+        type=float,
+        default=-1.5,
+        help="initial log standard deviation used with --free-log-std",
+    )
     parser.add_argument("--num-epochs", type=int, default=30)
     parser.add_argument("--grad-clip", type=float, default=40.0)
     parser.add_argument("--vf-clip-param", type=float, default=100.0)
@@ -1964,9 +2079,27 @@ def parse_args() -> argparse.Namespace:
             "offroad_reversed",
             "onroad_misaligned",
             "blocked_front",
+            "nose_to_nose",
         ),
         default="",
         help="recovery scenario used for evaluation; defaults to the training scenario",
+    )
+    parser.add_argument(
+        "--best-eval-overtaking-scenario",
+        choices=(
+            "mixed",
+            "progressive",
+            "comprehensive",
+            "closing",
+            "lane_change",
+            "straight",
+            "single_far",
+            "single_medium",
+            "single",
+            "pack",
+        ),
+        default="",
+        help="overtaking scenario used for evaluation; defaults to the training scenario",
     )
     parser.add_argument(
         "--best-eval-map-ids",
@@ -1998,9 +2131,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def apply_objective_defaults(args: argparse.Namespace) -> None:
-    if args.objective == "recovery":
+    if args.objective in ("recovery", "overtaking"):
         args.controlled_agents = 1
-        args.field_size = 1
+        args.field_size = 1 if args.objective == "recovery" else args.overtaking_opponents + 1
         args.route_targets = 1
         args.route_target_fraction = 0.0
         args.random_race_spawns = False
@@ -2012,7 +2145,7 @@ def apply_objective_defaults(args: argparse.Namespace) -> None:
 
 
 def validate_spawn_configuration(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
-    if getattr(args, "objective", "race") == "recovery":
+    if getattr(args, "objective", "race") in ("recovery", "overtaking"):
         return
     if args.random_race_spawns is None:
         args.random_race_spawns = args.route_targets > 0 and not args.fixed_full_laps

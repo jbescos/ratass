@@ -140,9 +140,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--objective",
-        choices=("race", "recovery"),
+        choices=("race", "recovery", "overtaking"),
         default="race",
-        help="race evaluates route progress; recovery evaluates stable road rejoin",
+        help="race evaluates routes; recovery rejoins; overtaking evaluates stable passes",
     )
     parser.add_argument(
         "--recovery-scenario",
@@ -155,9 +155,30 @@ def parse_args() -> argparse.Namespace:
             "offroad_reversed",
             "onroad_misaligned",
             "blocked_front",
+            "nose_to_nose",
         ),
         default="mixed",
     )
+    parser.add_argument(
+        "--overtaking-scenario",
+        choices=(
+            "mixed",
+            "progressive",
+            "comprehensive",
+            "closing",
+            "lane_change",
+            "straight",
+            "single_far",
+            "single_medium",
+            "single",
+            "pack",
+        ),
+        default="mixed",
+    )
+    parser.add_argument("--overtaking-base-policy", default="profile07")
+    parser.add_argument("--overtaking-opponent-policy", default="profile07")
+    parser.add_argument("--overtaking-opponents", type=int, default=3)
+    parser.add_argument("--overtaking-opponent-throttle-scale", type=float, default=0.90)
     parser.add_argument("--reward-step-penalty", type=float, default=0.006)
     parser.add_argument("--reward-progress", type=float, default=0.25)
     parser.add_argument("--reward-drift", type=float, default=0.0)
@@ -182,7 +203,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recovery-reward-steering", type=float, default=5.0)
     parser.add_argument("--recovery-penalty-stationary", type=float, default=0.15)
     parser.add_argument("--recovery-reward-success", type=float, default=2000.0)
-    return parser.parse_args()
+    parser.add_argument("--overtaking-reward-gap", type=float, default=4.0)
+    parser.add_argument("--overtaking-reward-safety", type=float, default=300.0)
+    parser.add_argument("--overtaking-reward-lane", type=float, default=100.0)
+    parser.add_argument("--overtaking-reward-position", type=float, default=100.0)
+    parser.add_argument("--overtaking-reward-hold", type=float, default=1.0)
+    parser.add_argument("--overtaking-reward-success", type=float, default=500.0)
+    parser.add_argument("--overtaking-failure-penalty", type=float, default=250.0)
+    parser.add_argument("--overtaking-residual-penalty", type=float, default=0.02)
+    args = parser.parse_args()
+    if args.objective in ("recovery", "overtaking"):
+        # These objectives configure their own deterministic scenario spawns and goals.
+        # Random route targets can otherwise count ordinary progress as a false success.
+        args.random_race_spawns = False
+    return args
 
 
 def load_maps_lazily(ratass_game, map_ids):
@@ -298,6 +332,14 @@ def build_config(
         .withRaceMode(True)
         .withRecoveryTraining(args.objective == "recovery")
         .withRecoveryScenario(args.recovery_scenario)
+        .withOvertakingTraining(args.objective == "overtaking")
+        .withOvertakingScenario(args.overtaking_scenario)
+        .withOvertakingPolicies(
+            args.overtaking_base_policy,
+            args.overtaking_opponent_policy,
+        )
+        .withOvertakingOpponentCount(args.overtaking_opponents)
+        .withOvertakingOpponentThrottleScale(args.overtaking_opponent_throttle_scale)
         .withRandomRaceSpawns(args.random_race_spawns)
         .withDebugTraceEnabled(bool(args.trace_dir))
         .withSeed(args.seed)
@@ -332,6 +374,16 @@ def build_config(
             float(args.recovery_reward_steering),
             float(args.recovery_penalty_stationary),
             float(args.recovery_reward_success),
+        )
+        .withOvertakingRewards(
+            float(args.overtaking_reward_gap),
+            float(args.overtaking_reward_safety),
+            float(args.overtaking_reward_lane),
+            float(args.overtaking_reward_position),
+            float(args.overtaking_reward_hold),
+            float(args.overtaking_reward_success),
+            float(args.overtaking_failure_penalty),
+            float(args.overtaking_residual_penalty),
         )
     )
     if arena_map is not None:
@@ -391,8 +443,12 @@ def trace_step(
     breakdown = [float(value) for value in result.rewardBreakdown]
     debug_trace = [float(value) for value in result.debugTrace]
     debug_trace_names = [str(value) for value in result.debugTraceNames]
-    effective_throttle = float(result.effectiveActions[0])
-    effective_turn = float(result.effectiveActions[1])
+    if len(result.effectiveActions) == 1:
+        effective_throttle = 0.0
+        effective_turn = float(result.effectiveActions[0])
+    else:
+        effective_throttle = float(result.effectiveActions[0])
+        effective_turn = float(result.effectiveActions[1])
     writer.writerow(
         [
             step,
@@ -535,7 +591,8 @@ def run_episode(
     scratch_a_buffers = [java_float_array(scratch_size) for _ in range(controlled_agents)]
     scratch_b_buffers = [java_float_array(scratch_size) for _ in range(controlled_agents)]
     decisions = [ai_control_decision() for _ in range(controlled_agents)]
-    action_values = java_float_array(controlled_agents * 2)
+    action_size = int(environment.getActionSize())
+    action_values = java_float_array(controlled_agents * action_size)
 
     try:
         while not result.episodeDone and steps < steps_limit:
@@ -556,11 +613,17 @@ def run_episode(
                 )
                 agent_throttle = float(decision.throttle)
                 agent_turn = float(decision.turn)
-                action_values[agent_index * 2] = agent_throttle
-                action_values[agent_index * 2 + 1] = agent_turn
+                action_offset = agent_index * action_size
+                action_values[action_offset] = agent_throttle
+                if action_size > 1:
+                    action_values[action_offset + 1] = agent_turn
                 if agent_index == 0:
-                    throttle = agent_throttle
-                    turn = agent_turn
+                    if action_size == 1:
+                        throttle = 0.0
+                        turn = agent_throttle
+                    else:
+                        throttle = agent_throttle
+                        turn = agent_turn
             sign = throttle_sign(throttle, args.flip_deadzone)
             if sign != 0:
                 if last_raw_sign != 0:
@@ -593,7 +656,9 @@ def run_episode(
                 observation_indices,
             )
 
-            effective_throttle = float(result.effectiveActions[0])
+            effective_throttle = (
+                0.0 if action_size == 1 else float(result.effectiveActions[0])
+            )
             effective_sign = throttle_sign(effective_throttle, args.flip_deadzone)
             if effective_sign != 0:
                 if last_effective_sign != 0:
@@ -987,13 +1052,7 @@ def main() -> None:
         raise ValueError("--controlled-agents must be at least 1")
     field_size = max(field_size, controlled_agents)
     steps_limit = args.steps if args.steps is not None else 6400
-    env_observation_size = int(ratass_game.RL_OBSERVATION_SIZE)
     policy_observation_size = int(policy.getObservationSize())
-    if policy_observation_size != env_observation_size:
-        raise ValueError(
-            f"policy observation size {policy_observation_size} != env {env_observation_size}; "
-            "retrain the policy for the current observation contract"
-        )
     scratch_size = int(policy.getScratchSize())
     total_stats = make_stats()
     per_map = defaultdict(make_stats)
@@ -1021,6 +1080,12 @@ def main() -> None:
         )
         environment = ratass_game.RlTrainingEnvironment(config)
         try:
+            env_observation_size = int(environment.getObservationSize())
+            if policy_observation_size != env_observation_size:
+                raise ValueError(
+                    f"policy observation size {policy_observation_size} "
+                    f"!= env {env_observation_size}"
+                )
             episode_count = args.episodes_per_map if args.episodes_per_map > 0 else args.episodes
             for _ in range(episode_count):
                 episode_counter += 1

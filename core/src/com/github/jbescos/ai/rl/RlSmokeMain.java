@@ -21,6 +21,8 @@ public final class RlSmokeMain {
         boolean raceMode = true;
         boolean recoveryTraining = false;
         String recoveryScenario = "mixed";
+        boolean overtakingTraining = false;
+        String overtakingScenario = "mixed";
         boolean zeroActions = false;
         long seed = 1L;
 
@@ -45,11 +47,16 @@ public final class RlSmokeMain {
                 } else if ("recovery".equals(objective)) {
                     raceMode = true;
                     recoveryTraining = true;
+                } else if ("overtaking".equals(objective)) {
+                    raceMode = true;
+                    overtakingTraining = true;
                 } else {
                     throw new IllegalArgumentException("Unsupported objective: " + objective);
                 }
             } else if ("--recovery-scenario".equals(arg) && i + 1 < args.length) {
                 recoveryScenario = args[++i];
+            } else if ("--overtaking-scenario".equals(arg) && i + 1 < args.length) {
+                overtakingScenario = args[++i];
             } else if ("--seed".equals(arg) && i + 1 < args.length) {
                 seed = Long.parseLong(args[++i]);
             } else if ("--zero-actions".equals(arg)) {
@@ -71,6 +78,8 @@ public final class RlSmokeMain {
                         .withRaceMode(raceMode)
                         .withRecoveryTraining(recoveryTraining)
                         .withRecoveryScenario(recoveryScenario)
+                        .withOvertakingTraining(overtakingTraining)
+                        .withOvertakingScenario(overtakingScenario)
                         .withSeed(seed);
         Random random = new Random(seed ^ 0xC0FFEE);
 

@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import train_rllib
@@ -67,6 +69,42 @@ class RestoreAlgorithmCheckpointTest(unittest.TestCase):
 
             algorithm.restore.assert_called_once_with(str(checkpoint_dir.resolve()))
 
+
+class ExportedActorInitializationTest(unittest.TestCase):
+    def test_state_dependent_mean_and_log_std_output_can_seed_free_log_std_mean(self):
+        current = np.zeros((1, 4), dtype=np.float32)
+        exported = np.asarray(
+            [[1.0, 2.0, 3.0, 4.0], [9.0, 9.0, 9.0, 9.0]],
+            dtype=np.float32,
+        )
+
+        copied, partial = train_rllib.copy_exported_actor_values(
+            "pi.net.mlp.0.weight",
+            current,
+            exported,
+        )
+
+        np.testing.assert_array_equal(copied, exported[:1])
+        self.assertTrue(partial)
+
+    def test_free_log_std_is_initialized_and_synchronized(self):
+        learner_group = Mock()
+        learner_group.get_weights.return_value = {
+            "shared_policy": {
+                "pi.log_std": np.zeros(1, dtype=np.float32),
+                "pi.net.mlp.0.bias": np.zeros(1, dtype=np.float32),
+            }
+        }
+        algorithm = SimpleNamespace(
+            learner_group=learner_group,
+            env_runner_group=Mock(),
+        )
+
+        train_rllib.initialize_free_log_std(algorithm, -1.5)
+
+        updated = learner_group.set_weights.call_args.args[0]["shared_policy"]
+        np.testing.assert_allclose(updated["pi.log_std"], [-1.5])
+        algorithm.env_runner_group.sync_weights.assert_called_once()
 
 class SpawnConfigurationValidationTest(unittest.TestCase):
     def test_fixed_full_laps_accepts_positive_targets_with_fixed_spawns(self):

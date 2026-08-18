@@ -728,6 +728,81 @@ public class RogueliteRunTest {
     }
 
     @Test
+    public void rivalsRecognizeTechniqueAmplifierSynergyWithPassiveTechnique() {
+        RogueliteRun run = new RogueliteRun(579L);
+        RogueliteCompetitorProgress rival = run.getRivalProgress(2);
+        RogueliteLoadout loadout = rival.getLoadout();
+        assertTrue(loadout.equip(RogueliteCardId.TRACK_VACUUM));
+        assertTrue(loadout.equip(RogueliteCardId.LAST_PLACE_FURY));
+        assertTrue(loadout.equip(RogueliteCardId.HYPERDRIVE));
+        assertTrue(loadout.equip(RogueliteCardId.FATES_REVENGE));
+        List<RogueliteCardOffer> offers = Arrays.asList(
+                modificationOffer(RogueliteCardId.TECHNIQUE_SINGULARITY),
+                modificationOffer(RogueliteCardId.WING_CAR),
+                modificationOffer(RogueliteCardId.TOTAL_BLACKOUT));
+
+        int synergySelections = 0;
+        for (int selection = 0; selection < 1000; selection++) {
+            RogueliteCardOffer selected = run.chooseRivalOffer(rival, offers);
+            if (selected.getCard().getId() == RogueliteCardId.TECHNIQUE_SINGULARITY) {
+                synergySelections++;
+            }
+        }
+
+        assertTrue(synergySelections >= 850);
+    }
+
+    @Test
+    public void rivalsRecognizeTechniqueAmplifierSynergyWithNearbyRivals() {
+        RogueliteRun run = new RogueliteRun(581L);
+        RogueliteCompetitorProgress rival = run.getRivalProgress(2);
+        RogueliteLoadout loadout = rival.getLoadout();
+        assertTrue(loadout.equip(RogueliteCardId.TRACK_VACUUM));
+        assertTrue(loadout.equip(RogueliteCardId.TRAFFIC_DOMINANCE));
+        assertTrue(loadout.equip(RogueliteCardId.HYPERDRIVE));
+        assertTrue(loadout.equip(RogueliteCardId.FATES_REVENGE));
+        List<RogueliteCardOffer> offers = Arrays.asList(
+                modificationOffer(RogueliteCardId.TECHNIQUE_SINGULARITY),
+                modificationOffer(RogueliteCardId.WING_CAR),
+                modificationOffer(RogueliteCardId.TOTAL_BLACKOUT));
+
+        int synergySelections = 0;
+        for (int selection = 0; selection < 1000; selection++) {
+            RogueliteCardOffer selected = run.chooseRivalOffer(rival, offers);
+            if (selected.getCard().getId() == RogueliteCardId.TECHNIQUE_SINGULARITY) {
+                synergySelections++;
+            }
+        }
+
+        assertTrue(synergySelections >= 850);
+    }
+
+    @Test
+    public void rivalsRecognizeTheCompleteAmplifierChain() {
+        RogueliteRun run = new RogueliteRun(580L);
+        RogueliteCompetitorProgress rival = run.getRivalProgress(2);
+        RogueliteLoadout loadout = rival.getLoadout();
+        assertTrue(loadout.equip(RogueliteCardId.TECHNIQUE_SINGULARITY));
+        assertTrue(loadout.equip(RogueliteCardId.TRAFFIC_DOMINANCE));
+        assertTrue(loadout.equip(RogueliteCardId.HYPERDRIVE));
+        assertTrue(loadout.equip(RogueliteCardId.FATES_REVENGE));
+        List<RogueliteCardOffer> offers = Arrays.asList(
+                modificationOffer(RogueliteCardId.POWERUP_NEXUS),
+                modificationOffer(RogueliteCardId.CORNER_MASTER),
+                modificationOffer(RogueliteCardId.TOTAL_BLACKOUT));
+
+        int chainSelections = 0;
+        for (int selection = 0; selection < 1000; selection++) {
+            RogueliteCardOffer selected = run.chooseRivalOffer(rival, offers);
+            if (selected.getCard().getId() == RogueliteCardId.POWERUP_NEXUS) {
+                chainSelections++;
+            }
+        }
+
+        assertTrue(chainSelections >= 850);
+    }
+
+    @Test
     public void rivalsFallBackToRevengeWhenNoStatSynergyImproves() {
         RogueliteRun run = new RogueliteRun(578L);
         RogueliteCompetitorProgress rival = run.getRivalProgress(2);

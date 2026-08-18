@@ -51,6 +51,7 @@ import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.HybridPlayerControl;
 import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.LongStraightThrottleAssist;
+import com.github.jbescos.gameplay.OvertakingSectorSensors;
 import com.github.jbescos.gameplay.PassingAssistGeometry;
 import com.github.jbescos.gameplay.TimeDilationDecisionCadence;
 import com.github.jbescos.gameplay.TimeDilationMotionScale;
@@ -119,6 +120,7 @@ import com.github.jbescos.presentation.GameText;
 import com.github.jbescos.presentation.GameVersionLabel;
 import com.github.jbescos.presentation.HudPanelVisibility;
 import com.github.jbescos.presentation.MenuButtonSkinAtlas;
+import com.github.jbescos.presentation.MinimapCameraNavigation;
 import com.github.jbescos.presentation.PlayerDisplayName;
 import com.github.jbescos.presentation.PlayerNameEditor;
 import com.github.jbescos.presentation.PositionHijackLinkVisual;
@@ -199,6 +201,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final String RL_POLICY_DIRECTORY = "ai/policies";
     private static final String RL_POLICY_FILE_NAME = "rl_enemy_policy.json";
     private static final String RL_RECOVERY_POLICY_PATH = "ai/recovery/rl_recovery_policy.json";
+    private static final String RL_OVERTAKING_POLICY_PATH = "ai/overtaking/rl_overtaking_policy.json";
+    private static final boolean RL_OVERTAKING_RUNTIME_ENABLED = false;
     private static final String DRIVER_METADATA_FILE_NAME = "driver_metadata.json";
     private static final String RL_LEGACY_POLICY_ID = "legacy";
     private static final String[] DRIVER_POLICY_IDS = {
@@ -491,7 +495,9 @@ public class RatassGame extends ApplicationAdapter {
     private static final float ROUND_SPAWN_CROWDED_SAFE_MARGIN = 1.0f;
     private static final float ROUND_SPAWN_MIN_DISTANCE = 1.95f;
     public static final int RL_OBSERVATION_SIZE = 33;
+    public static final int RL_OVERTAKING_OBSERVATION_SIZE = 43;
     public static final int RL_ACTION_SIZE = 2;
+    public static final int RL_OVERTAKING_ACTION_SIZE = 1;
     public static final int RL_REWARD_BREAKDOWN_SIZE = 11;
     private static final int RL_REWARD_ROUTE_PROGRESS = 0;
     private static final int RL_REWARD_STEP_COST = 1;
@@ -587,6 +593,51 @@ public class RatassGame extends ApplicationAdapter {
             "route_curvature",
             "car_contact"
     };
+    private static final String[] RL_OVERTAKING_OBSERVATION_NAMES = {
+            "base_throttle",
+            "base_turn",
+            "route_fwd",
+            "route_side",
+            "route_forward_speed",
+            "route_lateral_speed",
+            "angular_speed",
+            "slip_angle",
+            "route_left_margin",
+            "route_right_margin",
+            "road_front",
+            "road_front_left",
+            "road_front_right",
+            "route_curvature",
+            "target_curvature",
+            "brake_demand",
+            "on_road",
+            "slipstream",
+            "previous_turn_residual",
+            "contact",
+            "car_front",
+            "car_front_left",
+            "car_left",
+            "car_rear_left",
+            "car_rear",
+            "car_rear_right",
+            "car_right",
+            "car_front_right",
+            "relative_speed_front",
+            "relative_speed_front_left",
+            "relative_speed_left",
+            "relative_speed_rear_left",
+            "relative_speed_rear",
+            "relative_speed_rear_right",
+            "relative_speed_right",
+            "relative_speed_front_right",
+            "nearby_car_count",
+            "next_car_forward",
+            "next_car_side",
+            "next_car_relative_speed",
+            "second_car_forward",
+            "second_car_side",
+            "second_car_relative_speed"
+    };
     private static final int RL_DEBUG_TRACE_SIZE = 23;
     private static final String[] RL_DEBUG_TRACE_NAMES = {
             "active",
@@ -628,6 +679,11 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_LATERAL_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 4f;
     private static final float RL_FRONT_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 12f;
     private static final float RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE = Car.HEIGHT * 7f;
+    private static final float RL_OVERTAKING_BASE_CAR_SENSOR_RANGE = Car.HEIGHT * 8f;
+    private static final float RL_OVERTAKING_MAX_CAR_SENSOR_RANGE = Car.HEIGHT * 20f;
+    private static final float RL_OVERTAKING_CLOSING_LOOKAHEAD_SECONDS = 1.5f;
+    private static final float RL_OVERTAKING_RELATIVE_SPEED_NORMALIZER = Car.HEIGHT * 12f;
+    private static final float RL_OVERTAKING_TURN_AUTHORITY = 0.50f;
     private static final float RL_ROUTE_LOOKAHEAD_DISTANCE = Car.HEIGHT * 7f;
     private static final float RL_STEERING_MIN_LOOKAHEAD_DISTANCE = Car.HEIGHT * 3f;
     private static final float RL_STEERING_MAX_LOOKAHEAD_DISTANCE = Car.HEIGHT * 8f;
@@ -1154,6 +1210,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle reversePadBounds = new Rectangle();
     private final Rectangle restartButtonBounds = new Rectangle();
     private final Rectangle sidebarMinimapBounds = new Rectangle();
+    private final Rectangle sidebarMinimapMapBounds = new Rectangle();
     private final Rectangle sidebarTelemetryBounds = new Rectangle();
     private final Rectangle carPanelBounds = new Rectangle();
     private final Rectangle carPanelStatsBounds = new Rectangle();
@@ -1444,6 +1501,7 @@ public class RatassGame extends ApplicationAdapter {
     private int optionsInputSuppressionFrames;
     private int cameraTargetRosterIndex = -1;
     private int freeCameraPointer = -1;
+    private int minimapCameraPointer = -1;
     private int freeCameraDragStartScreenX;
     private int freeCameraDragStartScreenY;
     private int freeCameraLastScreenX;
@@ -1458,6 +1516,7 @@ public class RatassGame extends ApplicationAdapter {
     private Car winner;
     private RlPolicy rlEnemyPolicy;
     private RlPolicy rlRecoveryPolicy;
+    private RlPolicy rlOvertakingPolicy;
     private RogueliteSaveRepository rogueliteSaveRepository;
     private RogueliteSaveData pendingContinueSave;
     private final Map<String, RlPolicy> rlPolicies = new LinkedHashMap<String, RlPolicy>();
@@ -1763,6 +1822,13 @@ public class RatassGame extends ApplicationAdapter {
                 rlRecoveryPolicy = loadRlPolicy(
                         RL_RECOVERY_POLICY_PATH,
                         "shared-recovery");
+                rlOvertakingPolicy = RL_OVERTAKING_RUNTIME_ENABLED
+                        ? loadRlPolicy(
+                                RL_OVERTAKING_POLICY_PATH,
+                                "shared-overtaking",
+                                RL_OVERTAKING_OBSERVATION_SIZE,
+                                RL_OVERTAKING_ACTION_SIZE)
+                        : null;
                 if (pendingContinueSave == null) {
                     rogueliteRun.reset(loadingStartingTier);
                 }
@@ -2075,6 +2141,14 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private RlPolicy loadRlPolicy(String path, String policyId) {
+        return loadRlPolicy(path, policyId, RL_OBSERVATION_SIZE, RL_ACTION_SIZE);
+    }
+
+    private RlPolicy loadRlPolicy(
+            String path,
+            String policyId,
+            int expectedObservationSize,
+            int expectedActionSize) {
         if (Gdx.files == null) {
             return null;
         }
@@ -2084,8 +2158,8 @@ public class RatassGame extends ApplicationAdapter {
                 return null;
             }
             RlPolicy policy = RlPolicy.fromJson(policyFile.readString("UTF-8"));
-            if (policy.getObservationSize() != RL_OBSERVATION_SIZE
-                    || policy.getActionSize() != RL_ACTION_SIZE) {
+            if (policy.getObservationSize() != expectedObservationSize
+                    || policy.getActionSize() != expectedActionSize) {
                 Gdx.app.log(
                         "RatassGame",
                         "Ignoring RL policy "
@@ -2095,9 +2169,9 @@ public class RatassGame extends ApplicationAdapter {
                                 + "/"
                                 + policy.getActionSize()
                                 + "; expected "
-                                + RL_OBSERVATION_SIZE
+                                + expectedObservationSize
                                 + "/"
-                                + RL_ACTION_SIZE
+                                + expectedActionSize
                                 + ". Retrain the policy for the current observation contract.");
                 return null;
             }
@@ -4006,7 +4080,8 @@ public class RatassGame extends ApplicationAdapter {
         updateTouchState();
         handleSidebarTablesPointerInput();
         handleSandboxSettingsPointerInput();
-        handleInteractiveCameraInput(false);
+        boolean minimapPointerConsumed = handleMinimapCameraInput();
+        handleInteractiveCameraInput(minimapPointerConsumed);
         handleCameraTargetInput();
         frameThrottleInput = readPlayerThrottle();
         frameTurnInput = readPlayerTurn();
@@ -4179,11 +4254,11 @@ public class RatassGame extends ApplicationAdapter {
             return true;
         }
         if (inGamePreviousCarButtonBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
-            changeCameraTarget(-1);
+            changeCameraTarget(1);
             return true;
         }
         if (inGameNextCarButtonBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
-            changeCameraTarget(1);
+            changeCameraTarget(-1);
             return true;
         }
         if (inGameMenuButtonBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
@@ -6786,6 +6861,7 @@ public class RatassGame extends ApplicationAdapter {
         freeCameraDragging = false;
         freeCameraDragCandidate = false;
         freeCameraPointer = -1;
+        minimapCameraPointer = -1;
         cameraPinching = false;
         cameraPinchDistance = 0f;
         finishCameraZoomGesture();
@@ -6810,6 +6886,76 @@ public class RatassGame extends ApplicationAdapter {
         }
         freeCameraReturnHintTimer = FREE_CAMERA_RETURN_HINT_DURATION;
         cameraTargetTransitionTimer = 0f;
+    }
+
+    private boolean handleMinimapCameraInput() {
+        if (!isPresentationEnabled()
+                || gameMode != GameMode.PLAYING
+                || currentMap == null) {
+            minimapCameraPointer = -1;
+            return false;
+        }
+
+        float hudWidth = hudViewport.getWorldWidth();
+        float hudHeight = hudViewport.getWorldHeight();
+        float sidebarX = hudWidth - sidebarHudWidth;
+        if (!getSidebarMinimapBounds(
+                sidebarX,
+                Math.max(0f, sidebarHudWidth),
+                hudHeight,
+                sidebarMinimapBounds)) {
+            minimapCameraPointer = -1;
+            return false;
+        }
+
+        currentMap.getBounds(mapBounds);
+        if (!MinimapCameraNavigation.fitMap(
+                        sidebarMinimapBounds,
+                        SIDEBAR_MINIMAP_PADDING,
+                        mapBounds,
+                        sidebarMinimapMapBounds)) {
+            minimapCameraPointer = -1;
+            return false;
+        }
+
+        if (minimapCameraPointer < 0) {
+            if (!Gdx.input.justTouched()) {
+                return false;
+            }
+            int pointer = findTouchedPointer(sidebarMinimapMapBounds);
+            if (pointer < 0) {
+                return false;
+            }
+            stopCameraGestures();
+            enterFreeCamera();
+            minimapCameraPointer = pointer;
+        } else if (!Gdx.input.isTouched(minimapCameraPointer)) {
+            minimapCameraPointer = -1;
+            return false;
+        }
+
+        hudTouchPoint.set(
+                Gdx.input.getX(minimapCameraPointer),
+                Gdx.input.getY(minimapCameraPointer),
+                0f);
+        hudViewport.unproject(hudTouchPoint);
+        if (!MinimapCameraNavigation.worldPositionAt(
+                hudTouchPoint.x,
+                hudTouchPoint.y,
+                sidebarMinimapMapBounds,
+                mapBounds,
+                cameraTargetPosition)) {
+            return true;
+        }
+
+        cameraSmoothedPosition.set(cameraTargetPosition);
+        cameraSmoothedForwardDirection.set(0f, 1f);
+        clampCameraToArena(cameraSmoothedPosition, smoothedCameraZoom);
+        cameraTargetPosition.set(cameraSmoothedPosition);
+        cameraInitialized = true;
+        cameraStateMap = currentMap;
+        cameraTargetTransitionTimer = 0f;
+        return true;
     }
 
     private void handleInteractiveCameraInput(boolean pointerConsumed) {
@@ -9644,6 +9790,7 @@ public class RatassGame extends ApplicationAdapter {
                     mirrorCars,
                     resolveBestDriverPolicy(car, car.template.rlPolicy),
                     rlRecoveryPolicy,
+                    rlOvertakingPolicy,
                     surfaceGripMultiplier,
                     rlTrainingMode,
                     rlBenchmarkCardsEnabled);
@@ -9795,7 +9942,8 @@ public class RatassGame extends ApplicationAdapter {
                     allowControl,
                     rlTrainingMode,
                     resolveBestDriverPolicy(mirror, mirror.template.rlPolicy),
-                    rlRecoveryPolicy);
+                    rlRecoveryPolicy,
+                    rlOvertakingPolicy);
         }
     }
 
@@ -22753,15 +22901,19 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
-        float minimapScale = Math.min(innerWidth / mapBounds.width, innerHeight / mapBounds.height);
-        if (minimapScale <= 0f) {
+        if (!MinimapCameraNavigation.fitMap(
+                sidebarMinimapBounds,
+                SIDEBAR_MINIMAP_PADDING,
+                mapBounds,
+                sidebarMinimapMapBounds)) {
             return;
         }
 
-        float minimapWidth = mapBounds.width * minimapScale;
-        float minimapHeight = mapBounds.height * minimapScale;
-        float offsetX = innerX + (innerWidth - minimapWidth) * 0.5f - mapBounds.x * minimapScale;
-        float offsetY = innerY + (innerHeight - minimapHeight) * 0.5f - mapBounds.y * minimapScale;
+        float minimapScale = sidebarMinimapMapBounds.width / mapBounds.width;
+        float minimapWidth = sidebarMinimapMapBounds.width;
+        float minimapHeight = sidebarMinimapMapBounds.height;
+        float offsetX = sidebarMinimapMapBounds.x - mapBounds.x * minimapScale;
+        float offsetY = sidebarMinimapMapBounds.y - mapBounds.y * minimapScale;
 
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
         Gdx.gl.glEnable(GL20.GL_BLEND);
@@ -22774,8 +22926,8 @@ public class RatassGame extends ApplicationAdapter {
 
         shapeRenderer.setColor(theme.backdropGlow.r, theme.backdropGlow.g, theme.backdropGlow.b, 0.16f);
         shapeRenderer.rect(
-                innerX + (innerWidth - minimapWidth) * 0.5f,
-                innerY + (innerHeight - minimapHeight) * 0.5f,
+                sidebarMinimapMapBounds.x,
+                sidebarMinimapMapBounds.y,
                 minimapWidth,
                 minimapHeight);
 
@@ -25288,7 +25440,10 @@ public class RatassGame extends ApplicationAdapter {
         private final AiControlDecision rawExternalControlDecision = new AiControlDecision();
         private final AiControlDecision automaticRecoveryControlDecision = new AiControlDecision();
         private final AiControlDecision passingAssistControlDecision = new AiControlDecision();
+        private final AiControlDecision overtakingControlDecision = new AiControlDecision();
         private final float[] rlObservation = new float[RL_OBSERVATION_SIZE];
+        private final float[] overtakingObservation =
+                new float[RL_OVERTAKING_OBSERVATION_SIZE];
         private final Vector2 forwardAxis = new Vector2();
         private final Vector2 sidewaysAxis = new Vector2();
         private final Vector2 working = new Vector2();
@@ -25381,6 +25536,9 @@ public class RatassGame extends ApplicationAdapter {
         private boolean passingAssistCommitted;
         private boolean passingAssistRouteSafe;
         private float rlDecisionTimer;
+        private float overtakingDecisionTimer;
+        private float overtakingTurnResidual;
+        private float trainingThrottleScale = 1f;
         private RlPolicy lastRlPlanningPolicy;
         private boolean timeDilationDecisionAccelerated;
         private float timeDilationMotionScale = 1f;
@@ -25398,6 +25556,8 @@ public class RatassGame extends ApplicationAdapter {
         private float renderAngleRad;
         private float[] rlScratchA;
         private float[] rlScratchB;
+        private float[] overtakingScratchA;
+        private float[] overtakingScratchB;
 
         private Car(Body body, CarTemplate template, boolean presentationEnabled) {
             this.body = body;
@@ -26483,6 +26643,7 @@ public class RatassGame extends ApplicationAdapter {
                 Array<Car> recoveryMirrorCars,
                 RlPolicy rlPolicy,
                 RlPolicy recoveryPolicy,
+                RlPolicy overtakingPolicy,
                 float surfaceGripMultiplier,
                 boolean trainingMode,
                 boolean benchmarkCardsEnabled) {
@@ -26528,6 +26689,9 @@ public class RatassGame extends ApplicationAdapter {
                     turn = externalControlDecision.turn;
                 }
             }
+            if (trainingMode && throttle > 0f) {
+                throttle *= trainingThrottleScale;
+            }
             boolean automaticControlAssistanceAllowed = !isManuallyControlled();
             boolean automaticRecoveryAllowed =
                     AutomaticRecoveryManeuver.isControlAllowed(
@@ -26537,7 +26701,6 @@ public class RatassGame extends ApplicationAdapter {
                                     && controlLockTimer <= 0f,
                             forcedBrakeTimer > 0f);
             boolean automaticRecoveryApplied = false;
-            boolean passingAssistApplied = false;
             updateAutomaticRecoveryState(
                     delta,
                     arenaMap,
@@ -26558,23 +26721,39 @@ public class RatassGame extends ApplicationAdapter {
             boolean automaticRecoveryModelHandoff =
                     automaticRecoveryAllowed
                             && automaticRecoveryManeuver.isModelHandoff();
+            boolean passingAssistApplied = false;
             if (!automaticRecoveryApplied
                     && !automaticRecoveryModelHandoff
-                    && automaticControlAssistanceAllowed) {
-                applyPassingAssist(
-                        delta,
-                        arenaMap,
-                        cars,
-                        throttle,
-                        turn,
-                        passingAssistControlDecision);
-                throttle = passingAssistControlDecision.throttle;
-                turn = passingAssistControlDecision.turn;
-                passingAssistApplied =
-                        passingAssistTarget != null
-                                || Math.abs(passingAssistTurnBias) >= 0.001f;
+                    && automaticControlAssistanceAllowed
+                    && !trainingMode) {
+                if (overtakingPolicy != null) {
+                    turn = applyOvertakingPolicy(
+                            delta,
+                            arenaMap,
+                            cars,
+                            recoveryMirrorCars,
+                            overtakingPolicy,
+                            throttle,
+                            turn);
+                    resetPassingAssist();
+                } else {
+                    applyPassingAssist(
+                            delta,
+                            arenaMap,
+                            cars,
+                            throttle,
+                            turn,
+                            passingAssistControlDecision);
+                    throttle = passingAssistControlDecision.throttle;
+                    turn = passingAssistControlDecision.turn;
+                    passingAssistApplied =
+                            passingAssistTarget != null
+                                    || Math.abs(passingAssistTurnBias) >= 0.001f;
+                    resetOvertakingPolicyState();
+                }
             } else if (!automaticRecoveryApplied) {
                 resetPassingAssist();
+                resetOvertakingPolicyState();
             }
             boolean passingCarBlocksThrottle =
                     passingAssistApplied
@@ -26652,7 +26831,8 @@ public class RatassGame extends ApplicationAdapter {
                 boolean allowControl,
                 boolean trainingMode,
                 RlPolicy policy,
-                RlPolicy recoveryPolicy) {
+                RlPolicy recoveryPolicy,
+                RlPolicy overtakingPolicy) {
             if (!active || body == null || mirrorOwner == null || mirrorOwner.body == null) {
                 return;
             }
@@ -26717,8 +26897,47 @@ public class RatassGame extends ApplicationAdapter {
             boolean automaticRecoveryModelHandoff =
                     automaticRecoveryAllowed
                             && automaticRecoveryManeuver.isModelHandoff();
+            boolean passingAssistApplied = false;
             if (!automaticRecoveryApplied
                     && !automaticRecoveryModelHandoff
+                    && !trainingMode
+                    && !isManuallyControlled()) {
+                if (overtakingPolicy != null) {
+                    turn = applyOvertakingPolicy(
+                            delta,
+                            arenaMap,
+                            raceCars,
+                            raceMirrors,
+                            overtakingPolicy,
+                            throttle,
+                            turn);
+                    resetPassingAssist();
+                } else {
+                    applyPassingAssist(
+                            delta,
+                            arenaMap,
+                            raceCars,
+                            throttle,
+                            turn,
+                            passingAssistControlDecision);
+                    throttle = passingAssistControlDecision.throttle;
+                    turn = passingAssistControlDecision.turn;
+                    passingAssistApplied =
+                            passingAssistTarget != null
+                                    || Math.abs(passingAssistTurnBias) >= 0.001f;
+                    resetOvertakingPolicyState();
+                }
+            } else {
+                resetPassingAssist();
+                resetOvertakingPolicyState();
+            }
+            boolean passingCarBlocksThrottle =
+                    passingAssistApplied
+                            && passingAssistTarget != null
+                            && isForwardPassingContact(passingAssistTarget);
+            if (!automaticRecoveryApplied
+                    && !automaticRecoveryModelHandoff
+                    && !passingCarBlocksThrottle
                     && shouldForceFullThrottleOnLongStraight(arenaMap, trainingMode)) {
                 throttle = 1f;
             }
@@ -26788,6 +27007,129 @@ public class RatassGame extends ApplicationAdapter {
                     slipstreamSnapshotBaseSpeed * SLIPSTREAM_SPEED_CAP_RATIO;
             slipstreamSnapshotOnRoad = arenaMap == null || arenaMap.supports(position);
             slipstreamSnapshotReady = true;
+        }
+
+        private float applyOvertakingPolicy(
+                float delta,
+                ArenaMap arenaMap,
+                Array<Car> raceCars,
+                Array<Car> raceMirrors,
+                RlPolicy policy,
+                float baseThrottle,
+                float baseTurn) {
+            if (policy == null
+                    || arenaMap == null
+                    || !arenaMap.hasRoute()
+                    || !hasNearbyOvertakingCar(raceCars, raceMirrors)) {
+                resetOvertakingPolicyState();
+                return baseTurn;
+            }
+            overtakingDecisionTimer -= Math.max(0f, delta);
+            if (overtakingDecisionTimer <= 0f) {
+                ensureOvertakingScratch(policy);
+                fillOvertakingObservation(
+                        overtakingObservation,
+                        0,
+                        this,
+                        arenaMap,
+                        template == null ? 0f : template.roundRaceLastRouteProgress,
+                        baseThrottle,
+                        baseTurn,
+                        overtakingTurnResidual,
+                        raceCars,
+                        raceMirrors,
+                        rlObservationForward,
+                        rlObservationRouteTarget,
+                        rlObservationSide);
+                policy.computeAction(
+                        overtakingObservation,
+                        overtakingScratchA,
+                        overtakingScratchB,
+                        overtakingControlDecision);
+                overtakingTurnResidual = MathUtils.clamp(
+                        overtakingControlDecision.throttle,
+                        -1f,
+                        1f);
+                overtakingDecisionTimer = RL_LIVE_DECISION_INTERVAL;
+            }
+            return MathUtils.clamp(
+                    baseTurn + overtakingTurnResidual * RL_OVERTAKING_TURN_AUTHORITY,
+                    -1f,
+                    1f);
+        }
+
+        private boolean hasNearbyOvertakingCar(Array<Car> raceCars, Array<Car> raceMirrors) {
+            if (body == null || isOpponentBlind()) {
+                return false;
+            }
+            return containsNearbyOvertakingCar(raceCars)
+                    || containsNearbyOvertakingCar(raceMirrors);
+        }
+
+        private boolean containsNearbyOvertakingCar(Array<Car> candidates) {
+            if (candidates == null) {
+                return false;
+            }
+            Vector2 position = body.getPosition();
+            Vector2 velocity = body.getLinearVelocity();
+            Vector2 carForward = body.getWorldVector(working.set(0f, 1f));
+            float maximumRangeSquared =
+                    RL_OVERTAKING_MAX_CAR_SENSOR_RANGE
+                            * RL_OVERTAKING_MAX_CAR_SENSOR_RANGE;
+            for (int i = 0; i < candidates.size; i++) {
+                Car candidate = candidates.get(i);
+                if (candidate == null
+                        || candidate == this
+                        || !candidate.active
+                        || candidate.body == null
+                        || candidate.isInvisible()
+                        || candidate.mirrorOwner == this
+                        || mirrorOwner == candidate) {
+                    continue;
+                }
+                Vector2 candidatePosition = candidate.body.getPosition();
+                float dx = candidatePosition.x - position.x;
+                float dy = candidatePosition.y - position.y;
+                float forwardDistance = dx * carForward.x + dy * carForward.y;
+                if (!OvertakingSectorSensors.isRelevantSteeringThreat(
+                        forwardDistance,
+                        Car.HEIGHT * 0.65f)) {
+                    continue;
+                }
+                float distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared >= maximumRangeSquared) {
+                    continue;
+                }
+                float distance = (float) Math.sqrt(distanceSquared);
+                Vector2 candidateVelocity = candidate.body.getLinearVelocity();
+                float closingSpeed = distance <= 0.0001f
+                        ? 0f
+                        : ((velocity.x - candidateVelocity.x) * dx
+                                        + (velocity.y - candidateVelocity.y) * dy)
+                                / distance;
+                float detectionRange = OvertakingSectorSensors.detectionRange(
+                        RL_OVERTAKING_BASE_CAR_SENSOR_RANGE,
+                        RL_OVERTAKING_MAX_CAR_SENSOR_RANGE,
+                        closingSpeed,
+                        RL_OVERTAKING_CLOSING_LOOKAHEAD_SECONDS);
+                if (distance < detectionRange) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void ensureOvertakingScratch(RlPolicy policy) {
+            int scratchSize = policy.getScratchSize();
+            if (overtakingScratchA == null || overtakingScratchA.length < scratchSize) {
+                overtakingScratchA = new float[scratchSize];
+                overtakingScratchB = new float[scratchSize];
+            }
+        }
+
+        private void resetOvertakingPolicyState() {
+            overtakingDecisionTimer = 0f;
+            overtakingTurnResidual = 0f;
         }
 
         private void applyPassingAssist(
@@ -27553,6 +27895,7 @@ public class RatassGame extends ApplicationAdapter {
         private void cancelAutomaticControlAssistance() {
             resetAutomaticRecoveryState();
             resetPassingAssist();
+            resetOvertakingPolicyState();
             automaticRecoveryControlDecision.set(0f, 0f);
         }
 
@@ -29422,6 +29765,330 @@ public class RatassGame extends ApplicationAdapter {
         return brakeDemand;
     }
 
+    private static void fillOvertakingObservation(
+            float[] observations,
+            int offset,
+            Car car,
+            ArenaMap arenaMap,
+            float referenceRouteProgress,
+            float baseThrottle,
+            float baseTurn,
+            float previousTurnResidual,
+            Array<Car> cars,
+            Array<Car> otherCars,
+            Vector2 observationForward,
+            Vector2 observationRouteTarget,
+            Vector2 observationSide) {
+        for (int i = 0; i < RL_OVERTAKING_OBSERVATION_SIZE; i++) {
+            observations[offset + i] = 0f;
+        }
+        if (car == null || !car.active || car.body == null || arenaMap == null) {
+            return;
+        }
+
+        Vector2 position = car.body.getPosition();
+        Vector2 velocity = car.body.getLinearVelocity();
+        observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
+        observationSide.set(-observationForward.y, observationForward.x);
+        float routeProgress = arenaMap.findRouteProgressNear(
+                position,
+                observationForward,
+                referenceRouteProgress);
+        arenaMap.findRouteTangent(routeProgress, observationRouteTarget);
+        if (observationRouteTarget.isZero(0.0001f)) {
+            observationRouteTarget.set(observationForward);
+        } else {
+            observationRouteTarget.nor();
+        }
+        float routeTangentX = observationRouteTarget.x;
+        float routeTangentY = observationRouteTarget.y;
+        float routeNormalX = -routeTangentY;
+        float routeNormalY = routeTangentX;
+
+        arenaMap.findRoutePoint(routeProgress, observationRouteTarget);
+        float centerlineDx = observationRouteTarget.x - position.x;
+        float centerlineDy = observationRouteTarget.y - position.y;
+        float lateralOffset = -(centerlineDx * routeNormalX + centerlineDy * routeNormalY);
+        float routeLeftMargin = arenaMap.getRouteLeftClearance(routeProgress) - lateralOffset;
+        float routeRightMargin = arenaMap.getRouteRightClearance(routeProgress) + lateralOffset;
+        float maxForwardSpeed = Math.max(0.001f, car.getDrivingReferenceMaxSpeed());
+        float routeForwardSpeed = velocity.x * routeTangentX + velocity.y * routeTangentY;
+        float routeLateralSpeed = velocity.x * routeNormalX + velocity.y * routeNormalY;
+        float steeringLookaheadDistance = getRlSteeringLookaheadDistance(car);
+        float sensorLookaheadDistance = getRlSensorLookaheadDistance(car);
+        float targetCurvature = arenaMap.getRouteCurvature(routeProgress + steeringLookaheadDistance);
+        float brakeDemand = getRlBrakeDemand(
+                car,
+                arenaMap,
+                routeProgress,
+                routeForwardSpeed,
+                sensorLookaheadDistance);
+        float slipAngle = MathUtils.clamp(
+                (float) Math.atan2(
+                                routeLateralSpeed,
+                                Math.max(Math.abs(routeForwardSpeed), 0.001f))
+                        / (MathUtils.PI * 0.5f),
+                -1f,
+                1f);
+        boolean onRoad = !Car.isTrackLimitSlowdownActive(arenaMap, position);
+
+        observations[offset] = MathUtils.clamp(baseThrottle, -1f, 1f);
+        observations[offset + 1] = MathUtils.clamp(baseTurn, -1f, 1f);
+        observations[offset + 2] = MathUtils.clamp(
+                observationForward.x * routeTangentX + observationForward.y * routeTangentY,
+                -1f,
+                1f);
+        observations[offset + 3] = MathUtils.clamp(
+                observationSide.x * routeTangentX + observationSide.y * routeTangentY,
+                -1f,
+                1f);
+        observations[offset + 4] = normalizedRlValue(routeForwardSpeed, maxForwardSpeed);
+        observations[offset + 5] = normalizedRlValue(routeLateralSpeed, maxForwardSpeed);
+        observations[offset + 6] = normalizedRlValue(
+                car.body.getAngularVelocity(),
+                RL_ANGULAR_VELOCITY_NORMALIZER);
+        observations[offset + 7] = slipAngle;
+        observations[offset + 8] = normalizedRlValue(routeLeftMargin, RL_ROUTE_MARGIN_NORMALIZER);
+        observations[offset + 9] = normalizedRlValue(routeRightMargin, RL_ROUTE_MARGIN_NORMALIZER);
+        observations[offset + 10] = sampleRlRayClearance(
+                arenaMap,
+                position,
+                observationForward.x,
+                observationForward.y,
+                RL_FRONT_ROAD_CLEARANCE_DISTANCE);
+        observations[offset + 11] = sampleRlRayClearance(
+                arenaMap,
+                position,
+                observationForward.x + observationSide.x,
+                observationForward.y + observationSide.y,
+                RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE);
+        observations[offset + 12] = sampleRlRayClearance(
+                arenaMap,
+                position,
+                observationForward.x - observationSide.x,
+                observationForward.y - observationSide.y,
+                RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE);
+        observations[offset + 13] = arenaMap.getRouteCurvature(routeProgress);
+        observations[offset + 14] = targetCurvature;
+        observations[offset + 15] = brakeDemand;
+        observations[offset + 16] = onRoad ? 1f : 0f;
+        observations[offset + 17] = MathUtils.clamp(car.slipstreamBoost, 0f, 1f);
+        observations[offset + 18] = MathUtils.clamp(previousTurnResidual, -1f, 1f);
+        observations[offset + 19] = car.carContactCount > 0 ? 1f : 0f;
+
+        if (!car.isOpponentBlind()) {
+            int nearbyCount = fillOvertakingOpponentSectors(
+                    observations,
+                    offset + 20,
+                    car,
+                    cars,
+                    position,
+                    routeTangentX,
+                    routeTangentY,
+                    routeNormalX,
+                    routeNormalY,
+                    routeForwardSpeed);
+            nearbyCount += fillOvertakingOpponentSectors(
+                    observations,
+                    offset + 20,
+                    car,
+                    otherCars,
+                    position,
+                    routeTangentX,
+                    routeTangentY,
+                    routeNormalX,
+                    routeNormalY,
+                    routeForwardSpeed);
+            observations[offset + 36] = MathUtils.clamp(nearbyCount / 8f, 0f, 1f);
+            fillOvertakingNearestForwardCars(
+                    observations,
+                    offset + 37,
+                    car,
+                    cars,
+                    otherCars,
+                    position,
+                    routeTangentX,
+                    routeTangentY,
+                    routeNormalX,
+                    routeNormalY,
+                    routeForwardSpeed);
+        }
+    }
+
+    private static void fillOvertakingNearestForwardCars(
+            float[] observations,
+            int offset,
+            Car car,
+            Array<Car> cars,
+            Array<Car> otherCars,
+            Vector2 position,
+            float routeTangentX,
+            float routeTangentY,
+            float routeNormalX,
+            float routeNormalY,
+            float routeForwardSpeed) {
+        float firstForward = Float.POSITIVE_INFINITY;
+        float firstSide = 0f;
+        float firstRelativeSpeed = 0f;
+        float firstRange = 1f;
+        float secondForward = Float.POSITIVE_INFINITY;
+        float secondSide = 0f;
+        float secondRelativeSpeed = 0f;
+        float secondRange = 1f;
+        Vector2 carVelocity = car.body.getLinearVelocity();
+        for (int collection = 0; collection < 2; collection++) {
+            Array<Car> candidates = collection == 0 ? cars : otherCars;
+            if (candidates == null) {
+                continue;
+            }
+            for (int i = 0; i < candidates.size; i++) {
+                Car candidate = candidates.get(i);
+                if (candidate == null
+                        || candidate == car
+                        || !candidate.active
+                        || candidate.body == null
+                        || candidate.isInvisible()
+                        || candidate.mirrorOwner == car
+                        || car.mirrorOwner == candidate) {
+                    continue;
+                }
+                float dx = candidate.body.getPosition().x - position.x;
+                float dy = candidate.body.getPosition().y - position.y;
+                float forward = dx * routeTangentX + dy * routeTangentY;
+                if (forward <= -Car.HEIGHT * 0.65f
+                        || forward >= RL_OVERTAKING_MAX_CAR_SENSOR_RANGE) {
+                    continue;
+                }
+                float distance = (float) Math.sqrt(dx * dx + dy * dy);
+                Vector2 candidateVelocity = candidate.body.getLinearVelocity();
+                float closingSpeed = distance <= 0.0001f
+                        ? 0f
+                        : ((carVelocity.x - candidateVelocity.x) * dx
+                                        + (carVelocity.y - candidateVelocity.y) * dy)
+                                / distance;
+                float detectionRange = OvertakingSectorSensors.detectionRange(
+                        RL_OVERTAKING_BASE_CAR_SENSOR_RANGE,
+                        RL_OVERTAKING_MAX_CAR_SENSOR_RANGE,
+                        closingSpeed,
+                        RL_OVERTAKING_CLOSING_LOOKAHEAD_SECONDS);
+                if (distance >= detectionRange) {
+                    continue;
+                }
+                float side = dx * routeNormalX + dy * routeNormalY;
+                float relativeSpeed = candidateVelocity.x * routeTangentX
+                        + candidateVelocity.y * routeTangentY
+                        - routeForwardSpeed;
+                if (forward < firstForward) {
+                    secondForward = firstForward;
+                    secondSide = firstSide;
+                    secondRelativeSpeed = firstRelativeSpeed;
+                    secondRange = firstRange;
+                    firstForward = forward;
+                    firstSide = side;
+                    firstRelativeSpeed = relativeSpeed;
+                    firstRange = detectionRange;
+                } else if (forward < secondForward) {
+                    secondForward = forward;
+                    secondSide = side;
+                    secondRelativeSpeed = relativeSpeed;
+                    secondRange = detectionRange;
+                }
+            }
+        }
+        if (firstForward < Float.POSITIVE_INFINITY) {
+            observations[offset] = OvertakingSectorSensors.proximity(firstForward, firstRange);
+            observations[offset + 1] = normalizedRlValue(firstSide, Car.WIDTH * 4f);
+            observations[offset + 2] = OvertakingSectorSensors.normalizedRelativeSpeed(
+                    firstRelativeSpeed,
+                    RL_OVERTAKING_RELATIVE_SPEED_NORMALIZER);
+        }
+        if (secondForward < Float.POSITIVE_INFINITY) {
+            observations[offset + 3] = OvertakingSectorSensors.proximity(
+                    secondForward,
+                    secondRange);
+            observations[offset + 4] = normalizedRlValue(secondSide, Car.WIDTH * 4f);
+            observations[offset + 5] = OvertakingSectorSensors.normalizedRelativeSpeed(
+                    secondRelativeSpeed,
+                    RL_OVERTAKING_RELATIVE_SPEED_NORMALIZER);
+        }
+    }
+
+    private static int fillOvertakingOpponentSectors(
+            float[] observations,
+            int offset,
+            Car car,
+            Array<Car> candidates,
+            Vector2 position,
+            float routeTangentX,
+            float routeTangentY,
+            float routeNormalX,
+            float routeNormalY,
+            float routeForwardSpeed) {
+        if (candidates == null) {
+            return 0;
+        }
+        int nearbyCount = 0;
+        Vector2 carVelocity = car.body.getLinearVelocity();
+        float maximumRangeSquared =
+                RL_OVERTAKING_MAX_CAR_SENSOR_RANGE
+                        * RL_OVERTAKING_MAX_CAR_SENSOR_RANGE;
+        for (int i = 0; i < candidates.size; i++) {
+            Car candidate = candidates.get(i);
+            if (candidate == null
+                    || candidate == car
+                    || !candidate.active
+                    || candidate.body == null
+                    || candidate.isInvisible()
+                    || candidate.mirrorOwner == car
+                    || car.mirrorOwner == candidate) {
+                continue;
+            }
+            float dx = candidate.body.getPosition().x - position.x;
+            float dy = candidate.body.getPosition().y - position.y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared >= maximumRangeSquared) {
+                continue;
+            }
+            float distance = (float) Math.sqrt(distanceSquared);
+            Vector2 candidateVelocity = candidate.body.getLinearVelocity();
+            float closingSpeed = distance <= 0.0001f
+                    ? 0f
+                    : ((carVelocity.x - candidateVelocity.x) * dx
+                                    + (carVelocity.y - candidateVelocity.y) * dy)
+                            / distance;
+            float detectionRange = OvertakingSectorSensors.detectionRange(
+                    RL_OVERTAKING_BASE_CAR_SENSOR_RANGE,
+                    RL_OVERTAKING_MAX_CAR_SENSOR_RANGE,
+                    closingSpeed,
+                    RL_OVERTAKING_CLOSING_LOOKAHEAD_SECONDS);
+            if (distance >= detectionRange) {
+                continue;
+            }
+            nearbyCount++;
+            float routeForwardDistance = dx * routeTangentX + dy * routeTangentY;
+            float routeSideDistance = dx * routeNormalX + dy * routeNormalY;
+            int sector = OvertakingSectorSensors.sectorFor(
+                    routeForwardDistance,
+                    routeSideDistance,
+                    Car.HEIGHT * 0.65f,
+                    Car.WIDTH * 0.55f);
+            float proximity = OvertakingSectorSensors.proximity(
+                    distance,
+                    detectionRange);
+            if (proximity <= observations[offset + sector]) {
+                continue;
+            }
+            float candidateRouteSpeed = candidateVelocity.x * routeTangentX
+                    + candidateVelocity.y * routeTangentY;
+            observations[offset + sector] = proximity;
+            observations[offset + OvertakingSectorSensors.SECTOR_COUNT + sector] =
+                    OvertakingSectorSensors.normalizedRelativeSpeed(
+                            candidateRouteSpeed - routeForwardSpeed,
+                            RL_OVERTAKING_RELATIVE_SPEED_NORMALIZER);
+        }
+        return nearbyCount;
+    }
+
     private static void fillRecoveryObservation(
             float[] observations,
             int offset,
@@ -29983,7 +30650,12 @@ public class RatassGame extends ApplicationAdapter {
         OFFROAD_HARD,
         OFFROAD_REVERSED,
         ONROAD_MISALIGNED,
-        BLOCKED_FRONT;
+        BLOCKED_FRONT,
+        NOSE_TO_NOSE;
+
+        private boolean usesBlocker() {
+            return this == BLOCKED_FRONT || this == NOSE_TO_NOSE;
+        }
 
         private static RecoveryTrainingScenario select(String configured, int episodeIndex) {
             String normalized = configured == null
@@ -30016,7 +30688,77 @@ public class RatassGame extends ApplicationAdapter {
                     || "blocked".equals(normalized)) {
                 return BLOCKED_FRONT;
             }
+            if ("nose_to_nose".equals(normalized)
+                    || "face_to_face".equals(normalized)) {
+                return NOSE_TO_NOSE;
+            }
             throw new IllegalArgumentException("Unknown recovery scenario: " + configured);
+        }
+    }
+
+    private enum OvertakingTrainingScenario {
+        CLOSING,
+        LANE_CHANGE,
+        STRAIGHT,
+        SINGLE_FAR,
+        SINGLE_MEDIUM,
+        SINGLE,
+        PACK;
+
+        private static OvertakingTrainingScenario select(String configured, int episodeIndex) {
+            String normalized = configured == null
+                    ? "mixed"
+                    : configured.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+            if ("mixed".equals(normalized) || normalized.length() == 0) {
+                OvertakingTrainingScenario[] scenarios = {
+                        CLOSING, STRAIGHT, SINGLE, PACK
+                };
+                return scenarios[Math.floorMod(episodeIndex, scenarios.length)];
+            }
+            if ("progressive".equals(normalized)
+                    || "single_curriculum".equals(normalized)) {
+                OvertakingTrainingScenario[] scenarios = {
+                        LANE_CHANGE, STRAIGHT, SINGLE_FAR, SINGLE_MEDIUM, SINGLE
+                };
+                return scenarios[Math.floorMod(episodeIndex, scenarios.length)];
+            }
+            if ("comprehensive".equals(normalized)) {
+                OvertakingTrainingScenario[] scenarios = {
+                        CLOSING,
+                        LANE_CHANGE,
+                        STRAIGHT,
+                        SINGLE_FAR,
+                        SINGLE_MEDIUM,
+                        SINGLE,
+                        PACK
+                };
+                return scenarios[Math.floorMod(episodeIndex, scenarios.length)];
+            }
+            if ("lane_change".equals(normalized)
+                    || "gentle".equals(normalized)) {
+                return LANE_CHANGE;
+            }
+            if ("straight".equals(normalized)) {
+                return STRAIGHT;
+            }
+            if ("single_far".equals(normalized)) {
+                return SINGLE_FAR;
+            }
+            if ("single_medium".equals(normalized)) {
+                return SINGLE_MEDIUM;
+            }
+            if ("closing".equals(normalized)
+                    || "high_closing".equals(normalized)
+                    || "fast_approach".equals(normalized)) {
+                return CLOSING;
+            }
+            if ("single".equals(normalized) || "one".equals(normalized)) {
+                return SINGLE;
+            }
+            if ("pack".equals(normalized) || "traffic".equals(normalized)) {
+                return PACK;
+            }
+            throw new IllegalArgumentException("Unknown overtaking scenario: " + configured);
         }
     }
 
@@ -30038,6 +30780,12 @@ public class RatassGame extends ApplicationAdapter {
         public boolean raceMode = true;
         public boolean recoveryTraining;
         public String recoveryScenario = "mixed";
+        public boolean overtakingTraining;
+        public String overtakingScenario = "mixed";
+        public String overtakingBasePolicyId = "profile07";
+        public String overtakingOpponentPolicyId = "profile07";
+        public int overtakingOpponentCount = 3;
+        public float overtakingOpponentThrottleScale = 0.90f;
         public boolean randomRaceSpawns;
         public boolean debugTraceEnabled;
         public boolean rewardBreakdownEnabled = true;
@@ -30066,6 +30814,14 @@ public class RatassGame extends ApplicationAdapter {
         public float recoverySteeringReward = 5f;
         public float recoveryStationaryPenalty = 0.15f;
         public float recoverySuccessReward = 2000f;
+        public float overtakingGapReward = 4f;
+        public float overtakingSafetyReward = 300f;
+        public float overtakingLaneReward = 100f;
+        public float overtakingPositionReward = 100f;
+        public float overtakingHoldReward = 1f;
+        public float overtakingSuccessReward = 500f;
+        public float overtakingFailurePenalty = 250f;
+        public float overtakingResidualPenalty = 0.02f;
 
         public RlTrainingConfig addMap(ArenaMap map) {
             if (map != null) {
@@ -30178,10 +30934,50 @@ public class RatassGame extends ApplicationAdapter {
         public RlTrainingConfig withRecoveryTraining(boolean recoveryTraining) {
             this.recoveryTraining = recoveryTraining;
             if (recoveryTraining) {
+                overtakingTraining = false;
                 controlledAgentCount = 1;
                 fieldSize = 1;
                 routeTargets = 1;
             }
+            return this;
+        }
+
+        public RlTrainingConfig withOvertakingTraining(boolean overtakingTraining) {
+            this.overtakingTraining = overtakingTraining;
+            if (overtakingTraining) {
+                recoveryTraining = false;
+                controlledAgentCount = 1;
+                fieldSize = overtakingOpponentCount + 1;
+                routeTargets = 1;
+                randomRaceSpawns = false;
+            }
+            return this;
+        }
+
+        public RlTrainingConfig withOvertakingScenario(String overtakingScenario) {
+            this.overtakingScenario = overtakingScenario == null ? "mixed" : overtakingScenario;
+            return this;
+        }
+
+        public RlTrainingConfig withOvertakingPolicies(
+                String basePolicyId,
+                String opponentPolicyId) {
+            overtakingBasePolicyId = basePolicyId == null ? "profile07" : basePolicyId;
+            overtakingOpponentPolicyId = opponentPolicyId == null ? "profile07" : opponentPolicyId;
+            return this;
+        }
+
+        public RlTrainingConfig withOvertakingOpponentCount(int opponentCount) {
+            overtakingOpponentCount = MathUtils.clamp(opponentCount, 1, MAX_CAR_COUNT - 1);
+            if (overtakingTraining) {
+                fieldSize = overtakingOpponentCount + 1;
+            }
+            return this;
+        }
+
+        public RlTrainingConfig withOvertakingOpponentThrottleScale(float throttleScale) {
+            overtakingOpponentThrottleScale =
+                    Float.isFinite(throttleScale) ? Math.max(0f, throttleScale) : 1f;
             return this;
         }
 
@@ -30296,6 +31092,26 @@ public class RatassGame extends ApplicationAdapter {
             return this;
         }
 
+        public RlTrainingConfig withOvertakingRewards(
+                float gapReward,
+                float safetyReward,
+                float laneReward,
+                float positionReward,
+                float holdReward,
+                float successReward,
+                float failurePenalty,
+                float residualPenalty) {
+            overtakingGapReward = gapReward;
+            overtakingSafetyReward = safetyReward;
+            overtakingLaneReward = laneReward;
+            overtakingPositionReward = positionReward;
+            overtakingHoldReward = holdReward;
+            overtakingSuccessReward = successReward;
+            overtakingFailurePenalty = failurePenalty;
+            overtakingResidualPenalty = residualPenalty;
+            return this;
+        }
+
     }
 
     public static final class RlStepResult {
@@ -30391,6 +31207,9 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 recoverySpawnPoint = new Vector2();
         private final Vector2 recoverySpawnTangent = new Vector2();
         private final Vector2 recoverySpawnNormal = new Vector2();
+        private final Vector2 overtakingSpawnPoint = new Vector2();
+        private final Vector2 overtakingSpawnTangent = new Vector2();
+        private final Vector2 overtakingSpawnNormal = new Vector2();
         private final RlAgentSnapshot[] beforeSnapshots;
         private final RlAgentSnapshot[] afterSnapshots;
         private final float[] observations;
@@ -30424,7 +31243,28 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2[] recoveryTargetTangents;
         private final float[] recoveryStableSeconds;
         private final int controlledAgentCount;
+        private final int observationSize;
+        private final int actionSize;
         private RecoveryTrainingScenario recoveryScenario;
+        private OvertakingTrainingScenario overtakingScenario;
+        private RlPolicy overtakingBasePolicy;
+        private RlPolicy overtakingOpponentPolicy;
+        private float overtakingBaseThrottle;
+        private float overtakingBaseTurn;
+        private float overtakingPreviousGap;
+        private float overtakingGapDelta;
+        private float overtakingPreviousCollisionRisk;
+        private float overtakingCollisionRiskDelta;
+        private float overtakingPreviousLateralClearance;
+        private float overtakingLateralClearanceDelta;
+        private boolean overtakingSafeToAdvance;
+        private int overtakingTargetRank;
+        private int overtakingPreviousRank;
+        private int overtakingRankDelta;
+        private float overtakingStableSeconds;
+        private boolean overtakingContactOccurred;
+        private boolean overtakingWentAlongside;
+        private boolean overtakingAlongsideEvent;
         private int episodeIndex;
         private int actionStep;
         private boolean episodeStarted;
@@ -30446,19 +31286,25 @@ public class RatassGame extends ApplicationAdapter {
                     new MapProgression(
                             trainingMaps,
                             new Random(this.config.seed ^ 0x9E3779B97F4A7C15L));
-            controlledAgentCount = this.config.recoveryTraining
+            controlledAgentCount = this.config.recoveryTraining || this.config.overtakingTraining
                     ? 1
                     : MathUtils.clamp(this.config.controlledAgentCount, 1, MAX_CAR_COUNT);
+            observationSize = this.config.overtakingTraining
+                    ? RL_OVERTAKING_OBSERVATION_SIZE
+                    : RL_OBSERVATION_SIZE;
+            actionSize = this.config.overtakingTraining
+                    ? RL_OVERTAKING_ACTION_SIZE
+                    : RL_ACTION_SIZE;
             beforeSnapshots = new RlAgentSnapshot[controlledAgentCount];
             afterSnapshots = new RlAgentSnapshot[controlledAgentCount];
             for (int i = 0; i < controlledAgentCount; i++) {
                 beforeSnapshots[i] = new RlAgentSnapshot();
                 afterSnapshots[i] = new RlAgentSnapshot();
             }
-            observations = new float[controlledAgentCount * RL_OBSERVATION_SIZE];
+            observations = new float[controlledAgentCount * observationSize];
             rewards = new float[controlledAgentCount];
             rewardBreakdown = new float[controlledAgentCount * RL_REWARD_BREAKDOWN_SIZE];
-            effectiveActions = new float[controlledAgentCount * RL_ACTION_SIZE];
+            effectiveActions = new float[controlledAgentCount * actionSize];
             currentActionThrottle = new float[controlledAgentCount];
             previousActionThrottle = new float[controlledAgentCount];
             currentActionTurn = new float[controlledAgentCount];
@@ -30497,13 +31343,15 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         public int getObservationSize() {
-            return RL_OBSERVATION_SIZE;
+            return observationSize;
         }
 
         public String[] getObservationNames() {
-            String[] source = config.recoveryTraining
-                    ? RL_RECOVERY_OBSERVATION_NAMES
-                    : RL_OBSERVATION_NAMES;
+            String[] source = config.overtakingTraining
+                    ? RL_OVERTAKING_OBSERVATION_NAMES
+                    : config.recoveryTraining
+                            ? RL_RECOVERY_OBSERVATION_NAMES
+                            : RL_OBSERVATION_NAMES;
             String[] names = new String[source.length];
             for (int i = 0; i < source.length; i++) {
                 names[i] = source[i];
@@ -30512,7 +31360,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         public int getActionSize() {
-            return RL_ACTION_SIZE;
+            return actionSize;
         }
 
         /** Returns temporary physical mirror cars for benchmark and integration diagnostics. */
@@ -30532,15 +31380,34 @@ public class RatassGame extends ApplicationAdapter {
             recoveryScenario = config.recoveryTraining
                     ? RecoveryTrainingScenario.select(config.recoveryScenario, episodeIndex)
                     : null;
+            overtakingScenario = config.overtakingTraining
+                    ? OvertakingTrainingScenario.select(config.overtakingScenario, episodeIndex)
+                    : null;
+            if (config.overtakingTraining) {
+                overtakingBasePolicy = game.loadRlPolicy(
+                        game.buildRlPolicyPath(config.overtakingBasePolicyId),
+                        config.overtakingBasePolicyId);
+                overtakingOpponentPolicy = game.loadRlPolicy(
+                        game.buildRlPolicyPath(config.overtakingOpponentPolicyId),
+                        config.overtakingOpponentPolicyId);
+                if (overtakingBasePolicy == null || overtakingOpponentPolicy == null) {
+                    throw new IllegalStateException(
+                            "Overtaking training requires valid base and opponent policies.");
+                }
+            }
             episodeIndex++;
             MathUtils.random.setSeed(episodeSeed);
             Box2D.init();
 
             createRoster();
-            game.rlTrainingAllowSoloRound = config.recoveryTraining || game.roster.size <= 1;
+            game.rlTrainingAllowSoloRound = config.recoveryTraining
+                    || config.overtakingTraining
+                    || game.roster.size <= 1;
             game.rlTrainingDisablePickups = true;
             game.rlTrainingRandomSpawnLocations =
-                    !config.recoveryTraining && config.randomRaceSpawns;
+                    !config.recoveryTraining
+                            && !config.overtakingTraining
+                            && config.randomRaceSpawns;
             game.rlTrainingMode = true;
             game.rlTrainingRaceMode = true;
             game.rlBenchmarkCardsEnabled = config.benchmarkCard != null;
@@ -30555,6 +31422,8 @@ public class RatassGame extends ApplicationAdapter {
             game.resetRound(false);
             if (config.recoveryTraining) {
                 configureRecoveryScenario();
+            } else if (config.overtakingTraining) {
+                configureOvertakingScenario();
             }
             configureBenchmarkCard();
             if (config.skipCountdown) {
@@ -30574,6 +31443,16 @@ public class RatassGame extends ApplicationAdapter {
             episodeOffRoadFailure = false;
             clearEpisodeMetrics();
             clearRewards();
+            if (config.overtakingTraining) {
+                refreshOvertakingBaseControl(1f);
+                overtakingPreviousGap = getOvertakingGap();
+                overtakingPreviousCollisionRisk = getOvertakingCollisionRisk();
+                overtakingPreviousLateralClearance = getOvertakingLateralClearance();
+                overtakingPreviousRank = getOvertakingRank();
+                overtakingTargetRank = overtakingScenario == OvertakingTrainingScenario.LANE_CHANGE
+                        ? 1
+                        : Math.max(1, overtakingPreviousRank - 1);
+            }
             game.checkpointTargetActive = false;
             resetCheckpointDeadlines();
             captureSnapshots(afterSnapshots);
@@ -30627,6 +31506,8 @@ public class RatassGame extends ApplicationAdapter {
             float elapsedSeconds = simulatedPhysicsSteps * PHYSICS_STEP;
             if (config.recoveryTraining) {
                 updateRecoveryGoal(elapsedSeconds);
+            } else if (config.overtakingTraining) {
+                updateOvertakingGoal(elapsedSeconds);
             } else {
                 updateNoProgressState();
                 updateOffRoadFailureState();
@@ -30634,21 +31515,27 @@ public class RatassGame extends ApplicationAdapter {
             boolean trainingRaceCompleted = hasCompletedTrainingRace();
             episodeNoProgressFailure =
                     !config.recoveryTraining
+                            && !config.overtakingTraining
                             && !game.roundOver
                             && !trainingRaceCompleted
                             && hasNoProgressTimeout();
             episodeOffRoadFailure =
                     !config.recoveryTraining
+                            && !config.overtakingTraining
                             && !game.roundOver
                             && !trainingRaceCompleted
                             && hasOffRoadFailureTimeout();
             episodeTerminated =
                     game.roundOver
                             || trainingRaceCompleted
+                            || (config.overtakingTraining && overtakingContactOccurred)
                             || episodeNoProgressFailure
                             || episodeOffRoadFailure;
             episodeTruncated = !episodeTerminated && maxStepsReached;
             episodeDone = episodeTerminated || episodeTruncated;
+            if (config.overtakingTraining && !episodeDone) {
+                refreshOvertakingBaseControl(elapsedSeconds);
+            }
             buildObservations();
             computeRewards(elapsedSeconds);
         }
@@ -30697,8 +31584,7 @@ public class RatassGame extends ApplicationAdapter {
                         Integer.valueOf(game.roster.get(game.roster.size - 1).vehicleId));
             }
 
-            if (config.recoveryTraining
-                    && recoveryScenario == RecoveryTrainingScenario.BLOCKED_FRONT) {
+            if (config.recoveryTraining && recoveryScenario.usesBlocker()) {
                 CarVisual visual = game.getCarVisual(1);
                 game.addRosterTemplate(
                         "Blocker",
@@ -30712,7 +31598,217 @@ public class RatassGame extends ApplicationAdapter {
                         CarPhysics.DEFAULT);
             }
 
+            if (config.overtakingTraining) {
+                int opponentCount;
+                if (overtakingScenario == OvertakingTrainingScenario.PACK) {
+                    opponentCount = config.overtakingOpponentCount;
+                } else if (overtakingScenario == OvertakingTrainingScenario.LANE_CHANGE) {
+                    opponentCount = 2;
+                } else {
+                    opponentCount = 1;
+                }
+                for (int i = 0; i < opponentCount; i++) {
+                    CarVisual visual = game.getCarVisual(i + 1);
+                    game.addRosterTemplate(
+                            "Opponent " + (i + 1),
+                            false,
+                            new Color(visual.color),
+                            visual,
+                            "opponent-" + i,
+                            false,
+                            true,
+                            overtakingOpponentPolicy,
+                            CarPhysics.DEFAULT);
+                }
+            }
+
             game.invalidateLeaderboard();
+        }
+
+        private void configureOvertakingScenario() {
+            Car learner = getControlledCar(0);
+            ArenaMap map = game.currentMap;
+            if (learner == null || learner.body == null || map == null || !map.hasRoute()) {
+                return;
+            }
+
+            float routeLength = Math.max(0.001f, map.getRouteLength());
+            int opponentCount = Math.max(1, game.roster.size - 1);
+            float learnerLaneFraction = 0f;
+            if (overtakingScenario == OvertakingTrainingScenario.LANE_CHANGE) {
+                learnerLaneFraction = (episodeIndex & 1) == 0 ? -0.35f : 0.35f;
+            } else if (opponentCount == 1) {
+                // Alternate sides deterministically so a constant steering shortcut cannot
+                // solve the curriculum. Starting near an edge makes the safe passing lane
+                // the road center, which is observable through the existing road sensors.
+                learnerLaneFraction = (episodeIndex & 1) == 0 ? -0.95f : 0.95f;
+            }
+            float gap;
+            float learnerSpeed;
+            float closingOpponentSpeed = 0f;
+            float straightOpponentSpeed = 0f;
+            if (overtakingScenario == OvertakingTrainingScenario.CLOSING) {
+                closingOpponentSpeed = MathUtils.random(10f, 20f);
+                float closingSpeed = MathUtils.random(12f, 24f);
+                learnerSpeed = closingOpponentSpeed + closingSpeed;
+                gap = MathUtils.clamp(
+                        closingSpeed * MathUtils.random(1.5f, 2.5f) + Car.HEIGHT * 2f,
+                        Car.HEIGHT * 8f,
+                        Car.HEIGHT * 19f);
+            } else if (overtakingScenario == OvertakingTrainingScenario.LANE_CHANGE) {
+                gap = Car.HEIGHT * MathUtils.random(6f, 9f);
+                straightOpponentSpeed = MathUtils.random(8f, 13f);
+                learnerSpeed = straightOpponentSpeed + MathUtils.random(2f, 4f);
+            } else if (overtakingScenario == OvertakingTrainingScenario.STRAIGHT) {
+                // Keep enough approach time to choose a side, but preserve the learner's
+                // initial speed advantage long enough for a steering-only clean pass.
+                gap = Car.HEIGHT * MathUtils.random(3f, 5f);
+                straightOpponentSpeed = MathUtils.random(8f, 13f);
+                learnerSpeed = straightOpponentSpeed + MathUtils.random(4f, 8f);
+            } else if (overtakingScenario == OvertakingTrainingScenario.SINGLE_FAR) {
+                // Introduce unrestricted road geometry while preserving the preparation time
+                // learned in the lane-change stage.
+                gap = Car.HEIGHT * MathUtils.random(6f, 9f);
+                straightOpponentSpeed = MathUtils.random(8f, 13f);
+                learnerSpeed = straightOpponentSpeed + MathUtils.random(2f, 4f);
+            } else if (overtakingScenario == OvertakingTrainingScenario.SINGLE_MEDIUM) {
+                // Reduce the available reaction time before exposing the actor to the close
+                // gaps used by the final single-opponent scenario.
+                gap = Car.HEIGHT * MathUtils.random(3.5f, 5.5f);
+                straightOpponentSpeed = MathUtils.random(8f, 13f);
+                learnerSpeed = straightOpponentSpeed + MathUtils.random(3f, 6f);
+            } else {
+                gap = Car.HEIGHT * MathUtils.random(1.7f, 3.2f);
+                learnerSpeed = MathUtils.random(9f, 14f);
+            }
+            float leadProgress = MathUtils.random(0f, routeLength);
+            if (overtakingScenario == OvertakingTrainingScenario.LANE_CHANGE
+                    || overtakingScenario == OvertakingTrainingScenario.STRAIGHT
+                    || overtakingScenario == OvertakingTrainingScenario.CLOSING) {
+                for (int attempt = 0; attempt < 240; attempt++) {
+                    float candidate = MathUtils.random(0f, routeLength);
+                    if (isOvertakingStraightCorridor(
+                            map,
+                            candidate - gap - Car.HEIGHT * 2f,
+                            candidate + Car.HEIGHT * 12f)) {
+                        leadProgress = candidate;
+                        break;
+                    }
+                }
+            }
+            float learnerProgress = leadProgress - gap;
+            placeOvertakingCar(
+                    learner,
+                    learnerProgress,
+                    learnerLaneFraction,
+                    learnerSpeed);
+
+            for (int i = 0; i < opponentCount; i++) {
+                Car opponent = game.roster.get(i + 1).currentCar;
+                if (opponent == null || opponent.body == null) {
+                    continue;
+                }
+                opponent.trainingThrottleScale = config.overtakingOpponentThrottleScale;
+                float progress;
+                float lateralFraction;
+                if (overtakingScenario == OvertakingTrainingScenario.LANE_CHANGE) {
+                    progress = leadProgress + i * Car.HEIGHT * 0.5f;
+                } else {
+                    progress = leadProgress + i * Car.HEIGHT * 1.8f;
+                }
+                if (overtakingScenario == OvertakingTrainingScenario.LANE_CHANGE) {
+                    lateralFraction = i == 0
+                            ? learnerLaneFraction
+                            : Math.copySign(0.98f, learnerLaneFraction);
+                } else if (opponentCount <= 1) {
+                    lateralFraction = learnerLaneFraction;
+                } else {
+                    lateralFraction = i % 2 == 0 ? -0.30f : 0.30f;
+                }
+                float opponentSpeed;
+                if (overtakingScenario == OvertakingTrainingScenario.CLOSING) {
+                    opponentSpeed = closingOpponentSpeed;
+                } else if (overtakingScenario == OvertakingTrainingScenario.LANE_CHANGE
+                        || overtakingScenario == OvertakingTrainingScenario.STRAIGHT
+                        || overtakingScenario == OvertakingTrainingScenario.SINGLE_FAR
+                        || overtakingScenario == OvertakingTrainingScenario.SINGLE_MEDIUM) {
+                    opponentSpeed = straightOpponentSpeed;
+                } else {
+                    opponentSpeed = MathUtils.random(8f, 13f);
+                }
+                placeOvertakingCar(
+                        opponent,
+                        progress,
+                        lateralFraction,
+                        opponentSpeed);
+            }
+        }
+
+        private boolean isOvertakingStraightCorridor(
+                ArenaMap map,
+                float startProgress,
+                float endProgress) {
+            float sampleStep = Car.HEIGHT * 2f;
+            for (float progress = startProgress; progress <= endProgress; progress += sampleStep) {
+                if (Math.abs(map.getRouteCurvature(progress)) >= 0.025f) {
+                    return false;
+                }
+            }
+            return Math.abs(map.getRouteCurvature(endProgress)) < 0.025f;
+        }
+
+        private void placeOvertakingCar(
+                Car car,
+                float routeProgress,
+                float lateralFraction,
+                float forwardSpeed) {
+            ArenaMap map = game.currentMap;
+            map.findRoutePoint(routeProgress, overtakingSpawnPoint);
+            map.findRouteTangent(routeProgress, overtakingSpawnTangent);
+            if (overtakingSpawnTangent.isZero(0.0001f)) {
+                overtakingSpawnTangent.set(0f, 1f);
+            } else {
+                overtakingSpawnTangent.nor();
+            }
+            overtakingSpawnNormal.set(-overtakingSpawnTangent.y, overtakingSpawnTangent.x);
+            float clearance = Math.max(
+                    0f,
+                    Math.min(
+                                    map.getRouteLeftClearance(routeProgress),
+                                    map.getRouteRightClearance(routeProgress))
+                            - Car.WIDTH);
+            overtakingSpawnPoint.mulAdd(
+                    overtakingSpawnNormal,
+                    MathUtils.clamp(lateralFraction, -0.98f, 0.98f) * clearance);
+            float angle = (float) Math.atan2(-overtakingSpawnTangent.x, overtakingSpawnTangent.y);
+            car.body.setTransform(overtakingSpawnPoint.x, overtakingSpawnPoint.y, angle);
+            car.body.setLinearVelocity(
+                    overtakingSpawnTangent.x * forwardSpeed,
+                    overtakingSpawnTangent.y * forwardSpeed);
+            car.body.setAngularVelocity(0f);
+            car.body.setAwake(true);
+            car.template.roundRaceLastRouteProgress = routeProgress;
+            car.template.roundRaceStartRouteProgress = routeProgress;
+            car.template.roundRaceStartRouteIndex = map.getRouteProgressIndex(routeProgress);
+            car.template.roundRaceRouteIndex = 0;
+            car.template.roundRaceTotalRouteProgress = 0f;
+            car.template.roundRaceDistanceThisLap = 0f;
+            car.syncRenderTransformToBody();
+        }
+
+        private void refreshOvertakingBaseControl(float elapsedSeconds) {
+            Car learner = getControlledCar(0);
+            if (learner == null || learner.body == null || overtakingBasePolicy == null) {
+                overtakingBaseThrottle = 0f;
+                overtakingBaseTurn = 0f;
+                return;
+            }
+            AiControlDecision decision = learner.planWithRlPolicy(
+                    Math.max(RL_LIVE_DECISION_INTERVAL, elapsedSeconds),
+                    overtakingBasePolicy,
+                    game.currentMap);
+            overtakingBaseThrottle = decision.throttle;
+            overtakingBaseTurn = decision.turn;
         }
 
         private void configureRecoveryScenario() {
@@ -30726,7 +31822,7 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             float routeLength = Math.max(0.001f, map.getRouteLength());
-            float routeProgress = MathUtils.random(0f, routeLength);
+            float routeProgress = selectRecoveryRouteProgress(map, routeLength);
             map.findRoutePoint(routeProgress, recoverySpawnPoint);
             map.findRouteTangent(routeProgress, recoverySpawnTangent);
             if (recoverySpawnTangent.isZero(0.0001f)) {
@@ -30805,20 +31901,56 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             placeRecoveryCar(learner, recoverySpawnPoint, spawnAngle, routeProgress);
-            if (recoveryScenario == RecoveryTrainingScenario.BLOCKED_FRONT
-                    && game.roster.size > 1) {
+            if (recoveryScenario.usesBlocker() && game.roster.size > 1) {
                 Car blocker = game.roster.get(1).currentCar;
                 if (blocker != null && blocker.body != null) {
+                    boolean noseToNose = recoveryScenario == RecoveryTrainingScenario.NOSE_TO_NOSE;
                     observationTargetPosition
                             .set(recoverySpawnPoint)
-                            .mulAdd(recoverySpawnTangent, Car.HEIGHT * 0.92f)
-                            .mulAdd(
-                                    recoverySpawnNormal,
-                                    MathUtils.random(-Car.WIDTH * 0.12f, Car.WIDTH * 0.12f));
-                    placeRecoveryCar(blocker, observationTargetPosition, routeAngle, routeProgress);
+                            .mulAdd(recoverySpawnTangent, Car.HEIGHT * 0.98f);
+                    if (!noseToNose) {
+                        observationTargetPosition.mulAdd(
+                                recoverySpawnNormal,
+                                MathUtils.random(-Car.WIDTH * 0.12f, Car.WIDTH * 0.12f));
+                    }
+                    float blockerAngle = noseToNose
+                            ? routeAngle + MathUtils.PI
+                            : routeAngle;
+                    placeRecoveryCar(
+                            blocker,
+                            observationTargetPosition,
+                            blockerAngle,
+                            routeProgress);
                     blocker.setDirectRlControl(0f, 0f);
                 }
             }
+        }
+
+        private float selectRecoveryRouteProgress(ArenaMap map, float routeLength) {
+            float selectedProgress = MathUtils.random(0f, routeLength);
+            if (recoveryScenario != RecoveryTrainingScenario.NOSE_TO_NOSE) {
+                return selectedProgress;
+            }
+
+            float bestScore = Float.POSITIVE_INFINITY;
+            float requiredRoadWidth = Car.WIDTH * 3f;
+            for (int attempt = 0; attempt < 48; attempt++) {
+                float candidateProgress = MathUtils.random(0f, routeLength);
+                float blockerProgress = candidateProgress + Car.HEIGHT * 0.98f;
+                float curvature = Math.max(
+                        Math.abs(map.getRouteCurvature(candidateProgress)),
+                        Math.abs(map.getRouteCurvature(blockerProgress)));
+                float roadWidth = Math.min(
+                        map.getRouteRoadWidth(candidateProgress),
+                        map.getRouteRoadWidth(blockerProgress));
+                float widthShortfall = Math.max(0f, requiredRoadWidth - roadWidth);
+                float score = curvature + widthShortfall * 4f;
+                if (score < bestScore) {
+                    bestScore = score;
+                    selectedProgress = candidateProgress;
+                }
+            }
+            return selectedProgress;
         }
 
         private void placeRecoveryCar(
@@ -31055,15 +32187,40 @@ public class RatassGame extends ApplicationAdapter {
                 if (car == null || !car.active) {
                     continue;
                 }
-                int actionOffset = agentIndex * RL_ACTION_SIZE;
-                float throttle =
-                        actions != null && actionOffset < actions.length
-                                ? actions[actionOffset]
-                                : 0f;
-                float turn =
-                        actions != null && actionOffset + 1 < actions.length
-                                ? actions[actionOffset + 1]
-                                : 0f;
+                int actionOffset = agentIndex * actionSize;
+                float throttle;
+                float turn;
+                if (config.overtakingTraining) {
+                    boolean overtakingActive = car.hasNearbyOvertakingCar(
+                            game.cars,
+                            game.mirrorCars);
+                    float turnResidual = overtakingActive
+                            && actions != null
+                            && actionOffset < actions.length
+                            ? MathUtils.clamp(actions[actionOffset], -1f, 1f)
+                            : 0f;
+                    throttle = overtakingBaseThrottle;
+                    if (car.isLongStraightRoad(game.currentMap)) {
+                        throttle = 1f;
+                    }
+                    turn = MathUtils.clamp(
+                            overtakingBaseTurn
+                                    + turnResidual * RL_OVERTAKING_TURN_AUTHORITY,
+                            -1f,
+                            1f);
+                    previousActionThrottle[agentIndex] = currentActionThrottle[agentIndex];
+                    currentActionThrottle[agentIndex] = 0f;
+                    previousActionTurn[agentIndex] = currentActionTurn[agentIndex];
+                    currentActionTurn[agentIndex] = turnResidual;
+                    car.setDirectRlControl(throttle, turn);
+                    continue;
+                }
+                throttle = actions != null && actionOffset < actions.length
+                        ? actions[actionOffset]
+                        : 0f;
+                turn = actions != null && actionOffset + 1 < actions.length
+                        ? actions[actionOffset + 1]
+                        : 0f;
                 throttle = MathUtils.clamp(throttle, -1f, 1f);
                 turn = MathUtils.clamp(turn, -1f, 1f);
                 previousActionThrottle[agentIndex] = currentActionThrottle[agentIndex];
@@ -31193,6 +32350,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private void clearStepEvents() {
+            overtakingAlongsideEvent = false;
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
                 routeProgressDeltas[agentIndex] = 0f;
                 checkpointCrossRewardEvents[agentIndex] = false;
@@ -31383,6 +32541,10 @@ public class RatassGame extends ApplicationAdapter {
                 computeRecoveryRewards();
                 return;
             }
+            if (config.overtakingTraining) {
+                computeOvertakingRewards(elapsedSeconds);
+                return;
+            }
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
                 clearRewardBreakdown(agentIndex);
                 RlAgentSnapshot before = beforeSnapshots[agentIndex];
@@ -31442,6 +32604,341 @@ public class RatassGame extends ApplicationAdapter {
                 rewards[agentIndex] = reward;
                 dones[agentIndex] = episodeDone;
             }
+        }
+
+        private void updateOvertakingGoal(float elapsedSeconds) {
+            Car learner = getControlledCar(0);
+            if (afterSnapshots[0].carHitCount > beforeSnapshots[0].carHitCount
+                    || (learner != null && learner.carContactCount > 0)) {
+                overtakingContactOccurred = true;
+            }
+            boolean alongside = isOvertakingAlongside();
+            overtakingAlongsideEvent = alongside && !overtakingWentAlongside;
+            overtakingWentAlongside = overtakingWentAlongside || alongside;
+            int currentRank = getOvertakingRank();
+            float currentGap = getOvertakingGap();
+            float currentCollisionRisk = getOvertakingCollisionRisk();
+            overtakingRankDelta = overtakingPreviousRank - currentRank;
+            overtakingGapDelta = MathUtils.clamp(
+                    currentGap - overtakingPreviousGap,
+                    -Car.HEIGHT,
+                    Car.HEIGHT);
+            overtakingPreviousRank = currentRank;
+            overtakingPreviousGap = currentGap;
+            overtakingCollisionRiskDelta = MathUtils.clamp(
+                    overtakingPreviousCollisionRisk - currentCollisionRisk,
+                    -1f,
+                    1f);
+            overtakingPreviousCollisionRisk = currentCollisionRisk;
+            float currentLateralClearance = getOvertakingLateralClearance();
+            overtakingLateralClearanceDelta = MathUtils.clamp(
+                    (currentLateralClearance - overtakingPreviousLateralClearance) / Car.WIDTH,
+                    -1f,
+                    1f);
+            overtakingPreviousLateralClearance = currentLateralClearance;
+
+            boolean closingThreatResolved =
+                    overtakingScenario == OvertakingTrainingScenario.CLOSING
+                            && OvertakingSectorSensors.closingThreatResolved(
+                                    overtakingContactOccurred,
+                                    currentCollisionRisk,
+                                    currentLateralClearance,
+                                    Car.WIDTH * 1.25f);
+            overtakingSafeToAdvance =
+                    OvertakingSectorSensors.closingThreatResolved(
+                            overtakingContactOccurred,
+                            currentCollisionRisk,
+                            currentLateralClearance,
+                            Car.WIDTH * 1.25f);
+            boolean cleanPassCompleted =
+                    overtakingScenario != OvertakingTrainingScenario.CLOSING
+                            && !overtakingContactOccurred
+                            && currentRank <= overtakingTargetRank
+                            && getOvertakingClosestTrailingLead() >= Car.HEIGHT * 0.8f;
+            if (closingThreatResolved || cleanPassCompleted) {
+                overtakingStableSeconds += Math.max(0f, elapsedSeconds);
+            } else {
+                overtakingStableSeconds = 0f;
+            }
+            float requiredStableSeconds =
+                    overtakingScenario == OvertakingTrainingScenario.CLOSING ? 3f : 1f;
+            if (overtakingStableSeconds >= requiredStableSeconds) {
+                routeTargetsReached[0] = 1;
+            }
+        }
+
+        private int getOvertakingRank() {
+            Car learner = getControlledCar(0);
+            if (learner == null || learner.body == null || game.currentMap == null) {
+                return game.roster.size;
+            }
+            float learnerProgress = getCarRouteProgress(learner);
+            int rank = 1;
+            for (int i = 1; i < game.roster.size; i++) {
+                Car opponent = game.roster.get(i).currentCar;
+                if (opponent != null
+                        && opponent.active
+                        && opponent.body != null
+                        && game.currentMap.routeProgressDelta(
+                                        learnerProgress,
+                                        getCarRouteProgress(opponent))
+                                > 0f) {
+                    rank++;
+                }
+            }
+            return rank;
+        }
+
+        private float getOvertakingGap() {
+            Car learner = getControlledCar(0);
+            if (learner == null || learner.body == null || game.currentMap == null) {
+                return 0f;
+            }
+            float learnerProgress = getCarRouteProgress(learner);
+            float total = 0f;
+            int count = 0;
+            for (int i = 1; i < game.roster.size; i++) {
+                Car opponent = game.roster.get(i).currentCar;
+                if (opponent == null || !opponent.active || opponent.body == null) {
+                    continue;
+                }
+                total += game.currentMap.routeProgressDelta(
+                        getCarRouteProgress(opponent), learnerProgress);
+                count++;
+            }
+            return count == 0 ? 0f : total / count;
+        }
+
+        private float getOvertakingCollisionRisk() {
+            Car learner = getControlledCar(0);
+            if (learner == null || learner.body == null || game.currentMap == null) {
+                return 0f;
+            }
+            float learnerProgress = getCarRouteProgress(learner);
+            game.currentMap.findRouteTangent(learnerProgress, overtakingSpawnTangent);
+            if (overtakingSpawnTangent.isZero(0.0001f)) {
+                return 0f;
+            }
+            overtakingSpawnTangent.nor();
+            overtakingSpawnNormal.set(-overtakingSpawnTangent.y, overtakingSpawnTangent.x);
+            Vector2 learnerPosition = learner.body.getPosition();
+            Vector2 learnerVelocity = learner.body.getLinearVelocity();
+            float learnerRouteSpeed = learnerVelocity.dot(overtakingSpawnTangent);
+            float maximumRisk = 0f;
+            for (int i = 1; i < game.roster.size; i++) {
+                Car opponent = game.roster.get(i).currentCar;
+                if (opponent == null || !opponent.active || opponent.body == null) {
+                    continue;
+                }
+                float dx = opponent.body.getPosition().x - learnerPosition.x;
+                float dy = opponent.body.getPosition().y - learnerPosition.y;
+                float forwardDistance = dx * overtakingSpawnTangent.x
+                        + dy * overtakingSpawnTangent.y;
+                float sideDistance = dx * overtakingSpawnNormal.x
+                        + dy * overtakingSpawnNormal.y;
+                float opponentRouteSpeed = opponent.body.getLinearVelocity().dot(
+                        overtakingSpawnTangent);
+                maximumRisk = Math.max(
+                        maximumRisk,
+                        OvertakingSectorSensors.closingCollisionRisk(
+                                forwardDistance,
+                                sideDistance,
+                                learnerRouteSpeed - opponentRouteSpeed,
+                                Car.HEIGHT * 0.9f,
+                                Car.WIDTH * 1.25f,
+                                1.5f));
+            }
+            return maximumRisk;
+        }
+
+        private float getOvertakingLateralClearance() {
+            Car learner = getControlledCar(0);
+            ArenaMap map = game.currentMap;
+            if (learner == null || learner.body == null || map == null) {
+                return 0f;
+            }
+            float learnerProgress = getCarRouteProgress(learner);
+            map.findRouteTangent(learnerProgress, overtakingSpawnTangent);
+            if (overtakingSpawnTangent.isZero(0.0001f)) {
+                return 0f;
+            }
+            overtakingSpawnTangent.nor();
+            overtakingSpawnNormal.set(-overtakingSpawnTangent.y, overtakingSpawnTangent.x);
+            Vector2 learnerPosition = learner.body.getPosition();
+            float closestForward = Float.POSITIVE_INFINITY;
+            float closestSide = 0f;
+            for (int i = 1; i < game.roster.size; i++) {
+                Car opponent = game.roster.get(i).currentCar;
+                if (opponent == null || !opponent.active || opponent.body == null) {
+                    continue;
+                }
+                float dx = opponent.body.getPosition().x - learnerPosition.x;
+                float dy = opponent.body.getPosition().y - learnerPosition.y;
+                float forward = dx * overtakingSpawnTangent.x + dy * overtakingSpawnTangent.y;
+                if (forward <= 0f || forward >= closestForward) {
+                    continue;
+                }
+                float distance = (float) Math.sqrt(dx * dx + dy * dy);
+                if (distance >= RL_OVERTAKING_MAX_CAR_SENSOR_RANGE) {
+                    continue;
+                }
+                closestForward = forward;
+                closestSide = dx * overtakingSpawnNormal.x + dy * overtakingSpawnNormal.y;
+            }
+            if (closestForward == Float.POSITIVE_INFINITY) {
+                return Car.WIDTH * 2f;
+            }
+            return Math.min(Math.abs(closestSide), Car.WIDTH * 2f);
+        }
+
+        private boolean isOvertakingAlongside() {
+            Car learner = getControlledCar(0);
+            if (learner == null || learner.body == null || game.currentMap == null) {
+                return false;
+            }
+            float learnerProgress = getCarRouteProgress(learner);
+            game.currentMap.findRouteTangent(learnerProgress, overtakingSpawnTangent);
+            if (overtakingSpawnTangent.isZero(0.0001f)) {
+                return false;
+            }
+            overtakingSpawnTangent.nor();
+            overtakingSpawnNormal.set(-overtakingSpawnTangent.y, overtakingSpawnTangent.x);
+            Vector2 learnerPosition = learner.body.getPosition();
+            for (int i = 1; i < game.roster.size; i++) {
+                Car opponent = game.roster.get(i).currentCar;
+                if (opponent == null || !opponent.active || opponent.body == null) {
+                    continue;
+                }
+                float dx = opponent.body.getPosition().x - learnerPosition.x;
+                float dy = opponent.body.getPosition().y - learnerPosition.y;
+                float forwardDistance = Math.abs(
+                        dx * overtakingSpawnTangent.x + dy * overtakingSpawnTangent.y);
+                float sideDistance = Math.abs(
+                        dx * overtakingSpawnNormal.x + dy * overtakingSpawnNormal.y);
+                if (forwardDistance <= Car.HEIGHT * 1.1f
+                        && sideDistance >= Car.WIDTH * 0.75f
+                        && sideDistance <= Car.WIDTH * 3f) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private float getOvertakingClosestTrailingLead() {
+            Car learner = getControlledCar(0);
+            if (learner == null || learner.body == null || game.currentMap == null) {
+                return 0f;
+            }
+            float learnerProgress = getCarRouteProgress(learner);
+            float minimum = Float.POSITIVE_INFINITY;
+            for (int i = 1; i < game.roster.size; i++) {
+                Car opponent = game.roster.get(i).currentCar;
+                if (opponent == null || !opponent.active || opponent.body == null) {
+                    continue;
+                }
+                float lead = game.currentMap.routeProgressDelta(
+                        getCarRouteProgress(opponent), learnerProgress);
+                if (lead > 0f) {
+                    minimum = Math.min(minimum, lead);
+                }
+            }
+            return minimum == Float.POSITIVE_INFINITY ? 0f : minimum;
+        }
+
+        private float getCarRouteProgress(Car car) {
+            observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
+            return game.currentMap.findRouteProgressNear(
+                    car.body.getPosition(),
+                    observationForward,
+                    car.template.roundRaceLastRouteProgress);
+        }
+
+        private void computeOvertakingRewards(float elapsedSeconds) {
+            int agentIndex = 0;
+            clearRewardBreakdown(agentIndex);
+            RlAgentSnapshot before = beforeSnapshots[agentIndex];
+            RlAgentSnapshot after = afterSnapshots[agentIndex];
+            float reward = 0f;
+            if (before.active && after.active) {
+                reward += recordReward(agentIndex, RL_REWARD_STEP_COST, -config.stepPenalty);
+                reward += recordReward(
+                        agentIndex,
+                        RL_REWARD_ROUTE_PROGRESS,
+                        overtakingCollisionRiskDelta * config.overtakingSafetyReward);
+                reward += recordReward(
+                        agentIndex,
+                        RL_REWARD_ROUTE_ALIGNMENT,
+                        overtakingLateralClearanceDelta * config.overtakingLaneReward);
+                if (overtakingContactOccurred) {
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_CAR_PUSH,
+                            -config.carPushMaxStepPenalty);
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_OFF_ROAD_FAILURE,
+                            -config.overtakingFailurePenalty);
+                } else if (offRoadDuringAction[agentIndex]) {
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_OFF_ROAD,
+                            -getOffRoadPenalty(agentIndex));
+                } else if (overtakingSafeToAdvance) {
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_ROUTE_PROGRESS,
+                            overtakingGapDelta * config.overtakingGapReward);
+                }
+                if (!overtakingContactOccurred && overtakingRankDelta != 0) {
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_ROUTE_ALIGNMENT,
+                            overtakingRankDelta * config.overtakingPositionReward);
+                }
+                if (!overtakingContactOccurred && overtakingAlongsideEvent) {
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_ROUTE_ALIGNMENT,
+                            config.overtakingPositionReward * 0.5f);
+                }
+                if (!overtakingContactOccurred && overtakingPreviousRank == 1) {
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_DRIFT,
+                            config.overtakingHoldReward * elapsedSeconds);
+                }
+                reward += recordReward(
+                        agentIndex,
+                        RL_REWARD_STEERING,
+                        -(currentActionTurn[agentIndex] * currentActionTurn[agentIndex])
+                                * config.overtakingResidualPenalty);
+                reward += recordReward(
+                        agentIndex,
+                        RL_REWARD_REVERSE_SPEED,
+                        -getReverseSpeedPenalty(after));
+                if (!overtakingContactOccurred) {
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_CAR_PUSH,
+                            -getCarPushPenalty(before, after));
+                }
+                if (!overtakingContactOccurred && routeTargetsReached[agentIndex] > 0) {
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_OFF_ROAD_RECOVERY,
+                            config.overtakingSuccessReward);
+                } else if (!overtakingContactOccurred
+                        && (episodeTruncated
+                        || episodeNoProgressFailure
+                        || episodeOffRoadFailure)) {
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_OFF_ROAD_FAILURE,
+                            -config.overtakingFailurePenalty);
+                }
+            }
+            rewards[agentIndex] = reward;
+            dones[agentIndex] = episodeDone;
         }
 
         private void updateRecoveryGoal(float elapsedSeconds) {
@@ -31550,7 +33047,7 @@ public class RatassGame extends ApplicationAdapter {
                                     * recoveryTargetTurnSignal(agentIndex, after)
                                     * config.recoverySteeringReward
                             : 0f;
-                    if (recoveryScenario == RecoveryTrainingScenario.BLOCKED_FRONT) {
+                    if (recoveryScenario.usesBlocker()) {
                         int observationOffset = agentIndex * RL_OBSERVATION_SIZE;
                         float frontCarProximity = observations[observationOffset + 21];
                         if (frontCarProximity > 0f) {
@@ -31833,10 +33330,25 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
-                if (config.recoveryTraining) {
+                if (config.overtakingTraining) {
+                    fillOvertakingObservation(
+                            observations,
+                            agentIndex * observationSize,
+                            getControlledCar(agentIndex),
+                            game.currentMap,
+                            bestRaceRouteProgress[agentIndex],
+                            overtakingBaseThrottle,
+                            overtakingBaseTurn,
+                            currentActionTurn[agentIndex],
+                            game.cars,
+                            game.mirrorCars,
+                            observationForward,
+                            observationRouteTarget,
+                            observationSide);
+                } else if (config.recoveryTraining) {
                     fillRecoveryObservation(
                             observations,
-                            agentIndex * RL_OBSERVATION_SIZE,
+                            agentIndex * observationSize,
                             getControlledCar(agentIndex),
                             game.currentMap,
                             recoveryTargetPositions[agentIndex],
@@ -31851,7 +33363,7 @@ public class RatassGame extends ApplicationAdapter {
                 } else {
                     fillRlObservation(
                             observations,
-                            agentIndex * RL_OBSERVATION_SIZE,
+                            agentIndex * observationSize,
                             getControlledCar(agentIndex),
                             game.currentMap,
                             bestRaceRouteProgress[agentIndex],
@@ -31961,6 +33473,16 @@ public class RatassGame extends ApplicationAdapter {
                 checkpointTimeoutEvents[i] = false;
                 raceCheckpointCrossEvents[i] = false;
             }
+            overtakingGapDelta = 0f;
+            overtakingCollisionRiskDelta = 0f;
+            overtakingPreviousCollisionRisk = 0f;
+            overtakingTargetRank = 1;
+            overtakingRankDelta = 0;
+            overtakingStableSeconds = 0f;
+            overtakingSafeToAdvance = false;
+            overtakingContactOccurred = false;
+            overtakingWentAlongside = false;
+            overtakingAlongsideEvent = false;
         }
 
         private RlStepResult createResult() {
@@ -32094,7 +33616,7 @@ public class RatassGame extends ApplicationAdapter {
                         Car.isTrackLimitSlowdownActive(game.currentMap, position) ? 1f : 0f;
                 out[offset + 18] = Car.getTrackLimitPenaltyDistance(game.currentMap, position);
                 out[offset + 19] = game.currentMap.approximateDistanceToHazard(position);
-                int actionOffset = agentIndex * RL_ACTION_SIZE;
+                int actionOffset = agentIndex * actionSize;
                 out[offset + 20] =
                         actionOffset < effectiveActions.length ? effectiveActions[actionOffset] : 0f;
                 out[offset + 21] =
@@ -32122,9 +33644,13 @@ public class RatassGame extends ApplicationAdapter {
                 if (car == null || !car.active) {
                     continue;
                 }
-                int actionOffset = agentIndex * RL_ACTION_SIZE;
-                effectiveActions[actionOffset] = car.lastThrottleCommand;
-                effectiveActions[actionOffset + 1] = car.lastTurnCommand;
+                int actionOffset = agentIndex * actionSize;
+                if (config.overtakingTraining) {
+                    effectiveActions[actionOffset] = currentActionTurn[agentIndex];
+                } else {
+                    effectiveActions[actionOffset] = car.lastThrottleCommand;
+                    effectiveActions[actionOffset + 1] = car.lastTurnCommand;
+                }
             }
         }
 

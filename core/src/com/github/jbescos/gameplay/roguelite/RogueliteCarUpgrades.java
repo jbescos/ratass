@@ -18,6 +18,9 @@ public final class RogueliteCarUpgrades {
     private final RogueliteDrivingFrame techniqueObservationFrame =
             new RogueliteDrivingFrame();
     private float timedEffectDecay = 1f;
+    private float techniqueEffectMultiplier = 1f;
+    private float powerupEffectMultiplier = 1f;
+    private float powerupCooldownRateMultiplier = 1f;
     private boolean overtakeInjectorEnabled;
     private RogueliteCardId activeRevengeCardId;
     private long revengeActivationSequence;
@@ -44,6 +47,9 @@ public final class RogueliteCarUpgrades {
         frame.clear();
         techniqueObservationFrame.clear();
         timedEffectDecay = 1f;
+        techniqueEffectMultiplier = 1f;
+        powerupEffectMultiplier = 1f;
+        powerupCooldownRateMultiplier = 1f;
         overtakeInjectorEnabled = false;
 
         if (loadout != null) {
@@ -60,6 +66,23 @@ public final class RogueliteCarUpgrades {
                 overtakeInjectorEnabled |= effect.tracksRacePosition();
             }
         }
+
+        for (int i = 0; i < effects.size(); i++) {
+            techniqueEffectMultiplier *= effects.get(i).techniqueEffectMultiplier();
+        }
+        float rawPowerupEffectMultiplier = 1f;
+        float rawPowerupCooldownRateMultiplier = 1f;
+        for (int i = 0; i < effects.size(); i++) {
+            rawPowerupEffectMultiplier *= effects.get(i).powerupEffectMultiplier();
+            rawPowerupCooldownRateMultiplier *=
+                    effects.get(i).powerupCooldownRateMultiplier();
+        }
+        powerupEffectMultiplier = amplifyDeviation(
+                rawPowerupEffectMultiplier,
+                techniqueEffectMultiplier);
+        powerupCooldownRateMultiplier = amplifyDeviation(
+                rawPowerupCooldownRateMultiplier,
+                techniqueEffectMultiplier);
 
         if (amplifiedActiveRevengeEffect != null
                 && !effects.contains(amplifiedActiveRevengeEffect)) {
@@ -247,12 +270,24 @@ public final class RogueliteCarUpgrades {
 
     public float getActiveTimeRemainingSeconds(RogueliteCardId cardId) {
         RogueliteUpgradeEffect effect = findEffect(cardId);
-        return effect == null ? 0f : effect.activeTimeRemainingSeconds();
+        if (effect == null) {
+            return 0f;
+        }
+        float remaining = effect.activeTimeRemainingSeconds();
+        return slotType(effect) == RogueliteSlotType.POWERUP
+                ? remaining * powerupEffectMultiplier
+                : remaining;
     }
 
     public float getCooldownTimeRemainingSeconds(RogueliteCardId cardId) {
         RogueliteUpgradeEffect effect = findEffect(cardId);
-        return effect == null ? 0f : effect.cooldownTimeRemainingSeconds();
+        if (effect == null) {
+            return 0f;
+        }
+        float remaining = effect.cooldownTimeRemainingSeconds();
+        return slotType(effect) == RogueliteSlotType.POWERUP
+                ? remaining / Math.max(0.001f, powerupCooldownRateMultiplier)
+                : remaining;
     }
 
     private RogueliteUpgradeEffect findEffect(RogueliteCardId cardId) {
@@ -572,7 +607,14 @@ public final class RogueliteCarUpgrades {
                 longStraight);
         float timerDelta = delta * timedEffectDecay;
         for (int i = 0; i < effects.size(); i++) {
-            effects.get(i).advance(delta, timerDelta, frame);
+            RogueliteUpgradeEffect effect = effects.get(i);
+            float effectTimerDelta = timerDelta;
+            if (slotType(effect) == RogueliteSlotType.POWERUP) {
+                effectTimerDelta *= effect.isActive()
+                        ? 1f / Math.max(0.001f, powerupEffectMultiplier)
+                        : powerupCooldownRateMultiplier;
+            }
+            effect.advance(delta, effectTimerDelta, frame);
         }
         refreshActiveCards();
     }
@@ -632,7 +674,8 @@ public final class RogueliteCarUpgrades {
     public float getAccelerationMultiplier(float externalMultiplier) {
         float bonus = 0f;
         for (int i = 0; i < effects.size(); i++) {
-            bonus += effects.get(i).accelerationBonus();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            bonus += effect.accelerationBonus() * effectStrengthMultiplier(effect);
         }
         float combined = (1f + bonus) * externalMultiplier;
         return RogueliteEffectMath.clamp(
@@ -644,7 +687,10 @@ public final class RogueliteCarUpgrades {
     public float getDriveForceLimitMultiplier() {
         float multiplier = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            multiplier *= effects.get(i).driveForceLimitMultiplier();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier *= amplifyDeviation(
+                    effect.driveForceLimitMultiplier(),
+                    effectStrengthMultiplier(effect));
         }
         return RogueliteEffectMath.clamp(
                 amplifyDeviation(multiplier, powerDeviationScale()),
@@ -692,7 +738,10 @@ public final class RogueliteCarUpgrades {
     public float getAerodynamicEfficiencyMultiplier(float externalMultiplier) {
         float multiplier = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            multiplier *= effects.get(i).dragMultiplier();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier *= amplifyDeviation(
+                    effect.dragMultiplier(),
+                    effectStrengthMultiplier(effect));
         }
         float combinedEfficiency = externalMultiplier / Math.max(0.01f, multiplier);
         return Math.max(
@@ -707,7 +756,10 @@ public final class RogueliteCarUpgrades {
     public float getMassMultiplier(float externalMultiplier) {
         float multiplier = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            multiplier *= effects.get(i).massMultiplier();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier *= amplifyDeviation(
+                    effect.massMultiplier(),
+                    effectStrengthMultiplier(effect));
         }
         return RogueliteEffectMath.clamp(
                 amplifyDeviation(multiplier * externalMultiplier, massDeviationScale()),
@@ -729,7 +781,8 @@ public final class RogueliteCarUpgrades {
             float carEffectMultiplier) {
         float bonus = 0f;
         for (int i = 0; i < effects.size(); i++) {
-            bonus += effects.get(i).gripBonus(slip);
+            RogueliteUpgradeEffect effect = effects.get(i);
+            bonus += effect.gripBonus(slip) * effectStrengthMultiplier(effect);
         }
         float carGrip = (1f + bonus) * carEffectMultiplier;
         float techniqueGrip = RogueliteEffectMath.amplifyPositiveDeviation(
@@ -745,7 +798,8 @@ public final class RogueliteCarUpgrades {
     public float getSteeringMultiplier(float slip) {
         float bonus = 0f;
         for (int i = 0; i < effects.size(); i++) {
-            bonus += effects.get(i).steeringBonus(slip);
+            RogueliteUpgradeEffect effect = effects.get(i);
+            bonus += effect.steeringBonus(slip) * effectStrengthMultiplier(effect);
         }
         return RogueliteEffectMath.clamp(1f + bonus, 0.70f, 2f);
     }
@@ -753,15 +807,21 @@ public final class RogueliteCarUpgrades {
     public float getSlipstreamRangeMultiplier() {
         float multiplier = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            multiplier *= effects.get(i).slipstreamRangeMultiplier();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier *= amplifyDeviation(
+                    effect.slipstreamRangeMultiplier(),
+                    effectStrengthMultiplier(effect));
         }
-        return multiplier;
+        return RogueliteEffectMath.clamp(multiplier, 1f, 2f);
     }
 
     private float powerDeviationScale() {
         float scale = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            scale *= effects.get(i).powerDeviationScale();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            scale *= amplifyDeviation(
+                    effect.powerDeviationScale(),
+                    effectStrengthMultiplier(effect));
         }
         return scale;
     }
@@ -769,7 +829,10 @@ public final class RogueliteCarUpgrades {
     private float gripDeviationScale() {
         float scale = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            scale *= effects.get(i).gripDeviationScale();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            scale *= amplifyDeviation(
+                    effect.gripDeviationScale(),
+                    effectStrengthMultiplier(effect));
         }
         return scale;
     }
@@ -777,7 +840,10 @@ public final class RogueliteCarUpgrades {
     private float aeroDeviationScale() {
         float scale = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            scale *= effects.get(i).aeroDeviationScale();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            scale *= amplifyDeviation(
+                    effect.aeroDeviationScale(),
+                    effectStrengthMultiplier(effect));
         }
         return scale;
     }
@@ -785,7 +851,10 @@ public final class RogueliteCarUpgrades {
     private float massDeviationScale() {
         float scale = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            scale *= effects.get(i).massDeviationScale();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            scale *= amplifyDeviation(
+                    effect.massDeviationScale(),
+                    effectStrengthMultiplier(effect));
         }
         return scale;
     }
@@ -797,9 +866,12 @@ public final class RogueliteCarUpgrades {
     public float getSlipstreamStrengthMultiplier() {
         float multiplier = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            multiplier *= effects.get(i).slipstreamStrengthMultiplier();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier *= amplifyDeviation(
+                    effect.slipstreamStrengthMultiplier(),
+                    effectStrengthMultiplier(effect));
         }
-        return multiplier;
+        return RogueliteEffectMath.clamp(multiplier, 1f, 2f);
     }
 
     public float getSlipstreamReleaseLerp(float baseReleaseLerp) {
@@ -813,15 +885,21 @@ public final class RogueliteCarUpgrades {
     public float getFrontCollisionRecoilMultiplier() {
         float multiplier = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            multiplier *= effects.get(i).frontCollisionRecoilMultiplier();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier *= amplifyDeviation(
+                    effect.frontCollisionRecoilMultiplier(),
+                    effectStrengthMultiplier(effect));
         }
-        return multiplier;
+        return RogueliteEffectMath.clamp(multiplier, 0f, 1f);
     }
 
     public float getFrontCollisionPushMultiplier() {
         float multiplier = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            multiplier *= effects.get(i).frontCollisionPushMultiplier();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier *= amplifyDeviation(
+                    effect.frontCollisionPushMultiplier(),
+                    effectStrengthMultiplier(effect));
         }
         return multiplier;
     }
@@ -829,7 +907,9 @@ public final class RogueliteCarUpgrades {
     public float consumeForwardLaunchSpeedRatio() {
         float speedRatio = 0f;
         for (int i = 0; i < effects.size(); i++) {
-            speedRatio += effects.get(i).consumeForwardLaunchSpeedRatio();
+            RogueliteUpgradeEffect effect = effects.get(i);
+            speedRatio += effect.consumeForwardLaunchSpeedRatio()
+                    * effectStrengthMultiplier(effect);
         }
         return RogueliteEffectMath.clamp(speedRatio, 0f, 0.50f);
     }
@@ -846,7 +926,12 @@ public final class RogueliteCarUpgrades {
     public float getDraftMagnetRangeMultiplier() {
         float multiplier = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            multiplier = Math.max(multiplier, effects.get(i).draftMagnetRangeMultiplier());
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier = Math.max(
+                    multiplier,
+                    amplifyDeviation(
+                            effect.draftMagnetRangeMultiplier(),
+                            effectStrengthMultiplier(effect)));
         }
         return multiplier;
     }
@@ -854,7 +939,12 @@ public final class RogueliteCarUpgrades {
     public float getDraftMagnetForceMultiplier() {
         float multiplier = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            multiplier = Math.max(multiplier, effects.get(i).draftMagnetForceMultiplier());
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier = Math.max(
+                    multiplier,
+                    amplifyDeviation(
+                            effect.draftMagnetForceMultiplier(),
+                            effectStrengthMultiplier(effect)));
         }
         return multiplier;
     }
@@ -1088,9 +1178,29 @@ public final class RogueliteCarUpgrades {
     public float getRevengeEffectMultiplier() {
         float multiplier = 1f;
         for (int i = 0; i < effects.size(); i++) {
-            multiplier = Math.max(multiplier, effects.get(i).revengeEffectMultiplier());
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier = Math.max(
+                    multiplier,
+                    amplifyDeviation(
+                            effect.revengeEffectMultiplier(),
+                            effectStrengthMultiplier(effect)));
         }
         return multiplier;
+    }
+
+    private static RogueliteSlotType slotType(RogueliteUpgradeEffect effect) {
+        return RogueliteCardCatalog.get(effect.getCardId()).getSlotType();
+    }
+
+    private float effectStrengthMultiplier(RogueliteUpgradeEffect effect) {
+        RogueliteSlotType slotType = slotType(effect);
+        if (slotType == RogueliteSlotType.TECHNIQUE) {
+            return techniqueEffectMultiplier;
+        }
+        if (slotType == RogueliteSlotType.POWERUP) {
+            return powerupEffectMultiplier;
+        }
+        return 1f;
     }
 
     private RogueliteRevengeStrike amplifyRevengeStrike(

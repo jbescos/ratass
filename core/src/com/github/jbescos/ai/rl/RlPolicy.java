@@ -106,7 +106,7 @@ public final class RlPolicy {
 
         return out.set(
                 MathUtils.clamp(input[0], -1f, 1f),
-                MathUtils.clamp(input[1], -1f, 1f));
+                actionSize > 1 ? MathUtils.clamp(input[1], -1f, 1f) : 0f);
     }
 
     private static float[] readFloatArray(JsonValue json) {

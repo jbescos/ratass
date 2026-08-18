@@ -169,7 +169,13 @@ final class GameTextEuropeanCatalog {
         {"Fastest lap", "Meilleur tour", "Schnellste Runde", "Giro veloce"},
         {"Push off-road", "Rival hors piste", "Rivale abgedrängt", "Rivale fuori pista"},
         {"Drift", "Dérive", "Drift", "Derapata"},
-        {"Finish", "Arrivée", "Ziel", "Arrivo"}
+        {"Finish", "Arrivée", "Ziel", "Arrivo"},
+        {"Technique effects x1.25", "Effets de Technique x1.25", "Technik-Effekte x1.25", "Effetti Tecnica x1.25"},
+        {"Technique effects x1.5", "Effets de Technique x1.5", "Technik-Effekte x1.5", "Effetti Tecnica x1.5"},
+        {"Technique effects x2", "Effets de Technique x2", "Technik-Effekte x2", "Effetti Tecnica x2"},
+        {"Activation: Passive\nPowerup effects x1.25\nCooldown recovery x1.25", "Activation : Passive\nEffets Bonus x1.25\nRecharge x1.25", "Aktivierung: Passiv\nPower-up-Effekte x1.25\nAbklingzeit x1.25", "Attivazione: Passiva\nEffetti Potenziamento x1.25\nRicarica x1.25"},
+        {"Activation: Passive\nPowerup effects x1.5\nCooldown recovery x1.5", "Activation : Passive\nEffets Bonus x1.5\nRecharge x1.5", "Aktivierung: Passiv\nPower-up-Effekte x1.5\nAbklingzeit x1.5", "Attivazione: Passiva\nEffetti Potenziamento x1.5\nRicarica x1.5"},
+        {"Activation: Passive\nPowerup effects x2\nCooldown recovery x2", "Activation : Passive\nEffets Bonus x2\nRecharge x2", "Aktivierung: Passiv\nPower-up-Effekte x2\nAbklingzeit x2", "Attivazione: Passiva\nEffetti Potenziamento x2\nRicarica x2"}
     };
 
     private static final String[][] CARD_TITLES = {
@@ -289,7 +295,13 @@ final class GameTextEuropeanCatalog {
         {"Loaded Grudge", "Rancune Chargée", "Geladener Groll", "Rancore Carico"},
         {"Chaos Retort", "Riposte du Chaos", "Chaos-Konterschlag", "Replica del Caos"},
         {"Fate's Revenge", "Vengeance du Destin", "Rache des Schicksals", "Vendetta del Destino"},
-        {"Triad Coup", "Coup de Triade", "Triaden-Coup", "Colpo della Triade"}
+        {"Triad Coup", "Coup de Triade", "Triaden-Coup", "Colpo della Triade"},
+        {"Technique Coupler", "Coupleur Technique", "Technik-Koppler", "Accoppiatore Tecnico"},
+        {"Technique Matrix", "Matrice Technique", "Technik-Matrix", "Matrice Tecnica"},
+        {"Technique Singularity", "Singularité Technique", "Technik-Singularität", "Singolarità Tecnica"},
+        {"Powerup Link", "Lien Bonus", "Power-up-Verbindung", "Collegamento Potenziamento"},
+        {"Powerup Matrix", "Matrice Bonus", "Power-up-Matrix", "Matrice Potenziamento"},
+        {"Powerup Nexus", "Nexus Bonus", "Power-up-Nexus", "Nesso Potenziamento"}
     };
 
     private static final String[][] CARD_DESCRIPTIONS = {
@@ -381,7 +393,13 @@ final class GameTextEuropeanCatalog {
         {"Binds the offender and the car directly behind you, then reverses their places while moving you to the front.", "Lie l'agresseur et la voiture juste derrière, inverse leurs places et vous place devant.", "Bindet Angreifer und direkt folgendes Auto, vertauscht ihre Plätze und setzt dich nach vorn.", "Lega aggressore e auto subito dietro, inverte i loro posti e ti porta davanti."},
         {"A rival hit executes a random Tier 1 Revenge card, then prepares a different retaliation.", "Un choc exécute une Vengeance T1 aléatoire puis en prépare une autre.", "Ein Treffer führt eine zufällige T1-Rache aus und bereitet die nächste vor.", "Un colpo esegue una Vendetta T1 casuale e ne prepara un'altra."},
         {"A rival hit executes a random Tier 2 Revenge card, then prepares a different retaliation.", "Un choc exécute une Vengeance T2 aléatoire puis en prépare une autre.", "Ein Treffer führt eine zufällige T2-Rache aus und bereitet die nächste vor.", "Un colpo esegue una Vendetta T2 casuale e ne prepara un'altra."},
-        {"A rival hit executes a random Tier 3 Revenge card, then prepares a different retaliation.", "Un choc exécute une Vengeance T3 aléatoire puis en prépare une autre.", "Ein Treffer führt eine zufällige T3-Rache aus und bereitet die nächste vor.", "Un colpo esegue una Vendetta T3 casuale e ne prepara un'altra."}
+        {"A rival hit executes a random Tier 3 Revenge card, then prepares a different retaliation.", "Un choc exécute une Vengeance T3 aléatoire puis en prépare une autre.", "Ein Treffer führt eine zufällige T3-Rache aus und bereitet die nächste vor.", "Un colpo esegue una Vendetta T3 casuale e ne prepara un'altra."},
+        {"A calibrated control unit strengthens the equipped Technique effect.", "Une unité calibrée renforce l'effet de la Technique équipée.", "Ein kalibriertes Steuergerät verstärkt den ausgerüsteten Technik-Effekt.", "Una centralina calibrata rafforza l'effetto della Tecnica equipaggiata."},
+        {"A racing control matrix greatly strengthens the equipped Technique effect.", "Une matrice de course renforce fortement l'effet de la Technique équipée.", "Eine Rennsteuermatrix verstärkt den ausgerüsteten Technik-Effekt stark.", "Una matrice da gara rafforza molto l'effetto della Tecnica equipaggiata."},
+        {"An experimental control core doubles the equipped Technique effect.", "Un cœur expérimental double l'effet de la Technique équipée.", "Ein experimenteller Steuerkern verdoppelt den ausgerüsteten Technik-Effekt.", "Un nucleo sperimentale raddoppia l'effetto della Tecnica equipaggiata."},
+        {"A passive timing link strengthens Powerups and recharges them faster.", "Un lien passif renforce les Bonus et accélère leur recharge.", "Eine passive Zeitverbindung verstärkt Power-ups und beschleunigt ihre Abklingzeit.", "Un collegamento passivo rafforza i Potenziamenti e accelera la ricarica."},
+        {"A passive timing matrix strengthens Powerups and recharges them much faster.", "Une matrice passive renforce les Bonus et accélère fortement leur recharge.", "Eine passive Zeitmatrix verstärkt Power-ups und beschleunigt ihre Abklingzeit stark.", "Una matrice passiva rafforza i Potenziamenti e accelera molto la ricarica."},
+        {"A passive timing nexus doubles Powerup effects and cooldown recovery.", "Un nexus passif double les effets des Bonus et leur recharge.", "Ein passiver Zeitnexus verdoppelt Power-up-Effekte und Abklingzeit-Erholung.", "Un nesso passivo raddoppia effetti e ricarica dei Potenziamenti."}
     };
 
     private GameTextEuropeanCatalog() {

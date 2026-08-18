@@ -41,4 +41,16 @@ public class RecoveryTrainingConfigTest {
         assertEquals(10, config.fieldSize);
         assertEquals(3, config.routeTargets);
     }
+
+    @Test
+    public void noseToNoseRecoveryScenarioIsRetained() {
+        RatassGame.RlTrainingConfig config =
+                new RatassGame.RlTrainingConfig()
+                        .withRecoveryTraining(true)
+                        .withRecoveryScenario("nose_to_nose");
+
+        assertEquals("nose_to_nose", config.recoveryScenario);
+        assertEquals(1, config.controlledAgentCount);
+        assertEquals(1, config.fieldSize);
+    }
 }

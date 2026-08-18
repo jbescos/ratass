@@ -565,6 +565,9 @@ public final class GameText {
         put(text, "Track Vacuum", "Vacío de pista");
         put(text, "Wing Car", "Coche alado");
         put(text, "Feather Ground", "Suelo ligero");
+        put(text, "Technique Coupler", "Acoplador técnico");
+        put(text, "Technique Matrix", "Matriz técnica");
+        put(text, "Technique Singularity", "Singularidad técnica");
         put(text, "Corner Focus", "Enfoque de curva");
         put(text, "Draft Focus", "Enfoque de rebufo");
         put(text, "Straight Focus", "Enfoque de recta");
@@ -601,6 +604,9 @@ public final class GameText {
         put(text, "Close Quarters", "Cuerpo a cuerpo");
         put(text, "Pack Racer", "Piloto de grupo");
         put(text, "Traffic Dominance", "Dominio del tráfico");
+        put(text, "Powerup Link", "Enlace potenciador");
+        put(text, "Powerup Matrix", "Matriz potenciadora");
+        put(text, "Powerup Nexus", "Nexo potenciador");
         put(text, "Nitro Pulse", "Pulso nitro");
         put(text, "Ace Hotline", "Línea del as");
         put(text, "Time Ripple", "Onda temporal");
@@ -647,6 +653,28 @@ public final class GameText {
         put(text, "Chaos Retort", "Réplica del caos");
         put(text, "Fate's Revenge", "Venganza del destino");
         put(text, "Triad Coup", "Golpe de tríada");
+
+        put(text, "A calibrated control unit strengthens the equipped Technique effect.",
+                "Una unidad de control calibrada refuerza el efecto de la Técnica equipada.");
+        put(text, "A racing control matrix greatly strengthens the equipped Technique effect.",
+                "Una matriz de control de competición refuerza mucho la Técnica equipada.");
+        put(text, "An experimental control core doubles the equipped Technique effect.",
+                "Un núcleo de control experimental duplica el efecto de la Técnica equipada.");
+        put(text, "A passive timing link strengthens Powerups and recharges them faster.",
+                "Un enlace pasivo refuerza los Potenciadores y acelera su recarga.");
+        put(text, "A passive timing matrix strengthens Powerups and recharges them much faster.",
+                "Una matriz pasiva refuerza los Potenciadores y acelera mucho su recarga.");
+        put(text, "A passive timing nexus doubles Powerup effects and cooldown recovery.",
+                "Un nexo pasivo duplica los efectos de Potenciar y su recuperación.");
+        put(text, "Technique effects x1.25", "Efectos de Técnica x1.25");
+        put(text, "Technique effects x1.5", "Efectos de Técnica x1.5");
+        put(text, "Technique effects x2", "Efectos de Técnica x2");
+        put(text, "Activation: Passive\nPowerup effects x1.25\nCooldown recovery x1.25",
+                "Activación: Pasiva\nEfectos de Potenciar x1.25\nRecuperación x1.25");
+        put(text, "Activation: Passive\nPowerup effects x1.5\nCooldown recovery x1.5",
+                "Activación: Pasiva\nEfectos de Potenciar x1.5\nRecuperación x1.5");
+        put(text, "Activation: Passive\nPowerup effects x2\nCooldown recovery x2",
+                "Activación: Pasiva\nEfectos de Potenciar x2\nRecuperación x2");
 
         put(text, "Cornering amplifies active grip bonuses and every active aero bonus or penalty. Grip penalties and weather stay unchanged.",
                 "En curva amplifica las bonificaciones activas de agarre y cada bonificación o penalización activa de aero. Las penalizaciones de agarre y el clima no cambian.");

@@ -10,6 +10,16 @@ final class RogueliteEffectFactory {
         if (RandomCardEffect.isRandomCard(id)) {
             return new RandomCardEffect(id, powerupCycleOffset);
         }
+        if (id == RogueliteCardId.TECHNIQUE_COUPLER
+                || id == RogueliteCardId.TECHNIQUE_MATRIX
+                || id == RogueliteCardId.TECHNIQUE_SINGULARITY) {
+            return new TechniqueAmplifierTuningEffect(id);
+        }
+        if (id == RogueliteCardId.POWERUP_LINK
+                || id == RogueliteCardId.POWERUP_MATRIX
+                || id == RogueliteCardId.POWERUP_NEXUS) {
+            return new PowerupAmplifierTechniqueEffect(id);
+        }
         if (id == RogueliteCardId.PRIORITY_HOTLINE) {
             return new BestDriverOverrideEffect(id);
         }

@@ -189,9 +189,9 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
-    public void techniqueCatalogContainsTenTimedAndTwoPassiveCardsPerTier() {
+    public void techniqueCatalogContainsTenTimedAndThreePassiveCardsPerTier() {
         List<RogueliteCardDefinition> techniques = cardsForSlot(RogueliteSlotType.TECHNIQUE);
-        assertEquals(36, techniques.size());
+        assertEquals(39, techniques.size());
         for (int tier = 1; tier <= 3; tier++) {
             int cardsInTier = 0;
             for (int i = 0; i < techniques.size(); i++) {
@@ -199,7 +199,7 @@ public class RogueliteCarUpgradesTest {
                     cardsInTier++;
                 }
             }
-            assertEquals("Technique cards in Tier " + tier, 12, cardsInTier);
+            assertEquals("Technique cards in Tier " + tier, 13, cardsInTier);
         }
     }
 
@@ -213,7 +213,10 @@ public class RogueliteCarUpgradesTest {
                 RogueliteCardId.LAST_PLACE_FURY,
                 RogueliteCardId.CLOSE_QUARTERS,
                 RogueliteCardId.PACK_RACER,
-                RogueliteCardId.TRAFFIC_DOMINANCE);
+                RogueliteCardId.TRAFFIC_DOMINANCE,
+                RogueliteCardId.POWERUP_LINK,
+                RogueliteCardId.POWERUP_MATRIX,
+                RogueliteCardId.POWERUP_NEXUS);
         Set<RogueliteCardId> rallyExceptions = new HashSet<RogueliteCardId>();
         Collections.addAll(
                 rallyExceptions,
@@ -358,21 +361,64 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
-    public void everyTierHasTwelveTuningChoices() {
+    public void everyTierHasThirteenTuningChoices() {
         int[] counts = new int[4];
         for (RogueliteCardDefinition card : cardsForSlot(RogueliteSlotType.TUNING)) {
             counts[card.getTier()]++;
         }
 
-        assertEquals(12, counts[1]);
-        assertEquals(12, counts[2]);
-        assertEquals(12, counts[3]);
+        assertEquals(13, counts[1]);
+        assertEquals(13, counts[2]);
+        assertEquals(13, counts[3]);
+    }
+
+    @Test
+    public void amplifierChainCompoundsTechniquePowerupAndRevengeDeviations() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.TECHNIQUE_COUPLER,
+                RogueliteCardId.POWERUP_LINK,
+                RogueliteCardId.GRUDGE_SPARK);
+
+        // x1.25 Technique turns Powerup x1.25 into x1.3125. That in turn
+        // amplifies Revenge x1.25 into x1.328125.
+        assertEquals(1.328125f, upgrades.getRevengeEffectMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void amplifierChainExtendsPowerupEffectsAndAcceleratesCooldownRecovery() {
+        RogueliteCarUpgrades baseline = configured(RogueliteCardId.TIME_RIPPLE);
+        RogueliteCarUpgrades amplified = configured(
+                RogueliteCardId.TECHNIQUE_COUPLER,
+                RogueliteCardId.POWERUP_LINK,
+                RogueliteCardId.TIME_RIPPLE);
+
+        update(baseline, 0.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(amplified, 0.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+        int baselineSteps = 0;
+        int amplifiedSteps = 0;
+        while (!baseline.isTimeDilationActive() && baselineSteps < 200) {
+            update(baseline, 0.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+            baselineSteps++;
+        }
+        while (!amplified.isTimeDilationActive() && amplifiedSteps < 200) {
+            update(amplified, 0.1f, 1f, true, 0f, 0.5f, 0f, 0f, 1f, 0f, 0f, 0f);
+            amplifiedSteps++;
+        }
+
+        assertTrue(amplifiedSteps < baselineSteps);
+        assertEquals(
+                2f * 1.3125f,
+                amplified.getActiveTimeRemainingSeconds(RogueliteCardId.TIME_RIPPLE),
+                EPSILON);
     }
 
     @Test
     public void tuningCardsHaveUniqueStatSetups() {
         Set<String> setups = new HashSet<String>();
         for (RogueliteCardDefinition card : cardsForSlot(RogueliteSlotType.TUNING)) {
+            if (isTechniqueAmplifierTuning(card.getId())) {
+                continue;
+            }
             RogueliteCarUpgrades upgrades = configured(card.getId());
             String setup = upgrades.getAccelerationMultiplier()
                     + "|" + upgrades.getGripMultiplier(0f)
@@ -390,7 +436,7 @@ public class RogueliteCarUpgradesTest {
             Set<String> signatures = new HashSet<String>();
             for (int i = 0; i < tuning.size(); i++) {
                 RogueliteCardDefinition card = tuning.get(i);
-                if (card.getTier() == tier) {
+                if (card.getTier() == tier && !isTechniqueAmplifierTuning(card.getId())) {
                     String signature = signedStatSignature(card);
                     assertTrue(
                             "Duplicate Tier " + tier + " tuning signature "
@@ -1049,6 +1095,10 @@ public class RogueliteCarUpgradesTest {
         for (int i = 0; i < cards.size(); i++) {
             RogueliteCardDefinition card = cards.get(i);
             if (card.getSlotType() == RogueliteSlotType.TUNING) {
+                if (isTechniqueAmplifierTuning(card.getId())) {
+                    assertEquals(1, card.getEffectText().split("\\n").length);
+                    continue;
+                }
                 int expectedLines = card.getTier() == 3 ? 2 : 3;
                 assertEquals(card.getId().name(), expectedLines,
                         card.getEffectText().split("\\n").length);
@@ -1068,6 +1118,11 @@ public class RogueliteCarUpgradesTest {
                 assertTrue(card.getId().name(), lines.length <= 5);
                 assertFalse(card.getId().name(), card.getEffectText().toLowerCase().contains("bonus"));
                 assertFalse(card.getId().name(), card.getEffectText().toLowerCase().contains("penalt"));
+                if (isPowerupAmplifierTechnique(card.getId())) {
+                    assertTrue(lines[1].startsWith("Powerup effects x"));
+                    assertTrue(lines[2].startsWith("Cooldown recovery x"));
+                    continue;
+                }
                 for (int line = 1; line < lines.length; line++) {
                     assertTrue(
                             card.getId().name() + ": " + lines[line],
@@ -1865,6 +1920,18 @@ public class RogueliteCarUpgradesTest {
             assertMultiplier(upgrades.getPowerupReadiness(), 0f, 1f);
             assertMultiplier(upgrades.getRevengeReadiness(), 0f, 1f);
         }
+    }
+
+    private static boolean isTechniqueAmplifierTuning(RogueliteCardId cardId) {
+        return cardId == RogueliteCardId.TECHNIQUE_COUPLER
+                || cardId == RogueliteCardId.TECHNIQUE_MATRIX
+                || cardId == RogueliteCardId.TECHNIQUE_SINGULARITY;
+    }
+
+    private static boolean isPowerupAmplifierTechnique(RogueliteCardId cardId) {
+        return cardId == RogueliteCardId.POWERUP_LINK
+                || cardId == RogueliteCardId.POWERUP_MATRIX
+                || cardId == RogueliteCardId.POWERUP_NEXUS;
     }
 
     private static void armRevenge(RogueliteCarUpgrades upgrades) {

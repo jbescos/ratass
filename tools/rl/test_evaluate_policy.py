@@ -12,10 +12,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from evaluate_policy import (
     evaluation_score,
     make_stats,
+    parse_args,
     print_evaluation_tables,
     select_maps,
     summary_metrics,
 )
+
+
+class EvaluationArgumentsTest(unittest.TestCase):
+    def test_overtaking_ignores_random_route_spawn_flag(self):
+        with patch.object(
+            sys,
+            "argv",
+            ["evaluate_policy.py", "--objective", "overtaking", "--random-race-spawns"],
+        ):
+            args = parse_args()
+
+        self.assertFalse(args.random_race_spawns)
+
+    def test_race_keeps_random_route_spawn_flag(self):
+        with patch.object(
+            sys,
+            "argv",
+            ["evaluate_policy.py", "--objective", "race", "--random-race-spawns"],
+        ):
+            args = parse_args()
+
+        self.assertTrue(args.random_race_spawns)
 
 
 class EvaluationMapLoadingTest(unittest.TestCase):

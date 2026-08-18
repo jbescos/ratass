@@ -201,6 +201,9 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
                         != RogueliteSlotType.TUNING) {
             return Float.NaN;
         }
+        if (isTechniqueAmplifierTuning(tuningCardId)) {
+            return 0f;
+        }
         TieredTuningEffect tuning = new TieredTuningEffect(tuningCardId);
         return performanceScore(
                 1f + tuning.accelerationBonus(),
@@ -217,15 +220,40 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
                         != RogueliteSlotType.TECHNIQUE) {
             return Float.NaN;
         }
+        if (isPowerupAmplifierTechnique(techniqueCardId)) {
+            float baseline = tuningBaselineScore(tuningCardId);
+            if (Float.isNaN(baseline)) {
+                return Float.NaN;
+            }
+            float tuningMultiplier = isTechniqueAmplifierTuning(tuningCardId)
+                    ? techniqueAmplifier(tuningCardId)
+                    : 1f;
+            float powerupMultiplier = powerupAmplifier(techniqueCardId);
+            float effectiveMultiplier = RogueliteEffectMath.amplifyDeviation(
+                    powerupMultiplier,
+                    tuningMultiplier);
+            // Effect strength and cooldown recovery are separate benefits.
+            return baseline + (effectiveMultiplier - 1f) * 2f;
+        }
         Trigger techniqueTrigger = triggerFor(techniqueCardId);
         if (techniqueTrigger == Trigger.POSITION
                 || techniqueTrigger == Trigger.NEARBY_RIVAL) {
-            return Float.NaN;
+            float baseline = tuningBaselineScore(tuningCardId);
+            if (Float.isNaN(baseline)) {
+                return Float.NaN;
+            }
+            float multiplier = isTechniqueAmplifierTuning(tuningCardId)
+                    ? techniqueAmplifier(tuningCardId)
+                    : 1f;
+            return baseline + passiveTechniqueScore(techniqueCardId) * multiplier;
         }
 
         float baseline = tuningBaselineScore(tuningCardId);
         if (Float.isNaN(baseline)) {
             return Float.NaN;
+        }
+        if (isTechniqueAmplifierTuning(tuningCardId)) {
+            return baseline;
         }
         TieredTuningEffect tuning = new TieredTuningEffect(tuningCardId);
         float power = 1f + tuning.accelerationBonus();
@@ -249,6 +277,34 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
             mass = RogueliteEffectMath.amplifyDeviation(mass, scale);
         }
         return performanceScore(power, grip, aero, mass);
+    }
+
+    private static float passiveTechniqueScore(RogueliteCardId cardId) {
+        float bonus;
+        switch (cardId) {
+            case UNDERDOG_INSTINCT:
+                bonus = 0.10f;
+                break;
+            case COMEBACK_DRIVE:
+                bonus = 0.25f;
+                break;
+            case LAST_PLACE_FURY:
+                bonus = 0.50f;
+                break;
+            case CLOSE_QUARTERS:
+                bonus = 0.05f;
+                break;
+            case PACK_RACER:
+                bonus = 0.10f;
+                break;
+            case TRAFFIC_DOMINANCE:
+                bonus = 0.20f;
+                break;
+            default:
+                return 0f;
+        }
+        // These passive cards improve power, grip, aero, and mass together.
+        return bonus * 4f;
     }
 
     private static float activeScaleFor(Trigger trigger, int tier) {
@@ -332,6 +388,26 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
             default:
                 return 0;
         }
+    }
+
+    private static boolean isTechniqueAmplifierTuning(RogueliteCardId cardId) {
+        return cardId == RogueliteCardId.TECHNIQUE_COUPLER
+                || cardId == RogueliteCardId.TECHNIQUE_MATRIX
+                || cardId == RogueliteCardId.TECHNIQUE_SINGULARITY;
+    }
+
+    private static boolean isPowerupAmplifierTechnique(RogueliteCardId cardId) {
+        return cardId == RogueliteCardId.POWERUP_LINK
+                || cardId == RogueliteCardId.POWERUP_MATRIX
+                || cardId == RogueliteCardId.POWERUP_NEXUS;
+    }
+
+    private static float techniqueAmplifier(RogueliteCardId cardId) {
+        return new TechniqueAmplifierTuningEffect(cardId).techniqueEffectMultiplier();
+    }
+
+    private static float powerupAmplifier(RogueliteCardId cardId) {
+        return new PowerupAmplifierTechniqueEffect(cardId).powerupEffectMultiplier();
     }
 
     private static float performanceScore(
