@@ -7,6 +7,8 @@ race it shuffles the available slots and gives each AI car a different profile.
 Use `profile.properties` to configure a personality. Profiles inherit
 `tools/rl/policies/default.properties` and can override any `RL_*` value.
 `default.properties` is a shared baseline config, not a trainable profile.
+The shared recovery assistance has its own configuration at
+`tools/rl/recovery.properties`; it does not inherit these driver settings.
 
 The initial migration preserves the previous models as follows:
 
@@ -40,10 +42,6 @@ RL_GAMMA=0.995
 # lap_real uses real game maps.
 RL_STAGE_ROUTE_TARGETS=5%,10%,25%,50%,75%,lap_easy,lap_training,lap_real
 RL_STAGE_ITERATIONS=100,100,300,100,100,200,200,200
-
-# Number of cars for each stage. Route-target stages must use 1 car; lap stages
-# can use more cars with fixed grid spawns.
-RL_STAGE_NUMBER_OF_CARS=1,1,1,1,1,1,1,4
 
 # Rewards.
 RL_REWARD_PROGRESS=0.25

@@ -19,6 +19,8 @@ public final class RlSmokeMain {
         int actionRepeat = 4;
         int routeTargets = 6;
         boolean raceMode = true;
+        boolean recoveryTraining = false;
+        String recoveryScenario = "mixed";
         boolean zeroActions = false;
         long seed = 1L;
 
@@ -40,9 +42,14 @@ public final class RlSmokeMain {
                 String objective = args[++i];
                 if ("race".equals(objective)) {
                     raceMode = true;
+                } else if ("recovery".equals(objective)) {
+                    raceMode = true;
+                    recoveryTraining = true;
                 } else {
-                    throw new IllegalArgumentException("Only race objective is supported: " + objective);
+                    throw new IllegalArgumentException("Unsupported objective: " + objective);
                 }
+            } else if ("--recovery-scenario".equals(arg) && i + 1 < args.length) {
+                recoveryScenario = args[++i];
             } else if ("--seed".equals(arg) && i + 1 < args.length) {
                 seed = Long.parseLong(args[++i]);
             } else if ("--zero-actions".equals(arg)) {
@@ -62,6 +69,8 @@ public final class RlSmokeMain {
                         .withMaxActionSteps(maxSteps)
                         .withRouteTargets(routeTargets)
                         .withRaceMode(raceMode)
+                        .withRecoveryTraining(recoveryTraining)
+                        .withRecoveryScenario(recoveryScenario)
                         .withSeed(seed);
         Random random = new Random(seed ^ 0xC0FFEE);
 

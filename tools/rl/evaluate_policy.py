@@ -140,9 +140,23 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--objective",
-        choices=("race",),
+        choices=("race", "recovery"),
         default="race",
-        help="race evaluates route progress around the circuit",
+        help="race evaluates route progress; recovery evaluates stable road rejoin",
+    )
+    parser.add_argument(
+        "--recovery-scenario",
+        choices=(
+            "mixed",
+            "offroad_near",
+            "offroad_shallow",
+            "offroad_angled",
+            "offroad_hard",
+            "offroad_reversed",
+            "onroad_misaligned",
+            "blocked_front",
+        ),
+        default="mixed",
     )
     parser.add_argument("--reward-step-penalty", type=float, default=0.006)
     parser.add_argument("--reward-progress", type=float, default=0.25)
@@ -160,6 +174,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-no-progress-penalty", type=float, default=50.0)
     parser.add_argument("--reward-off-road-recovery", type=float, default=4.0)
     parser.add_argument("--reward-off-road-failure-penalty", type=float, default=50.0)
+    parser.add_argument("--recovery-reward-distance", type=float, default=4.0)
+    parser.add_argument("--recovery-reward-alignment", type=float, default=8.0)
+    parser.add_argument("--recovery-reward-target-alignment", type=float, default=6.0)
+    parser.add_argument("--recovery-reward-motion", type=float, default=0.75)
+    parser.add_argument("--recovery-reward-launch-throttle", type=float, default=5.0)
+    parser.add_argument("--recovery-reward-steering", type=float, default=5.0)
+    parser.add_argument("--recovery-penalty-stationary", type=float, default=0.15)
+    parser.add_argument("--recovery-reward-success", type=float, default=2000.0)
     return parser.parse_args()
 
 
@@ -274,6 +296,8 @@ def build_config(
         .withRouteTargets(args.route_targets)
         .withRouteTargetFraction(float(args.route_target_fraction))
         .withRaceMode(True)
+        .withRecoveryTraining(args.objective == "recovery")
+        .withRecoveryScenario(args.recovery_scenario)
         .withRandomRaceSpawns(args.random_race_spawns)
         .withDebugTraceEnabled(bool(args.trace_dir))
         .withSeed(args.seed)
@@ -299,6 +323,16 @@ def build_config(
         .withNoProgressPenalty(float(args.reward_no_progress_penalty))
         .withOffRoadRecoveryReward(float(args.reward_off_road_recovery))
         .withOffRoadFailurePenalty(float(args.reward_off_road_failure_penalty))
+        .withRecoveryRewards(
+            float(args.recovery_reward_distance),
+            float(args.recovery_reward_alignment),
+            float(args.recovery_reward_target_alignment),
+            float(args.recovery_reward_motion),
+            float(args.recovery_reward_launch_throttle),
+            float(args.recovery_reward_steering),
+            float(args.recovery_penalty_stationary),
+            float(args.recovery_reward_success),
+        )
     )
     if arena_map is not None:
         config.addMap(arena_map)
@@ -679,8 +713,16 @@ def summary_metrics(stats, episodes_override: int = None):
     }
 
 
-def evaluation_score(stats, episodes_override: int = None) -> float:
+def evaluation_score(
+    stats,
+    episodes_override: int = None,
+    recovery: bool = False,
+) -> float:
     metrics = summary_metrics(stats, episodes_override)
+    if recovery:
+        # Recovery is a reliability contract. One additional solved episode
+        # must always outrank any amount of shaping reward from failed runs.
+        return metrics["success_rate"] * 1_000_000.0 + metrics["avg_reward"]
     # Score outcomes rather than body orientation so a faster drifting policy
     # is not rejected for having lower route or target alignment.
     return (
@@ -797,13 +839,13 @@ def print_table(title: str, headers, rows, right_aligned=None) -> None:
         print(format_row(row), flush=True)
 
 
-def print_evaluation_tables(total_stats, per_map) -> None:
+def print_evaluation_tables(total_stats, per_map, recovery: bool = False) -> None:
     overview_rows = []
     driving_rows = []
     reward_rows = []
     for scope, stats in stats_scope_rows(total_stats, per_map):
         metrics = summary_metrics(stats)
-        score = evaluation_score(stats)
+        score = evaluation_score(stats, recovery=recovery)
         overview_rows.append(
             [
                 scope,
@@ -903,9 +945,9 @@ def print_evaluation_tables(total_stats, per_map) -> None:
     )
 
 
-def print_evaluation_score(stats):
+def print_evaluation_score(stats, recovery: bool = False):
     metrics = summary_metrics(stats)
-    score = evaluation_score(stats)
+    score = evaluation_score(stats, recovery=recovery)
     print(
         f"evaluation_score={score:.3f} "
         f"avg_reward={metrics['avg_reward']:.3f} "
@@ -1002,8 +1044,9 @@ def main() -> None:
             config = None
             arena_map = None
 
-    print_evaluation_tables(total_stats, per_map)
-    print_evaluation_score(total_stats)
+    recovery = args.objective == "recovery"
+    print_evaluation_tables(total_stats, per_map, recovery=recovery)
+    print_evaluation_score(total_stats, recovery=recovery)
 
 
 if __name__ == "__main__":

@@ -59,11 +59,6 @@ is_route_target_training_stage() {
 controlled_agents_for_preset() {
   case "${1:-race-single}" in
     ""|"race"|"race-single") printf '%s\n' "1" ;;
-    "race-2") printf '%s\n' "2" ;;
-    "race-4") printf '%s\n' "4" ;;
-    "race-8") printf '%s\n' "8" ;;
-    "race-16") printf '%s\n' "16" ;;
-    "race-20"|"race-crowd") printf '%s\n' "20" ;;
     *)
       echo "unknown_race_preset=${1:-}" >&2
       return 2
@@ -177,17 +172,12 @@ usage: bash tools/rl/train_forever.sh [preset]
 
 presets:
   race-single       one learner car; staged route targets, then full lap
-  race-2            two learner cars; full-lap fixed-grid training
-  race-4            four learner cars; full-lap fixed-grid training
-  race-8            eight learner cars; full-lap fixed-grid training
-  race-16           sixteen learner cars; full-lap fixed-grid training
-  race-20           twenty learner cars; full-lap fixed-grid training
   race              alias for race-single
-  diagnostic        short staged race run: one, two, then four cars
+  diagnostic        short staged single-car race run
   quick             alias for diagnostic
   fast              alias for diagnostic
   curriculum        staged race run using RL_STAGE_ROUTE_TARGETS,
-                    RL_STAGE_ITERATIONS, and RL_STAGE_NUMBER_OF_CARS
+                    and RL_STAGE_ITERATIONS
                     map-specific stages can be written as map005_5%,map005
 EOF
 }
@@ -797,17 +787,6 @@ append_phase_state() {
   } >> "${RL_POLICY_TRAINING_STATE}"
 }
 
-preset_for_agent_count() {
-  case "$1" in
-    1) printf '%s\n' "race-single" ;;
-    2|4|8|16|20) printf 'race-%s\n' "$1" ;;
-    *)
-      echo "unsupported_controlled_agent_stage=$1 supported=1,2,4,8,16,20" >&2
-      return 2
-      ;;
-  esac
-}
-
 run_route_curriculum_for_preset() {
   local preset="$1"
   local total_iterations="$2"
@@ -816,11 +795,8 @@ run_route_curriculum_for_preset() {
   local init_policy="$5"
   local stage_specs=()
   local stage_iterations=()
-  local stage_cars=()
   local split_csv_result=()
   local index
-  local preset_agents
-  preset_agents="$(controlled_agents_for_preset "${preset}")"
 
   split_csv_compact "${RL_STAGE_ROUTE_TARGETS:-5%,10%,25%,50%,75%,lap_easy,lap_training,lap_real}"
   stage_specs=("${split_csv_result[@]}")
@@ -857,19 +833,6 @@ run_route_curriculum_for_preset() {
     done
   fi
 
-  if [[ -n "${RL_STAGE_NUMBER_OF_CARS:-}" ]]; then
-    split_csv_compact "${RL_STAGE_NUMBER_OF_CARS}"
-    stage_cars=("${split_csv_result[@]}")
-    if [[ "${#stage_cars[@]}" -ne "${#stage_specs[@]}" ]]; then
-      echo "stage_number_of_cars_count_mismatch=${#stage_cars[@]} expected=${#stage_specs[@]}" >&2
-      return 2
-    fi
-  else
-    for ((index = 0; index < ${#stage_specs[@]}; index++)); do
-      stage_cars+=("${preset_agents}")
-    done
-  fi
-
   local stage_group_index="${RL_STAGE_GROUP_INDEX:-1}"
   local stage_group_total="${RL_STAGE_GROUP_TOTAL:-1}"
   local policy_index="${RL_POLICY_INDEX:-1}"
@@ -891,7 +854,7 @@ run_route_curriculum_for_preset() {
   local profile_stage_total=$((stage_group_total * route_stage_total))
   local overall_stage_total=$((policy_total * profile_stage_total))
 
-  echo "route_curriculum_schedule preset=${preset} stages=${RL_STAGE_ROUTE_TARGETS:-5%,10%,25%,50%,75%,lap_easy,lap_training,lap_real} stage_iterations=${stage_iterations[*]} stage_cars=${stage_cars[*]} total_iterations=${total_iterations} stage_group=${stage_group_index}/${stage_group_total}"
+  echo "route_curriculum_schedule preset=race-single stages=${RL_STAGE_ROUTE_TARGETS:-5%,10%,25%,50%,75%,lap_easy,lap_training,lap_real} stage_iterations=${stage_iterations[*]} total_iterations=${total_iterations} stage_group=${stage_group_index}/${stage_group_total}"
   for ((index = 0; index < ${#stage_specs[@]}; index++)); do
     local phase_iterations="${stage_iterations[index]}"
     local max_cycles=1
@@ -908,17 +871,7 @@ run_route_curriculum_for_preset() {
     route_map_scope="$(route_stage_map_scope_from_spec "${stage_specs[index]}")"
     local route_map_ids
     route_map_ids="$(route_stage_map_id_from_spec "${stage_specs[index]}")"
-    local stage_car_count="${stage_cars[index]}"
-    if [[ ! "${stage_car_count}" =~ ^[1-9][0-9]*$ ]]; then
-      echo "invalid_stage_number_of_cars=${stage_car_count} stage=${stage_specs[index]}" >&2
-      return 2
-    fi
-    if is_route_target_training_stage "${route_target}" && [[ "${stage_car_count}" -ne 1 ]]; then
-      echo "invalid_stage_number_of_cars=${stage_car_count} stage=${stage_specs[index]} route_targets=${route_target} required_cars=1 reason=route_target_training_uses_saved_random_single_car_spawns" >&2
-      return 2
-    fi
-    local stage_preset
-    stage_preset="$(preset_for_agent_count "${stage_car_count}")"
+    local stage_preset="race-single"
     local route_stage_index=$((index + 1))
     local profile_stage_index=$(((stage_group_index - 1) * route_stage_total + route_stage_index))
     local overall_stage_index=$(((policy_index - 1) * profile_stage_total + profile_stage_index))
@@ -968,18 +921,15 @@ run_diagnostic() {
   clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
   ensure_route_spawn_seed_session "${checkpoint_dir}"
   RL_STAGE_GROUP_INDEX=1 RL_STAGE_GROUP_TOTAL=3 \
-  RL_STAGE_NUMBER_OF_CARS= \
     run_route_curriculum_for_preset "race-single" "${RL_DIAGNOSTIC_RACE_1_ITERATIONS:-40}" 1 "${checkpoint_dir}" "${RL_INIT_POLICY:-}"
   RL_STAGE_GROUP_INDEX=2 RL_STAGE_GROUP_TOTAL=3 \
   RL_STAGE_ROUTE_TARGETS=lap_real \
   RL_STAGE_ITERATIONS="${RL_DIAGNOSTIC_RACE_2_ITERATIONS:-40}" \
-  RL_STAGE_NUMBER_OF_CARS=2 \
-    run_route_curriculum_for_preset "race-2" "${RL_DIAGNOSTIC_RACE_2_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
+    run_route_curriculum_for_preset "race-single" "${RL_DIAGNOSTIC_RACE_2_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
   RL_STAGE_GROUP_INDEX=3 RL_STAGE_GROUP_TOTAL=3 \
   RL_STAGE_ROUTE_TARGETS=lap_real \
   RL_STAGE_ITERATIONS="${RL_DIAGNOSTIC_RACE_4_ITERATIONS:-40}" \
-  RL_STAGE_NUMBER_OF_CARS=4 \
-    run_route_curriculum_for_preset "race-4" "${RL_DIAGNOSTIC_RACE_4_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
+    run_route_curriculum_for_preset "race-single" "${RL_DIAGNOSTIC_RACE_4_ITERATIONS:-40}" 1 "${checkpoint_dir}" ""
 }
 
 run_direct_race_route_curriculum() {
@@ -987,25 +937,10 @@ run_direct_race_route_curriculum() {
   local checkpoint_dir="${RL_CHECKPOINT_DIR:-rl-checkpoints-race-physics-v1}"
   local iterations="${RL_FOREVER_ITERATIONS:-100}"
   local max_cycles="${RL_MAX_CYCLES:-0}"
-  local preset_agents
-  preset_agents="$(controlled_agents_for_preset "${preset}")"
-
   clean_checkpoint_dir_for_fresh_start "${checkpoint_dir}"
   ensure_route_spawn_seed_session "${checkpoint_dir}"
-  if [[ "${preset_agents}" -gt 1 ]]; then
-    RL_STAGE_ROUTE_TARGETS=lap_real \
-    RL_STAGE_ITERATIONS="${iterations}" \
-    RL_STAGE_NUMBER_OF_CARS="${preset_agents}" \
-      run_route_curriculum_for_preset \
-      "${preset}" \
-      "${iterations}" \
-      "${max_cycles}" \
-      "${checkpoint_dir}" \
-      "${RL_INIT_POLICY:-}"
-    return
-  fi
   run_route_curriculum_for_preset \
-    "${preset}" \
+    "race-single" \
     "${iterations}" \
     "${max_cycles}" \
     "${checkpoint_dir}" \
@@ -1043,41 +978,6 @@ case "${preset}" in
     set_race_cars_defaults "1"
     if ! is_true "${RL_ROUTE_STAGE_ACTIVE:-0}" && is_true "${RL_ROUTE_CURRICULUM:-1}"; then
       run_direct_race_route_curriculum "race-single"
-      exit 0
-    fi
-    ;;
-  "race-2")
-    set_race_cars_defaults "2"
-    if ! is_true "${RL_ROUTE_STAGE_ACTIVE:-0}" && is_true "${RL_ROUTE_CURRICULUM:-1}"; then
-      run_direct_race_route_curriculum "race-2"
-      exit 0
-    fi
-    ;;
-  "race-4")
-    set_race_cars_defaults "4"
-    if ! is_true "${RL_ROUTE_STAGE_ACTIVE:-0}" && is_true "${RL_ROUTE_CURRICULUM:-1}"; then
-      run_direct_race_route_curriculum "race-4"
-      exit 0
-    fi
-    ;;
-  "race-8")
-    set_race_cars_defaults "8"
-    if ! is_true "${RL_ROUTE_STAGE_ACTIVE:-0}" && is_true "${RL_ROUTE_CURRICULUM:-1}"; then
-      run_direct_race_route_curriculum "race-8"
-      exit 0
-    fi
-    ;;
-  "race-16")
-    set_race_cars_defaults "16"
-    if ! is_true "${RL_ROUTE_STAGE_ACTIVE:-0}" && is_true "${RL_ROUTE_CURRICULUM:-1}"; then
-      run_direct_race_route_curriculum "race-16"
-      exit 0
-    fi
-    ;;
-  "race-20"|"race-crowd")
-    set_race_cars_defaults "20"
-    if ! is_true "${RL_ROUTE_STAGE_ACTIVE:-0}" && is_true "${RL_ROUTE_CURRICULUM:-1}"; then
-      run_direct_race_route_curriculum "race-20"
       exit 0
     fi
     ;;

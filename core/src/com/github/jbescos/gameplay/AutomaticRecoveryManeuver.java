@@ -30,6 +30,13 @@ public final class AutomaticRecoveryManeuver {
     private float blockedSeconds;
     private float assistanceSeconds;
     private float modelHandoffSeconds;
+    private float policyAttemptSeconds;
+    private float policyNoProgressSeconds;
+    private float policyBestTargetDistance;
+    private float policyBestTargetAlignment;
+    private float scriptedAssistSeconds;
+    private float scriptedStartTargetDistance;
+    private float scriptedStartTargetAlignment;
     private boolean explosionRequested;
 
     public void begin(float targetDistance) {
@@ -39,6 +46,7 @@ public final class AutomaticRecoveryManeuver {
         blockedSeconds = 0f;
         assistanceSeconds = 0f;
         modelHandoffSeconds = 0f;
+        resetPolicyAttempt();
         explosionRequested = false;
     }
 
@@ -49,7 +57,72 @@ public final class AutomaticRecoveryManeuver {
         blockedSeconds = 0f;
         assistanceSeconds = 0f;
         modelHandoffSeconds = 0f;
+        resetPolicyAttempt();
         explosionRequested = false;
+    }
+
+    public void beginPolicyAttempt(float targetDistance, float targetAlignment) {
+        policyAttemptSeconds = 0f;
+        policyNoProgressSeconds = 0f;
+        policyBestTargetDistance = Math.max(0f, targetDistance);
+        policyBestTargetAlignment = finiteOr(targetAlignment, -1f);
+    }
+
+    public boolean shouldFallbackFromPolicy(
+            float delta,
+            float targetDistance,
+            float targetAlignment,
+            float usefulDistanceGain,
+            float usefulAlignmentGain,
+            float noProgressTimeoutSeconds,
+            float attemptTimeoutSeconds) {
+        float elapsed = Math.max(0f, delta);
+        policyAttemptSeconds += elapsed;
+
+        float distance = Math.max(0f, finiteOr(targetDistance, policyBestTargetDistance));
+        float alignment = finiteOr(targetAlignment, policyBestTargetAlignment);
+        boolean improved =
+                distance <= policyBestTargetDistance - Math.max(0f, usefulDistanceGain)
+                        || alignment
+                                >= policyBestTargetAlignment
+                                        + Math.max(0f, usefulAlignmentGain);
+        if (improved) {
+            policyBestTargetDistance = Math.min(policyBestTargetDistance, distance);
+            policyBestTargetAlignment = Math.max(policyBestTargetAlignment, alignment);
+            policyNoProgressSeconds = 0f;
+        } else {
+            policyNoProgressSeconds += elapsed;
+        }
+
+        return policyNoProgressSeconds >= Math.max(0.01f, noProgressTimeoutSeconds)
+                || policyAttemptSeconds >= Math.max(0.01f, attemptTimeoutSeconds);
+    }
+
+    public void beginScriptedPolicyRetry(float targetDistance, float targetAlignment) {
+        scriptedAssistSeconds = 0f;
+        scriptedStartTargetDistance = Math.max(0f, targetDistance);
+        scriptedStartTargetAlignment = finiteOr(targetAlignment, -1f);
+    }
+
+    public boolean shouldRetryPolicyAfterScriptedAssist(
+            float delta,
+            float targetDistance,
+            float targetAlignment,
+            float minimumAssistSeconds,
+            float usefulDistanceGain,
+            float usefulAlignmentGain) {
+        scriptedAssistSeconds += Math.max(0f, delta);
+        if (scriptedAssistSeconds < Math.max(0f, minimumAssistSeconds)) {
+            return false;
+        }
+        float distance = Math.max(0f, finiteOr(targetDistance, scriptedStartTargetDistance));
+        float alignment = finiteOr(targetAlignment, scriptedStartTargetAlignment);
+        return distance
+                        <= scriptedStartTargetDistance
+                                - Math.max(0f, usefulDistanceGain)
+                || alignment
+                        >= scriptedStartTargetAlignment
+                                + Math.max(0f, usefulAlignmentGain);
     }
 
     public void update(
@@ -202,6 +275,20 @@ public final class AutomaticRecoveryManeuver {
             blockedSeconds = 0f;
             bestAlignment = alignment;
         }
+    }
+
+    private void resetPolicyAttempt() {
+        policyAttemptSeconds = 0f;
+        policyNoProgressSeconds = 0f;
+        policyBestTargetDistance = 0f;
+        policyBestTargetAlignment = -1f;
+        scriptedAssistSeconds = 0f;
+        scriptedStartTargetDistance = 0f;
+        scriptedStartTargetAlignment = -1f;
+    }
+
+    private static float finiteOr(float value, float fallback) {
+        return Float.isFinite(value) ? value : fallback;
     }
 
     public static float steeringToward(

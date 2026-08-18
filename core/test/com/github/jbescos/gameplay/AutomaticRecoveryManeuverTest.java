@@ -187,6 +187,86 @@ public class AutomaticRecoveryManeuverTest {
         assertFalse(maneuver.isActive());
     }
 
+    @Test
+    public void recoveryPolicyFallsBackAfterMakingNoUsefulProgress() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(8f);
+        maneuver.beginPolicyAttempt(8f, 0f);
+
+        assertFalse(maneuver.shouldFallbackFromPolicy(
+                2.9f, 8f, 0f, 0.2f, 0.03f, 3f, 10f));
+        assertTrue(maneuver.shouldFallbackFromPolicy(
+                0.11f, 8f, 0f, 0.2f, 0.03f, 3f, 10f));
+    }
+
+    @Test
+    public void usefulPolicyProgressRestartsTheStallWindow() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(8f);
+        maneuver.beginPolicyAttempt(8f, 0f);
+
+        assertFalse(maneuver.shouldFallbackFromPolicy(
+                2f, 8f, 0f, 0.2f, 0.03f, 3f, 10f));
+        assertFalse(maneuver.shouldFallbackFromPolicy(
+                0.1f, 7.7f, 0f, 0.2f, 0.03f, 3f, 10f));
+        assertFalse(maneuver.shouldFallbackFromPolicy(
+                2.9f, 7.7f, 0f, 0.2f, 0.03f, 3f, 10f));
+        assertTrue(maneuver.shouldFallbackFromPolicy(
+                0.11f, 7.7f, 0f, 0.2f, 0.03f, 3f, 10f));
+    }
+
+    @Test
+    public void recoveryPolicyHasAnAbsoluteAttemptLimit() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(20f);
+        maneuver.beginPolicyAttempt(20f, -1f);
+
+        for (int i = 0; i < 9; i++) {
+            assertFalse(maneuver.shouldFallbackFromPolicy(
+                    1f,
+                    20f - (i + 1) * 0.3f,
+                    -1f + (i + 1) * 0.04f,
+                    0.2f,
+                    0.03f,
+                    3f,
+                    10f));
+        }
+        assertTrue(maneuver.shouldFallbackFromPolicy(
+                1f, 17f, -0.6f, 0.2f, 0.03f, 3f, 10f));
+    }
+
+    @Test
+    public void scriptedRecoveryRetriesPolicyAfterImprovingDistance() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(8f);
+        maneuver.beginScriptedPolicyRetry(8f, 0f);
+
+        assertFalse(maneuver.shouldRetryPolicyAfterScriptedAssist(
+                1f, 6f, 0f, 1.25f, 1f, 0.15f));
+        assertTrue(maneuver.shouldRetryPolicyAfterScriptedAssist(
+                0.3f, 6f, 0f, 1.25f, 1f, 0.15f));
+    }
+
+    @Test
+    public void scriptedRecoveryRetriesPolicyAfterImprovingHeading() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(8f);
+        maneuver.beginScriptedPolicyRetry(8f, -0.8f);
+
+        assertTrue(maneuver.shouldRetryPolicyAfterScriptedAssist(
+                1.3f, 8f, -0.6f, 1.25f, 1f, 0.15f));
+    }
+
+    @Test
+    public void scriptedRecoveryKeepsControlWithoutUsefulImprovement() {
+        AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
+        maneuver.begin(8f);
+        maneuver.beginScriptedPolicyRetry(8f, 0f);
+
+        assertFalse(maneuver.shouldRetryPolicyAfterScriptedAssist(
+                10f, 7.5f, 0.1f, 1.25f, 1f, 0.15f));
+    }
+
     private static AutomaticRecoveryManeuver drivingManeuver(float distance) {
         AutomaticRecoveryManeuver maneuver = new AutomaticRecoveryManeuver();
         maneuver.begin(distance);

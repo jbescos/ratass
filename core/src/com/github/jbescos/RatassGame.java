@@ -198,6 +198,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final String RL_ENEMY_POLICY_PATH = "ai/rl_enemy_policy.json";
     private static final String RL_POLICY_DIRECTORY = "ai/policies";
     private static final String RL_POLICY_FILE_NAME = "rl_enemy_policy.json";
+    private static final String RL_RECOVERY_POLICY_PATH = "ai/recovery/rl_recovery_policy.json";
     private static final String DRIVER_METADATA_FILE_NAME = "driver_metadata.json";
     private static final String RL_LEGACY_POLICY_ID = "legacy";
     private static final String[] DRIVER_POLICY_IDS = {
@@ -550,6 +551,41 @@ public class RatassGame extends ApplicationAdapter {
             "route_far_point_side",
             "route_far_left_clear",
             "route_far_right_clear"
+    };
+    private static final String[] RL_RECOVERY_OBSERVATION_NAMES = {
+            "target_fwd",
+            "target_side",
+            "target_dist",
+            "route_fwd",
+            "route_side",
+            "on_road",
+            "off_road_dist",
+            "route_left_margin",
+            "route_right_margin",
+            "forward_speed",
+            "lateral_speed",
+            "route_forward_speed",
+            "angular_speed",
+            "road_front",
+            "road_rear",
+            "road_left",
+            "road_right",
+            "road_front_left",
+            "road_front_right",
+            "road_rear_left",
+            "road_rear_right",
+            "car_front",
+            "car_front_left",
+            "car_left",
+            "car_rear",
+            "car_right",
+            "car_front_right",
+            "previous_throttle",
+            "previous_turn",
+            "target_left_clear",
+            "target_right_clear",
+            "route_curvature",
+            "car_contact"
     };
     private static final int RL_DEBUG_TRACE_SIZE = 23;
     private static final String[] RL_DEBUG_TRACE_NAMES = {
@@ -1421,6 +1457,7 @@ public class RatassGame extends ApplicationAdapter {
     private Car playerCar;
     private Car winner;
     private RlPolicy rlEnemyPolicy;
+    private RlPolicy rlRecoveryPolicy;
     private RogueliteSaveRepository rogueliteSaveRepository;
     private RogueliteSaveData pendingContinueSave;
     private final Map<String, RlPolicy> rlPolicies = new LinkedHashMap<String, RlPolicy>();
@@ -1723,6 +1760,9 @@ public class RatassGame extends ApplicationAdapter {
                 break;
             case LOADING_DRIVERS_STAGE:
                 rlEnemyPolicy = loadRlEnemyPolicy();
+                rlRecoveryPolicy = loadRlPolicy(
+                        RL_RECOVERY_POLICY_PATH,
+                        "shared-recovery");
                 if (pendingContinueSave == null) {
                     rogueliteRun.reset(loadingStartingTier);
                 }
@@ -9603,6 +9643,7 @@ public class RatassGame extends ApplicationAdapter {
                     cars,
                     mirrorCars,
                     resolveBestDriverPolicy(car, car.template.rlPolicy),
+                    rlRecoveryPolicy,
                     surfaceGripMultiplier,
                     rlTrainingMode,
                     rlBenchmarkCardsEnabled);
@@ -9753,7 +9794,8 @@ public class RatassGame extends ApplicationAdapter {
                     mirrorCars,
                     allowControl,
                     rlTrainingMode,
-                    resolveBestDriverPolicy(mirror, mirror.template.rlPolicy));
+                    resolveBestDriverPolicy(mirror, mirror.template.rlPolicy),
+                    rlRecoveryPolicy);
         }
     }
 
@@ -25221,6 +25263,14 @@ public class RatassGame extends ApplicationAdapter {
         private static final float AUTO_RECOVERY_TURN_THROTTLE = 0.38f;
         private static final float AUTO_RECOVERY_TURN_SPEED_LIMIT = HEIGHT * 1.6f;
         private static final float AUTO_RECOVERY_MODEL_HANDOFF_MIN_ASSIST_SECONDS = 0.35f;
+        private static final float AUTO_RECOVERY_POLICY_TARGET_LOOKAHEAD = HEIGHT * 5f;
+        private static final float AUTO_RECOVERY_POLICY_USEFUL_DISTANCE_GAIN = HEIGHT * 0.15f;
+        private static final float AUTO_RECOVERY_POLICY_USEFUL_ALIGNMENT_GAIN = 0.03f;
+        private static final float AUTO_RECOVERY_POLICY_STALL_SECONDS = 3f;
+        private static final float AUTO_RECOVERY_POLICY_MAX_SECONDS = 10f;
+        private static final float AUTO_RECOVERY_SCRIPT_RETRY_MIN_SECONDS = 1.25f;
+        private static final float AUTO_RECOVERY_SCRIPT_RETRY_DISTANCE_GAIN = HEIGHT * 0.75f;
+        private static final float AUTO_RECOVERY_SCRIPT_RETRY_ALIGNMENT_GAIN = 0.15f;
         private static final float NO_PROGRESS_AUTO_RECOVERY_DISTANCE = HEIGHT * 0.50f;
         private static final float AUTO_RECOVERY_EXPLOSION_RADIUS = HEIGHT * 2.5f;
         private static final float AUTO_RECOVERY_EXPLOSION_SPEED = HEIGHT * 9f;
@@ -25337,6 +25387,8 @@ public class RatassGame extends ApplicationAdapter {
         private float sustainedNoProgressTimer;
         private float automaticRecoveryReferenceRouteProgress;
         private boolean automaticRecoveryTrackingInitialized;
+        private boolean automaticRecoveryUsesPolicy;
+        private boolean automaticRecoveryCanRetryPolicy;
         private boolean automaticRecoveryExplosionVisualPending;
         private boolean reverseDriveActive;
         private float lastThrottleCommand;
@@ -26430,6 +26482,7 @@ public class RatassGame extends ApplicationAdapter {
                 Array<Car> cars,
                 Array<Car> recoveryMirrorCars,
                 RlPolicy rlPolicy,
+                RlPolicy recoveryPolicy,
                 float surfaceGripMultiplier,
                 boolean trainingMode,
                 boolean benchmarkCardsEnabled) {
@@ -26488,12 +26541,14 @@ public class RatassGame extends ApplicationAdapter {
             updateAutomaticRecoveryState(
                     delta,
                     arenaMap,
-                    automaticRecoveryAllowed);
+                    automaticRecoveryAllowed,
+                    recoveryPolicy != null);
             if (automaticRecoveryAllowed
                     && applyAutomaticRecoveryControl(
                             arenaMap,
                             cars,
                             recoveryMirrorCars,
+                            recoveryPolicy,
                             delta)) {
                 throttle = automaticRecoveryControlDecision.throttle;
                 turn = automaticRecoveryControlDecision.turn;
@@ -26596,7 +26651,8 @@ public class RatassGame extends ApplicationAdapter {
                 Array<Car> raceMirrors,
                 boolean allowControl,
                 boolean trainingMode,
-                RlPolicy policy) {
+                RlPolicy policy,
+                RlPolicy recoveryPolicy) {
             if (!active || body == null || mirrorOwner == null || mirrorOwner.body == null) {
                 return;
             }
@@ -26644,13 +26700,15 @@ public class RatassGame extends ApplicationAdapter {
             updateAutomaticRecoveryState(
                     delta,
                     arenaMap,
-                    automaticRecoveryAllowed);
+                    automaticRecoveryAllowed,
+                    recoveryPolicy != null);
             boolean automaticRecoveryApplied = false;
             if (automaticRecoveryAllowed
                     && applyAutomaticRecoveryControl(
                             arenaMap,
                             raceCars,
                             raceMirrors,
+                            recoveryPolicy,
                             delta)) {
                 throttle = automaticRecoveryControlDecision.throttle;
                 turn = automaticRecoveryControlDecision.turn;
@@ -27501,7 +27559,8 @@ public class RatassGame extends ApplicationAdapter {
         private void updateAutomaticRecoveryState(
                 float delta,
                 ArenaMap arenaMap,
-                boolean allowed) {
+                boolean allowed,
+                boolean recoveryPolicyAvailable) {
             if (!allowed
                     || arenaMap == null
                     || !arenaMap.hasRoute()
@@ -27541,7 +27600,10 @@ public class RatassGame extends ApplicationAdapter {
                     finishAutomaticRecovery();
                 } else if (handoffResult
                         == AutomaticRecoveryManeuver.ModelHandoffResult.RESUME_ASSISTANCE) {
-                    startAutomaticRecovery(arenaMap, routeProgress);
+                    startAutomaticRecovery(
+                            arenaMap,
+                            routeProgress,
+                            recoveryPolicyAvailable);
                 }
                 return;
             }
@@ -27569,7 +27631,10 @@ public class RatassGame extends ApplicationAdapter {
 
             sustainedNoProgressTimer += Math.max(0f, delta);
             if (sustainedNoProgressTimer >= AUTO_RECOVERY_TRIGGER_SECONDS) {
-                startAutomaticRecovery(arenaMap, routeProgress);
+                startAutomaticRecovery(
+                        arenaMap,
+                        routeProgress,
+                        recoveryPolicyAvailable);
             }
         }
 
@@ -27577,6 +27642,7 @@ public class RatassGame extends ApplicationAdapter {
                 ArenaMap arenaMap,
                 Array<Car> cars,
                 Array<Car> recoveryMirrorCars,
+                RlPolicy recoveryPolicy,
                 float delta) {
             if (arenaMap == null
                     || automaticRecoveryManeuver == null
@@ -27609,6 +27675,43 @@ public class RatassGame extends ApplicationAdapter {
                 automaticRecoveryControlDecision.set(0f, 0f);
                 return false;
             }
+
+            if (automaticRecoveryUsesPolicy && recoveryPolicy != null) {
+                if (automaticRecoveryManeuver.shouldFallbackFromPolicy(
+                        delta,
+                        targetDistance,
+                        targetDistance <= 0.0001f
+                                ? 1f
+                                : autoRecoveryToTarget.dot(forwardAxis) / targetDistance,
+                        AUTO_RECOVERY_POLICY_USEFUL_DISTANCE_GAIN,
+                        AUTO_RECOVERY_POLICY_USEFUL_ALIGNMENT_GAIN,
+                        AUTO_RECOVERY_POLICY_STALL_SECONDS,
+                        AUTO_RECOVERY_POLICY_MAX_SECONDS)) {
+                    startScriptedRecoveryFallback(
+                            arenaMap,
+                            template.roundRaceLastRouteProgress,
+                            true);
+                    return applyAutomaticRecoveryControl(
+                            arenaMap,
+                            cars,
+                            recoveryMirrorCars,
+                            null,
+                            delta);
+                }
+                AiControlDecision decision =
+                        planWithRecoveryPolicy(
+                                delta,
+                                recoveryPolicy,
+                                arenaMap,
+                                cars,
+                                recoveryMirrorCars,
+                                externalControlDecision.throttle,
+                                externalControlDecision.turn);
+                automaticRecoveryControlDecision.set(decision.throttle, decision.turn);
+                return true;
+            }
+            automaticRecoveryUsesPolicy = false;
+
             float targetAlignment = targetDistance <= 0.0001f
                     ? 1f
                     : autoRecoveryToTarget.dot(forwardAxis) / targetDistance;
@@ -27623,6 +27726,32 @@ public class RatassGame extends ApplicationAdapter {
             if (automaticRecoveryManeuver.consumeExplosionRequest()) {
                 applyAutomaticRecoveryExplosion(cars, recoveryMirrorCars);
                 automaticRecoveryManeuver.begin(targetDistance);
+                if (automaticRecoveryCanRetryPolicy && recoveryPolicy != null) {
+                    automaticRecoveryManeuver.beginScriptedPolicyRetry(
+                            targetDistance,
+                            targetAlignment);
+                }
+            }
+
+            if (automaticRecoveryCanRetryPolicy
+                    && recoveryPolicy != null
+                    && automaticRecoveryManeuver.shouldRetryPolicyAfterScriptedAssist(
+                            delta,
+                            targetDistance,
+                            targetAlignment,
+                            AUTO_RECOVERY_SCRIPT_RETRY_MIN_SECONDS,
+                            AUTO_RECOVERY_SCRIPT_RETRY_DISTANCE_GAIN,
+                            AUTO_RECOVERY_SCRIPT_RETRY_ALIGNMENT_GAIN)) {
+                startAutomaticRecovery(
+                        arenaMap,
+                        template.roundRaceLastRouteProgress,
+                        true);
+                return applyAutomaticRecoveryControl(
+                        arenaMap,
+                        cars,
+                        recoveryMirrorCars,
+                        recoveryPolicy,
+                        0f);
             }
 
             AutomaticRecoveryManeuver.Phase phase = automaticRecoveryManeuver.getPhase();
@@ -27643,15 +27772,61 @@ public class RatassGame extends ApplicationAdapter {
             return true;
         }
 
-        private void startAutomaticRecovery(ArenaMap arenaMap, float referenceProgress) {
+        private AiControlDecision planWithRecoveryPolicy(
+                float delta,
+                RlPolicy policy,
+                ArenaMap arenaMap,
+                Array<Car> cars,
+                Array<Car> recoveryMirrorCars,
+                float requestedThrottle,
+                float requestedTurn) {
+            if (lastRlPlanningPolicy != policy) {
+                lastRlPlanningPolicy = policy;
+                rlDecisionTimer = 0f;
+            }
+            rlDecisionTimer -= delta;
+            if (rlDecisionTimer <= 0f) {
+                ensureRlScratch(policy);
+                fillRecoveryObservation(
+                        rlObservation,
+                        0,
+                        this,
+                        arenaMap,
+                        autoRecoveryTarget,
+                        autoRecoveryRouteTangent,
+                        requestedThrottle,
+                        requestedTurn,
+                        cars,
+                        recoveryMirrorCars,
+                        rlObservationForward,
+                        rlObservationRouteTarget,
+                        rlObservationSide);
+                policy.computeAction(
+                        rlObservation,
+                        rlScratchA,
+                        rlScratchB,
+                        rawExternalControlDecision);
+                setDirectRlControl(
+                        rawExternalControlDecision.throttle,
+                        rawExternalControlDecision.turn);
+                rlDecisionTimer = RL_LIVE_DECISION_INTERVAL;
+            }
+            return externalControlDecision;
+        }
+
+        private void startAutomaticRecovery(
+                ArenaMap arenaMap,
+                float referenceProgress,
+                boolean recoveryPolicyAvailable) {
             updateAxes();
             float routeProgress =
                     arenaMap.findRouteProgressNear(
                             body.getPosition(),
                             forwardAxis,
                             referenceProgress);
-            float targetProgress =
-                    AutomaticRecoveryManeuver.targetRouteProgress(
+            float targetProgress = recoveryPolicyAvailable
+                    ? recoveryPolicyTargetRouteProgress(routeProgress)
+                    : AutomaticRecoveryManeuver.targetRouteProgress(
                             routeProgress,
                             arenaMap.getRouteLength());
             arenaMap.findRoutePoint(targetProgress, autoRecoveryTarget);
@@ -27666,12 +27841,50 @@ public class RatassGame extends ApplicationAdapter {
             automaticRecoveryTrackingInitialized = true;
             automaticRecoveryManeuver.begin(
                     body.getPosition().dst(autoRecoveryTarget));
+            automaticRecoveryUsesPolicy = recoveryPolicyAvailable;
+            automaticRecoveryCanRetryPolicy = false;
+            if (automaticRecoveryUsesPolicy) {
+                autoRecoveryToTarget.set(autoRecoveryTarget).sub(body.getPosition());
+                float targetDistance = autoRecoveryToTarget.len();
+                float targetAlignment = targetDistance <= 0.0001f
+                        ? 1f
+                        : autoRecoveryToTarget.dot(forwardAxis) / targetDistance;
+                automaticRecoveryManeuver.beginPolicyAttempt(
+                        targetDistance,
+                        targetAlignment);
+            }
+        }
+
+        private void startScriptedRecoveryFallback(
+                ArenaMap arenaMap,
+                float referenceProgress,
+                boolean retryPolicy) {
+            startAutomaticRecovery(arenaMap, referenceProgress, false);
+            automaticRecoveryCanRetryPolicy = retryPolicy;
+            if (!retryPolicy) {
+                return;
+            }
+            autoRecoveryToTarget.set(autoRecoveryTarget).sub(body.getPosition());
+            float targetDistance = autoRecoveryToTarget.len();
+            updateAxes();
+            float targetAlignment = targetDistance <= 0.0001f
+                    ? 1f
+                    : autoRecoveryToTarget.dot(forwardAxis) / targetDistance;
+            automaticRecoveryManeuver.beginScriptedPolicyRetry(
+                    targetDistance,
+                    targetAlignment);
+        }
+
+        private static float recoveryPolicyTargetRouteProgress(float routeProgress) {
+            return routeProgress + AUTO_RECOVERY_POLICY_TARGET_LOOKAHEAD;
         }
 
         private void finishAutomaticRecovery() {
             automaticRecoveryManeuver.reset();
             sustainedNoProgressTimer = 0f;
             automaticRecoveryTrackingInitialized = false;
+            automaticRecoveryUsesPolicy = false;
+            automaticRecoveryCanRetryPolicy = false;
             automaticRecoveryControlDecision.set(0f, 0f);
         }
 
@@ -27679,6 +27892,8 @@ public class RatassGame extends ApplicationAdapter {
             sustainedNoProgressTimer = 0f;
             automaticRecoveryReferenceRouteProgress = 0f;
             automaticRecoveryTrackingInitialized = false;
+            automaticRecoveryUsesPolicy = false;
+            automaticRecoveryCanRetryPolicy = false;
             if (automaticRecoveryManeuver != null) {
                 automaticRecoveryManeuver.reset();
             }
@@ -29207,6 +29422,254 @@ public class RatassGame extends ApplicationAdapter {
         return brakeDemand;
     }
 
+    private static void fillRecoveryObservation(
+            float[] observations,
+            int offset,
+            Car car,
+            ArenaMap arenaMap,
+            Vector2 targetPosition,
+            Vector2 targetTangent,
+            float requestedThrottle,
+            float requestedTurn,
+            Array<Car> cars,
+            Array<Car> otherCars,
+            Vector2 observationForward,
+            Vector2 observationRouteTarget,
+            Vector2 observationSide) {
+        for (int i = 0; i < RL_OBSERVATION_SIZE; i++) {
+            observations[offset + i] = 0f;
+        }
+        if (car == null
+                || !car.active
+                || car.body == null
+                || arenaMap == null
+                || targetPosition == null
+                || targetTangent == null) {
+            return;
+        }
+
+        Vector2 position = car.body.getPosition();
+        Vector2 velocity = car.body.getLinearVelocity();
+        observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
+        observationSide.set(-observationForward.y, observationForward.x);
+
+        float targetDx = targetPosition.x - position.x;
+        float targetDy = targetPosition.y - position.y;
+        float targetDistance = (float) Math.sqrt(targetDx * targetDx + targetDy * targetDy);
+        if (targetDistance > 0.0001f) {
+            observations[offset] = MathUtils.clamp(
+                    (targetDx * observationForward.x + targetDy * observationForward.y)
+                            / targetDistance,
+                    -1f,
+                    1f);
+            observations[offset + 1] = MathUtils.clamp(
+                    (targetDx * observationSide.x + targetDy * observationSide.y)
+                            / targetDistance,
+                    -1f,
+                    1f);
+        }
+        observations[offset + 2] = MathUtils.clamp(
+                targetDistance / (Car.HEIGHT * 12f),
+                0f,
+                1f);
+
+        observationRouteTarget.set(targetTangent);
+        if (observationRouteTarget.isZero(0.0001f)) {
+            observationRouteTarget.set(observationForward);
+        } else {
+            observationRouteTarget.nor();
+        }
+        float routeTangentX = observationRouteTarget.x;
+        float routeTangentY = observationRouteTarget.y;
+        observations[offset + 3] = MathUtils.clamp(
+                routeTangentX * observationForward.x + routeTangentY * observationForward.y,
+                -1f,
+                1f);
+        observations[offset + 4] = MathUtils.clamp(
+                routeTangentX * observationSide.x + routeTangentY * observationSide.y,
+                -1f,
+                1f);
+
+        boolean onRoad = !Car.isTrackLimitSlowdownActive(arenaMap, position);
+        float offRoadDistance = onRoad ? 0f : Car.getTrackLimitPenaltyDistance(arenaMap, position);
+        observations[offset + 5] = onRoad ? 1f : 0f;
+        observations[offset + 6] = MathUtils.clamp(
+                offRoadDistance / RL_OFF_ROAD_DISTANCE_NORMALIZER,
+                0f,
+                1f);
+
+        float routeProgressReference =
+                car.template != null
+                                && Float.isFinite(car.template.roundRaceLastRouteProgress)
+                        ? car.template.roundRaceLastRouteProgress
+                        : 0f;
+        float routeProgress = arenaMap.findRouteProgressNear(
+                position,
+                observationForward,
+                routeProgressReference);
+        arenaMap.findRouteTangent(routeProgress, observationRouteTarget);
+        float currentRouteTangentX = observationRouteTarget.x;
+        float currentRouteTangentY = observationRouteTarget.y;
+        if (observationRouteTarget.isZero(0.0001f)) {
+            currentRouteTangentX = routeTangentX;
+            currentRouteTangentY = routeTangentY;
+        } else {
+            float inverseCurrentTangentLength = 1f / observationRouteTarget.len();
+            currentRouteTangentX *= inverseCurrentTangentLength;
+            currentRouteTangentY *= inverseCurrentTangentLength;
+        }
+        arenaMap.findRoutePoint(routeProgress, observationRouteTarget);
+        float routeNormalX = -currentRouteTangentY;
+        float routeNormalY = currentRouteTangentX;
+        float centerlineDx = observationRouteTarget.x - position.x;
+        float centerlineDy = observationRouteTarget.y - position.y;
+        float lateralOffset = -(centerlineDx * routeNormalX + centerlineDy * routeNormalY);
+        observations[offset + 7] = normalizedRlValue(
+                arenaMap.getRouteLeftClearance(routeProgress) - lateralOffset,
+                RL_ROUTE_MARGIN_NORMALIZER);
+        observations[offset + 8] = normalizedRlValue(
+                arenaMap.getRouteRightClearance(routeProgress) + lateralOffset,
+                RL_ROUTE_MARGIN_NORMALIZER);
+
+        float maxForwardSpeed = Math.max(0.001f, car.getDrivingReferenceMaxSpeed());
+        observations[offset + 9] = normalizedRlValue(
+                observationForward.dot(velocity),
+                maxForwardSpeed);
+        observations[offset + 10] = normalizedRlValue(
+                observationSide.dot(velocity),
+                maxForwardSpeed);
+        observations[offset + 11] = normalizedRlValue(
+                currentRouteTangentX * velocity.x + currentRouteTangentY * velocity.y,
+                maxForwardSpeed);
+        observations[offset + 12] = normalizedRlValue(
+                car.body.getAngularVelocity(),
+                RL_ANGULAR_VELOCITY_NORMALIZER);
+
+        observations[offset + 13] = sampleRlRayClearance(
+                arenaMap, position, observationForward.x, observationForward.y,
+                RL_FRONT_ROAD_CLEARANCE_DISTANCE);
+        observations[offset + 14] = sampleRlRayClearance(
+                arenaMap, position, -observationForward.x, -observationForward.y,
+                RL_FRONT_ROAD_CLEARANCE_DISTANCE);
+        observations[offset + 15] = sampleRlRayClearance(
+                arenaMap, position, observationSide.x, observationSide.y,
+                RL_LATERAL_ROAD_CLEARANCE_DISTANCE);
+        observations[offset + 16] = sampleRlRayClearance(
+                arenaMap, position, -observationSide.x, -observationSide.y,
+                RL_LATERAL_ROAD_CLEARANCE_DISTANCE);
+        observations[offset + 17] = sampleRlRayClearance(
+                arenaMap, position,
+                observationForward.x + observationSide.x,
+                observationForward.y + observationSide.y,
+                RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE);
+        observations[offset + 18] = sampleRlRayClearance(
+                arenaMap, position,
+                observationForward.x - observationSide.x,
+                observationForward.y - observationSide.y,
+                RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE);
+        observations[offset + 19] = sampleRlRayClearance(
+                arenaMap, position,
+                -observationForward.x + observationSide.x,
+                -observationForward.y + observationSide.y,
+                RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE);
+        observations[offset + 20] = sampleRlRayClearance(
+                arenaMap, position,
+                -observationForward.x - observationSide.x,
+                -observationForward.y - observationSide.y,
+                RL_FRONT_DIAGONAL_ROAD_CLEARANCE_DISTANCE);
+
+        fillRecoveryCarProximity(
+                observations,
+                offset + 21,
+                car,
+                cars,
+                position,
+                observationForward,
+                observationSide);
+        fillRecoveryCarProximity(
+                observations,
+                offset + 21,
+                car,
+                otherCars,
+                position,
+                observationForward,
+                observationSide);
+        observations[offset + 27] = MathUtils.clamp(requestedThrottle, -1f, 1f);
+        observations[offset + 28] = MathUtils.clamp(requestedTurn, -1f, 1f);
+
+        float targetProgress = arenaMap.findRouteProgressNear(
+                targetPosition,
+                targetTangent,
+                routeProgress);
+        observations[offset + 29] = MathUtils.clamp(
+                arenaMap.getRouteLeftClearance(targetProgress) / RL_ROUTE_MARGIN_NORMALIZER,
+                0f,
+                1f);
+        observations[offset + 30] = MathUtils.clamp(
+                arenaMap.getRouteRightClearance(targetProgress) / RL_ROUTE_MARGIN_NORMALIZER,
+                0f,
+                1f);
+        observations[offset + 31] = arenaMap.getRouteCurvature(routeProgress);
+        observations[offset + 32] = car.carContactCount > 0 ? 1f : 0f;
+    }
+
+    private static void fillRecoveryCarProximity(
+            float[] observations,
+            int offset,
+            Car car,
+            Array<Car> candidates,
+            Vector2 position,
+            Vector2 forward,
+            Vector2 side) {
+        if (car == null || car.body == null || candidates == null) {
+            return;
+        }
+        float sensorRange = Car.HEIGHT * 6f;
+        float sensorRangeSquared = sensorRange * sensorRange;
+        for (int i = 0; i < candidates.size; i++) {
+            Car candidate = candidates.get(i);
+            if (candidate == null
+                    || candidate == car
+                    || !candidate.active
+                    || candidate.body == null
+                    || candidate.mirrorOwner == car
+                    || car.mirrorOwner == candidate) {
+                continue;
+            }
+            float dx = candidate.body.getPosition().x - position.x;
+            float dy = candidate.body.getPosition().y - position.y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared >= sensorRangeSquared) {
+                continue;
+            }
+            float forwardDistance = dx * forward.x + dy * forward.y;
+            float sideDistance = dx * side.x + dy * side.y;
+            float angleDegrees = MathUtils.atan2(sideDistance, forwardDistance)
+                    * MathUtils.radiansToDegrees;
+            int sector;
+            if (angleDegrees >= -30f && angleDegrees < 30f) {
+                sector = 0;
+            } else if (angleDegrees >= 30f && angleDegrees < 90f) {
+                sector = 1;
+            } else if (angleDegrees >= 90f && angleDegrees < 150f) {
+                sector = 2;
+            } else if (angleDegrees >= 150f || angleDegrees < -150f) {
+                sector = 3;
+            } else if (angleDegrees >= -150f && angleDegrees < -90f) {
+                sector = 4;
+            } else {
+                sector = 5;
+            }
+            float proximity = 1f - MathUtils.clamp(
+                    (float) Math.sqrt(distanceSquared) / sensorRange,
+                    0f,
+                    1f);
+            observations[offset + sector] = Math.max(
+                    observations[offset + sector],
+                    proximity);
+        }
+    }
+
     private static void fillRlObservation(
             float[] observations,
             int offset,
@@ -29513,6 +29976,50 @@ public class RatassGame extends ApplicationAdapter {
         return MathUtils.clamp(value / Math.max(0.0001f, normalizer), -1f, 1f);
     }
 
+    private enum RecoveryTrainingScenario {
+        OFFROAD_NEAR,
+        OFFROAD_SHALLOW,
+        OFFROAD_ANGLED,
+        OFFROAD_HARD,
+        OFFROAD_REVERSED,
+        ONROAD_MISALIGNED,
+        BLOCKED_FRONT;
+
+        private static RecoveryTrainingScenario select(String configured, int episodeIndex) {
+            String normalized = configured == null
+                    ? "mixed"
+                    : configured.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+            if ("mixed".equals(normalized) || normalized.length() == 0) {
+                RecoveryTrainingScenario[] scenarios = values();
+                return scenarios[Math.floorMod(episodeIndex, scenarios.length)];
+            }
+            if ("offroad_near".equals(normalized)) {
+                return OFFROAD_NEAR;
+            }
+            if ("offroad_shallow".equals(normalized)) {
+                return OFFROAD_SHALLOW;
+            }
+            if ("offroad_angled".equals(normalized)) {
+                return OFFROAD_ANGLED;
+            }
+            if ("offroad_hard".equals(normalized)) {
+                return OFFROAD_HARD;
+            }
+            if ("offroad_reversed".equals(normalized)) {
+                return OFFROAD_REVERSED;
+            }
+            if ("onroad_misaligned".equals(normalized)
+                    || "onroad_stuck".equals(normalized)) {
+                return ONROAD_MISALIGNED;
+            }
+            if ("blocked_front".equals(normalized)
+                    || "blocked".equals(normalized)) {
+                return BLOCKED_FRONT;
+            }
+            throw new IllegalArgumentException("Unknown recovery scenario: " + configured);
+        }
+    }
+
     public static final class RlTrainingConfig {
         public final Array<ArenaMap> maps = new Array<ArenaMap>();
         public int controlledAgentCount = RL_DEFAULT_CONTROLLED_AGENTS;
@@ -29529,6 +30036,8 @@ public class RatassGame extends ApplicationAdapter {
         public long seed = 1L;
         public boolean skipCountdown = true;
         public boolean raceMode = true;
+        public boolean recoveryTraining;
+        public String recoveryScenario = "mixed";
         public boolean randomRaceSpawns;
         public boolean debugTraceEnabled;
         public boolean rewardBreakdownEnabled = true;
@@ -29549,6 +30058,14 @@ public class RatassGame extends ApplicationAdapter {
         public float noProgressPenalty = RL_NO_PROGRESS_PENALTY;
         public float offRoadRecoveryReward = RL_OFF_ROAD_RECOVERY_REWARD;
         public float offRoadFailurePenalty = RL_OFF_ROAD_FAILURE_PENALTY;
+        public float recoveryDistanceReward = 4f;
+        public float recoveryAlignmentReward = 8f;
+        public float recoveryTargetAlignmentReward = 6f;
+        public float recoveryMotionReward = 0.75f;
+        public float recoveryLaunchThrottleReward = 5f;
+        public float recoverySteeringReward = 5f;
+        public float recoveryStationaryPenalty = 0.15f;
+        public float recoverySuccessReward = 2000f;
 
         public RlTrainingConfig addMap(ArenaMap map) {
             if (map != null) {
@@ -29658,6 +30175,21 @@ public class RatassGame extends ApplicationAdapter {
             return this;
         }
 
+        public RlTrainingConfig withRecoveryTraining(boolean recoveryTraining) {
+            this.recoveryTraining = recoveryTraining;
+            if (recoveryTraining) {
+                controlledAgentCount = 1;
+                fieldSize = 1;
+                routeTargets = 1;
+            }
+            return this;
+        }
+
+        public RlTrainingConfig withRecoveryScenario(String recoveryScenario) {
+            this.recoveryScenario = recoveryScenario == null ? "mixed" : recoveryScenario;
+            return this;
+        }
+
         public RlTrainingConfig withRandomRaceSpawns(boolean randomRaceSpawns) {
             this.randomRaceSpawns = randomRaceSpawns;
             return this;
@@ -29741,6 +30273,26 @@ public class RatassGame extends ApplicationAdapter {
 
         public RlTrainingConfig withOffRoadFailurePenalty(float offRoadFailurePenalty) {
             this.offRoadFailurePenalty = offRoadFailurePenalty;
+            return this;
+        }
+
+        public RlTrainingConfig withRecoveryRewards(
+                float distanceReward,
+                float alignmentReward,
+                float targetAlignmentReward,
+                float motionReward,
+                float launchThrottleReward,
+                float steeringReward,
+                float stationaryPenalty,
+                float successReward) {
+            this.recoveryDistanceReward = distanceReward;
+            this.recoveryAlignmentReward = alignmentReward;
+            this.recoveryTargetAlignmentReward = targetAlignmentReward;
+            this.recoveryMotionReward = motionReward;
+            this.recoveryLaunchThrottleReward = launchThrottleReward;
+            this.recoverySteeringReward = steeringReward;
+            this.recoveryStationaryPenalty = stationaryPenalty;
+            this.recoverySuccessReward = successReward;
             return this;
         }
 
@@ -29836,6 +30388,9 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 observationTargetPosition = new Vector2();
         private final Vector2 observationSecondCheckpoint = new Vector2();
         private final Vector2 observationSide = new Vector2();
+        private final Vector2 recoverySpawnPoint = new Vector2();
+        private final Vector2 recoverySpawnTangent = new Vector2();
+        private final Vector2 recoverySpawnNormal = new Vector2();
         private final RlAgentSnapshot[] beforeSnapshots;
         private final RlAgentSnapshot[] afterSnapshots;
         private final float[] observations;
@@ -29865,7 +30420,11 @@ public class RatassGame extends ApplicationAdapter {
         private final boolean[] offRoadDuringAction;
         private final float[] maxOffRoadDistanceDuringAction;
         private final boolean[] dones;
+        private final Vector2[] recoveryTargetPositions;
+        private final Vector2[] recoveryTargetTangents;
+        private final float[] recoveryStableSeconds;
         private final int controlledAgentCount;
+        private RecoveryTrainingScenario recoveryScenario;
         private int episodeIndex;
         private int actionStep;
         private boolean episodeStarted;
@@ -29887,8 +30446,9 @@ public class RatassGame extends ApplicationAdapter {
                     new MapProgression(
                             trainingMaps,
                             new Random(this.config.seed ^ 0x9E3779B97F4A7C15L));
-            controlledAgentCount =
-                    MathUtils.clamp(this.config.controlledAgentCount, 1, MAX_CAR_COUNT);
+            controlledAgentCount = this.config.recoveryTraining
+                    ? 1
+                    : MathUtils.clamp(this.config.controlledAgentCount, 1, MAX_CAR_COUNT);
             beforeSnapshots = new RlAgentSnapshot[controlledAgentCount];
             afterSnapshots = new RlAgentSnapshot[controlledAgentCount];
             for (int i = 0; i < controlledAgentCount; i++) {
@@ -29922,6 +30482,13 @@ public class RatassGame extends ApplicationAdapter {
             offRoadDuringAction = new boolean[controlledAgentCount];
             maxOffRoadDistanceDuringAction = new float[controlledAgentCount];
             dones = new boolean[controlledAgentCount];
+            recoveryTargetPositions = new Vector2[controlledAgentCount];
+            recoveryTargetTangents = new Vector2[controlledAgentCount];
+            recoveryStableSeconds = new float[controlledAgentCount];
+            for (int i = 0; i < controlledAgentCount; i++) {
+                recoveryTargetPositions[i] = new Vector2();
+                recoveryTargetTangents[i] = new Vector2(0f, 1f);
+            }
             fastStepResult = new RlFastStepResult(observations, rewards);
         }
 
@@ -29934,9 +30501,12 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         public String[] getObservationNames() {
-            String[] names = new String[RL_OBSERVATION_NAMES.length];
-            for (int i = 0; i < RL_OBSERVATION_NAMES.length; i++) {
-                names[i] = RL_OBSERVATION_NAMES[i];
+            String[] source = config.recoveryTraining
+                    ? RL_RECOVERY_OBSERVATION_NAMES
+                    : RL_OBSERVATION_NAMES;
+            String[] names = new String[source.length];
+            for (int i = 0; i < source.length; i++) {
+                names[i] = source[i];
             }
             return names;
         }
@@ -29959,14 +30529,18 @@ public class RatassGame extends ApplicationAdapter {
         private void resetInternal() {
             ensureOpen();
             long episodeSeed = config.seed + episodeIndex * 104729L;
+            recoveryScenario = config.recoveryTraining
+                    ? RecoveryTrainingScenario.select(config.recoveryScenario, episodeIndex)
+                    : null;
             episodeIndex++;
             MathUtils.random.setSeed(episodeSeed);
             Box2D.init();
 
             createRoster();
-            game.rlTrainingAllowSoloRound = game.roster.size <= 1;
+            game.rlTrainingAllowSoloRound = config.recoveryTraining || game.roster.size <= 1;
             game.rlTrainingDisablePickups = true;
-            game.rlTrainingRandomSpawnLocations = config.randomRaceSpawns;
+            game.rlTrainingRandomSpawnLocations =
+                    !config.recoveryTraining && config.randomRaceSpawns;
             game.rlTrainingMode = true;
             game.rlTrainingRaceMode = true;
             game.rlBenchmarkCardsEnabled = config.benchmarkCard != null;
@@ -29979,6 +30553,9 @@ public class RatassGame extends ApplicationAdapter {
             game.roundNumber = 0;
             game.playerWins = 0;
             game.resetRound(false);
+            if (config.recoveryTraining) {
+                configureRecoveryScenario();
+            }
             configureBenchmarkCard();
             if (config.skipCountdown) {
                 game.preRoundCountdownTimer = 0f;
@@ -30047,13 +30624,24 @@ public class RatassGame extends ApplicationAdapter {
             captureSnapshots(afterSnapshots);
             recordSnapshotOffRoadState(afterSnapshots);
             updateRouteProgress();
-            updateNoProgressState();
-            updateOffRoadFailureState();
+            float elapsedSeconds = simulatedPhysicsSteps * PHYSICS_STEP;
+            if (config.recoveryTraining) {
+                updateRecoveryGoal(elapsedSeconds);
+            } else {
+                updateNoProgressState();
+                updateOffRoadFailureState();
+            }
             boolean trainingRaceCompleted = hasCompletedTrainingRace();
             episodeNoProgressFailure =
-                    !game.roundOver && !trainingRaceCompleted && hasNoProgressTimeout();
+                    !config.recoveryTraining
+                            && !game.roundOver
+                            && !trainingRaceCompleted
+                            && hasNoProgressTimeout();
             episodeOffRoadFailure =
-                    !game.roundOver && !trainingRaceCompleted && hasOffRoadFailureTimeout();
+                    !config.recoveryTraining
+                            && !game.roundOver
+                            && !trainingRaceCompleted
+                            && hasOffRoadFailureTimeout();
             episodeTerminated =
                     game.roundOver
                             || trainingRaceCompleted
@@ -30062,7 +30650,7 @@ public class RatassGame extends ApplicationAdapter {
             episodeTruncated = !episodeTerminated && maxStepsReached;
             episodeDone = episodeTerminated || episodeTruncated;
             buildObservations();
-            computeRewards(simulatedPhysicsSteps * PHYSICS_STEP);
+            computeRewards(elapsedSeconds);
         }
 
         /**
@@ -30109,7 +30697,145 @@ public class RatassGame extends ApplicationAdapter {
                         Integer.valueOf(game.roster.get(game.roster.size - 1).vehicleId));
             }
 
+            if (config.recoveryTraining
+                    && recoveryScenario == RecoveryTrainingScenario.BLOCKED_FRONT) {
+                CarVisual visual = game.getCarVisual(1);
+                game.addRosterTemplate(
+                        "Blocker",
+                        false,
+                        new Color(visual.color),
+                        visual,
+                        "recovery-blocker",
+                        true,
+                        false,
+                        null,
+                        CarPhysics.DEFAULT);
+            }
+
             game.invalidateLeaderboard();
+        }
+
+        private void configureRecoveryScenario() {
+            Car learner = getControlledCar(0);
+            ArenaMap map = game.currentMap;
+            if (learner == null
+                    || learner.body == null
+                    || map == null
+                    || !map.hasRoute()) {
+                return;
+            }
+
+            float routeLength = Math.max(0.001f, map.getRouteLength());
+            float routeProgress = MathUtils.random(0f, routeLength);
+            map.findRoutePoint(routeProgress, recoverySpawnPoint);
+            map.findRouteTangent(routeProgress, recoverySpawnTangent);
+            if (recoverySpawnTangent.isZero(0.0001f)) {
+                recoverySpawnTangent.set(0f, 1f);
+            } else {
+                recoverySpawnTangent.nor();
+            }
+            recoverySpawnNormal.set(-recoverySpawnTangent.y, recoverySpawnTangent.x);
+
+            float targetProgress = Car.recoveryPolicyTargetRouteProgress(routeProgress);
+            map.findRoutePoint(targetProgress, recoveryTargetPositions[0]);
+            map.findRouteTangent(targetProgress, recoveryTargetTangents[0]);
+            if (recoveryTargetTangents[0].isZero(0.0001f)) {
+                recoveryTargetTangents[0].set(recoverySpawnTangent);
+            } else {
+                recoveryTargetTangents[0].nor();
+            }
+
+            float routeAngle = (float) Math.atan2(
+                    -recoverySpawnTangent.x,
+                    recoverySpawnTangent.y);
+            float spawnAngle = routeAngle;
+            recoverySpawnPoint.set(
+                    recoverySpawnPoint.x,
+                    recoverySpawnPoint.y);
+            if (recoveryScenario == RecoveryTrainingScenario.OFFROAD_NEAR
+                    || recoveryScenario == RecoveryTrainingScenario.OFFROAD_SHALLOW
+                    || recoveryScenario == RecoveryTrainingScenario.OFFROAD_ANGLED
+                    || recoveryScenario == RecoveryTrainingScenario.OFFROAD_HARD
+                    || recoveryScenario == RecoveryTrainingScenario.OFFROAD_REVERSED) {
+                float side = MathUtils.randomBoolean() ? 1f : -1f;
+                float roadClearance = side > 0f
+                        ? map.getRouteLeftClearance(routeProgress)
+                        : map.getRouteRightClearance(routeProgress);
+                float offset = roadClearance + Car.HALF_WIDTH * 1.35f
+                        + MathUtils.random(0.10f, Car.WIDTH * 0.75f);
+                recoverySpawnPoint.mulAdd(recoverySpawnNormal, side * offset);
+                for (int attempt = 0;
+                        attempt < 8 && map.supports(recoverySpawnPoint);
+                        attempt++) {
+                    recoverySpawnPoint.mulAdd(
+                            recoverySpawnNormal,
+                            side * Car.HALF_WIDTH * 0.5f);
+                }
+                if (recoveryScenario == RecoveryTrainingScenario.OFFROAD_NEAR) {
+                    float targetDx = recoveryTargetPositions[0].x - recoverySpawnPoint.x;
+                    float targetDy = recoveryTargetPositions[0].y - recoverySpawnPoint.y;
+                    spawnAngle = (float) Math.atan2(-targetDx, targetDy)
+                            + MathUtils.random(-8f, 8f) * MathUtils.degreesToRadians;
+                } else if (recoveryScenario == RecoveryTrainingScenario.OFFROAD_SHALLOW) {
+                    spawnAngle += side
+                            * MathUtils.random(5f, 25f)
+                            * MathUtils.degreesToRadians;
+                } else if (recoveryScenario == RecoveryTrainingScenario.OFFROAD_ANGLED) {
+                    spawnAngle += side
+                            * MathUtils.random(20f, 60f)
+                            * MathUtils.degreesToRadians;
+                } else if (recoveryScenario == RecoveryTrainingScenario.OFFROAD_HARD) {
+                    spawnAngle += side
+                            * MathUtils.random(45f, 90f)
+                            * MathUtils.degreesToRadians;
+                } else {
+                    spawnAngle += side
+                            * MathUtils.random(85f, 180f)
+                            * MathUtils.degreesToRadians;
+                }
+            } else if (recoveryScenario == RecoveryTrainingScenario.ONROAD_MISALIGNED) {
+                float side = MathUtils.random(-0.35f, 0.35f);
+                float clearance = Math.min(
+                        map.getRouteLeftClearance(routeProgress),
+                        map.getRouteRightClearance(routeProgress));
+                recoverySpawnPoint.mulAdd(recoverySpawnNormal, side * clearance);
+                spawnAngle += (MathUtils.randomBoolean() ? 1f : -1f)
+                        * MathUtils.random(75f, 180f)
+                        * MathUtils.degreesToRadians;
+            }
+
+            placeRecoveryCar(learner, recoverySpawnPoint, spawnAngle, routeProgress);
+            if (recoveryScenario == RecoveryTrainingScenario.BLOCKED_FRONT
+                    && game.roster.size > 1) {
+                Car blocker = game.roster.get(1).currentCar;
+                if (blocker != null && blocker.body != null) {
+                    observationTargetPosition
+                            .set(recoverySpawnPoint)
+                            .mulAdd(recoverySpawnTangent, Car.HEIGHT * 0.92f)
+                            .mulAdd(
+                                    recoverySpawnNormal,
+                                    MathUtils.random(-Car.WIDTH * 0.12f, Car.WIDTH * 0.12f));
+                    placeRecoveryCar(blocker, observationTargetPosition, routeAngle, routeProgress);
+                    blocker.setDirectRlControl(0f, 0f);
+                }
+            }
+        }
+
+        private void placeRecoveryCar(
+                Car car,
+                Vector2 position,
+                float angle,
+                float routeProgress) {
+            car.body.setTransform(position.x, position.y, angle);
+            car.body.setLinearVelocity(0f, 0f);
+            car.body.setAngularVelocity(0f);
+            car.body.setAwake(true);
+            car.template.roundRaceLastRouteProgress = routeProgress;
+            car.template.roundRaceStartRouteProgress = routeProgress;
+            car.template.roundRaceTotalRouteProgress = 0f;
+            car.template.roundRaceDistanceThisLap = 0f;
+            car.setDirectRlControl(0f, 0f);
+            car.syncRenderTransformToBody();
         }
 
         private void configureBenchmarkCard() {
@@ -30356,7 +31082,11 @@ public class RatassGame extends ApplicationAdapter {
 
         private void captureBeforeSnapshots() {
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
-                captureBeforeSnapshot(agentIndex, beforeSnapshots[agentIndex]);
+                if (config.recoveryTraining) {
+                    captureSnapshot(agentIndex, beforeSnapshots[agentIndex]);
+                } else {
+                    captureBeforeSnapshot(agentIndex, beforeSnapshots[agentIndex]);
+                }
             }
         }
 
@@ -30418,12 +31148,16 @@ public class RatassGame extends ApplicationAdapter {
             snapshot.offRoadDistance =
                     snapshot.offRoad ? Car.getTrackLimitPenaltyDistance(game.currentMap, position) : 0f;
             Vector2 velocity = car.body.getLinearVelocity();
+            snapshot.velocityX = velocity.x;
+            snapshot.velocityY = velocity.y;
             snapshot.speed = velocity.len();
             snapshot.signedForwardSpeed = car.getSignedForwardSpeed();
             snapshot.wallContact = car.hasRecentArenaWallContact();
             snapshot.carHitCount = car.getCarHitCount();
             snapshot.angularSpeed = Math.abs(car.body.getAngularVelocity());
             observationForward.set(car.body.getWorldVector(observationForward.set(0f, 1f)));
+            snapshot.forwardX = observationForward.x;
+            snapshot.forwardY = observationForward.y;
             snapshot.effectiveThrottle = car.lastThrottleCommand;
             snapshot.raceRouteProgress =
                     game.currentMap.findRouteProgressNear(
@@ -30645,6 +31379,10 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private void computeRewards(float elapsedSeconds) {
+            if (config.recoveryTraining) {
+                computeRecoveryRewards();
+                return;
+            }
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
                 clearRewardBreakdown(agentIndex);
                 RlAgentSnapshot before = beforeSnapshots[agentIndex];
@@ -30704,6 +31442,264 @@ public class RatassGame extends ApplicationAdapter {
                 rewards[agentIndex] = reward;
                 dones[agentIndex] = episodeDone;
             }
+        }
+
+        private void updateRecoveryGoal(float elapsedSeconds) {
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                RlAgentSnapshot snapshot = afterSnapshots[agentIndex];
+                Car car = getControlledCar(agentIndex);
+                boolean safelyMovingWithRoute =
+                        snapshot.active
+                                && !snapshot.offRoad
+                                && recoveryAlignment(agentIndex, snapshot) >= 0.50f
+                                && recoveryForwardSpeed(agentIndex, snapshot)
+                                        >= Car.HEIGHT * 0.35f
+                                && (car == null || car.carContactCount == 0);
+                if (safelyMovingWithRoute) {
+                    recoveryStableSeconds[agentIndex] += Math.max(0f, elapsedSeconds);
+                } else {
+                    recoveryStableSeconds[agentIndex] = 0f;
+                }
+                if (recoveryStableSeconds[agentIndex] >= 0.35f) {
+                    routeTargetsReached[agentIndex] = 1;
+                }
+            }
+        }
+
+        private void computeRecoveryRewards() {
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                clearRewardBreakdown(agentIndex);
+                RlAgentSnapshot before = beforeSnapshots[agentIndex];
+                RlAgentSnapshot after = afterSnapshots[agentIndex];
+                float reward = 0f;
+                if (before.active && after.active) {
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_STEP_COST,
+                            -config.stepPenalty);
+
+                    float beforeDistance = distanceToRecoveryTarget(agentIndex, before);
+                    float afterDistance = distanceToRecoveryTarget(agentIndex, after);
+                    Car controlledCar = getControlledCar(agentIndex);
+                    float referenceMaxSpeed = Math.max(
+                            0.001f,
+                            controlledCar == null
+                                    ? 1f
+                                    : controlledCar.getDrivingReferenceMaxSpeed());
+                    float routeSpeedRatio = MathUtils.clamp(
+                            recoveryForwardSpeed(agentIndex, after) / referenceMaxSpeed,
+                            -1f,
+                            1f);
+                    float speedRatio = MathUtils.clamp(
+                            after.speed / referenceMaxSpeed,
+                            0f,
+                            1f);
+                    float movingRouteAlignment = after.offRoad
+                            ? 0f
+                            : recoveryAlignment(agentIndex, after) * speedRatio;
+                    float recoveryHeading = after.offRoad
+                            ? recoveryTargetAlignment(agentIndex, after)
+                                    * config.recoveryTargetAlignmentReward
+                            : recoveryAlignment(agentIndex, after)
+                                    * config.recoveryAlignmentReward;
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_ROUTE_PROGRESS,
+                            MathUtils.clamp(beforeDistance - afterDistance, -1f, 1f)
+                                    * config.recoveryDistanceReward);
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_ROUTE_ALIGNMENT,
+                            MathUtils.clamp(
+                                            recoveryAlignment(agentIndex, after)
+                                                    - recoveryAlignment(agentIndex, before),
+                                            -1f,
+                                            1f)
+                                    * config.recoveryAlignmentReward
+                                    + MathUtils.clamp(
+                                                    recoveryTargetAlignment(agentIndex, after)
+                                                            - recoveryTargetAlignment(
+                                                                    agentIndex,
+                                                                    before),
+                                                    -1f,
+                                                    1f)
+                                            * config.recoveryTargetAlignmentReward
+                                    + recoveryHeading
+                                    + movingRouteAlignment * config.recoveryMotionReward);
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_OFF_ROAD_RECOVERY,
+                            MathUtils.clamp(
+                                            before.offRoadDistance - after.offRoadDistance,
+                                            -1f,
+                                            1f)
+                                    * config.offRoadRecoveryReward);
+                    float targetSpeedRatio = MathUtils.clamp(
+                            recoveryTargetSpeed(agentIndex, after)
+                                    / referenceMaxSpeed,
+                            -1f,
+                            1f);
+                    float launchReward = 0f;
+                    if (speedRatio < 0.08f && routeTargetsReached[agentIndex] == 0) {
+                        launchReward = currentActionThrottle[agentIndex]
+                                * recoveryTargetAlignment(agentIndex, after)
+                                * config.recoveryLaunchThrottleReward;
+                    }
+                    float steeringReward = routeTargetsReached[agentIndex] == 0
+                            ? currentActionTurn[agentIndex]
+                                    * recoveryTargetTurnSignal(agentIndex, after)
+                                    * config.recoverySteeringReward
+                            : 0f;
+                    if (recoveryScenario == RecoveryTrainingScenario.BLOCKED_FRONT) {
+                        int observationOffset = agentIndex * RL_OBSERVATION_SIZE;
+                        float frontCarProximity = observations[observationOffset + 21];
+                        if (frontCarProximity > 0f) {
+                            float escapeAction = Math.abs(currentActionTurn[agentIndex])
+                                    + Math.max(0f, -currentActionThrottle[agentIndex])
+                                    - Math.max(0f, currentActionThrottle[agentIndex]);
+                            steeringReward += frontCarProximity
+                                    * escapeAction
+                                    * config.recoverySteeringReward;
+                        }
+                    }
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_ROUTE_PROGRESS,
+                            targetSpeedRatio * config.recoveryMotionReward
+                                    + launchReward
+                                    - (speedRatio < 0.01f
+                                            ? config.recoveryStationaryPenalty
+                                            : 0f));
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_ROUTE_ALIGNMENT,
+                            steeringReward);
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_STEERING,
+                            -currentActionTurn[agentIndex]
+                                    * currentActionTurn[agentIndex]
+                                    * speedRatio
+                                    * config.steeringPenalty);
+                    if (controlledCar != null && controlledCar.carContactCount > 0) {
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_CAR_PUSH,
+                                -config.carPushPenalty);
+                    }
+                    if (after.offRoad) {
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_OFF_ROAD,
+                                -Math.min(
+                                        config.offRoadMaxPenalty,
+                                        config.offRoadPenalty
+                                                + after.offRoadDistance
+                                                        * config.offRoadDistancePenalty));
+                    } else {
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_REVERSE_SPEED,
+                                routeSpeedRatio * config.recoveryMotionReward);
+                    }
+                    if (routeTargetsReached[agentIndex] > 0) {
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_DRIFT,
+                                config.recoverySuccessReward);
+                    } else if (episodeDone) {
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_OFF_ROAD_FAILURE,
+                                -config.offRoadFailurePenalty);
+                    }
+                }
+                rewards[agentIndex] = reward;
+                dones[agentIndex] = episodeDone;
+            }
+        }
+
+        private float distanceToRecoveryTarget(int agentIndex, RlAgentSnapshot snapshot) {
+            if (agentIndex < 0
+                    || agentIndex >= recoveryTargetPositions.length
+                    || snapshot == null) {
+                return 0f;
+            }
+            float dx = recoveryTargetPositions[agentIndex].x - snapshot.positionX;
+            float dy = recoveryTargetPositions[agentIndex].y - snapshot.positionY;
+            return (float) Math.sqrt(dx * dx + dy * dy);
+        }
+
+        private float recoveryAlignment(int agentIndex, RlAgentSnapshot snapshot) {
+            if (agentIndex < 0
+                    || agentIndex >= recoveryTargetTangents.length
+                    || snapshot == null) {
+                return 0f;
+            }
+            Vector2 tangent = recoveryTargetTangents[agentIndex];
+            return MathUtils.clamp(
+                    snapshot.forwardX * tangent.x + snapshot.forwardY * tangent.y,
+                    -1f,
+                    1f);
+        }
+
+        private float recoveryForwardSpeed(int agentIndex, RlAgentSnapshot snapshot) {
+            if (agentIndex < 0
+                    || agentIndex >= recoveryTargetTangents.length
+                    || snapshot == null) {
+                return 0f;
+            }
+            Vector2 tangent = recoveryTargetTangents[agentIndex];
+            return snapshot.velocityX * tangent.x + snapshot.velocityY * tangent.y;
+        }
+
+        private float recoveryTargetAlignment(int agentIndex, RlAgentSnapshot snapshot) {
+            if (agentIndex < 0
+                    || agentIndex >= recoveryTargetPositions.length
+                    || snapshot == null) {
+                return 0f;
+            }
+            float dx = recoveryTargetPositions[agentIndex].x - snapshot.positionX;
+            float dy = recoveryTargetPositions[agentIndex].y - snapshot.positionY;
+            float distance = (float) Math.sqrt(dx * dx + dy * dy);
+            if (distance <= 0.0001f) {
+                return recoveryAlignment(agentIndex, snapshot);
+            }
+            return MathUtils.clamp(
+                    (snapshot.forwardX * dx + snapshot.forwardY * dy) / distance,
+                    -1f,
+                    1f);
+        }
+
+        private float recoveryTargetSpeed(int agentIndex, RlAgentSnapshot snapshot) {
+            if (agentIndex < 0
+                    || agentIndex >= recoveryTargetPositions.length
+                    || snapshot == null) {
+                return 0f;
+            }
+            float dx = recoveryTargetPositions[agentIndex].x - snapshot.positionX;
+            float dy = recoveryTargetPositions[agentIndex].y - snapshot.positionY;
+            float distance = (float) Math.sqrt(dx * dx + dy * dy);
+            if (distance <= 0.0001f) {
+                return recoveryForwardSpeed(agentIndex, snapshot);
+            }
+            return (snapshot.velocityX * dx + snapshot.velocityY * dy) / distance;
+        }
+
+        private float recoveryTargetTurnSignal(int agentIndex, RlAgentSnapshot snapshot) {
+            if (agentIndex < 0
+                    || agentIndex >= recoveryTargetPositions.length
+                    || snapshot == null) {
+                return 0f;
+            }
+            float dx = recoveryTargetPositions[agentIndex].x - snapshot.positionX;
+            float dy = recoveryTargetPositions[agentIndex].y - snapshot.positionY;
+            float distance = (float) Math.sqrt(dx * dx + dy * dy);
+            if (distance <= 0.0001f) {
+                return 0f;
+            }
+            float targetSide = (-snapshot.forwardY * dx + snapshot.forwardX * dy) / distance;
+            return MathUtils.clamp(targetSide * 2f, -1f, 1f);
         }
 
         private void clearRewardBreakdown(int agentIndex) {
@@ -30837,15 +31833,32 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
-                fillRlObservation(
-                        observations,
-                        agentIndex * RL_OBSERVATION_SIZE,
-                        getControlledCar(agentIndex),
-                        game.currentMap,
-                        bestRaceRouteProgress[agentIndex],
-                        observationForward,
-                        observationRouteTarget,
-                        observationSide);
+                if (config.recoveryTraining) {
+                    fillRecoveryObservation(
+                            observations,
+                            agentIndex * RL_OBSERVATION_SIZE,
+                            getControlledCar(agentIndex),
+                            game.currentMap,
+                            recoveryTargetPositions[agentIndex],
+                            recoveryTargetTangents[agentIndex],
+                            currentActionThrottle[agentIndex],
+                            currentActionTurn[agentIndex],
+                            game.cars,
+                            game.mirrorCars,
+                            observationForward,
+                            observationRouteTarget,
+                            observationSide);
+                } else {
+                    fillRlObservation(
+                            observations,
+                            agentIndex * RL_OBSERVATION_SIZE,
+                            getControlledCar(agentIndex),
+                            game.currentMap,
+                            bestRaceRouteProgress[agentIndex],
+                            observationForward,
+                            observationRouteTarget,
+                            observationSide);
+                }
             }
         }
 
@@ -30942,6 +31955,7 @@ public class RatassGame extends ApplicationAdapter {
                 raceTargetSequences[i] = 0;
                 resetRaceRouteProgressBaseline(i);
                 routeTargetsReached[i] = 0;
+                recoveryStableSeconds[i] = 0f;
                 checkpointCrossRewardSequences[i] = -1;
                 checkpointCrossRewardEvents[i] = false;
                 checkpointTimeoutEvents[i] = false;
@@ -31145,6 +32159,10 @@ public class RatassGame extends ApplicationAdapter {
         private float effectiveThrottle;
         private float recoverySpeed;
         private float angularSpeed;
+        private float forwardX;
+        private float forwardY;
+        private float velocityX;
+        private float velocityY;
 
         private void clear() {
             active = false;
@@ -31170,6 +32188,10 @@ public class RatassGame extends ApplicationAdapter {
             effectiveThrottle = 0f;
             recoverySpeed = 0f;
             angularSpeed = 0f;
+            forwardX = 0f;
+            forwardY = 0f;
+            velocityX = 0f;
+            velocityY = 0f;
         }
     }
 

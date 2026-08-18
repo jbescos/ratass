@@ -77,9 +77,7 @@ still runs on CPU.
   route-only masks, `lap_training` on `tools/rl/trainingMaps`, and `lap_real`,
   `lap_real3`, or `lap_real5` for one, three, or five laps on `assets/maps`.
   `RL_TRAIN_LAP_BATCH_SIZE` overrides `RL_TRAIN_BATCH_SIZE` only for those
-  real-map lap stages. `RL_STAGE_NUMBER_OF_CARS` controls how many cars are
-  used in each stage. Route-target stages must stay single-car; lap stages can
-  train with traffic.
+  real-map lap stages. Normal driver training always uses one learner car.
 - Route-target stages use saved random spawn seeds. By default each
   `tools/rl/train.sh` invocation creates a new spawn-seed session, so spawns
   are stable during that run but different on the next run. Set
@@ -168,12 +166,56 @@ bash tools/rl/train_forever.sh diagnostic
 bash tools/rl/train_forever.sh quick
 bash tools/rl/train_forever.sh fast
 bash tools/rl/train_forever.sh race-single
-bash tools/rl/train_forever.sh race-2
-bash tools/rl/train_forever.sh race-4
-bash tools/rl/train_forever.sh race-8
-bash tools/rl/train_forever.sh race-16
-bash tools/rl/train_forever.sh race-20
 ```
+
+## Shared Recovery Policy
+
+Train the recovery assistance independently from the ten normal drivers:
+
+```bash
+tools/rl/train_recovery.sh
+```
+
+The launcher reads `tools/rl/recovery.properties`. Set
+`RL_RECOVERY_PROPERTIES=/path/to/recovery.properties` to use another file.
+`RL_RECOVERY_SEED` controls training rollouts, while `RL_RECOVERY_EVAL_SEED`
+keeps checkpoint promotion on a fixed, reproducible scenario set.
+`RL_RECOVERY_EVAL_SCENARIO` can keep promotion on `mixed` while a difficult
+scenario is deliberately oversampled during training.
+Explicit environment variables have priority over values from the file, so a
+single run can still be adjusted without editing the committed configuration:
+
+```bash
+RL_RECOVERY_STAGE_ITERATIONS=10,10,20,40 tools/rl/train_recovery.sh
+```
+
+Interrupted stages resume their PPO checkpoint by default. Set
+`RL_FORCE_FRESH_START=1` to disable that live-state resume; existing promoted
+stage gates are still reused.
+
+The launcher trains one `96x2` policy through near-road, shallow-angle,
+angled, hard-angle, reversed, on-road misalignment, blocked-front, and final
+mixed recovery stages. Mixed promotion evaluates seven episodes per map so
+every scenario is represented. `RL_RECOVERY_STAGE_MIN_SUCCESS_RATES` controls
+curriculum progression per stage; its final value is the game-policy gate. The
+policy observes road geometry plus six
+general surrounding-car sectors; it has no blocker-specific sensor. Its two
+outputs are throttle and steering.
+
+The promoted model is written to
+`assets/ai/recovery/rl_recovery_policy.json` and is shared by every normal
+driver profile. Gameplay normally gives this policy control first. If it makes
+no useful distance or heading progress for three seconds, or remains in control
+for ten seconds, the existing scripted recovery takes over. After the script
+materially improves the car position or heading, it retries the policy; safe
+on-road alignment returns control directly to the normal driver model. The
+script is also used immediately when the recovery policy is absent. Recovery
+learning remains a headless, single-car objective; the blocked scenario adds
+one uncontrolled obstacle car.
+
+The properties file documents the curriculum, PPO/network settings, evaluation
+gate, and output locations. Recovery does not read any driver
+`profile.properties` file.
 
 The current convenience curriculum trains the race objective on synthetic
 training-only masks from `tools/rl/trainingMaps` when they exist. Best-eval still

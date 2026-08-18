@@ -52,7 +52,10 @@ DEFAULT_CONTROLLED_AGENTS = 1
 DEFAULT_FIELD_SIZE = 1
 DEFAULT_RAY_NODE_IP = "127.0.0.2"
 RAY_REWRITTEN_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
-EXPORT_OBJECTIVES = {"race": "race-route-progress-v1"}
+EXPORT_OBJECTIVES = {
+    "race": "race-route-progress-v1",
+    "recovery": "shared-recovery-v1",
+}
 INCOMPATIBLE_CHECKPOINT_PATTERNS = (
     "Error(s) in loading state_dict",
     "size mismatch",
@@ -285,6 +288,8 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withRouteTargets(int(env_config.get("route_targets", 6)))
         training_config.withRouteTargetFraction(float(env_config.get("route_target_fraction", 0.0)))
         training_config.withRaceMode(True)
+        training_config.withRecoveryTraining(env_config.get("objective") == "recovery")
+        training_config.withRecoveryScenario(env_config.get("recovery_scenario", "mixed"))
         training_config.withRandomRaceSpawns(bool(env_config.get("random_race_spawns", False)))
         base_seed = int(env_config.get("seed", 1))
         worker_index = int(getattr(env_config, "worker_index", 0) or 0)
@@ -319,6 +324,16 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         )
         training_config.withOffRoadFailurePenalty(
             float(env_config.get("reward_off_road_failure_penalty", 50.0))
+        )
+        training_config.withRecoveryRewards(
+            float(env_config.get("recovery_reward_distance", 4.0)),
+            float(env_config.get("recovery_reward_alignment", 8.0)),
+            float(env_config.get("recovery_reward_target_alignment", 6.0)),
+            float(env_config.get("recovery_reward_motion", 0.75)),
+            float(env_config.get("recovery_reward_launch_throttle", 0.25)),
+            float(env_config.get("recovery_reward_steering", 1.5)),
+            float(env_config.get("recovery_penalty_stationary", 0.15)),
+            float(env_config.get("recovery_reward_success", 125.0)),
         )
         self._reward_summary_enabled = bool(env_config.get("reward_summary", True))
         training_config.withRewardBreakdownEnabled(self._reward_summary_enabled)
@@ -583,6 +598,7 @@ def build_algorithm(args):
         "seed": args.seed,
         "map_ids": args.map_ids,
         "objective": args.objective,
+        "recovery_scenario": args.recovery_scenario,
         "reward_summary": not args.no_reward_summary,
         "reward_step_penalty": args.reward_step_penalty,
         "reward_progress": args.reward_progress,
@@ -600,6 +616,14 @@ def build_algorithm(args):
         "reward_no_progress_penalty": args.reward_no_progress_penalty,
         "reward_off_road_recovery": args.reward_off_road_recovery,
         "reward_off_road_failure_penalty": args.reward_off_road_failure_penalty,
+        "recovery_reward_distance": args.recovery_reward_distance,
+        "recovery_reward_alignment": args.recovery_reward_alignment,
+        "recovery_reward_target_alignment": args.recovery_reward_target_alignment,
+        "recovery_reward_motion": args.recovery_reward_motion,
+        "recovery_reward_launch_throttle": args.recovery_reward_launch_throttle,
+        "recovery_reward_steering": args.recovery_reward_steering,
+        "recovery_penalty_stationary": args.recovery_penalty_stationary,
+        "recovery_reward_success": args.recovery_reward_success,
     }
     config = (
         PPOConfig()
@@ -1108,6 +1132,8 @@ def run_policy_evaluation(
         "--quiet",
         "--objective",
         args.objective,
+        "--recovery-scenario",
+        args.best_eval_recovery_scenario or args.recovery_scenario,
         "--controlled-agents",
         str(controlled_agents),
         "--field-size",
@@ -1123,7 +1149,7 @@ def run_policy_evaluation(
         "--off-road-failure-max-action-steps",
         str(args.off_road_failure_max_action_steps),
         "--seed",
-        str(args.seed),
+        str(args.best_eval_seed if args.best_eval_seed is not None else args.seed),
         "--reward-step-penalty",
         str(args.reward_step_penalty),
         "--reward-progress",
@@ -1156,6 +1182,22 @@ def run_policy_evaluation(
         str(args.reward_off_road_recovery),
         "--reward-off-road-failure-penalty",
         str(args.reward_off_road_failure_penalty),
+        "--recovery-reward-distance",
+        str(args.recovery_reward_distance),
+        "--recovery-reward-alignment",
+        str(args.recovery_reward_alignment),
+        "--recovery-reward-target-alignment",
+        str(args.recovery_reward_target_alignment),
+        "--recovery-reward-motion",
+        str(args.recovery_reward_motion),
+        "--recovery-reward-launch-throttle",
+        str(args.recovery_reward_launch_throttle),
+        "--recovery-reward-steering",
+        str(args.recovery_reward_steering),
+        "--recovery-penalty-stationary",
+        str(args.recovery_penalty_stationary),
+        "--recovery-reward-success",
+        str(args.recovery_reward_success),
     ]
     if episodes_per_map > 0:
         command.extend(["--episodes-per-map", str(episodes_per_map)])
@@ -1456,6 +1498,8 @@ def establish_stage_baseline(algorithm, args, checkpoint_dir: Path) -> Dict[str,
             f"checkpoint={archived_path} output={restored_path}",
             flush=True,
         )
+        result["accepted"] = True
+        result["score"] = state.get("best_score")
         return result
 
     if state_path.exists():
@@ -1581,16 +1625,23 @@ def save_selected_checkpoint_candidate(
             flush=True,
         )
     else:
-        selection = select_checkpoint_candidate(window_candidates)
-        selected = selection.candidate
+        if args.checkpoint_selection == "latest":
+            selected = latest_candidate
+            selection_reason = "latest_iteration"
+            eligible_count = len(window_candidates)
+        else:
+            selection = select_checkpoint_candidate(window_candidates)
+            selected = selection.candidate
+            selection_reason = selection.reason
+            eligible_count = selection.eligible_count
         print(
             f"checkpoint_candidate_selected iteration={selected.iteration} "
             f"window={window_start}-{current_iteration} "
-            f"candidates={len(window_candidates)} eligible={selection.eligible_count} "
+            f"candidates={len(window_candidates)} eligible={eligible_count} "
             f"reward_mean={format_metric(selected.reward_mean)} "
             f"episode_len_mean={format_metric(selected.episode_len_mean, 1)} "
             f"episodes={format_count_metric(selected.episodes)} "
-            f"reason={selection.reason}",
+            f"reason={selection_reason}",
             flush=True,
         )
 
@@ -1708,9 +1759,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
         "--objective",
-        choices=("race",),
+        choices=("race", "recovery"),
         default="race",
-        help="race follows route progress around the circuit",
+        help="race follows route progress; recovery learns to rejoin and unblock",
+    )
+    parser.add_argument(
+        "--recovery-scenario",
+        choices=(
+            "mixed",
+            "offroad_near",
+            "offroad_shallow",
+            "offroad_angled",
+            "offroad_hard",
+            "offroad_reversed",
+            "onroad_misaligned",
+            "blocked_front",
+        ),
+        default="mixed",
+        help="recovery spawn curriculum used by the recovery objective",
     )
     parser.add_argument(
         "--map-ids",
@@ -1733,6 +1799,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-no-progress-penalty", type=float, default=50.0)
     parser.add_argument("--reward-off-road-recovery", type=float, default=4.0)
     parser.add_argument("--reward-off-road-failure-penalty", type=float, default=50.0)
+    parser.add_argument("--recovery-reward-distance", type=float, default=4.0)
+    parser.add_argument("--recovery-reward-alignment", type=float, default=8.0)
+    parser.add_argument("--recovery-reward-target-alignment", type=float, default=6.0)
+    parser.add_argument("--recovery-reward-motion", type=float, default=0.75)
+    parser.add_argument("--recovery-reward-launch-throttle", type=float, default=5.0)
+    parser.add_argument("--recovery-reward-steering", type=float, default=5.0)
+    parser.add_argument("--recovery-penalty-stationary", type=float, default=0.15)
+    parser.add_argument("--recovery-reward-success", type=float, default=2000.0)
     parser.add_argument("--gamma", type=float, default=0.995)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--entropy-coeff", type=float, default=0.005)
@@ -1773,6 +1847,15 @@ def parse_args() -> argparse.Namespace:
         help=(
             "evaluate every candidate from the preceding ten iterations and "
             "select by best-evaluation score; otherwise preselect by reward mean"
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-selection",
+        choices=("reward", "latest"),
+        default="reward",
+        help=(
+            "preselection used when checkpoint candidates are not evaluated: "
+            "reward keeps the highest sampled reward; latest keeps the newest state"
         ),
     )
     parser.add_argument(
@@ -1865,6 +1948,27 @@ def parse_args() -> argparse.Namespace:
         help="max action steps used by route evaluation; 0 uses evaluate_policy.py defaults",
     )
     parser.add_argument(
+        "--best-eval-seed",
+        type=int,
+        default=None,
+        help="evaluation seed; defaults to --seed when omitted",
+    )
+    parser.add_argument(
+        "--best-eval-recovery-scenario",
+        choices=(
+            "mixed",
+            "offroad_near",
+            "offroad_shallow",
+            "offroad_angled",
+            "offroad_hard",
+            "offroad_reversed",
+            "onroad_misaligned",
+            "blocked_front",
+        ),
+        default="",
+        help="recovery scenario used for evaluation; defaults to the training scenario",
+    )
+    parser.add_argument(
         "--best-eval-map-ids",
         default="",
         help="optional comma-separated map ids for route evaluation",
@@ -1882,6 +1986,11 @@ def parse_args() -> argparse.Namespace:
             "not the policy currently installed at --best-export-output"
         ),
     )
+    parser.add_argument(
+        "--skip-training-if-baseline-eligible",
+        action="store_true",
+        help="finish the stage when its initialized policy already passes best-eval gates",
+    )
     args = parser.parse_args()
     apply_objective_defaults(args)
     validate_spawn_configuration(args, parser)
@@ -1889,6 +1998,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def apply_objective_defaults(args: argparse.Namespace) -> None:
+    if args.objective == "recovery":
+        args.controlled_agents = 1
+        args.field_size = 1
+        args.route_targets = 1
+        args.route_target_fraction = 0.0
+        args.random_race_spawns = False
+        return
     if args.controlled_agents is None:
         args.controlled_agents = DEFAULT_CONTROLLED_AGENTS
     if args.field_size is None:
@@ -1896,6 +2012,8 @@ def apply_objective_defaults(args: argparse.Namespace) -> None:
 
 
 def validate_spawn_configuration(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    if getattr(args, "objective", "race") == "recovery":
+        return
     if args.random_race_spawns is None:
         args.random_race_spawns = args.route_targets > 0 and not args.fixed_full_laps
 
@@ -1946,7 +2064,12 @@ def main() -> None:
         )
 
     try:
-        establish_stage_baseline(algorithm, args, checkpoint_dir)
+        baseline_result = establish_stage_baseline(algorithm, args, checkpoint_dir)
+        if (
+                args.skip_training_if_baseline_eligible
+                and baseline_result.get("accepted", False)):
+            print("stage_training_skipped reason=baseline_eligible", flush=True)
+            return
         last_saved_iteration = 0
         current_iteration = 0
         try:
