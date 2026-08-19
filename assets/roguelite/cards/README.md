@@ -36,15 +36,16 @@ Driver portraits are theme assets at
 `assets/theme/<theme>/drivers/driver_art_atlas.png`. Each sheet is a 5 by 2
 atlas mapped in row-major order from `profile00` through `profile09`.
 
-`ability_effect_atlas.png` is the active 17 by 1 alpha atlas for the centered
+`ability_effect_atlas.png` is the active 19 by 1 alpha atlas for the centered
 powerup and revenge effects. Cells map to Nitro T1, Grip T1, Ram, Draft, Shield,
 Mirror, Cloak, Grudge Spark, Vengeance Core, Nemesis Engine, Nitro T2, Nitro T3,
-Grip T2, Grip T3, Time T1, Time T2, and Time T3. The renderer tints the generated
+Grip T2, Grip T3, Time T1, Time T2, Time T3, Ace Hotline, and Priority Hotline.
+The renderer tints the generated
 artwork by card type and keeps projectiles, physical mirror cars, and cloak
-transparency on their dedicated presentation paths. Icon-only abilities such as
-the driver hotlines use the active Powerup indicator without consuming a
-centered-effect cell; Priority Hotline keeps that indicator active while it is
-equipped. All effect sprites are loaded and updated only by the
+transparency on their dedicated presentation paths. The Hotline cards use the
+shared Driver icon as their under-car artwork; Priority Hotline keeps that icon
+and its Powerup indicator active while it is equipped. All effect
+sprites are loaded and updated only by the
 presentation path, so they do not affect RL training.
 
 `card_shell_atlas_v2.png` is the 5 by 2 presentation atlas. Columns are
@@ -101,5 +102,7 @@ java -Djava.awt.headless=true -cp /tmp/ratass-visual-tools \
   tools/art_sources/ability_effects/grip_t3.png \
   tools/art_sources/ability_effects/time_t1.png \
   tools/art_sources/ability_effects/time_t2.png \
-  tools/art_sources/ability_effects/time_t3.png
+  tools/art_sources/ability_effects/time_t3.png \
+  tools/art_sources/ability_effects/hotline_t1.png \
+  tools/art_sources/ability_effects/hotline_t2.png
 ```

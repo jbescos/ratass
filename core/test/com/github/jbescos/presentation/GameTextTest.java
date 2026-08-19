@@ -89,6 +89,22 @@ public class GameTextTest {
     }
 
     @Test
+    public void translatesTierPrefixedTitlesUsedByTheCardsPanel() {
+        assertEquals(
+                "T1  Ajuste club",
+                GameText.translate(GameLanguage.SPANISH, "T1  Club Tune"));
+        assertEquals(
+                "T2  Impulsion Nitro",
+                GameText.translate(GameLanguage.FRENCH, "T2  Nitro Pulse"));
+        assertEquals(
+                "T3  Nitro-Impuls",
+                GameText.translate(GameLanguage.GERMAN, "T3  Nitro Pulse"));
+        assertEquals(
+                "T1  Impulso Nitro",
+                GameText.translate(GameLanguage.ITALIAN, "T1  Nitro Pulse"));
+    }
+
+    @Test
     public void translatesRaceCountdownBeforeAddingCircuitProgress() {
         assertEquals(
                 "GET READY  |  CIRCUIT 3 / 19",

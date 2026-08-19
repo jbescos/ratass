@@ -578,7 +578,7 @@ public final class RogueliteCardCatalog {
                 "Calls the best benchmarked driver, who gives you driving advice for 10 seconds.",
                 "Automatic call: best-driver advice | 10s\nCooldown: 20s",
                 1,
-                RogueliteAbilityVisualStyle.ICON_ONLY));
+                RogueliteAbilityVisualStyle.HOTLINE_T1));
         cards.add(powerup(
                 RogueliteCardId.TIME_RIPPLE,
                 "Time Ripple",
@@ -662,7 +662,7 @@ public final class RogueliteCardCatalog {
                 "Replaces the active driver with the best benchmarked driver while this Powerup is equipped.",
                 "Always active\nDriver: best avg-lap",
                 2,
-                RogueliteAbilityVisualStyle.ICON_ONLY));
+                RogueliteAbilityVisualStyle.HOTLINE_T2));
         cards.add(powerup(
                 RogueliteCardId.CHRONO_SHIFT,
                 "Chrono Shift",

@@ -19,5 +19,7 @@ public enum RogueliteAbilityVisualStyle {
     TIME_T1,
     TIME_T2,
     TIME_T3,
+    HOTLINE_T1,
+    HOTLINE_T2,
     ICON_ONLY
 }

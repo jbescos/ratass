@@ -103,15 +103,26 @@ public class RacingHudLayoutTest {
         assertEquals(7f, RacingHudLayout.inGameButtonGap(720f, 390f), 0.001f);
         assertEquals(288f, RacingHudLayout.inGameControlStripWidth(720f, 390f, 5), 0.001f);
         assertEquals(0f, RacingHudLayout.inGameControlStripWidth(720f, 390f, 0), 0.001f);
+        assertEquals(5.2f, RacingHudLayout.raceControlBarPadding(720f, 390f), 0.001f);
+        assertEquals(62.4f, RacingHudLayout.raceControlBarHeight(720f, 390f), 0.001f);
+        assertEquals(84f, RacingHudLayout.raceControlBarHeight(1920f, 1080f), 0.001f);
+        assertEquals(3.12f, RacingHudLayout.raceSummaryRowGap(52f), 0.001f);
+        assertEquals(15.253f, RacingHudLayout.raceSummaryRowHeight(52f), 0.001f);
+        assertEquals(4f, RacingHudLayout.raceSummaryRowGap(72f), 0.001f);
+        assertEquals(21.333f, RacingHudLayout.raceSummaryRowHeight(72f), 0.001f);
     }
 
     @Test
     public void compactStatsLeaveMoreWidthForCards() {
-        assertEquals(220f, RacingHudLayout.bottomPanelCarStatsWidth(1000f), 0.001f);
+        assertEquals(270f, RacingHudLayout.bottomPanelCarStatsWidth(1000f), 0.001f);
         assertEquals(400f, RacingHudLayout.bottomPanelTelemetryWidth(1000f), 0.001f);
-        assertEquals(380f, RacingHudLayout.bottomPanelCardsWidth(1000f), 0.001f);
-        assertEquals(77f, RacingHudLayout.bottomPanelCarStatsWidth(350f), 0.001f);
-        assertEquals(133f, RacingHudLayout.bottomPanelCardsWidth(350f), 0.001f);
+        assertEquals(330f, RacingHudLayout.bottomPanelCardsWidth(1000f), 0.001f);
+        assertEquals(94.5f, RacingHudLayout.bottomPanelCarStatsWidth(350f), 0.001f);
+        assertEquals(115.5f, RacingHudLayout.bottomPanelCardsWidth(350f), 0.001f);
+        assertEquals(64f, RacingHudLayout.carStatsLabelWidth(100f), 0.001f);
+        assertEquals(96f, RacingHudLayout.carStatsLabelWidth(200f), 0.001f);
+        assertEquals(62f, RacingHudLayout.telemetryLabelWidth(150f), 0.001f);
+        assertEquals(114f, RacingHudLayout.telemetryLabelWidth(300f), 0.001f);
         assertEquals(11f, RacingHudLayout.cardStatusIconSize(12f), 0.001f);
         assertEquals(13.6f, RacingHudLayout.cardStatusIconSize(20f), 0.001f);
         assertEquals(20f, RacingHudLayout.cardStatusIconSize(40f), 0.001f);

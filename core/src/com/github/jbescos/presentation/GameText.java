@@ -29,6 +29,10 @@ public final class GameText {
         if (exact != null) {
             return exact;
         }
+        String tieredCardTitle = translateTieredCardTitle(language, english);
+        if (tieredCardTitle != null) {
+            return tieredCardTitle;
+        }
         if (language != GameLanguage.SPANISH) {
             return GameTextEuropeanCatalog.translateDynamic(language, english);
         }
@@ -126,6 +130,25 @@ public final class GameText {
                     + english.substring(targetSeparator + 4);
         }
         return english;
+    }
+
+    private static String translateTieredCardTitle(
+            GameLanguage language,
+            String english) {
+        if (english.length() < 5 || english.charAt(0) != 'T') {
+            return null;
+        }
+        int separator = english.indexOf("  ");
+        if (separator < 2 || separator + 2 >= english.length()) {
+            return null;
+        }
+        for (int i = 1; i < separator; i++) {
+            if (!Character.isDigit(english.charAt(i))) {
+                return null;
+            }
+        }
+        return english.substring(0, separator + 2)
+                + translate(language, english.substring(separator + 2));
     }
 
     public static String countdownContext(
@@ -422,6 +445,8 @@ public final class GameText {
         put(text, "TELEMETRY", "TELEMETRÍA");
         put(text, "CARDS", "CARTAS");
         put(text, "LOADOUT", "EQUIPAMIENTO");
+        put(text, "STRATEGY", "ESTRATEGIA");
+        put(text, "ALGORITHMIC", "ALGORÍTMICA");
         put(text, "ACTIVE CARD EFFECTS", "EFECTOS ACTIVOS");
         put(text, "RACE STATUS", "ESTADO DE CARRERA");
         put(text, "IMPACT", "IMPACTO");

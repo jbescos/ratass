@@ -9,7 +9,7 @@ public final class RacingHudLayout {
     private static final float MAX_RACE_SUMMARY_HEIGHT = 58f;
     private static final int CAR_STAT_ROWS = 5;
     private static final int TELEMETRY_ROWS = 6;
-    private static final float CAR_STATS_SECTION_RATIO = 0.22f;
+    private static final float CAR_STATS_SECTION_RATIO = 0.27f;
     private static final float TELEMETRY_SECTION_RATIO = 0.40f;
     private static final float SIDEBAR_TEXT_SCALE = 1.12f;
     private static final float SIDEBAR_ROW_SCALE = 1.4f;
@@ -73,6 +73,23 @@ public final class RacingHudLayout {
                 MAX_RACE_SUMMARY_HEIGHT);
     }
 
+    public static float raceControlBarPadding(float screenWidth, float screenHeight) {
+        return clamp(inGameMenuButtonSize(screenWidth, screenHeight) * 0.10f, 4f, 6f);
+    }
+
+    public static float raceControlBarHeight(float screenWidth, float screenHeight) {
+        return inGameMenuButtonSize(screenWidth, screenHeight)
+                + raceControlBarPadding(screenWidth, screenHeight) * 2f;
+    }
+
+    public static float raceSummaryRowGap(float buttonSize) {
+        return clamp(buttonSize * 0.06f, 2f, 4f);
+    }
+
+    public static float raceSummaryRowHeight(float buttonSize) {
+        return Math.max(1f, (buttonSize - raceSummaryRowGap(buttonSize) * 2f) / 3f);
+    }
+
     public static float bottomPanelMinimapWidth(
             float screenWidth,
             float preferredSidebarWidth) {
@@ -105,6 +122,14 @@ public final class RacingHudLayout {
                 availableWidth
                         - bottomPanelCarStatsWidth(availableWidth)
                         - bottomPanelTelemetryWidth(availableWidth));
+    }
+
+    public static float carStatsLabelWidth(float contentWidth) {
+        return clamp(contentWidth * 0.48f, 64f, 124f);
+    }
+
+    public static float telemetryLabelWidth(float contentWidth) {
+        return clamp(contentWidth * 0.38f, 62f, 120f);
     }
 
     public static float cardStatusIconSize(float slotHeight) {

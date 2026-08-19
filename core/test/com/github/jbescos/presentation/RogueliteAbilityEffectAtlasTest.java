@@ -1,6 +1,7 @@
 package com.github.jbescos.presentation;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.github.jbescos.gameplay.roguelite.RogueliteAbilityVisualStyle;
@@ -52,6 +53,10 @@ public class RogueliteAbilityEffectAtlasTest {
                 RogueliteAbilityVisualStyle.TIME_T2));
         assertEquals(16, RogueliteAbilityEffectAtlas.indexFor(
                 RogueliteAbilityVisualStyle.TIME_T3));
+        assertEquals(17, RogueliteAbilityEffectAtlas.indexFor(
+                RogueliteAbilityVisualStyle.HOTLINE_T1));
+        assertEquals(18, RogueliteAbilityEffectAtlas.indexFor(
+                RogueliteAbilityVisualStyle.HOTLINE_T2));
     }
 
     @Test
@@ -105,6 +110,23 @@ public class RogueliteAbilityEffectAtlasTest {
                 RogueliteAbilityVisualStyle.TIME_T3,
                 RogueliteCardCatalog.get(RogueliteCardId.TEMPORAL_DOMINION)
                         .getAbilityVisualStyle());
+        assertEquals(
+                RogueliteAbilityVisualStyle.HOTLINE_T1,
+                RogueliteCardCatalog.get(RogueliteCardId.ACE_HOTLINE)
+                        .getAbilityVisualStyle());
+        assertEquals(
+                RogueliteAbilityVisualStyle.HOTLINE_T2,
+                RogueliteCardCatalog.get(RogueliteCardId.PRIORITY_HOTLINE)
+                        .getAbilityVisualStyle());
+        assertTrue(
+                RogueliteAbilityEffectAtlas.usesDriverIcon(
+                        RogueliteAbilityVisualStyle.HOTLINE_T1));
+        assertTrue(
+                RogueliteAbilityEffectAtlas.usesDriverIcon(
+                        RogueliteAbilityVisualStyle.HOTLINE_T2));
+        assertFalse(
+                RogueliteAbilityEffectAtlas.usesDriverIcon(
+                        RogueliteAbilityVisualStyle.NITRO_T1));
     }
 
     @Test

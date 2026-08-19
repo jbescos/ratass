@@ -40,6 +40,17 @@ public class AbilityActivationVisualTest {
     }
 
     @Test
+    public void driverHotlinesDrawCarCenteredArtworkWhileActive() {
+        AbilityActivationVisual visual = new AbilityActivationVisual();
+
+        visual.update(0.1f, RogueliteCardId.ACE_HOTLINE);
+        assertTrue(visual.hasCarCenteredEffect());
+
+        visual.update(0.1f, RogueliteCardId.PRIORITY_HOTLINE);
+        assertTrue(visual.hasCarCenteredEffect());
+    }
+
+    @Test
     public void resetClearsAllPresentationState() {
         AbilityActivationVisual visual = new AbilityActivationVisual();
         visual.update(0f, RogueliteCardId.DRAFT_MAGNET, true);

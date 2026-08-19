@@ -4,7 +4,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteAbilityVisualStyle;
 
 /** Maps presentation-only ability styles to cells in the generated effect atlas. */
 public final class RogueliteAbilityEffectAtlas {
-    public static final int COLUMNS = 17;
+    public static final int COLUMNS = 19;
     public static final int ROWS = 1;
 
     private RogueliteAbilityEffectAtlas() {
@@ -49,6 +49,10 @@ public final class RogueliteAbilityEffectAtlas {
                 return 15;
             case TIME_T3:
                 return 16;
+            case HOTLINE_T1:
+                return 17;
+            case HOTLINE_T2:
+                return 18;
             case ICON_ONLY:
             default:
                 return -1;
@@ -87,12 +91,21 @@ public final class RogueliteAbilityEffectAtlas {
                 return 2.15f;
             case TIME_T3:
                 return 2.40f;
+            case HOTLINE_T1:
+                return 2.10f;
+            case HOTLINE_T2:
+                return 2.35f;
             case DRAFT:
             case SHIELD:
             case CLOAK:
             default:
                 return 1.82f;
         }
+    }
+
+    public static boolean usesDriverIcon(RogueliteAbilityVisualStyle style) {
+        return style == RogueliteAbilityVisualStyle.HOTLINE_T1
+                || style == RogueliteAbilityVisualStyle.HOTLINE_T2;
     }
 
     /** Uses the real affected diameter for circular fields instead of a car-relative size. */

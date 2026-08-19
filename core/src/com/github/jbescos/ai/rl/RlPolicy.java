@@ -87,6 +87,29 @@ public final class RlPolicy {
             float[] scratchA,
             float[] scratchB,
             AiControlDecision out) {
+        float[] values = forward(observation, scratchA, scratchB);
+        return out.set(
+                MathUtils.clamp(values[0], -1f, 1f),
+                actionSize > 1 ? MathUtils.clamp(values[1], -1f, 1f) : 0f);
+    }
+
+    /** Computes raw policy outputs for non-driving policies such as card candidate scorers. */
+    public void computeOutputs(
+            float[] observation,
+            float[] scratchA,
+            float[] scratchB,
+            float[] outputValues) {
+        if (outputValues == null || outputValues.length < actionSize) {
+            throw new IllegalArgumentException("Policy output buffer is too small.");
+        }
+        float[] values = forward(observation, scratchA, scratchB);
+        System.arraycopy(values, 0, outputValues, 0, actionSize);
+    }
+
+    private float[] forward(
+            float[] observation,
+            float[] scratchA,
+            float[] scratchB) {
         if (observation == null || observation.length < observationSize) {
             throw new IllegalArgumentException("Observation is smaller than the policy input.");
         }
@@ -103,10 +126,7 @@ public final class RlPolicy {
             input = output;
             output = output == scratchA ? scratchB : scratchA;
         }
-
-        return out.set(
-                MathUtils.clamp(input[0], -1f, 1f),
-                actionSize > 1 ? MathUtils.clamp(input[1], -1f, 1f) : 0f);
+        return input;
     }
 
     private static float[] readFloatArray(JsonValue json) {
