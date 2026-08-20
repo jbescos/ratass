@@ -22,7 +22,7 @@ public class DriverArtworkAtlasTest {
     public void rejectsProfilesWithoutArtworkCells() {
         assertEquals(-1, DriverArtworkAtlas.indexForProfile(null));
         assertEquals(-1, DriverArtworkAtlas.indexForProfile("profile0"));
-        assertEquals(-1, DriverArtworkAtlas.indexForProfile("profile10"));
+        assertEquals(-1, DriverArtworkAtlas.indexForProfile("profile99"));
         assertEquals(-1, DriverArtworkAtlas.indexForProfile("legacy"));
     }
 }

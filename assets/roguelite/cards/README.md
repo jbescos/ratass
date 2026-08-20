@@ -43,8 +43,8 @@ Grip T2, Grip T3, Time T1, Time T2, Time T3, Ace Hotline, and Priority Hotline.
 The renderer tints the generated
 artwork by card type and keeps projectiles, physical mirror cars, and cloak
 transparency on their dedicated presentation paths. The Hotline cards use the
-shared Driver icon as their under-car artwork; Priority Hotline keeps that icon
-and its Powerup indicator active while it is equipped. All effect
+dedicated green `effects/best_driver_hotline.png` artwork under the car; Priority
+Hotline keeps that visual and its Powerup indicator active while equipped. All effect
 sprites are loaded and updated only by the
 presentation path, so they do not affect RL training.
 
@@ -93,6 +93,7 @@ java -Djava.awt.headless=true -cp /tmp/ratass-visual-tools \
   tools/art_sources/ability_effect_source.png \
   assets/roguelite/cards/ability_effect_atlas.png \
   15 344 1629 261 7 \
+  --replace-column 1 tools/art_sources/ability_effects/grip_t1.png \
   tools/art_sources/card_art/grudge_spark.png \
   tools/art_sources/card_art/vengeance_core.png \
   tools/art_sources/card_art/nemesis_engine.png \

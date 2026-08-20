@@ -9,8 +9,8 @@ import org.junit.Test;
 public class RogueliteExperienceAwardsTest {
     @Test
     public void everyGainedRacePositionAwardsExperience() {
-        assertEquals(2, RogueliteExperienceAwards.forPositionsGained(1));
-        assertEquals(6, RogueliteExperienceAwards.forPositionsGained(3));
+        assertEquals(6, RogueliteExperienceAwards.forPositionsGained(1));
+        assertEquals(18, RogueliteExperienceAwards.forPositionsGained(3));
     }
 
     @Test

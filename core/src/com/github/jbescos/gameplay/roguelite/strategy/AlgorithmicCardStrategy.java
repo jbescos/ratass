@@ -137,15 +137,20 @@ public final class AlgorithmicCardStrategy implements CardStrategy {
             DriverProfileCatalog catalog,
             RogueliteCompetitorProgress progress,
             RogueliteCardOffer offer) {
+        int gain;
         if (offer.isDriver()) {
             DriverProfileMetadata current = catalog.get(
                     progress.getLoadout().getDriverProfileId());
             int currentTier = current == null ? 0 : catalog.getTier(current.getProfileId());
-            return offer.getTier() - currentTier;
+            gain = offer.getTier() - currentTier;
+        } else {
+            RogueliteCardId equipped = progress.getLoadout().get(offer.getSlotType());
+            int currentTier = equipped == null ? 0 : RogueliteCardCatalog.get(equipped).getTier();
+            gain = offer.getTier() - currentTier;
         }
-        RogueliteCardId equipped = progress.getLoadout().get(offer.getSlotType());
-        int currentTier = equipped == null ? 0 : RogueliteCardCatalog.get(equipped).getTier();
-        return offer.getTier() - currentTier;
+        // Tier 4 contains exceptional amplifiers, not automatic upgrades over Tier 3.
+        return offer.getTier() == RogueliteCardCatalog.MAX_CARD_TIER && gain > 0
+                ? 0 : gain;
     }
 
     private static float offerScore(
@@ -166,11 +171,12 @@ public final class AlgorithmicCardStrategy implements CardStrategy {
             RogueliteCardId equipped = loadout.get(offer.getSlotType());
             currentTier = equipped == null ? 0 : RogueliteCardCatalog.get(equipped).getTier();
         }
-        int tierGain = offer.getTier() - currentTier;
+        int tierGain = tierGain(catalog, progress, offer);
         if (tierGain < 0) {
             return -100000f + tierGain * 1000f;
         }
-        float weakestSlotPriority = (DriverProfileCatalog.MAX_TIER - currentTier) * 100f;
+        float weakestSlotPriority =
+                (RogueliteCardCatalog.MAX_CARD_TIER - currentTier) * 100f;
         return tierGain * 10000f + weakestSlotPriority + Math.max(0f, qualityGain);
     }
 

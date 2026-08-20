@@ -28,23 +28,11 @@ public final class CardStrategyRewardProfilesTest {
                 .getCardTypeRotation() > 0f);
         assertTrue(CardStrategyRewardProfiles.forProfile("strategy02")
                 .getTuningTechniqueSynergy() > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy08")
-                .getTechniqueAmplifier() > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy08")
-                .getPowerupAmplifier() > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy08")
-                .getRevengeAmplifier() > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy08")
-                .getAmplifierLink() > 0f);
-        assertEquals(0f, CardStrategyRewardProfiles.forProfile("strategy08")
-                .getRandomPowerup(), 0.001f);
-        assertEquals(0f, CardStrategyRewardProfiles.forProfile("strategy08")
-                .getRandomRevenge(), 0.001f);
     }
 
     @Test
     public void personalityShapingDoesNotOutweighWinning() {
-        int[] retained = {0, 1, 2, 8};
+        int[] retained = {0, 1, 2};
         for (int index : retained) {
             CardStrategyRewardConfig profile = CardStrategyRewardProfiles.forProfile(
                     String.format("strategy%02d", Integer.valueOf(index)));

@@ -111,6 +111,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--refresh-imitation", action="store_true")
     parser.add_argument("--evaluate-only", action="store_true")
+    parser.add_argument("--force-export", action="store_true")
     parser.add_argument("--episodes", type=int, default=8000)
     parser.add_argument("--imitation-decisions", type=int, default=2000)
     parser.add_argument("--batch-episodes", type=int, default=16)
@@ -385,16 +386,16 @@ def format_metrics(name: str, metrics: Metrics) -> str:
     )
     tiers = ",".join(
         f"T{tier}={metrics.tier_counts.get(tier, 0) / max(1, metrics.episodes):.2f}/ep"
-        for tier in range(1, 4)
+        for tier in range(1, 5)
     )
     card_types = ",".join(
         f"{card_type}={metrics.type_counts.get(card_type, 0) / max(1, metrics.episodes):.2f}/ep"
         for card_type in ("driver", "tuning", "technique", "powerup", "revenge")
     )
     amplifier_ids = (
-        "TECHNIQUE_COUPLER", "TECHNIQUE_MATRIX", "TECHNIQUE_SINGULARITY",
-        "POWERUP_LINK", "POWERUP_MATRIX", "POWERUP_NEXUS",
-        "GRUDGE_SPARK", "VENGEANCE_CORE", "NEMESIS_ENGINE",
+        "TECHNIQUE_SINGULARITY",
+        "POWERUP_NEXUS",
+        "NEMESIS_ENGINE",
     )
     relay_ids = (
         "LUCKY_SPARK", "CHAOS_RELAY", "WILDCARD_CORE",
@@ -784,7 +785,7 @@ def main() -> None:
         print(format_metrics(name, metrics))
         for card_type in ("driver", "tuning", "technique", "powerup", "revenge"):
             print(format_card_preferences(name, metrics, card_type))
-        for tier in range(1, 4):
+        for tier in range(1, 5):
             print(format_tier_preferences(name, metrics, tier))
         print(format_technique_families(name, metrics))
         export_policy(actor, Path(args.output), observation_size, args.strategy_type)
@@ -837,7 +838,7 @@ def main() -> None:
     minimum_win_rate = max(
         0.0, promotion_baseline.win_rate - args.max_win_rate_regression
     )
-    if not is_better(
+    if not args.force_export and not is_better(
         final,
         promotion_baseline,
         args.selection_mode,

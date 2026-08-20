@@ -122,7 +122,7 @@ final class TargetedRevengeEffect extends RevengeUpgradeEffect {
     boolean expireOffenderStrikeIfConditionFailed(
             int targetVehicleId,
             boolean offenderAhead) {
-        if (getCardId() != RogueliteCardId.RECOVERY_BEACON
+        if (!requiresOffenderAhead()
                 || !isReady()
                 || !targets(targetVehicleId)
                 || offenderAhead) {
@@ -159,6 +159,9 @@ final class TargetedRevengeEffect extends RevengeUpgradeEffect {
                 strike = RogueliteRevengeStrike.positionSwap(getCardId());
                 break;
             case PAYBACK_SHIELD:
+                if (!offenderAhead) {
+                    return null;
+                }
                 strike = RogueliteRevengeStrike.hook(getCardId());
                 awaitingCompletion = true;
                 break;
@@ -207,6 +210,11 @@ final class TargetedRevengeEffect extends RevengeUpgradeEffect {
 
     private void clearOffender() {
         clearTarget();
+    }
+
+    private boolean requiresOffenderAhead() {
+        return getCardId() == RogueliteCardId.RECOVERY_BEACON
+                || getCardId() == RogueliteCardId.PAYBACK_SHIELD;
     }
 
     private static RevengeWorkflow workflowFor(RogueliteCardId cardId) {

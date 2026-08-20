@@ -31,6 +31,7 @@ REWARD_BUCKETS = (
     "off_road_recovery",
     "off_road_failure",
     "drift",
+    "pedal_change",
 )
 REWARD_TABLE_LABELS = {
     "step_cost": "step",
@@ -117,6 +118,11 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="optional fraction of a lap for each random-spawn route target",
     )
+    parser.add_argument(
+        "--fixed-full-laps",
+        action="store_true",
+        help="rank completed fixed-spawn lap evaluations by elapsed time",
+    )
     parser.add_argument("--seed", type=int, default=20260506)
     parser.add_argument("--flip-deadzone", type=float, default=0.18)
     parser.add_argument("--map-id", default="")
@@ -184,6 +190,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-drift", type=float, default=0.0)
     parser.add_argument("--reward-route-alignment", type=float, default=0.0)
     parser.add_argument("--reward-steering-penalty", type=float, default=0.010)
+    parser.add_argument("--reward-steering-change-penalty", type=float, default=0.0)
+    parser.add_argument("--reward-pedal-change-penalty", type=float, default=0.0)
     parser.add_argument("--reward-reverse-free-epsilon", type=float, default=0.20)
     parser.add_argument("--reward-reverse-penalty-per-unit", type=float, default=0.08)
     parser.add_argument("--reward-reverse-max-penalty", type=float, default=0.90)
@@ -278,6 +286,7 @@ def make_stats():
         "off_road_recovery": 0.0,
         "off_road_failure": 0.0,
         "drift": 0.0,
+        "pedal_change": 0.0,
         "lookahead_blocked_steps": 0,
         "off_road_steps": 0,
         "near_edge_steps": 0,
@@ -348,6 +357,8 @@ def build_config(
         .withDriftReward(float(args.reward_drift))
         .withRouteAlignmentReward(float(args.reward_route_alignment))
         .withSteeringPenalty(float(args.reward_steering_penalty))
+        .withSteeringChangePenalty(float(args.reward_steering_change_penalty))
+        .withPedalChangePenalty(float(args.reward_pedal_change_penalty))
         .withReverseSpeedPenalty(
             float(args.reward_reverse_free_epsilon),
             float(args.reward_reverse_penalty_per_unit),
@@ -778,19 +789,27 @@ def summary_metrics(stats, episodes_override: int = None):
     }
 
 
+EVALUATION_SCORE_VERSION = 4
+
+
 def evaluation_score(
     stats,
     episodes_override: int = None,
     recovery: bool = False,
+    prefer_goal_time: bool = False,
 ) -> float:
     metrics = summary_metrics(stats, episodes_override)
     if recovery:
         # Recovery is a reliability contract. One additional solved episode
         # must always outrank any amount of shaping reward from failed runs.
         return metrics["success_rate"] * 1_000_000.0 + metrics["avg_reward"]
+    if prefer_goal_time:
+        if metrics["success_rate"] < 1.0 or metrics["avg_goal_time_s"] is None:
+            return -1_000_000.0 + metrics["success_rate"] * 1_000.0
+        return -metrics["avg_goal_time_s"]
     # Score outcomes rather than body orientation so a faster drifting policy
     # is not rejected for having lower route or target alignment.
-    return (
+    score = (
         metrics["avg_reward"]
         + metrics["avg_targets"] * 35.0
         + metrics["success_rate"] * 80.0
@@ -798,6 +817,7 @@ def evaluation_score(
         - metrics["off_road_fraction"] * 12.0
         - metrics["effective_flips_per_step"] * 35.0
     )
+    return score
 
 
 def print_summary(label: str, stats, episodes_override: int = None):
@@ -904,13 +924,22 @@ def print_table(title: str, headers, rows, right_aligned=None) -> None:
         print(format_row(row), flush=True)
 
 
-def print_evaluation_tables(total_stats, per_map, recovery: bool = False) -> None:
+def print_evaluation_tables(
+    total_stats,
+    per_map,
+    recovery: bool = False,
+    prefer_goal_time: bool = False,
+) -> None:
     overview_rows = []
     driving_rows = []
     reward_rows = []
     for scope, stats in stats_scope_rows(total_stats, per_map):
         metrics = summary_metrics(stats)
-        score = evaluation_score(stats, recovery=recovery)
+        score = evaluation_score(
+            stats,
+            recovery=recovery,
+            prefer_goal_time=prefer_goal_time,
+        )
         overview_rows.append(
             [
                 scope,
@@ -1010,11 +1039,20 @@ def print_evaluation_tables(total_stats, per_map, recovery: bool = False) -> Non
     )
 
 
-def print_evaluation_score(stats, recovery: bool = False):
+def print_evaluation_score(
+    stats,
+    recovery: bool = False,
+    prefer_goal_time: bool = False,
+):
     metrics = summary_metrics(stats)
-    score = evaluation_score(stats, recovery=recovery)
+    score = evaluation_score(
+        stats,
+        recovery=recovery,
+        prefer_goal_time=prefer_goal_time,
+    )
     print(
         f"evaluation_score={score:.3f} "
+        f"score_version={EVALUATION_SCORE_VERSION} "
         f"avg_reward={metrics['avg_reward']:.3f} "
         f"avg_steps={metrics['avg_steps']:.1f} "
         f"avg_goal_time_s={format_optional_number(metrics['avg_goal_time_s'])} "
@@ -1110,8 +1148,21 @@ def main() -> None:
             arena_map = None
 
     recovery = args.objective == "recovery"
-    print_evaluation_tables(total_stats, per_map, recovery=recovery)
-    print_evaluation_score(total_stats, recovery=recovery)
+    prefer_goal_time = (
+        args.objective == "race"
+        and (args.route_targets <= 0 or args.fixed_full_laps)
+    )
+    print_evaluation_tables(
+        total_stats,
+        per_map,
+        recovery=recovery,
+        prefer_goal_time=prefer_goal_time,
+    )
+    print_evaluation_score(
+        total_stats,
+        recovery=recovery,
+        prefer_goal_time=prefer_goal_time,
+    )
 
 
 if __name__ == "__main__":

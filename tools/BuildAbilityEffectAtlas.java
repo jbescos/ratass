@@ -2,6 +2,8 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import javax.imageio.ImageIO;
 
 /** Converts the generated chroma-key effect strip into a compact alpha atlas. */
@@ -17,6 +19,7 @@ public final class BuildAbilityEffectAtlas {
             throw new IllegalArgumentException(
                     "Usage: BuildAbilityEffectAtlas <source> <output>"
                             + " <crop-x> <crop-y> <crop-width> <crop-height> <columns>"
+                            + " [--replace-column <index> <transparent.png>]"
                             + " [transparent-extra.png ...]");
         }
 
@@ -27,14 +30,16 @@ public final class BuildAbilityEffectAtlas {
         int cropWidth = Integer.parseInt(args[4]);
         int cropHeight = Integer.parseInt(args[5]);
         int columns = Integer.parseInt(args[6]);
-        int extraColumns = args.length - 7;
+        List<ColumnReplacement> replacements = new ArrayList<>();
+        List<File> extras = new ArrayList<>();
+        parseAdditionalSources(args, columns, replacements, extras);
 
         BufferedImage source = ImageIO.read(sourceFile);
         validateCrop(source, cropX, cropY, cropWidth, cropHeight, columns);
 
         BufferedImage output =
                 new BufferedImage(
-                        OUTPUT_CELL_SIZE * (columns + extraColumns),
+                        OUTPUT_CELL_SIZE * (columns + extras.size()),
                         OUTPUT_CELL_SIZE,
                         BufferedImage.TYPE_INT_ARGB);
         for (int column = 0; column < columns; column++) {
@@ -70,39 +75,75 @@ public final class BuildAbilityEffectAtlas {
             removeGreenScreen(scaled, output, column * OUTPUT_CELL_SIZE);
         }
 
-        Graphics2D extraGraphics = output.createGraphics();
-        extraGraphics.setRenderingHint(
+        Graphics2D overlayGraphics = output.createGraphics();
+        overlayGraphics.setRenderingHint(
                 RenderingHints.KEY_INTERPOLATION,
                 RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-        extraGraphics.setRenderingHint(
+        overlayGraphics.setRenderingHint(
                 RenderingHints.KEY_RENDERING,
                 RenderingHints.VALUE_RENDER_QUALITY);
-        for (int extra = 0; extra < extraColumns; extra++) {
-            BufferedImage image = ImageIO.read(new File(args[7 + extra]));
-            if (image == null) {
-                throw new IllegalArgumentException(
-                        "Transparent extra is not a readable image: " + args[7 + extra]);
-            }
+        for (int extra = 0; extra < extras.size(); extra++) {
+            BufferedImage image = readTransparentSource(extras.get(extra));
             int targetX = (columns + extra) * OUTPUT_CELL_SIZE;
-            extraGraphics.drawImage(
-                    image,
-                    targetX,
-                    0,
-                    targetX + OUTPUT_CELL_SIZE,
-                    OUTPUT_CELL_SIZE,
-                    0,
-                    0,
-                    image.getWidth(),
-                    image.getHeight(),
-                    null);
+            drawCell(overlayGraphics, image, targetX);
         }
-        extraGraphics.dispose();
+        for (ColumnReplacement replacement : replacements) {
+            BufferedImage image = readTransparentSource(replacement.file);
+            drawCell(overlayGraphics, image, replacement.column * OUTPUT_CELL_SIZE);
+        }
+        overlayGraphics.dispose();
 
         File parent = outputFile.getParentFile();
         if (parent != null) {
             parent.mkdirs();
         }
         ImageIO.write(output, "png", outputFile);
+    }
+
+    private static void parseAdditionalSources(
+            String[] args,
+            int columns,
+            List<ColumnReplacement> replacements,
+            List<File> extras) {
+        for (int index = 7; index < args.length;) {
+            if (!"--replace-column".equals(args[index])) {
+                extras.add(new File(args[index++]));
+                continue;
+            }
+            if (index + 2 >= args.length) {
+                throw new IllegalArgumentException(
+                        "--replace-column requires an index and image path");
+            }
+            int column = Integer.parseInt(args[index + 1]);
+            if (column < 0 || column >= columns) {
+                throw new IllegalArgumentException("Replacement column is outside source atlas");
+            }
+            replacements.add(new ColumnReplacement(column, new File(args[index + 2])));
+            index += 3;
+        }
+    }
+
+    private static BufferedImage readTransparentSource(File file) throws Exception {
+        BufferedImage image = ImageIO.read(file);
+        if (image == null) {
+            throw new IllegalArgumentException(
+                    "Transparent source is not a readable image: " + file);
+        }
+        return image;
+    }
+
+    private static void drawCell(Graphics2D graphics, BufferedImage image, int targetX) {
+        graphics.drawImage(
+                image,
+                targetX,
+                0,
+                targetX + OUTPUT_CELL_SIZE,
+                OUTPUT_CELL_SIZE,
+                0,
+                0,
+                image.getWidth(),
+                image.getHeight(),
+                null);
     }
 
     private static void validateCrop(
@@ -169,5 +210,15 @@ public final class BuildAbilityEffectAtlas {
     private static float smoothStep(float low, float high, float value) {
         float normalized = Math.max(0f, Math.min(1f, (value - low) / (high - low)));
         return normalized * normalized * (3f - 2f * normalized);
+    }
+
+    private static final class ColumnReplacement {
+        private final int column;
+        private final File file;
+
+        private ColumnReplacement(int column, File file) {
+            this.column = column;
+            this.file = file;
+        }
     }
 }

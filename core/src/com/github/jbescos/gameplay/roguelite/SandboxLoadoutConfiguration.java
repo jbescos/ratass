@@ -177,7 +177,7 @@ public final class SandboxLoadoutConfiguration {
         List<RogueliteSlotType> slots = RogueliteSlotType.modificationSlots();
         for (int slotIndex = 0; slotIndex < slots.size(); slotIndex++) {
             RogueliteSlotType slotType = slots.get(slotIndex);
-            for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+            for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
                 for (int cardIndex = 0; cardIndex < cards.size(); cardIndex++) {
                     RogueliteCardDefinition card = cards.get(cardIndex);
                     if (card.getSlotType() == slotType && card.getTier() == tier) {

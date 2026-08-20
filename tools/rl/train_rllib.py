@@ -315,6 +315,12 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             float(env_config.get("reward_route_alignment", 0.0))
         )
         training_config.withSteeringPenalty(float(env_config.get("reward_steering_penalty", 0.010)))
+        training_config.withSteeringChangePenalty(
+            float(env_config.get("reward_steering_change_penalty", 0.0))
+        )
+        training_config.withPedalChangePenalty(
+            float(env_config.get("reward_pedal_change_penalty", 0.0))
+        )
         training_config.withReverseSpeedPenalty(
             float(env_config.get("reward_reverse_free_epsilon", 0.20)),
             float(env_config.get("reward_reverse_penalty_per_unit", 0.08)),
@@ -623,6 +629,8 @@ def build_algorithm(args):
         "reward_drift": args.reward_drift,
         "reward_route_alignment": args.reward_route_alignment,
         "reward_steering_penalty": args.reward_steering_penalty,
+        "reward_steering_change_penalty": args.reward_steering_change_penalty,
+        "reward_pedal_change_penalty": args.reward_pedal_change_penalty,
         "reward_reverse_free_epsilon": args.reward_reverse_free_epsilon,
         "reward_reverse_penalty_per_unit": args.reward_reverse_penalty_per_unit,
         "reward_reverse_max_penalty": args.reward_reverse_max_penalty,
@@ -1219,6 +1227,10 @@ def run_policy_evaluation(
         str(args.reward_route_alignment),
         "--reward-steering-penalty",
         str(args.reward_steering_penalty),
+        "--reward-steering-change-penalty",
+        str(args.reward_steering_change_penalty),
+        "--reward-pedal-change-penalty",
+        str(args.reward_pedal_change_penalty),
         "--reward-reverse-free-epsilon",
         str(args.reward_reverse_free_epsilon),
         "--reward-reverse-penalty-per-unit",
@@ -1282,6 +1294,8 @@ def run_policy_evaluation(
         command.extend(["--steps", str(args.best_eval_steps)])
     if args.best_eval_map_ids:
         command.extend(["--map-ids", args.best_eval_map_ids])
+    if args.fixed_full_laps:
+        command.append("--fixed-full-laps")
     command.append("--random-race-spawns" if args.random_race_spawns else "--fixed-race-spawns")
 
     completed = subprocess.run(
@@ -1324,6 +1338,39 @@ def evaluation_avg_targets(evaluation: PolicyEvaluation) -> float:
     return value if math.isfinite(value) else float("nan")
 
 
+def evaluation_success_rate(evaluation: PolicyEvaluation) -> float:
+    try:
+        value = float(evaluation.metrics.get("success_rate", "nan"))
+    except (TypeError, ValueError):
+        return float("nan")
+    return value if math.isfinite(value) else float("nan")
+
+
+def requires_complete_lap_evaluation(args) -> bool:
+    return getattr(args, "objective", "race") == "race" and (
+        getattr(args, "fixed_full_laps", False)
+        or getattr(args, "route_targets", 0) <= 0
+    )
+
+
+def evaluation_completed_all_laps(args, evaluation: PolicyEvaluation) -> bool:
+    if not requires_complete_lap_evaluation(args):
+        return True
+    success_rate = evaluation_success_rate(evaluation)
+    return math.isfinite(success_rate) and success_rate >= 1.0
+
+
+EVALUATION_SCORE_VERSION = "4"
+
+
+def state_uses_current_evaluation_score(state: Dict) -> bool:
+    metrics = state.get("metrics")
+    return (
+        isinstance(metrics, dict)
+        and str(metrics.get("score_version", "")) == EVALUATION_SCORE_VERSION
+    )
+
+
 def evaluate_checkpoint_candidates(
         args,
         candidates: List[CheckpointCandidate],
@@ -1358,6 +1405,7 @@ def evaluate_checkpoint_candidates(
             evaluation.score is not None
             and math.isfinite(avg_targets)
             and avg_targets >= args.best_eval_min_route_targets
+            and evaluation_completed_all_laps(args, evaluation)
         )
         evaluated.append(EvaluatedCheckpointCandidate(
             candidate=candidate,
@@ -1449,6 +1497,20 @@ def maybe_promote_best_policy(
     result["evaluated"] = True
     result["score"] = score
     avg_targets = evaluation_avg_targets(policy_evaluation)
+    if not evaluation_completed_all_laps(args, policy_evaluation):
+        success_rate = evaluation_success_rate(policy_evaluation)
+        print(
+            f"best_policy_rejected score={score:.3f} "
+            f"success_rate={success_rate:.3f} reason=incomplete_lap_evaluation",
+            flush=True,
+        )
+        print(
+            f"model_export_not_overwritten reason=incomplete_lap_evaluation "
+            f"output={output_file} score={score:.3f} "
+            f"success_rate={success_rate:.3f} checkpoint={saved_checkpoint}",
+            flush=True,
+        )
+        return result
     if not math.isfinite(avg_targets) or avg_targets < args.best_eval_min_route_targets:
         print(
             f"best_policy_rejected score={score:.3f} "
@@ -1470,7 +1532,11 @@ def maybe_promote_best_policy(
     state_path = best_eval_state_path(args, checkpoint_dir)
     state = read_best_state(state_path)
     try:
-        previous_score = float(state.get("best_score", "-inf"))
+        previous_score = (
+            float(state.get("best_score", "-inf"))
+            if state_uses_current_evaluation_score(state)
+            else float("-inf")
+        )
     except (TypeError, ValueError):
         previous_score = float("-inf")
     if output_file.exists() and compare_installed and not args.best_eval_ignore_installed:
@@ -1563,7 +1629,7 @@ def establish_stage_baseline(algorithm, args, checkpoint_dir: Path) -> Dict[str,
 
     state_path = best_eval_state_path(args, checkpoint_dir)
     state = read_best_state(state_path)
-    if has_restorable_best_checkpoint(state):
+    if has_restorable_best_checkpoint(state) and state_uses_current_evaluation_score(state):
         archived_path = Path(str(state["best_rllib_checkpoint"])).resolve()
         restore_algorithm_checkpoint(algorithm, archived_path)
         restored_path = checkpoint_path(algorithm.save(str(checkpoint_dir)))
@@ -1578,9 +1644,14 @@ def establish_stage_baseline(algorithm, args, checkpoint_dir: Path) -> Dict[str,
         return result
 
     if state_path.exists():
+        reset_reason = (
+            "evaluation_score_changed"
+            if has_restorable_best_checkpoint(state)
+            else "checkpoint_not_restorable"
+        )
         state_path.unlink()
         print(
-            f"stage_baseline_state_reset reason=checkpoint_not_restorable "
+            f"stage_baseline_state_reset reason={reset_reason} "
             f"state={state_path}",
             flush=True,
         )
@@ -1884,6 +1955,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-drift", type=float, default=0.0)
     parser.add_argument("--reward-route-alignment", type=float, default=0.0)
     parser.add_argument("--reward-steering-penalty", type=float, default=0.010)
+    parser.add_argument("--reward-steering-change-penalty", type=float, default=0.0)
+    parser.add_argument("--reward-pedal-change-penalty", type=float, default=0.0)
     parser.add_argument("--reward-reverse-free-epsilon", type=float, default=0.20)
     parser.add_argument("--reward-reverse-penalty-per-unit", type=float, default=0.08)
     parser.add_argument("--reward-reverse-max-penalty", type=float, default=0.90)

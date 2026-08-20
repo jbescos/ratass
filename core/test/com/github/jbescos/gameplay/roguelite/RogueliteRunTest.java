@@ -125,6 +125,30 @@ public class RogueliteRunTest {
         assertEquals(2, run.getUnlockedTier());
         run.getPlayerProgress().restore(RogueliteRun.TIER_THREE_LEVEL, 0, 0);
         assertEquals(3, run.getUnlockedTier());
+        run.getPlayerProgress().restore(RogueliteRun.TIER_FOUR_LEVEL - 1, 0, 0);
+        assertEquals(3, run.getUnlockedTier());
+        run.getPlayerProgress().restore(RogueliteRun.TIER_FOUR_LEVEL, 0, 0);
+        assertEquals(4, run.getUnlockedTier());
+    }
+
+    @Test
+    public void tierFourOffersKeepTierThreeAvailable() {
+        RogueliteRun run = new RogueliteRun(117L);
+        run.getPlayerProgress().restore(RogueliteRun.TIER_FOUR_LEVEL, 0, 1);
+
+        List<RogueliteCardOffer> offers = run.createOffers(200);
+
+        int tierThree = 0;
+        int tierFour = 0;
+        for (RogueliteCardOffer offer : offers) {
+            if (offer.getTier() == 3) {
+                tierThree++;
+            } else if (offer.getTier() == 4) {
+                tierFour++;
+            }
+        }
+        assertTrue(tierThree > 0);
+        assertEquals(3, tierFour);
     }
 
     @Test
@@ -803,6 +827,25 @@ public class RogueliteRunTest {
     }
 
     @Test
+    public void rivalsDoNotTreatTierFourAsAnAutomaticUpgrade() {
+        RogueliteRun run = new RogueliteRun(1580L);
+        RogueliteCompetitorProgress rival = run.getRivalProgress(2);
+        RogueliteLoadout loadout = rival.getLoadout();
+        assertTrue(loadout.equip(RogueliteCardId.WING_CAR));
+        assertTrue(loadout.equip(RogueliteCardId.CORNER_MASTER));
+        assertTrue(loadout.equip(RogueliteCardId.HYPERDRIVE));
+        assertTrue(loadout.equip(RogueliteCardId.TOTAL_BLACKOUT));
+
+        RogueliteCardOffer selected = run.chooseRivalOffer(
+                rival,
+                Arrays.asList(
+                        modificationOffer(RogueliteCardId.NEMESIS_ENGINE),
+                        modificationOffer(RogueliteCardId.TRIAD_COUP)));
+
+        assertEquals(RogueliteCardId.TRIAD_COUP, selected.getCard().getId());
+    }
+
+    @Test
     public void rivalsFallBackToRevengeWhenNoStatSynergyImproves() {
         RogueliteRun run = new RogueliteRun(578L);
         RogueliteCompetitorProgress rival = run.getRivalProgress(2);
@@ -893,7 +936,9 @@ public class RogueliteRunTest {
             awardRacecraftAndResolve(run, RogueliteExperienceAwards.DRIFT_SECOND);
         }
 
-        assertEquals(26, run.getPlayerProgress().getLapExperience());
+        assertEquals(
+                RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP,
+                run.getPlayerProgress().getLapExperience());
         assertEquals(1, run.getPlayerProgress().getLevel());
         awardRacecraftAndResolve(run, RogueliteExperienceAwards.PASS_RIVAL);
         awardRacecraftAndResolve(run, RogueliteExperienceAwards.PASS_RIVAL);

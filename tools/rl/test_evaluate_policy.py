@@ -83,6 +83,44 @@ class EvaluationScoreTest(unittest.TestCase):
             summary_metrics(drifting)["avg_target_alignment"],
         )
 
+    def test_completed_lap_score_prefers_lower_goal_time(self):
+        faster = make_stats()
+        faster.update(
+            episodes=1,
+            successes=1,
+            goal_time_count=1,
+            goal_time_seconds=35.0,
+        )
+        slower = dict(faster)
+        slower["goal_time_seconds"] = 35.1
+
+        self.assertGreater(
+            evaluation_score(faster, prefer_goal_time=True),
+            evaluation_score(slower, prefer_goal_time=True),
+        )
+        self.assertEqual(-35.0, evaluation_score(faster, prefer_goal_time=True))
+        self.assertEqual(evaluation_score(faster), evaluation_score(slower))
+
+    def test_incomplete_lap_score_cannot_beat_a_completed_lap(self):
+        complete = make_stats()
+        complete.update(
+            episodes=2,
+            successes=2,
+            goal_time_count=2,
+            goal_time_seconds=80.0,
+        )
+        incomplete = dict(complete)
+        incomplete.update(
+            successes=1,
+            goal_time_count=1,
+            goal_time_seconds=30.0,
+        )
+
+        self.assertGreater(
+            evaluation_score(complete, prefer_goal_time=True),
+            evaluation_score(incomplete, prefer_goal_time=True),
+        )
+
     def test_reward_table_includes_every_reward_bucket(self):
         output = io.StringIO()
 

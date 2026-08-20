@@ -16,14 +16,6 @@ public final class CardStrategyRewardProfiles {
                     0.5f, 0f, 0f, 0f, 0f, 0f,
                     0f, 0f, 30f, 0f);
         }
-        if ("strategy08".equals(profileId)) {
-            return new CardStrategyRewardConfig(
-                    100f, 30f, 3f, 1f, 0.10f, 0f,
-                    0.5f, 0f, 0f, 0f, 0f, 0f,
-                    10f, 10f, 10f, 20f, 0f, 0f,
-                    "", 0f, "", 0f,
-                    0f, 0f, 0f, 0f);
-        }
         return config(200f, 40f, 2f, 0.25f, 0.02f, 0f,
                 0.5f, 0f, 0f, 0f, 0f, 0f,
                 3f, 0f, 0f, 0f);

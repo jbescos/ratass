@@ -103,9 +103,62 @@ public final class RogueliteAbilityEffectAtlas {
         }
     }
 
-    public static boolean usesDriverIcon(RogueliteAbilityVisualStyle style) {
+    public static boolean usesDedicatedHotlineIcon(RogueliteAbilityVisualStyle style) {
         return style == RogueliteAbilityVisualStyle.HOTLINE_T1
                 || style == RogueliteAbilityVisualStyle.HOTLINE_T2;
+    }
+
+    /** Places directional flame artwork behind the car instead of beneath its body. */
+    public static float localCenterOffsetY(
+            RogueliteAbilityVisualStyle style,
+            float carHeight,
+            float effectSize) {
+        if (!usesRearExhaustAnchor(style)) {
+            return 0f;
+        }
+        float safeCarHeight = sanitizePositive(carHeight);
+        float safeEffectSize = sanitizePositive(effectSize);
+        return -safeCarHeight * 0.49f - safeEffectSize * 0.34f;
+    }
+
+    public static boolean usesRearExhaustAnchor(RogueliteAbilityVisualStyle style) {
+        return style == RogueliteAbilityVisualStyle.NITRO_T1
+                || style == RogueliteAbilityVisualStyle.NITRO_T2
+                || style == RogueliteAbilityVisualStyle.NITRO_T3;
+    }
+
+    /** Keeps clock artwork visibly turning clockwise, with stronger motion by tier. */
+    public static float timeRotationDegrees(
+            RogueliteAbilityVisualStyle style,
+            float elapsedSeconds) {
+        float speed;
+        if (style == RogueliteAbilityVisualStyle.TIME_T1) {
+            speed = 120f;
+        } else if (style == RogueliteAbilityVisualStyle.TIME_T2) {
+            speed = 180f;
+        } else if (style == RogueliteAbilityVisualStyle.TIME_T3) {
+            speed = 240f;
+        } else {
+            return 0f;
+        }
+        return sanitizeNonNegative(elapsedSeconds) * speed;
+    }
+
+    /** Turns every suction spiral in the same direction, with stronger motion by tier. */
+    public static float gripRotationDegrees(
+            RogueliteAbilityVisualStyle style,
+            float elapsedSeconds) {
+        float speed;
+        if (style == RogueliteAbilityVisualStyle.GRIP_T1) {
+            speed = 80f;
+        } else if (style == RogueliteAbilityVisualStyle.GRIP_T2) {
+            speed = 100f;
+        } else if (style == RogueliteAbilityVisualStyle.GRIP_T3) {
+            speed = 120f;
+        } else {
+            return 0f;
+        }
+        return sanitizeNonNegative(elapsedSeconds) * speed;
     }
 
     /** Uses the real affected diameter for circular fields instead of a car-relative size. */
@@ -120,5 +173,15 @@ public final class RogueliteAbilityEffectAtlas {
             return effectRadius * 2f;
         }
         return carRelativeSize;
+    }
+
+    private static float sanitizePositive(float value) {
+        return value > 0f && !Float.isNaN(value) && !Float.isInfinite(value)
+                ? value : 0f;
+    }
+
+    private static float sanitizeNonNegative(float value) {
+        return value >= 0f && !Float.isNaN(value) && !Float.isInfinite(value)
+                ? value : 0f;
     }
 }

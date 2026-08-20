@@ -69,7 +69,10 @@ still runs on CPU.
   the gameplay track-limit slowdown area, that complete action earns no route
   progress and receives the off-road penalty. Braking is not penalized, but
   actual negative forward speed is. Car collisions are treated as push/contact
-  penalties, not as rewards.
+  penalties, not as rewards. `RL_REWARD_STEERING_CHANGE_PENALTY` optionally
+  penalizes steering total variation without changing the observation contract.
+  `RL_REWARD_PEDAL_CHANGE_PENALTY` uses squared accelerator/brake changes to
+  discourage pedal oscillation while preserving sustained full inputs.
 - Java exposes episode metrics for route targets reached and route progress.
 - The shell training presets stage route learning through `5%`, `10%`, `25%`,
   `50%`, and `75%` route targets. Add `_real`, for example `5%_real`, to run
@@ -137,6 +140,16 @@ Train one specific profile:
 tools/rl/train.sh profile00
 ```
 
+Continue fine-tuning the current best driver:
+
+```bash
+RL_FORCE_FRESH_START=0 tools/rl/train.sh profile08
+```
+
+Profile08 fine-tunes the same stable 33-input observation contract directly on
+the real three-lap objective. Do not set `RL_FORCE_FRESH_START=1` unless a
+completely random start is intentional.
+
 Check whether loaded checkpoint centers, checkpoint gates, and first route
 targets sit on playable road:
 
@@ -170,7 +183,7 @@ bash tools/rl/train_forever.sh race-single
 
 ## Shared Recovery Policy
 
-Train the recovery assistance independently from the ten normal drivers:
+Train the recovery assistance independently from the normal drivers:
 
 ```bash
 tools/rl/train_recovery.sh

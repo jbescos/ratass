@@ -23,8 +23,8 @@ public final class CustomGameRules {
     public static final int MAX_TIER_UNLOCK_LEVEL = 99;
 
     private final boolean[][] tierCardTypes =
-            new boolean[DriverProfileCatalog.MAX_TIER][RogueliteSlotType.values().length];
-    private final int[] tierUnlockLevels = {1, 10, 20};
+            new boolean[RogueliteCardCatalog.MAX_CARD_TIER][RogueliteSlotType.values().length];
+    private final int[] tierUnlockLevels = {1, 10, 20, 30};
     private final EnumSet<WeatherType> weatherTypes =
             EnumSet.allOf(WeatherType.class);
     private final Set<String> mapIds = new LinkedHashSet<String>();
@@ -102,7 +102,7 @@ public final class CustomGameRules {
                 return false;
             }
         }
-        for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             tierCardTypes[tier - 1][type.ordinal()] = enable;
         }
         return true;
@@ -112,7 +112,7 @@ public final class CustomGameRules {
         if (type == null) {
             return false;
         }
-        for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             if (isCardTypeAllowed(tier, type)) {
                 return true;
             }
@@ -186,13 +186,13 @@ public final class CustomGameRules {
     }
 
     public int resolveTier(int naturalTier) {
-        int clamped = Math.max(1, Math.min(DriverProfileCatalog.MAX_TIER, naturalTier));
+        int clamped = Math.max(1, Math.min(RogueliteCardCatalog.MAX_CARD_TIER, naturalTier));
         for (int tier = clamped; tier >= 1; tier--) {
             if (isTierAllowed(tier)) {
                 return tier;
             }
         }
-        for (int tier = clamped + 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = clamped + 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             if (isTierAllowed(tier)) {
                 return tier;
             }
@@ -204,7 +204,7 @@ public final class CustomGameRules {
         int safeLevel = Math.max(MIN_TIER_UNLOCK_LEVEL, level);
         int safeMinimumTier = Math.max(1, Math.min(DriverProfileCatalog.MAX_TIER, minimumTier));
         int resolvedTier = 0;
-        for (int tier = safeMinimumTier; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = safeMinimumTier; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             if (isTierAllowed(tier)
                     && ((safeMinimumTier > 1 && tier == safeMinimumTier)
                             || safeLevel >= getTierUnlockLevel(tier))) {
@@ -310,7 +310,7 @@ public final class CustomGameRules {
                 snapshot.weatherTypes.add(weather.name());
             }
         }
-        for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             if (isTierAllowed(tier)) {
                 snapshot.tiers.add(Integer.valueOf(tier));
             }
@@ -369,7 +369,7 @@ public final class CustomGameRules {
             return false;
         }
         boolean[][] restoredTierCardTypes =
-                new boolean[DriverProfileCatalog.MAX_TIER][RogueliteSlotType.values().length];
+                new boolean[RogueliteCardCatalog.MAX_CARD_TIER][RogueliteSlotType.values().length];
         if (snapshot.tierCardTypes == null || snapshot.tierCardTypes.isEmpty()) {
             for (Integer tier : restoredTiers) {
                 for (RogueliteSlotType type : restoredCardTypes) {
@@ -419,8 +419,8 @@ public final class CustomGameRules {
                     tierCardTypes[tier].length);
         }
         if (snapshot.tierUnlockLevels != null
-                && snapshot.tierUnlockLevels.size() == DriverProfileCatalog.MAX_TIER) {
-            for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+                && snapshot.tierUnlockLevels.size() == RogueliteCardCatalog.MAX_CARD_TIER) {
+            for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
                 setTierUnlockLevel(
                         tier,
                         snapshot.tierUnlockLevels.get(tier - 1).intValue());
@@ -452,7 +452,7 @@ public final class CustomGameRules {
     }
 
     private void selectAllTierCardTypes() {
-        for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             for (RogueliteSlotType type : RogueliteSlotType.values()) {
                 tierCardTypes[tier - 1][type.ordinal()] = true;
             }
@@ -460,12 +460,12 @@ public final class CustomGameRules {
     }
 
     private boolean isCardTypeAllowedInEveryTier(RogueliteSlotType type) {
-        return getEnabledTierCount(type) == DriverProfileCatalog.MAX_TIER;
+        return getEnabledTierCount(type) == RogueliteCardCatalog.MAX_CARD_TIER;
     }
 
     private int getEnabledTierCount(RogueliteSlotType type) {
         int count = 0;
-        for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             if (isCardTypeAllowed(tier, type)) {
                 count++;
             }
@@ -488,14 +488,14 @@ public final class CustomGameRules {
 
     private int getEnabledTierCardTypeCount() {
         int count = 0;
-        for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             count += getEnabledCardTypeCount(tier);
         }
         return count;
     }
 
     private static boolean isValidTier(int tier) {
-        return tier >= 1 && tier <= DriverProfileCatalog.MAX_TIER;
+        return tier >= 1 && tier <= RogueliteCardCatalog.MAX_CARD_TIER;
     }
 
     private static String tierCardTypeKey(int tier, RogueliteSlotType type) {
@@ -573,7 +573,7 @@ public final class CustomGameRules {
                 return false;
             }
             if (tierUnlockLevels != null && !tierUnlockLevels.isEmpty()) {
-                if (tierUnlockLevels.size() != DriverProfileCatalog.MAX_TIER) {
+                if (tierUnlockLevels.size() != RogueliteCardCatalog.MAX_CARD_TIER) {
                     return false;
                 }
                 for (Integer level : tierUnlockLevels) {
@@ -588,7 +588,7 @@ public final class CustomGameRules {
                 Integer tier = tiers.get(i);
                 if (tier == null
                         || tier.intValue() < 1
-                        || tier.intValue() > DriverProfileCatalog.MAX_TIER
+                        || tier.intValue() > RogueliteCardCatalog.MAX_CARD_TIER
                         || tiers.indexOf(tier) != i) {
                     return false;
                 }

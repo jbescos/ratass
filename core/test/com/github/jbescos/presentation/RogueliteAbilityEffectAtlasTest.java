@@ -73,6 +73,79 @@ public class RogueliteAbilityEffectAtlasTest {
     }
 
     @Test
+    public void nitroArtworkIsAnchoredBehindTheRearExhaust() {
+        float carHeight = 1.58f;
+        float effectSize = 3f;
+
+        for (RogueliteAbilityVisualStyle style : new RogueliteAbilityVisualStyle[] {
+                RogueliteAbilityVisualStyle.NITRO_T1,
+                RogueliteAbilityVisualStyle.NITRO_T2,
+                RogueliteAbilityVisualStyle.NITRO_T3
+        }) {
+            assertTrue(RogueliteAbilityEffectAtlas.usesRearExhaustAnchor(style));
+            assertTrue(RogueliteAbilityEffectAtlas.localCenterOffsetY(
+                    style,
+                    carHeight,
+                    effectSize) < -carHeight * 0.5f);
+        }
+        assertEquals(
+                0f,
+                RogueliteAbilityEffectAtlas.localCenterOffsetY(
+                        RogueliteAbilityVisualStyle.GRIP_T1,
+                        carHeight,
+                        effectSize),
+                0.0001f);
+    }
+
+    @Test
+    public void timeArtworkRotatesClockwiseMoreClearlyAtHigherTiers() {
+        float elapsedSeconds = 0.5f;
+        float tierOne = RogueliteAbilityEffectAtlas.timeRotationDegrees(
+                RogueliteAbilityVisualStyle.TIME_T1,
+                elapsedSeconds);
+        float tierTwo = RogueliteAbilityEffectAtlas.timeRotationDegrees(
+                RogueliteAbilityVisualStyle.TIME_T2,
+                elapsedSeconds);
+        float tierThree = RogueliteAbilityEffectAtlas.timeRotationDegrees(
+                RogueliteAbilityVisualStyle.TIME_T3,
+                elapsedSeconds);
+
+        assertTrue(tierOne > 0f);
+        assertTrue(tierTwo > tierOne);
+        assertTrue(tierThree > tierTwo);
+        assertEquals(
+                0f,
+                RogueliteAbilityEffectAtlas.timeRotationDegrees(
+                        RogueliteAbilityVisualStyle.NITRO_T1,
+                        elapsedSeconds),
+                0f);
+    }
+
+    @Test
+    public void gripSpiralsRotateTogetherWithStrongerMotionAtHigherTiers() {
+        float elapsedSeconds = 0.5f;
+        float tierOne = RogueliteAbilityEffectAtlas.gripRotationDegrees(
+                RogueliteAbilityVisualStyle.GRIP_T1,
+                elapsedSeconds);
+        float tierTwo = RogueliteAbilityEffectAtlas.gripRotationDegrees(
+                RogueliteAbilityVisualStyle.GRIP_T2,
+                elapsedSeconds);
+        float tierThree = RogueliteAbilityEffectAtlas.gripRotationDegrees(
+                RogueliteAbilityVisualStyle.GRIP_T3,
+                elapsedSeconds);
+
+        assertTrue(tierOne > 0f);
+        assertTrue(tierTwo > tierOne);
+        assertTrue(tierThree > tierTwo);
+        assertEquals(
+                0f,
+                RogueliteAbilityEffectAtlas.gripRotationDegrees(
+                        RogueliteAbilityVisualStyle.TIME_T1,
+                        elapsedSeconds),
+                0f);
+    }
+
+    @Test
     public void powerupFamiliesSelectTheirTierVisuals() {
         assertEquals(
                 RogueliteAbilityVisualStyle.NITRO_T1,
@@ -119,13 +192,13 @@ public class RogueliteAbilityEffectAtlasTest {
                 RogueliteCardCatalog.get(RogueliteCardId.PRIORITY_HOTLINE)
                         .getAbilityVisualStyle());
         assertTrue(
-                RogueliteAbilityEffectAtlas.usesDriverIcon(
+                RogueliteAbilityEffectAtlas.usesDedicatedHotlineIcon(
                         RogueliteAbilityVisualStyle.HOTLINE_T1));
         assertTrue(
-                RogueliteAbilityEffectAtlas.usesDriverIcon(
+                RogueliteAbilityEffectAtlas.usesDedicatedHotlineIcon(
                         RogueliteAbilityVisualStyle.HOTLINE_T2));
         assertFalse(
-                RogueliteAbilityEffectAtlas.usesDriverIcon(
+                RogueliteAbilityEffectAtlas.usesDedicatedHotlineIcon(
                         RogueliteAbilityVisualStyle.NITRO_T1));
     }
 

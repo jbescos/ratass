@@ -13,7 +13,7 @@ public final class CardStrategyAssets {
     private static final String DIRECTORY = "ai/card-strategies";
     private static final String FILE_NAME = "rl_card_strategy_policy.json";
     private static final String[] PROFILE_IDS = {
-        "strategy00", "strategy01", "strategy02", "strategy08"
+        "strategy00", "strategy01", "strategy02"
     };
 
     private CardStrategyAssets() {

@@ -67,7 +67,10 @@ public final class CardStrategyObservationEncoder {
         for (RogueliteSlotType slot : RogueliteSlotType.modificationSlots()) {
             RogueliteCardId cardId = loadout.get(slot);
             cursor.add(cardId == null ? 0f : 1f);
-            cursor.add(cardId == null ? 0f : RogueliteCardCatalog.get(cardId).getTier() / 3f);
+            cursor.add(cardId == null
+                    ? 0f
+                    : RogueliteCardCatalog.get(cardId).getTier()
+                            / (float) RogueliteCardCatalog.MAX_CARD_TIER);
             writeCardOneHot(cursor, cardId);
         }
 
@@ -87,7 +90,9 @@ public final class CardStrategyObservationEncoder {
         for (RogueliteSlotType slot : RogueliteSlotType.values()) {
             cursor.add(candidate != null && candidate.getSlotType() == slot ? 1f : 0f);
         }
-        cursor.add(candidate == null ? 0f : candidate.getTier() / 3f);
+        cursor.add(candidate == null
+                ? 0f
+                : candidate.getTier() / (float) RogueliteCardCatalog.MAX_CARD_TIER);
         writeDriver(cursor, candidate != null && candidate.isDriver()
                 ? candidate.getDriver() : null);
         RogueliteCardId candidateId = candidate == null || candidate.isDriver()

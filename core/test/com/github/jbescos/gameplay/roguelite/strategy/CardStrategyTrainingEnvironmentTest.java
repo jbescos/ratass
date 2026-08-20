@@ -77,20 +77,28 @@ public final class CardStrategyTrainingEnvironmentTest {
     }
 
     @Test
-    public void championshipProvidesSeveralTierThreeDecisions() {
+    public void championshipProvidesSeveralTierFourDecisions() {
         CardStrategyTrainingEnvironment environment = environment("strategy00");
         environment.reset(8127L);
 
-        int tierThreeDecisions = 0;
+        int tierFourDecisions = 0;
+        int tierFourOffers = 0;
         while (!environment.isDone()) {
-            if (environment.getLevel() >= 20) {
-                tierThreeDecisions++;
+            if (environment.getLevel() >= 30) {
+                tierFourDecisions++;
+                int[] tiers = environment.getOfferTiers();
+                for (int tier : tiers) {
+                    if (tier == 4) {
+                        tierFourOffers++;
+                    }
+                }
             }
             environment.step(environment.getRaceStrengthAction());
         }
 
-        assertTrue(environment.getLevel() > 20);
-        assertTrue(tierThreeDecisions >= 3);
+        assertTrue(environment.getLevel() >= 30);
+        assertTrue(tierFourDecisions >= 3);
+        assertTrue(tierFourOffers > 0);
     }
 
     private static CardStrategyTrainingEnvironment environment(String profileId) {

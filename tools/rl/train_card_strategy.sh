@@ -43,6 +43,9 @@ fi
 if [[ "${CARD_STRATEGY_EVALUATE_ONLY:-0}" == "1" ]]; then
   resume_args+=(--evaluate-only)
 fi
+if [[ "${CARD_STRATEGY_FORCE_EXPORT:-0}" == "1" ]]; then
+  resume_args+=(--force-export)
+fi
 init_profile="${CARD_STRATEGY_INIT_PROFILE:-}"
 if [[ ! -f "${checkpoint}" && -n "${init_profile}" && "${init_profile}" != "${profile_id}" ]]; then
   init_checkpoint="${repo_root}/rl-checkpoints/card-strategies/${init_profile}/model.pt"

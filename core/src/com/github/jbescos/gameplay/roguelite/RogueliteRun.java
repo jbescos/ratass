@@ -19,6 +19,7 @@ public final class RogueliteRun {
     // Level 2 grants the first card; later tiers unlock at these level boundaries.
     public static final int TIER_TWO_LEVEL = 10;
     public static final int TIER_THREE_LEVEL = 20;
+    public static final int TIER_FOUR_LEVEL = 30;
     private DriverProfileCatalog driverCatalog;
     private RogueliteCompetitorProgress player;
     private final Map<Integer, RogueliteCompetitorProgress> rivals =
@@ -429,14 +430,15 @@ public final class RogueliteRun {
             return Collections.emptyList();
         }
         int unlockedTier = getUnlockedTier(progress);
+        int driverOfferTier = Math.min(unlockedTier, DriverProfileCatalog.MAX_TIER);
         List<RogueliteCardOffer> driverOffers =
                 new ArrayList<RogueliteCardOffer>();
-        if (gameRules.isCardTypeAllowed(unlockedTier, RogueliteSlotType.DRIVER)) {
+        if (gameRules.isCardTypeAllowed(driverOfferTier, RogueliteSlotType.DRIVER)) {
             List<DriverProfileMetadata> eligibleDrivers =
-                    driverCatalog.eligibleThroughTier(unlockedTier);
+                    driverCatalog.eligibleThroughTier(driverOfferTier);
             for (int i = 0; i < eligibleDrivers.size(); i++) {
                 DriverProfileMetadata driver = eligibleDrivers.get(i);
-                if (driverCatalog.getTier(driver.getProfileId()) == unlockedTier
+                if (driverCatalog.getTier(driver.getProfileId()) == driverOfferTier
                         && isNewDriver(progress, driver.getProfileId())) {
                     driverOffers.add(
                             RogueliteCardOffer.driver(
@@ -451,8 +453,8 @@ public final class RogueliteRun {
         List<RogueliteCardDefinition> cards = RogueliteCardCatalog.all();
         for (int i = 0; i < cards.size(); i++) {
             RogueliteCardDefinition card = cards.get(i);
-            if (card.getTier() == unlockedTier
-                    && gameRules.isCardTypeAllowed(unlockedTier, card.getSlotType())
+            if (isOfferTierEligible(card.getTier(), unlockedTier)
+                    && gameRules.isCardTypeAllowed(card.getTier(), card.getSlotType())
                     && isNewModification(progress, card.getId())) {
                 modificationOffers.add(RogueliteCardOffer.modification(card));
             }
@@ -498,7 +500,8 @@ public final class RogueliteRun {
     private boolean isEligible(
             RogueliteCompetitorProgress progress,
             RogueliteCardOffer offer) {
-        if (offer == null || offer.getTier() != getUnlockedTier(progress)) {
+        if (offer == null
+                || !isOfferTierEligible(offer.getTier(), getUnlockedTier(progress))) {
             return false;
         }
         if (!gameRules.isCardTypeAllowed(offer.getTier(), offer.getSlotType())) {
@@ -663,6 +666,12 @@ public final class RogueliteRun {
     private int getUnlockedTier(RogueliteCompetitorProgress progress) {
         int level = progress == null ? 1 : progress.getLevel();
         return gameRules.resolveTierForLevel(level, startingTier);
+    }
+
+    private static boolean isOfferTierEligible(int offerTier, int unlockedTier) {
+        return offerTier == unlockedTier
+                || (unlockedTier == RogueliteCardCatalog.MAX_CARD_TIER
+                        && offerTier == DriverProfileCatalog.MAX_TIER);
     }
 
     private void repairDriver(

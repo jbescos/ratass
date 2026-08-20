@@ -15,7 +15,7 @@ public class RogueliteProgressionBalanceTest {
     public void representativeChampionshipUsesConfiguredTierLevelThresholds() {
         SimulationResult result = simulateRepresentativeChampionship(1, 3);
 
-        assertEquals(23, result.level);
+        assertEquals(26, result.level);
         assertEquals(RogueliteRun.TIER_TWO_LEVEL - 2, result.selectionsByTier[1]);
         assertEquals(
                 RogueliteRun.TIER_THREE_LEVEL - RogueliteRun.TIER_TWO_LEVEL,

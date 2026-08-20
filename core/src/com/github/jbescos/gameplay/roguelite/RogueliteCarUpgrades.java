@@ -7,7 +7,6 @@ import java.util.List;
 public final class RogueliteCarUpgrades {
     private static final float MIN_EFFECTIVE_STAT_MULTIPLIER = 0.10f;
     private static final float MIN_TOP_SPEED_MULTIPLIER = 0.65f;
-    private static final float MAX_TOP_SPEED_MULTIPLIER = 1.35f;
 
     private final List<RogueliteUpgradeEffect> effects =
             new ArrayList<RogueliteUpgradeEffect>();
@@ -685,10 +684,9 @@ public final class RogueliteCarUpgrades {
             bonus += effect.accelerationBonus() * effectStrengthMultiplier(effect);
         }
         float combined = (1f + bonus) * externalMultiplier;
-        return RogueliteEffectMath.clamp(
-                amplifyDeviation(combined, powerDeviationScale()),
+        return Math.max(
                 MIN_EFFECTIVE_STAT_MULTIPLIER,
-                1.85f);
+                amplifyDeviation(combined, powerDeviationScale()));
     }
 
     public float getDriveForceLimitMultiplier() {
@@ -699,10 +697,7 @@ public final class RogueliteCarUpgrades {
                     effect.driveForceLimitMultiplier(),
                     effectStrengthMultiplier(effect));
         }
-        return RogueliteEffectMath.clamp(
-                amplifyDeviation(multiplier, powerDeviationScale()),
-                0.70f,
-                2f);
+        return Math.max(0.70f, amplifyDeviation(multiplier, powerDeviationScale()));
     }
 
     public float getMaxSpeedMultiplier() {
@@ -724,10 +719,9 @@ public final class RogueliteCarUpgrades {
         float performanceProduct = Math.max(
                 0f,
                 powerMultiplier * aerodynamicEfficiencyMultiplier);
-        return RogueliteEffectMath.clamp(
-                (float) Math.cbrt(performanceProduct),
+        return Math.max(
                 MIN_TOP_SPEED_MULTIPLIER,
-                MAX_TOP_SPEED_MULTIPLIER);
+                (float) Math.cbrt(performanceProduct));
     }
 
     public float getDragMultiplier() {
@@ -768,10 +762,9 @@ public final class RogueliteCarUpgrades {
                     effect.massMultiplier(),
                     effectStrengthMultiplier(effect));
         }
-        return RogueliteEffectMath.clamp(
-                amplifyDeviation(multiplier * externalMultiplier, massDeviationScale()),
+        return Math.max(
                 MIN_EFFECTIVE_STAT_MULTIPLIER,
-                2f);
+                amplifyDeviation(multiplier * externalMultiplier, massDeviationScale()));
     }
 
     public float getGripMultiplier(float slip) {
@@ -796,10 +789,9 @@ public final class RogueliteCarUpgrades {
                 carGrip,
                 gripDeviationScale());
         // Weather and other surface loss remain independent from Technique effects.
-        return RogueliteEffectMath.clamp(
-                techniqueGrip * surfaceMultiplier,
+        return Math.max(
                 MIN_EFFECTIVE_STAT_MULTIPLIER,
-                2f);
+                techniqueGrip * surfaceMultiplier);
     }
 
     public float getSteeringMultiplier(float slip) {
@@ -808,7 +800,7 @@ public final class RogueliteCarUpgrades {
             RogueliteUpgradeEffect effect = effects.get(i);
             bonus += effect.steeringBonus(slip) * effectStrengthMultiplier(effect);
         }
-        return RogueliteEffectMath.clamp(1f + bonus, 0.70f, 2f);
+        return Math.max(0.70f, 1f + bonus);
     }
 
     public float getSlipstreamRangeMultiplier() {

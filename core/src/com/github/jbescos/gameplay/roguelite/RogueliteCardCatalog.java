@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class RogueliteCardCatalog {
+    public static final int MAX_CARD_TIER = 4;
     private static final List<RogueliteCardDefinition> CARDS;
     private static final Map<RogueliteCardId, RogueliteCardDefinition> CARDS_BY_ID;
 
@@ -268,25 +269,11 @@ public final class RogueliteCardCatalog {
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
-                RogueliteCardId.TECHNIQUE_COUPLER,
-                "Technique Coupler",
-                "A calibrated control unit strengthens the equipped Technique effect.",
-                "Technique effects x1.25",
-                1,
-                RogueliteSlotType.TUNING));
-        cards.add(card(
-                RogueliteCardId.TECHNIQUE_MATRIX,
-                "Technique Matrix",
-                "A racing control matrix greatly strengthens the equipped Technique effect.",
-                "Technique effects x1.5",
-                2,
-                RogueliteSlotType.TUNING));
-        cards.add(card(
                 RogueliteCardId.TECHNIQUE_SINGULARITY,
                 "Technique Singularity",
                 "An experimental control core doubles the equipped Technique effect.",
                 "Technique effects x2",
-                3,
+                4,
                 RogueliteSlotType.TUNING));
 
         cards.add(card(
@@ -544,25 +531,11 @@ public final class RogueliteCardCatalog {
                 3,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
-                RogueliteCardId.POWERUP_LINK,
-                "Powerup Link",
-                "A passive timing link strengthens Powerups and recharges them faster.",
-                "Activation: Passive\nPowerup effects x1.25\nCooldown recovery x1.25",
-                1,
-                RogueliteSlotType.TECHNIQUE));
-        cards.add(card(
-                RogueliteCardId.POWERUP_MATRIX,
-                "Powerup Matrix",
-                "A passive timing matrix strengthens Powerups and recharges them much faster.",
-                "Activation: Passive\nPowerup effects x1.5\nCooldown recovery x1.5",
-                2,
-                RogueliteSlotType.TECHNIQUE));
-        cards.add(card(
                 RogueliteCardId.POWERUP_NEXUS,
                 "Powerup Nexus",
                 "A passive timing nexus doubles Powerup effects and cooldown recovery.",
                 "Activation: Passive\nPowerup effects x2\nCooldown recovery x2",
-                3,
+                4,
                 RogueliteSlotType.TECHNIQUE));
 
         cards.add(powerup(
@@ -614,13 +587,6 @@ public final class RogueliteCardCatalog {
                 "Each activation: random Tier 1 Powerup",
                 1,
                 RogueliteAbilityVisualStyle.NITRO_T1));
-        cards.add(powerup(
-                RogueliteCardId.GRUDGE_SPARK,
-                "Grudge Spark",
-                "A green catalyst ignites whenever Revenge activates and strengthens its real effect.",
-                "Revenge activation: effect x1.25",
-                1,
-                RogueliteAbilityVisualStyle.REVENGE_BOOST_T1));
         cards.add(revenge(
                 RogueliteCardId.DRAFT_MAGNET,
                 "Draft Magnet",
@@ -692,13 +658,6 @@ public final class RogueliteCardCatalog {
                 2,
                 RogueliteAbilityVisualStyle.MIRROR));
         cards.add(powerup(
-                RogueliteCardId.VENGEANCE_CORE,
-                "Vengeance Core",
-                "A stronger green core surges whenever Revenge activates and magnifies its outcome.",
-                "Revenge activation: effect x1.5",
-                2,
-                RogueliteAbilityVisualStyle.REVENGE_BOOST_T2));
-        cards.add(powerup(
                 RogueliteCardId.GRAVITY_WELL,
                 "Gravity Well",
                 "A visible ground field forms in corners or close traffic for extreme stability.",
@@ -745,7 +704,7 @@ public final class RogueliteCardCatalog {
                 "Nemesis Engine",
                 "An extreme green engine doubles the consequences whenever Revenge activates.",
                 "Revenge activation: effect x2",
-                3,
+                4,
                 RogueliteAbilityVisualStyle.REVENGE_BOOST_T3));
         cards.add(revenge(
                 RogueliteCardId.CROWN_ENGINE,
@@ -757,8 +716,8 @@ public final class RogueliteCardCatalog {
         cards.add(revenge(
                 RogueliteCardId.PAYBACK_SHIELD,
                 "Vendetta Hook",
-                "A qualified hit marks its offender. After charging, the hook pulls them directly back to you.",
-                "Activation: Rival hit\nAfter 3s: pull offender to you over 1s",
+                "A qualified hit marks its offender. After charging, the hook pulls them back only while they are ahead.",
+                "Activation: Rival hit\nAfter 3s: if ahead, pull offender to you over 1s",
                 1,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -860,6 +819,51 @@ public final class RogueliteCardCatalog {
                 3,
                 RogueliteAbilityVisualStyle.RAM));
 
+        List<RogueliteCardDefinition> retiredCards =
+                new ArrayList<RogueliteCardDefinition>();
+        retiredCards.add(card(
+                RogueliteCardId.TECHNIQUE_COUPLER,
+                "Technique Coupler",
+                "A calibrated control unit strengthens the equipped Technique effect.",
+                "Technique effects x1.25",
+                1,
+                RogueliteSlotType.TUNING));
+        retiredCards.add(card(
+                RogueliteCardId.TECHNIQUE_MATRIX,
+                "Technique Matrix",
+                "A racing control matrix greatly strengthens the equipped Technique effect.",
+                "Technique effects x1.5",
+                2,
+                RogueliteSlotType.TUNING));
+        retiredCards.add(card(
+                RogueliteCardId.POWERUP_LINK,
+                "Powerup Link",
+                "A passive timing link strengthens Powerups and recharges them faster.",
+                "Activation: Passive\nPowerup effects x1.25\nCooldown recovery x1.25",
+                1,
+                RogueliteSlotType.TECHNIQUE));
+        retiredCards.add(card(
+                RogueliteCardId.POWERUP_MATRIX,
+                "Powerup Matrix",
+                "A passive timing matrix strengthens Powerups and recharges them much faster.",
+                "Activation: Passive\nPowerup effects x1.5\nCooldown recovery x1.5",
+                2,
+                RogueliteSlotType.TECHNIQUE));
+        retiredCards.add(powerup(
+                RogueliteCardId.GRUDGE_SPARK,
+                "Grudge Spark",
+                "A green catalyst ignites whenever Revenge activates and strengthens its real effect.",
+                "Revenge activation: effect x1.25",
+                1,
+                RogueliteAbilityVisualStyle.REVENGE_BOOST_T1));
+        retiredCards.add(powerup(
+                RogueliteCardId.VENGEANCE_CORE,
+                "Vengeance Core",
+                "A stronger green core surges whenever Revenge activates and magnifies its outcome.",
+                "Revenge activation: effect x1.5",
+                2,
+                RogueliteAbilityVisualStyle.REVENGE_BOOST_T2));
+
         Map<RogueliteCardId, RogueliteCardDefinition> cardsById =
                 new EnumMap<RogueliteCardId, RogueliteCardDefinition>(RogueliteCardId.class);
         for (int i = 0; i < cards.size(); i++) {
@@ -867,6 +871,13 @@ public final class RogueliteCardCatalog {
             if (cardsById.put(definition.getId(), definition) != null) {
                 throw new IllegalStateException(
                         "Duplicate roguelite card ID: " + definition.getId());
+            }
+        }
+        for (int i = 0; i < retiredCards.size(); i++) {
+            RogueliteCardDefinition definition = retiredCards.get(i);
+            if (cardsById.put(definition.getId(), definition) != null) {
+                throw new IllegalStateException(
+                        "Duplicate retired roguelite card ID: " + definition.getId());
             }
         }
         CARDS = Collections.unmodifiableList(cards);

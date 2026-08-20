@@ -138,7 +138,51 @@ class SpawnConfigurationValidationTest(unittest.TestCase):
         parser.error.assert_called_once()
 
 
+class LapEvaluationEligibilityTest(unittest.TestCase):
+    def test_fixed_lap_candidate_must_finish_every_evaluation(self):
+        args = SimpleNamespace(objective="race", fixed_full_laps=True, route_targets=3)
+        complete = train_rllib.PolicyEvaluation(
+            score=-100.0,
+            metrics={"success_rate": "1.000"},
+            output_lines=(),
+            return_code=0,
+        )
+        incomplete = train_rllib.PolicyEvaluation(
+            score=-90.0,
+            metrics={"success_rate": "0.947"},
+            output_lines=(),
+            return_code=0,
+        )
+
+        self.assertTrue(train_rllib.evaluation_completed_all_laps(args, complete))
+        self.assertFalse(train_rllib.evaluation_completed_all_laps(args, incomplete))
+
+    def test_percentage_stage_does_not_require_all_evaluations_to_finish(self):
+        args = SimpleNamespace(objective="race", fixed_full_laps=False, route_targets=1)
+        incomplete = train_rllib.PolicyEvaluation(
+            score=10.0,
+            metrics={"success_rate": "0.500"},
+            output_lines=(),
+            return_code=0,
+        )
+
+        self.assertTrue(train_rllib.evaluation_completed_all_laps(args, incomplete))
+
+
 class EstablishStageBaselineTest(unittest.TestCase):
+    def test_only_current_evaluation_score_state_is_reusable(self):
+        self.assertFalse(train_rllib.state_uses_current_evaluation_score({}))
+        self.assertFalse(
+            train_rllib.state_uses_current_evaluation_score(
+                {"metrics": {"score_version": "1"}}
+            )
+        )
+        self.assertTrue(
+            train_rllib.state_uses_current_evaluation_score(
+                {"metrics": {"score_version": "4"}}
+            )
+        )
+
     def test_evaluates_incoming_policy_without_comparing_installed_policy(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             checkpoint_dir = Path(temp_dir)
@@ -191,6 +235,7 @@ class EstablishStageBaselineTest(unittest.TestCase):
                         "best_score": 42.0,
                         "iteration": 7,
                         "best_rllib_checkpoint": str(archived_checkpoint),
+                        "metrics": {"score_version": "4"},
                     }
                 ),
                 encoding="utf-8",
@@ -212,7 +257,13 @@ class EstablishStageBaselineTest(unittest.TestCase):
             promote.assert_not_called()
 
 
-def evaluated_candidate(iteration, score, avg_targets, route_eligible=True, return_code=0):
+def evaluated_candidate(
+        iteration,
+        score,
+        avg_targets,
+        route_eligible=True,
+        return_code=0,
+        avg_goal_time_s=None):
     checkpoint = train_rllib.CheckpointCandidate(
         iteration=iteration,
         reward_mean=float(iteration),
@@ -222,7 +273,18 @@ def evaluated_candidate(iteration, score, avg_targets, route_eligible=True, retu
     )
     evaluation = train_rllib.PolicyEvaluation(
         score=score,
-        metrics={"avg_targets": str(avg_targets)} if score is not None else {},
+        metrics=(
+            {
+                "avg_targets": str(avg_targets),
+                **(
+                    {"avg_goal_time_s": str(avg_goal_time_s)}
+                    if avg_goal_time_s is not None
+                    else {}
+                ),
+            }
+            if score is not None
+            else {}
+        ),
         output_lines=(f"evaluation_score={score}",) if score is not None else (),
         return_code=return_code,
     )

@@ -23,7 +23,7 @@ public final class RogueliteCardDefinition {
         if (effectText == null || effectText.length() == 0) {
             throw new IllegalArgumentException("A card requires an effect.");
         }
-        if (tier < 1 || tier > DriverProfileCatalog.MAX_TIER) {
+        if (tier < 1 || tier > RogueliteCardCatalog.MAX_CARD_TIER) {
             throw new IllegalArgumentException("Card tier is out of range.");
         }
         if (slotType == null || slotType.isDriver()) {

@@ -8,7 +8,7 @@ if [[ "$#" -gt 0 ]]; then
   profiles=("$@")
 else
   profiles=(
-    strategy00 strategy01 strategy02 strategy08
+    strategy00 strategy01 strategy02
   )
 fi
 

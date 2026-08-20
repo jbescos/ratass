@@ -880,8 +880,8 @@ public final class GameText {
                 "Un sistema de fase oculta el coche y evita contactos durante un ataque prolongado.");
         put(text, "A rival hit marks its offender and empowers you until an automatic close-range ram.",
                 "Un golpe rival marca al agresor y te potencia hasta una embestida automática a corta distancia.");
-        put(text, "A qualified hit marks its offender. After charging, the hook pulls them directly back to you.",
-                "Marca al agresor y después lo atrae directamente hacia ti.");
+        put(text, "A qualified hit marks its offender. After charging, the hook pulls them back only while they are ahead.",
+                "Marca al agresor y después lo atrae hacia ti solo si va por delante.");
         put(text, "A qualified rival hit arms a medium-range energy wave that pushes nearby cars away.",
                 "Un golpe rival prepara una onda de alcance medio que aparta los coches cercanos.");
         put(text, "Marks the rival who hit you, then hunts them anywhere on the circuit with three impact shots.",

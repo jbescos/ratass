@@ -16,8 +16,7 @@ public final class CardStrategyCatalogTest {
                 Arrays.<CardStrategy>asList(
                         new FirstOfferStrategy("strategy00"),
                         new FirstOfferStrategy("strategy01"),
-                        new FirstOfferStrategy("strategy02"),
-                        new FirstOfferStrategy("strategy08")));
+                        new FirstOfferStrategy("strategy02")));
         RogueliteRun original = new RogueliteRun(713L);
         original.configureCardStrategies(catalog);
         original.assignRivalStrategiesForRace(
@@ -30,7 +29,6 @@ public final class CardStrategyCatalogTest {
         int winnerCount = 0;
         int explorerCount = 0;
         int engineerCount = 0;
-        int amplifierCount = 0;
         for (int vehicleId = 1; vehicleId <= 9; vehicleId++) {
             String profileId = original.getRivalStrategyProfileId(vehicleId);
             assertTrue(catalog.contains(profileId));
@@ -42,19 +40,16 @@ public final class CardStrategyCatalogTest {
                 explorerCount++;
             } else if ("strategy02".equals(profileId)) {
                 engineerCount++;
-            } else if ("strategy08".equals(profileId)) {
-                amplifierCount++;
             }
         }
         assertTrue(algorithmicCount >= 1);
         assertTrue(winnerCount >= 1);
         assertTrue(explorerCount >= 1);
         assertTrue(engineerCount >= 1);
-        assertTrue(amplifierCount >= 1);
         assertEquals(
                 9,
                 algorithmicCount + winnerCount + explorerCount
-                        + engineerCount + amplifierCount);
+                        + engineerCount);
 
         RogueliteRun.Snapshot snapshot = original.snapshot();
         RogueliteRun restored = new RogueliteRun(999L);
@@ -73,8 +68,7 @@ public final class CardStrategyCatalogTest {
                 Arrays.<CardStrategy>asList(
                         new FirstOfferStrategy("strategy00"),
                         new FirstOfferStrategy("strategy01"),
-                        new FirstOfferStrategy("strategy02"),
-                        new FirstOfferStrategy("strategy08")));
+                        new FirstOfferStrategy("strategy02")));
         RogueliteRun run = new RogueliteRun(91L);
         run.configureCardStrategies(catalog);
         run.assignRivalStrategiesForRace(Arrays.asList(
@@ -94,8 +88,7 @@ public final class CardStrategyCatalogTest {
                 Arrays.<CardStrategy>asList(
                         new FirstOfferStrategy("strategy00"),
                         new FirstOfferStrategy("strategy01"),
-                        new FirstOfferStrategy("strategy02"),
-                        new FirstOfferStrategy("strategy08")));
+                        new FirstOfferStrategy("strategy02")));
         RogueliteRun run = new RogueliteRun(713L);
         run.configureCardStrategies(catalog);
         List<Integer> vehicleIds = Arrays.asList(

@@ -1,7 +1,7 @@
 package com.github.jbescos.gameplay.roguelite;
 
 public final class RogueliteExperienceAwards {
-    public static final int PASS_RIVAL = 2;
+    public static final int PASS_RIVAL = 6;
     public static final int FASTEST_LAP = 6;
     public static final int REVENGE = 4;
     public static final int PUSH_RIVAL_OFF_ROAD = 6;

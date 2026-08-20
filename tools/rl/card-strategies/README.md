@@ -75,7 +75,6 @@ The runtime roster is deliberately small:
 - `strategy00` (`Winner`): unrestricted card choices, rewarded for lap and championship wins.
 - `strategy01` (`Explorer`): avoids skips and rotates selections across card types.
 - `strategy02` (`Engineer`): builds compatible Tuning and Technique stat combinations.
-- `strategy08` (`Amplifier`): builds the Tuning -> Technique -> Powerup -> Revenge multiplier
   chain.
 
 Untrained specialists initialize from `strategy00`, then optimize their own shaping rewards.

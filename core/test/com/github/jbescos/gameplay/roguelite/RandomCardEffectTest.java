@@ -143,6 +143,23 @@ public class RandomCardEffectTest {
     }
 
     @Test
+    public void randomVendettaHookRerollsWhenItsAheadConditionExpires() {
+        RandomCardEffect effect = effectPreparedAs(
+                RogueliteCardId.LOADED_GRUDGE,
+                RogueliteCardId.PAYBACK_SHIELD);
+        RogueliteCardId firstCard = effect.preparedCardId();
+        effect.onHitBy(42, 12f);
+        effect.advance(3.1f, 3.1f, straightDrivingFrame());
+
+        assertNull(effect.tryActivateOffenderStrike(42, 30f, false));
+        assertTrue(effect.expireOffenderStrikeIfConditionFailed(42, false));
+        assertFalse(effect.isArmed());
+        assertFalse(effect.isActive());
+        assertEquals(-1, effect.revengeTargetVehicleId());
+        assertNotEquals(firstCard, effect.preparedCardId());
+    }
+
+    @Test
     public void everyPowerupWildcardCandidateExecutesAndRerolls() {
         assertEveryPowerupCandidateExecutes(RogueliteCardId.LUCKY_SPARK);
         assertEveryPowerupCandidateExecutes(RogueliteCardId.CHAOS_RELAY);
@@ -215,18 +232,6 @@ public class RandomCardEffectTest {
         assertNotNull(strike);
         assertTrue(effect.isActive());
         assertEquals(RogueliteCardId.CROWN_ENGINE, effect.activeDisplayCardId());
-    }
-
-    @Test
-    public void randomPowerupDelegatesThePreparedRevengeAmplifier() {
-        RandomCardEffect effect = effectPreparedAs(
-                RogueliteCardId.CHAOS_RELAY,
-                RogueliteCardId.VENGEANCE_CORE);
-
-        assertEquals(1.50f, effect.revengeEffectMultiplier(), 0.0001f);
-        effect.onRevengeActivated(4f);
-        assertTrue(effect.isActive());
-        assertEquals(RogueliteCardId.VENGEANCE_CORE, effect.activeDisplayCardId());
     }
 
     @Test

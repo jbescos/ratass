@@ -51,6 +51,7 @@ import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.HybridPlayerControl;
 import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.LongStraightThrottleAssist;
+import com.github.jbescos.gameplay.MapWallBounce;
 import com.github.jbescos.gameplay.OvertakingSectorSensors;
 import com.github.jbescos.gameplay.PassingAssistGeometry;
 import com.github.jbescos.gameplay.TimeDilationDecisionCadence;
@@ -297,10 +298,11 @@ public class RatassGame extends ApplicationAdapter {
     private static final int NEW_GAME_CAR_NAME_SELECTION = 0;
     private static final int NEW_GAME_CAR_START_SELECTION = 1;
     private static final int NEW_GAME_CAR_BACK_SELECTION = 2;
-    private static final int PAUSE_MENU_CANCEL_SELECTION = 0;
-    private static final int PAUSE_MENU_OPTIONS_SELECTION = 1;
-    private static final int PAUSE_MENU_MAIN_MENU_SELECTION = 2;
+    private static final int PAUSE_MENU_CONTINUE_SELECTION = 0;
+    private static final int PAUSE_MENU_MAIN_MENU_SELECTION = 1;
+    private static final int PAUSE_MENU_OPTIONS_SELECTION = 2;
     private static final int PAUSE_MENU_EXIT_SELECTION = 3;
+    private static final Object MAP_WALL_FIXTURE_USER_DATA = new Object();
     private static final float ARENA_PIXEL_ART_PIXELS_PER_WORLD_UNIT = 12f;
     private static final int ARENA_PIXEL_ART_MIN_TEXTURE_SIZE = 128;
     private static final int ARENA_PIXEL_ART_MAX_TEXTURE_SIZE = 512;
@@ -328,6 +330,8 @@ public class RatassGame extends ApplicationAdapter {
             DriverArtworkAtlas.THEMED_RELATIVE_PATH;
     private static final String ROGUELITE_ABILITY_EFFECT_PATH =
             "roguelite/cards/ability_effect_atlas.png";
+    private static final String BEST_DRIVER_HOTLINE_EFFECT_PATH =
+            "roguelite/effects/best_driver_hotline.png";
     private static final String DEBUFF_TARGET_ICON_PATH =
             "roguelite/effects/debuff_target_icon_atlas.png";
     private static final String ROGUELITE_CARD_SHELL_PATH =
@@ -505,7 +509,7 @@ public class RatassGame extends ApplicationAdapter {
     public static final int RL_OVERTAKING_OBSERVATION_SIZE = 43;
     public static final int RL_ACTION_SIZE = 2;
     public static final int RL_OVERTAKING_ACTION_SIZE = 1;
-    public static final int RL_REWARD_BREAKDOWN_SIZE = 11;
+    public static final int RL_REWARD_BREAKDOWN_SIZE = 12;
     private static final int RL_REWARD_ROUTE_PROGRESS = 0;
     private static final int RL_REWARD_STEP_COST = 1;
     private static final int RL_REWARD_OFF_ROAD = 2;
@@ -517,6 +521,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final int RL_REWARD_OFF_ROAD_RECOVERY = 8;
     private static final int RL_REWARD_OFF_ROAD_FAILURE = 9;
     private static final int RL_REWARD_DRIFT = 10;
+    private static final int RL_REWARD_PEDAL_CHANGE = 11;
     private static final String[] RL_REWARD_BREAKDOWN_NAMES = {
             "route_progress",
             "step_cost",
@@ -528,7 +533,8 @@ public class RatassGame extends ApplicationAdapter {
             "no_progress",
             "off_road_recovery",
             "off_road_failure",
-            "drift"
+            "drift",
+            "pedal_change"
     };
     private static final String[] RL_OBSERVATION_NAMES = {
             "route_fwd",
@@ -733,6 +739,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_OFF_ROAD_FAILURE_PENALTY = 50f;
     private static final float RL_ROUTE_ALIGNMENT_REWARD = 0f;
     private static final float RL_STEERING_PENALTY = 0.010f;
+    private static final float RL_STEERING_CHANGE_PENALTY = 0f;
+    private static final float RL_PEDAL_CHANGE_PENALTY = 0f;
     private static final float RL_REVERSE_SPEED_FREE_EPSILON = 0.20f;
     private static final float RL_REVERSE_SPEED_PENALTY_PER_UNIT = 0.08f;
     private static final float RL_REVERSE_SPEED_MAX_PENALTY = 0.90f;
@@ -1155,16 +1163,16 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle[] customCardTableHeaderBounds =
             createRectangleArray(RogueliteSlotType.values().length + 2);
     private final Rectangle[] customTierLabelBounds =
-            createRectangleArray(DriverProfileCatalog.MAX_TIER);
+            createRectangleArray(RogueliteCardCatalog.MAX_CARD_TIER);
     private final Rectangle[] customTierCardTypeBounds =
             createRectangleArray(
-                    DriverProfileCatalog.MAX_TIER * RogueliteSlotType.values().length);
+                    RogueliteCardCatalog.MAX_CARD_TIER * RogueliteSlotType.values().length);
     private final Rectangle[] customTierUnlockBounds =
-            createRectangleArray(DriverProfileCatalog.MAX_TIER);
+            createRectangleArray(RogueliteCardCatalog.MAX_CARD_TIER);
     private final Rectangle[] customTierUnlockDownBounds =
-            createRectangleArray(DriverProfileCatalog.MAX_TIER);
+            createRectangleArray(RogueliteCardCatalog.MAX_CARD_TIER);
     private final Rectangle[] customTierUnlockUpBounds =
-            createRectangleArray(DriverProfileCatalog.MAX_TIER);
+            createRectangleArray(RogueliteCardCatalog.MAX_CARD_TIER);
     private final Rectangle[] customWeatherBounds =
             createRectangleArray(WeatherType.values().length);
     private final Array<Rectangle> customMapBounds = new Array<Rectangle>();
@@ -1197,7 +1205,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle mapDebugPrevBounds = new Rectangle();
     private final Rectangle mapDebugNextBounds = new Rectangle();
     private final Rectangle mapDebugBackBounds = new Rectangle();
-    private final Rectangle pauseCancelBounds = new Rectangle();
+    private final Rectangle pauseContinueBounds = new Rectangle();
     private final Rectangle pauseOptionsBounds = new Rectangle();
     private final Rectangle pauseMainMenuBounds = new Rectangle();
     private final Rectangle pauseExitBounds = new Rectangle();
@@ -1356,6 +1364,7 @@ public class RatassGame extends ApplicationAdapter {
     private Texture rogueliteCardArtworkTexture;
     private Texture rogueliteDriverArtworkTexture;
     private Texture rogueliteAbilityEffectTexture;
+    private Texture bestDriverHotlineEffectTexture;
     private Texture debuffTargetIconTexture;
     private Texture rogueliteCardShellTexture;
     private Texture rogueliteCardTypeIconTexture;
@@ -1374,6 +1383,7 @@ public class RatassGame extends ApplicationAdapter {
     private boolean rogueliteCardArtworkLoadAttempted;
     private boolean rogueliteDriverArtworkLoadAttempted;
     private boolean rogueliteAbilityEffectLoadAttempted;
+    private boolean bestDriverHotlineEffectLoadAttempted;
     private boolean debuffTargetIconLoadAttempted;
     private boolean rogueliteCardShellLoadAttempted;
     private boolean rogueliteCardTypeIconLoadAttempted;
@@ -1829,7 +1839,9 @@ public class RatassGame extends ApplicationAdapter {
                 rogueliteRun.configureCardStrategies(CardStrategyAssets.loadInternal());
                 rlRecoveryPolicy = loadRlPolicy(
                         RL_RECOVERY_POLICY_PATH,
-                        "shared-recovery");
+                        "shared-recovery",
+                        RL_OBSERVATION_SIZE,
+                        RL_ACTION_SIZE);
                 rlOvertakingPolicy = RL_OVERTAKING_RUNTIME_ENABLED
                         ? loadRlPolicy(
                                 RL_OVERTAKING_POLICY_PATH,
@@ -5310,7 +5322,7 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
         RogueliteSlotType[] cardTypes = RogueliteSlotType.values();
-        for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             for (int typeIndex = 0; typeIndex < cardTypes.length; typeIndex++) {
                 int index = customTierCardTypeIndex(tier, typeIndex);
                 if (customTierCardTypeBounds[index].contains(x, y)) {
@@ -5441,7 +5453,7 @@ public class RatassGame extends ApplicationAdapter {
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)
                 || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
-            if (pauseMenuSelection == PAUSE_MENU_CANCEL_SELECTION) {
+            if (pauseMenuSelection == PAUSE_MENU_CONTINUE_SELECTION) {
                 resumeGame();
             } else if (pauseMenuSelection == PAUSE_MENU_OPTIONS_SELECTION) {
                 openOptionsMenu(true);
@@ -5510,7 +5522,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private void openPauseMenu() {
         clearPlayerInput();
-        pauseMenuSelection = PAUSE_MENU_CANCEL_SELECTION;
+        pauseMenuSelection = PAUSE_MENU_CONTINUE_SELECTION;
         optionsOpenedFromPause = false;
         gameMode = GameMode.PAUSE_MENU;
     }
@@ -5832,8 +5844,8 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         if (gameMode == GameMode.PAUSE_MENU) {
-            if (pauseCancelBounds.contains(x, y)) {
-                pauseMenuSelection = PAUSE_MENU_CANCEL_SELECTION;
+            if (pauseContinueBounds.contains(x, y)) {
+                pauseMenuSelection = PAUSE_MENU_CONTINUE_SELECTION;
                 resumeGame();
             } else if (pauseOptionsBounds.contains(x, y)) {
                 pauseMenuSelection = PAUSE_MENU_OPTIONS_SELECTION;
@@ -6154,13 +6166,13 @@ public class RatassGame extends ApplicationAdapter {
                 Math.max(
                         height * 0.49f,
                         MENU_MIN_SIDE_MARGIN + (menuButtonHeight + menuButtonGap) * 3f);
-        pauseCancelBounds.set(centeredButtonX, pauseFirstButtonY, buttonWidth, menuButtonHeight);
-        pauseOptionsBounds.set(
+        pauseContinueBounds.set(centeredButtonX, pauseFirstButtonY, buttonWidth, menuButtonHeight);
+        pauseMainMenuBounds.set(
                 centeredButtonX,
                 pauseFirstButtonY - menuButtonHeight - menuButtonGap,
                 buttonWidth,
                 menuButtonHeight);
-        pauseMainMenuBounds.set(
+        pauseOptionsBounds.set(
                 centeredButtonX,
                 pauseFirstButtonY - (menuButtonHeight + menuButtonGap) * 2f,
                 buttonWidth,
@@ -6374,7 +6386,7 @@ public class RatassGame extends ApplicationAdapter {
                 unlockColumnWidth,
                 rowHeight);
 
-        for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             float rowY = cardHeaderY - tier * rowHeight;
             columnX = tableX;
             customTierLabelBounds[tier - 1].set(
@@ -6403,7 +6415,7 @@ public class RatassGame extends ApplicationAdapter {
                     rowHeight);
         }
         topY = cardHeaderY
-                - DriverProfileCatalog.MAX_TIER * rowHeight
+                - RogueliteCardCatalog.MAX_CARD_TIER * rowHeight
                 - sectionGap;
 
         layoutCustomGrid(
@@ -7716,7 +7728,7 @@ public class RatassGame extends ApplicationAdapter {
                 customCardTableHeaderBounds[customCardTableHeaderBounds.length - 1],
                 "Unlock lvl",
                 true);
-        for (int tier = 1; tier <= DriverProfileCatalog.MAX_TIER; tier++) {
+        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
             drawCustomTableTextCell(
                     customTierLabelBounds[tier - 1],
                     Integer.toString(tier),
@@ -8549,17 +8561,17 @@ public class RatassGame extends ApplicationAdapter {
 
     private void drawPauseMenu(float hudWidth, float hudHeight) {
         drawMenuButton(
-                pauseCancelBounds,
-                "Cancel",
-                pauseMenuSelection == PAUSE_MENU_CANCEL_SELECTION);
-        drawMenuButton(
-                pauseOptionsBounds,
-                "Options",
-                pauseMenuSelection == PAUSE_MENU_OPTIONS_SELECTION);
+                pauseContinueBounds,
+                "Continue",
+                pauseMenuSelection == PAUSE_MENU_CONTINUE_SELECTION);
         drawMenuButton(
                 pauseMainMenuBounds,
                 "Main Menu",
                 pauseMenuSelection == PAUSE_MENU_MAIN_MENU_SELECTION);
+        drawMenuButton(
+                pauseOptionsBounds,
+                "Options",
+                pauseMenuSelection == PAUSE_MENU_OPTIONS_SELECTION);
         drawMenuButton(
                 pauseExitBounds,
                 "Exit",
@@ -8572,8 +8584,8 @@ public class RatassGame extends ApplicationAdapter {
                         hudHeight - 30f,
                         Math.max(
                                 hudHeight * 0.73f,
-                                pauseCancelBounds.y
-                                        + pauseCancelBounds.height
+                                pauseContinueBounds.y
+                                        + pauseContinueBounds.height
                                         + Math.max(34f, hudHeight * 0.045f)));
         drawTextCentered(titleFont, "Paused", hudWidth * 0.5f, titleBaseline);
         spriteBatch.end();
@@ -11447,7 +11459,7 @@ public class RatassGame extends ApplicationAdapter {
                 continue;
             }
             edge.set(start, end);
-            wallBody.createFixture(fixtureDef);
+            wallBody.createFixture(fixtureDef).setUserData(MAP_WALL_FIXTURE_USER_DATA);
         }
         edge.dispose();
     }
@@ -15538,8 +15550,8 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
-        if (RogueliteAbilityEffectAtlas.usesDriverIcon(style)) {
-            drawDriverHotlineEffectSprite(car, visual, style);
+        if (RogueliteAbilityEffectAtlas.usesDedicatedHotlineIcon(style)) {
+            drawBestDriverHotlineEffectSprite(car, visual, style);
             return;
         }
 
@@ -15558,7 +15570,7 @@ public class RatassGame extends ApplicationAdapter {
                                 * texture.getWidth()
                                 / (float) RogueliteAbilityEffectAtlas.COLUMNS);
 
-        Vector2 center = car.getRenderPosition();
+        Vector2 renderPosition = car.getRenderPosition();
         float pulse = visual.getPulse();
         float flash = visual.getActivationFlash();
         float carRelativeSize =
@@ -15574,7 +15586,14 @@ public class RatassGame extends ApplicationAdapter {
                 style,
                 carRelativeSize,
                 effectRadius);
-        float rotation = abilityEffectRotation(style, car.getRenderAngleDeg());
+        float carAngleDeg = car.getRenderAngleDeg();
+        float localCenterY = RogueliteAbilityEffectAtlas.localCenterOffsetY(
+                style,
+                car.getHeight(),
+                size);
+        float centerX = renderPosition.x - localCenterY * MathUtils.sinDeg(carAngleDeg);
+        float centerY = renderPosition.y + localCenterY * MathUtils.cosDeg(carAngleDeg);
+        float rotation = abilityEffectRotation(style, carAngleDeg);
         Color color = card.getSlotType() == RogueliteSlotType.REVENGE
                 ? ROGUELITE_REVENGE_COLOR
                 : ROGUELITE_POWERUP_COLOR;
@@ -15585,8 +15604,8 @@ public class RatassGame extends ApplicationAdapter {
                 MathUtils.clamp(0.46f + pulse * 0.18f + flash * 0.24f, 0f, 1f));
         spriteBatch.draw(
                 texture,
-                center.x - size * 0.5f,
-                center.y - size * 0.5f,
+                centerX - size * 0.5f,
+                centerY - size * 0.5f,
                 size * 0.5f,
                 size * 0.5f,
                 size,
@@ -15602,7 +15621,7 @@ public class RatassGame extends ApplicationAdapter {
                 false);
     }
 
-    private void drawDriverHotlineEffectSprite(
+    private void drawBestDriverHotlineEffectSprite(
             Car car,
             AbilityActivationVisual visual,
             RogueliteAbilityVisualStyle style) {
@@ -15613,8 +15632,10 @@ public class RatassGame extends ApplicationAdapter {
                 Math.max(car.getWidth(), car.getHeight())
                         * RogueliteAbilityEffectAtlas.sizeScale(style)
                         * (0.96f + pulse * 0.07f + flash * 0.10f);
-        drawCardTypeIconSpriteInBatch(
-                RogueliteSlotType.DRIVER,
+        drawSquareIconAtlasCellInBatch(
+                getBestDriverHotlineEffectTexture(),
+                0,
+                1,
                 center.x,
                 center.y,
                 size,
@@ -15626,21 +15647,17 @@ public class RatassGame extends ApplicationAdapter {
             float carAngleDeg) {
         switch (style) {
             case GRIP_T1:
-                return effectClock * 72f;
             case GRIP_T2:
-                return effectClock * -92f;
             case GRIP_T3:
-                return effectClock * 46f;
+                return RogueliteAbilityEffectAtlas.gripRotationDegrees(style, effectClock);
             case DRAFT:
                 return effectClock * -34f;
             case SHIELD:
                 return effectClock * 18f;
             case TIME_T1:
-                return effectClock * 70f;
             case TIME_T2:
-                return effectClock * -54f;
             case TIME_T3:
-                return effectClock * 38f;
+                return RogueliteAbilityEffectAtlas.timeRotationDegrees(style, effectClock);
             case NITRO_T1:
             case NITRO_T2:
             case NITRO_T3:
@@ -20107,6 +20124,19 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
         return rogueliteAbilityEffectTexture;
+    }
+
+    private Texture getBestDriverHotlineEffectTexture() {
+        if (!bestDriverHotlineEffectLoadAttempted) {
+            bestDriverHotlineEffectLoadAttempted = true;
+            bestDriverHotlineEffectTexture = loadTexture(BEST_DRIVER_HOTLINE_EFFECT_PATH);
+            if (bestDriverHotlineEffectTexture != null) {
+                bestDriverHotlineEffectTexture.setFilter(
+                        Texture.TextureFilter.Linear,
+                        Texture.TextureFilter.Linear);
+            }
+        }
+        return bestDriverHotlineEffectTexture;
     }
 
     private Texture getDebuffTargetIconTexture() {
@@ -25145,6 +25175,9 @@ public class RatassGame extends ApplicationAdapter {
         disposeTexture(rogueliteAbilityEffectTexture);
         rogueliteAbilityEffectTexture = null;
         rogueliteAbilityEffectLoadAttempted = false;
+        disposeTexture(bestDriverHotlineEffectTexture);
+        bestDriverHotlineEffectTexture = null;
+        bestDriverHotlineEffectLoadAttempted = false;
         disposeTexture(debuffTargetIconTexture);
         debuffTargetIconTexture = null;
         debuffTargetIconLoadAttempted = false;
@@ -25209,6 +25242,8 @@ public class RatassGame extends ApplicationAdapter {
         rogueliteDriverArtworkTexture = null;
         disposeTexture(rogueliteAbilityEffectTexture);
         rogueliteAbilityEffectTexture = null;
+        disposeTexture(bestDriverHotlineEffectTexture);
+        bestDriverHotlineEffectTexture = null;
         disposeTexture(debuffTargetIconTexture);
         debuffTargetIconTexture = null;
         disposeTexture(rogueliteCardShellTexture);
@@ -25255,6 +25290,9 @@ public class RatassGame extends ApplicationAdapter {
     private final class ImpactContactListener implements ContactListener {
         @Override
         public void beginContact(Contact contact) {
+            if (beginMapWallContact(contact)) {
+                return;
+            }
             Car carA = contactCar(contact.getFixtureA());
             Car carB = contactCar(contact.getFixtureB());
             if (carA == null || carB == null) {
@@ -25426,6 +25464,37 @@ public class RatassGame extends ApplicationAdapter {
             }
             Object userData = fixture.getBody().getUserData();
             return userData instanceof Car ? (Car) userData : null;
+        }
+
+        private boolean beginMapWallContact(Contact contact) {
+            Fixture fixtureA = contact.getFixtureA();
+            Fixture fixtureB = contact.getFixtureB();
+            Car carA = contactCar(fixtureA);
+            Car carB = contactCar(fixtureB);
+            boolean wallA = fixtureA != null
+                    && fixtureA.getUserData() == MAP_WALL_FIXTURE_USER_DATA;
+            boolean wallB = fixtureB != null
+                    && fixtureB.getUserData() == MAP_WALL_FIXTURE_USER_DATA;
+            if ((carA == null || !wallB) && (carB == null || !wallA)) {
+                return false;
+            }
+
+            Vector2 normal = contact.getWorldManifold().getNormal();
+            if (normal.isZero(0.0001f)) {
+                return true;
+            }
+            if (carA != null && wallB) {
+                if (carA.queueMapWallBounce(-normal.x, -normal.y)
+                        && isPresentationEnabled()) {
+                    carA.automaticRecoveryExplosionVisualPending = true;
+                }
+            } else {
+                if (carB.queueMapWallBounce(normal.x, normal.y)
+                        && isPresentationEnabled()) {
+                    carB.automaticRecoveryExplosionVisualPending = true;
+                }
+            }
+            return true;
         }
     }
 
@@ -25688,6 +25757,9 @@ public class RatassGame extends ApplicationAdapter {
         private static final float TRACK_LIMIT_SLOW_MARGIN = 0.82f;
         private static final float TRACK_LIMIT_FORWARD_ACCELERATION_MULTIPLIER = 0.12f;
         private static final float ARENA_WALL_CONTACT_DURATION = 0.28f;
+        private static final float MAP_WALL_BOUNCE_COOLDOWN = 0.30f;
+        private static final float MAP_WALL_TARGET_OUTWARD_SPEED = HEIGHT * 5.5f;
+        private static final float MAP_WALL_MAX_IMPULSE_MULTIPLIER = 2.25f;
         private static final float AUTO_RECOVERY_TRIGGER_SECONDS = 1.5f;
         private static final float AUTO_RECOVERY_FORWARD_THROTTLE = 0.86f;
         private static final float AUTO_RECOVERY_TARGET_REACHED_DISTANCE = HEIGHT * 0.55f;
@@ -25795,6 +25867,7 @@ public class RatassGame extends ApplicationAdapter {
         private float forcedBrakeTimer;
         private float forcedThrottleTimer;
         private float arenaWallContactTimer;
+        private float mapWallBounceCooldown;
         private float ramChargeTimer;
         private float slipstreamBoost;
         private float slipstreamSnapshotX;
@@ -28913,6 +28986,7 @@ public class RatassGame extends ApplicationAdapter {
                 lastAttackerId = -1;
             }
             arenaWallContactTimer = Math.max(0f, arenaWallContactTimer - delta);
+            mapWallBounceCooldown = Math.max(0f, mapWallBounceCooldown - delta);
             controlLockTimer = Math.max(0f, controlLockTimer - delta);
             ramChargeTimer = Math.max(0f, ramChargeTimer - delta);
             revengeSlowTimer = Math.max(0f, revengeSlowTimer - delta);
@@ -28934,6 +29008,33 @@ public class RatassGame extends ApplicationAdapter {
 
         private boolean hasRecentArenaWallContact() {
             return arenaWallContactTimer > 0f;
+        }
+
+        private boolean queueMapWallBounce(float normalX, float normalY) {
+            if (!active || body == null || mapWallBounceCooldown > 0f) {
+                return false;
+            }
+            arenaWallCorrection.set(normalX, normalY);
+            if (arenaWallCorrection.isZero(0.0001f)) {
+                return false;
+            }
+            arenaWallCorrection.nor();
+            float outwardSpeed = body.getLinearVelocity().dot(arenaWallCorrection);
+            float maxImpulse = Math.max(
+                    physics().maxCollisionImpulse * MAP_WALL_MAX_IMPULSE_MULTIPLIER,
+                    body.getMass() * MAP_WALL_TARGET_OUTWARD_SPEED * 1.5f);
+            float impulse = MapWallBounce.requiredImpulse(
+                    outwardSpeed,
+                    body.getMass(),
+                    MAP_WALL_TARGET_OUTWARD_SPEED,
+                    maxImpulse);
+            if (impulse <= 0f) {
+                return false;
+            }
+            pendingImpactImpulse.mulAdd(arenaWallCorrection, impulse);
+            mapWallBounceCooldown = MAP_WALL_BOUNCE_COOLDOWN;
+            arenaWallContactTimer = ARENA_WALL_CONTACT_DURATION;
+            return true;
         }
 
         private float advanceImpactSlide(float delta) {
@@ -29813,6 +29914,7 @@ public class RatassGame extends ApplicationAdapter {
             controlLockTimer = 0f;
             recentImpactTimer = 0f;
             arenaWallContactTimer = 0f;
+            mapWallBounceCooldown = 0f;
             resetAutomaticRecoveryState();
             slipstreamBoost = 0f;
             slipstreamSnapshotReady = false;
@@ -31077,6 +31179,8 @@ public class RatassGame extends ApplicationAdapter {
         public float driftReward = RL_DRIFT_REWARD;
         public float routeAlignmentReward = RL_ROUTE_ALIGNMENT_REWARD;
         public float steeringPenalty = RL_STEERING_PENALTY;
+        public float steeringChangePenalty = RL_STEERING_CHANGE_PENALTY;
+        public float pedalChangePenalty = RL_PEDAL_CHANGE_PENALTY;
         public float reverseSpeedFreeEpsilon = RL_REVERSE_SPEED_FREE_EPSILON;
         public float reverseSpeedPenaltyPerUnit = RL_REVERSE_SPEED_PENALTY_PER_UNIT;
         public float reverseSpeedMaxPenalty = RL_REVERSE_SPEED_MAX_PENALTY;
@@ -31310,6 +31414,16 @@ public class RatassGame extends ApplicationAdapter {
 
         public RlTrainingConfig withSteeringPenalty(float steeringPenalty) {
             this.steeringPenalty = steeringPenalty;
+            return this;
+        }
+
+        public RlTrainingConfig withSteeringChangePenalty(float steeringChangePenalty) {
+            this.steeringChangePenalty = Math.max(0f, steeringChangePenalty);
+            return this;
+        }
+
+        public RlTrainingConfig withPedalChangePenalty(float pedalChangePenalty) {
+            this.pedalChangePenalty = Math.max(0f, pedalChangePenalty);
             return this;
         }
 
@@ -32839,6 +32953,10 @@ public class RatassGame extends ApplicationAdapter {
                             agentIndex,
                             RL_REWARD_STEERING,
                             -getSteeringPenalty(agentIndex));
+                    reward += recordReward(
+                            agentIndex,
+                            RL_REWARD_PEDAL_CHANGE,
+                            -getPedalChangePenalty(agentIndex));
                     if (offRoadDuringAction[agentIndex]) {
                         reward += recordReward(
                                 agentIndex,
@@ -33595,7 +33713,25 @@ public class RatassGame extends ApplicationAdapter {
 
         private float getSteeringPenalty(int agentIndex) {
             float turn = MathUtils.clamp(currentActionTurn[agentIndex], -1f, 1f);
-            return turn * turn * config.steeringPenalty;
+            float changePenalty = 0f;
+            if (actionStep > 1 && config.steeringChangePenalty > 0f) {
+                float previousTurn =
+                        MathUtils.clamp(previousActionTurn[agentIndex], -1f, 1f);
+                changePenalty =
+                        Math.abs(turn - previousTurn) * config.steeringChangePenalty;
+            }
+            return turn * turn * config.steeringPenalty + changePenalty;
+        }
+
+        private float getPedalChangePenalty(int agentIndex) {
+            if (actionStep <= 1 || config.pedalChangePenalty <= 0f) {
+                return 0f;
+            }
+            float throttle = MathUtils.clamp(currentActionThrottle[agentIndex], -1f, 1f);
+            float previousThrottle =
+                    MathUtils.clamp(previousActionThrottle[agentIndex], -1f, 1f);
+            float change = throttle - previousThrottle;
+            return change * change * config.pedalChangePenalty;
         }
 
         private float getCarPushPenalty(RlAgentSnapshot before, RlAgentSnapshot after) {

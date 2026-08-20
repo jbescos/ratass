@@ -10,11 +10,12 @@ public class RogueliteTierIconAtlasTest {
         assertEquals(0, RogueliteTierIconAtlas.indexForTier(1));
         assertEquals(1, RogueliteTierIconAtlas.indexForTier(2));
         assertEquals(2, RogueliteTierIconAtlas.indexForTier(3));
+        assertEquals(3, RogueliteTierIconAtlas.indexForTier(4));
     }
 
     @Test
     public void rejectsUnsupportedTiers() {
         assertEquals(-1, RogueliteTierIconAtlas.indexForTier(0));
-        assertEquals(-1, RogueliteTierIconAtlas.indexForTier(4));
+        assertEquals(-1, RogueliteTierIconAtlas.indexForTier(5));
     }
 }
