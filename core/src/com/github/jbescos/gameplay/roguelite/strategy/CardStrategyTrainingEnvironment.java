@@ -7,6 +7,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
 import com.github.jbescos.gameplay.roguelite.RogueliteCompetitorProgress;
 import com.github.jbescos.gameplay.roguelite.RogueliteExperienceAwards;
 import com.github.jbescos.gameplay.roguelite.RogueliteRun;
+import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -33,6 +34,7 @@ public final class CardStrategyTrainingEnvironment {
     private final int lapCount;
     private final float personalityTeacherWeight;
     private final int[] cardSelections = new int[RogueliteCardId.values().length];
+    private final int[] cardTypeSelections = new int[RogueliteSlotType.values().length];
 
     private Random random;
     private Random strategyRandom;
@@ -104,6 +106,7 @@ public final class CardStrategyTrainingEnvironment {
         Arrays.fill(racePositions, 1);
         Arrays.fill(championshipPositions, 1);
         Arrays.fill(cardSelections, 0);
+        Arrays.fill(cardTypeSelections, 0);
         for (int vehicleId = 1; vehicleId < fieldSize; vehicleId++) {
             run.getRivalProgress(vehicleId);
         }
@@ -140,8 +143,14 @@ public final class CardStrategyTrainingEnvironment {
                 ? null : offers.get(actionIndex);
         int priorSelections = selected == null || selected.isDriver()
                 ? 0 : cardSelections[selected.getCard().getId().ordinal()];
+        int priorTypeSelections = selected == null
+                ? 0 : cardTypeSelections[selected.getSlotType().ordinal()];
         float selectionReward = rewards.selection(
-                selected, run.getPlayerProgress().getLoadout(), priorSelections);
+                selected,
+                run.getPlayerProgress().getLoadout(),
+                priorSelections,
+                priorTypeSelections,
+                averageTypeSelections());
         boolean applied = selected == null
                 ? run.skipPlayerReward()
                 : run.select(selected);
@@ -150,6 +159,9 @@ public final class CardStrategyTrainingEnvironment {
         }
         if (selected != null && !selected.isDriver()) {
             cardSelections[selected.getCard().getId().ordinal()]++;
+        }
+        if (selected != null) {
+            cardTypeSelections[selected.getSlotType().ordinal()]++;
         }
         transitionReward = selectionReward;
         offers = Collections.emptyList();
@@ -222,6 +234,20 @@ public final class CardStrategyTrainingEnvironment {
         return types;
     }
 
+    public float[] getOfferStatSynergyGains() {
+        ensureDecision();
+        float[] gains = new float[offers.size() + 1];
+        RogueliteCompetitorProgress progress = run.getPlayerProgress();
+        for (int i = 0; i < offers.size(); i++) {
+            RogueliteCardOffer offer = offers.get(i);
+            if (!offer.isDriver()) {
+                gains[i] = Math.max(0f, TuningTechniqueSynergy.statSelectionGain(
+                        progress.getLoadout(), offer.getCard().getId()));
+            }
+        }
+        return gains;
+    }
+
     public int getAlgorithmicAction() {
         ensureDecision();
         CardStrategyDecision decision = new CardStrategyDecision(
@@ -281,14 +307,27 @@ public final class CardStrategyTrainingEnvironment {
             RogueliteCardOffer offer = offers.get(i);
             int priorSelections = offer.isDriver()
                     ? 0 : cardSelections[offer.getCard().getId().ordinal()];
+            int priorTypeSelections = cardTypeSelections[offer.getSlotType().ordinal()];
             strengths[i] += rewards.selection(
-                            offer, run.getPlayerProgress().getLoadout(), priorSelections)
+                            offer,
+                            run.getPlayerProgress().getLoadout(),
+                            priorSelections,
+                            priorTypeSelections,
+                            averageTypeSelections())
                     * personalityTeacherWeight;
         }
         strengths[offers.size()] += rewards.selection(
-                        null, run.getPlayerProgress().getLoadout(), 0)
+                        null, run.getPlayerProgress().getLoadout(), 0, 0, 0f)
                 * personalityTeacherWeight;
         return strengths;
+    }
+
+    private float averageTypeSelections() {
+        int total = 0;
+        for (int count : cardTypeSelections) {
+            total += count;
+        }
+        return total / (float) cardTypeSelections.length;
     }
 
     private void advanceUntilDecision() {
@@ -323,6 +362,7 @@ public final class CardStrategyTrainingEnvironment {
     private void simulateLapExperience() {
         run.resetAllLapExperience();
         rankCompetitors();
+        transitionReward += rewards.lapWin(racePositions[0]);
         updateRunRaceState();
         for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
             RogueliteCompetitorProgress progress = progress(vehicleId);

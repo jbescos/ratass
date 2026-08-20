@@ -56,4 +56,10 @@ public final class RogueliteCardRowDisplay {
         }
         return slotType == RogueliteSlotType.POWERUP ? "READY" : "";
     }
+
+    public static String debuffStatusText(float remainingSeconds) {
+        return remainingSeconds > 0.005f
+                ? TextFormat.fixed(remainingSeconds, 1) + "s"
+                : "";
+    }
 }

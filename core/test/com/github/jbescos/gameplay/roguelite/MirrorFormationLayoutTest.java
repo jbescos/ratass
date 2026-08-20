@@ -47,4 +47,24 @@ public class MirrorFormationLayoutTest {
         assertTrue(offsets[0] < 2.5f);
         assertTrue(offsets[1] < offsets[0]);
     }
+
+    @Test
+    public void amplifiedQuantumFormationFillsEveryRequestedCopy() {
+        float[] offsets = new float[MirrorPowerupSpec.MAX_MIRROR_COPIES];
+
+        int count = MirrorFormationLayout.fillMirrorOffsets(
+                0f,
+                4f,
+                4f,
+                1.14f,
+                1 + MirrorPowerupSpec.MAX_MIRROR_COPIES,
+                offsets);
+
+        assertEquals(MirrorPowerupSpec.MAX_MIRROR_COPIES, count);
+        for (int i = 0; i < count; i++) {
+            assertTrue(Float.isFinite(offsets[i]));
+            assertTrue(offsets[i] <= 4f);
+            assertTrue(offsets[i] >= -4f);
+        }
+    }
 }

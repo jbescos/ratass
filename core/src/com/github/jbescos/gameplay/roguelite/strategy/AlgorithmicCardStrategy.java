@@ -80,15 +80,6 @@ public final class AlgorithmicCardStrategy implements CardStrategy {
     private static RogueliteCardOffer bestSynergyOffer(
             RogueliteCompetitorProgress progress,
             List<RogueliteCardOffer> offers) {
-        RogueliteLoadout loadout = progress.getLoadout();
-        RogueliteCardId currentTuning = loadout.get(RogueliteSlotType.TUNING);
-        RogueliteCardId currentTechnique = loadout.get(RogueliteSlotType.TECHNIQUE);
-        float currentScore = RogueliteStrategyMetrics.tuningTechniqueScore(
-                currentTuning, currentTechnique);
-        if (Float.isNaN(currentScore)) {
-            currentScore = RogueliteStrategyMetrics.tuningBaselineScore(currentTuning);
-        }
-
         RogueliteCardOffer best = null;
         float bestGain = MIN_SYNERGY_GAIN;
         for (RogueliteCardOffer offer : offers) {
@@ -97,22 +88,8 @@ public final class AlgorithmicCardStrategy implements CardStrategy {
                             && offer.getSlotType() != RogueliteSlotType.TECHNIQUE)) {
                 continue;
             }
-            RogueliteCardId candidateTuning = offer.getSlotType() == RogueliteSlotType.TUNING
-                    ? offer.getCard().getId()
-                    : currentTuning;
-            RogueliteCardId candidateTechnique = offer.getSlotType() == RogueliteSlotType.TECHNIQUE
-                    ? offer.getCard().getId()
-                    : currentTechnique;
-            float candidateScore = RogueliteStrategyMetrics.tuningTechniqueScore(
-                    candidateTuning, candidateTechnique);
-            if (Float.isNaN(candidateScore)) {
-                continue;
-            }
-            float comparison = currentScore;
-            if (Float.isNaN(comparison)) {
-                comparison = RogueliteStrategyMetrics.tuningBaselineScore(candidateTuning);
-            }
-            float gain = candidateScore - comparison;
+            float gain = TuningTechniqueSynergy.selectionGain(
+                    progress.getLoadout(), offer.getCard().getId());
             if (gain > bestGain) {
                 best = offer;
                 bestGain = gain;

@@ -8,31 +8,26 @@ import static org.junit.Assert.assertTrue;
 
 public final class CardStrategyRewardProfilesTest {
     @Test
-    public void balancedProfileKeepsWinningDominant() {
-        CardStrategyRewardConfig balanced =
+    public void winnerProfileKeepsWinningDominant() {
+        CardStrategyRewardConfig winner =
                 CardStrategyRewardProfiles.forProfile("strategy00");
 
-        assertEquals(100f, balanced.getChampionshipWin(), 0.001f);
-        assertTrue(balanced.getChampionshipWin() > balanced.getFinalPosition());
+        assertEquals(200f, winner.getChampionshipWin(), 0.001f);
+        assertTrue(winner.getLapWin() > 0f);
+        assertTrue(winner.getChampionshipWin() > winner.getFinalPosition());
         for (RogueliteSlotType slot : RogueliteSlotType.values()) {
-            assertEquals(0f, balanced.getCardTypeReward(slot), 0.001f);
+            assertEquals(0f, winner.getCardTypeReward(slot), 0.001f);
         }
     }
 
     @Test
-    public void specialistProfilesExposeIndependentAdjustableRewards() {
+    public void retainedSpecialistsExposeIndependentRewards() {
         assertTrue(CardStrategyRewardProfiles.forProfile("strategy01")
-                .getNormalizedExperience() > CardStrategyRewardProfiles.forProfile("strategy00")
-                .getNormalizedExperience());
+                .getCardSelection() > 0f);
+        assertTrue(CardStrategyRewardProfiles.forProfile("strategy01")
+                .getCardTypeRotation() > 0f);
         assertTrue(CardStrategyRewardProfiles.forProfile("strategy02")
-                .getCardTypeReward(RogueliteSlotType.TUNING) > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy03")
-                .getCardTypeReward(RogueliteSlotType.POWERUP) > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy04")
-                .getCardTypeReward(RogueliteSlotType.REVENGE) > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy05")
-                .getCardTypeReward(RogueliteSlotType.DRIVER) > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy07").getNovelty() > 0f);
+                .getTuningTechniqueSynergy() > 0f);
         assertTrue(CardStrategyRewardProfiles.forProfile("strategy08")
                 .getTechniqueAmplifier() > 0f);
         assertTrue(CardStrategyRewardProfiles.forProfile("strategy08")
@@ -41,23 +36,16 @@ public final class CardStrategyRewardProfilesTest {
                 .getRevengeAmplifier() > 0f);
         assertTrue(CardStrategyRewardProfiles.forProfile("strategy08")
                 .getAmplifierLink() > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy08")
-                .getRandomPowerup() > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy08")
-                .getRandomRevenge() > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy09")
-                .getChampionshipWin() > CardStrategyRewardProfiles.forProfile("strategy00")
-                .getChampionshipWin());
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy10")
-                .getCardTypeReward(RogueliteSlotType.REVENGE) > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy11")
-                .getCardTypeReward(RogueliteSlotType.TECHNIQUE) > 0f);
-        assertTrue(CardStrategyRewardProfiles.forProfile("strategy12").getNovelty() > 0f);
+        assertEquals(0f, CardStrategyRewardProfiles.forProfile("strategy08")
+                .getRandomPowerup(), 0.001f);
+        assertEquals(0f, CardStrategyRewardProfiles.forProfile("strategy08")
+                .getRandomRevenge(), 0.001f);
     }
 
     @Test
     public void personalityShapingDoesNotOutweighWinning() {
-        for (int index = 0; index <= 12; index++) {
+        int[] retained = {0, 1, 2, 8};
+        for (int index : retained) {
             CardStrategyRewardConfig profile = CardStrategyRewardProfiles.forProfile(
                     String.format("strategy%02d", Integer.valueOf(index)));
             for (RogueliteSlotType slot : RogueliteSlotType.values()) {

@@ -18,10 +18,12 @@ public class DebuffTargetVisualTest {
 
         assertTrue(visual.isActive());
         assertEquals(RogueliteCardId.EMP_SNARE, visual.getActiveCardId());
+        assertEquals(0.1f, visual.getActiveRemainingSeconds(), 0.0001f);
 
         visual.update(0.1f);
 
         assertFalse(visual.isActive());
+        assertEquals(0f, visual.getActiveRemainingSeconds(), 0f);
         assertEquals(0f, visual.getPulse(), 0f);
     }
 
@@ -36,6 +38,7 @@ public class DebuffTargetVisualTest {
         visual.update(1f);
 
         assertEquals(RogueliteCardId.TAR_TETHER, visual.getActiveCardId());
+        assertEquals(3f, visual.getActiveRemainingSeconds(), 0f);
     }
 
     @Test
@@ -46,6 +49,7 @@ public class DebuffTargetVisualTest {
         visual.update(20f);
 
         assertEquals(RogueliteCardId.TOTAL_BLACKOUT, visual.getActiveCardId());
+        assertEquals(0f, visual.getActiveRemainingSeconds(), 0f);
 
         visual.clear(RogueliteCardId.TOTAL_BLACKOUT);
 

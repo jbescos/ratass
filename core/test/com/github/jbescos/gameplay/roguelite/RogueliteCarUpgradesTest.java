@@ -103,6 +103,19 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
+    public void effectiveCarStatsCannotFallBelowTenPercent() {
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+
+        assertEquals(0.10f, upgrades.getAccelerationMultiplier(0f), EPSILON);
+        assertEquals(
+                0.10f,
+                upgrades.getAerodynamicEfficiencyMultiplier(0f),
+                EPSILON);
+        assertEquals(0.10f, upgrades.getGripMultiplier(0f, 0f, 0f), EPSILON);
+        assertEquals(0.10f, upgrades.getMassMultiplier(0f), EPSILON);
+    }
+
+    @Test
     public void topSpeedIsDerivedFromPowerAndAeroWithinSafetyBounds() {
         assertEquals(
                 (float) Math.cbrt(1.20f * 1.10f),
@@ -379,9 +392,18 @@ public class RogueliteCarUpgradesTest {
                 RogueliteCardId.POWERUP_LINK,
                 RogueliteCardId.GRUDGE_SPARK);
 
-        // x1.25 Technique turns Powerup x1.25 into x1.3125. That in turn
-        // amplifies Revenge x1.25 into x1.328125.
-        assertEquals(1.328125f, upgrades.getRevengeEffectMultiplier(), EPSILON);
+        // Each connected amplifier directly multiplies the next card.
+        assertEquals(1.953125f, upgrades.getRevengeEffectMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void tierThreeAmplifierChainMultipliesRevengeByEight() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.TECHNIQUE_SINGULARITY,
+                RogueliteCardId.POWERUP_NEXUS,
+                RogueliteCardId.NEMESIS_ENGINE);
+
+        assertEquals(8f, upgrades.getRevengeEffectMultiplier(), EPSILON);
     }
 
     @Test
@@ -407,7 +429,7 @@ public class RogueliteCarUpgradesTest {
 
         assertTrue(amplifiedSteps < baselineSteps);
         assertEquals(
-                2f * 1.3125f,
+                2f * 1.5625f,
                 amplified.getActiveTimeRemainingSeconds(RogueliteCardId.TIME_RIPPLE),
                 EPSILON);
     }
@@ -1246,6 +1268,22 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
+    public void powerupAmplifierChainMultipliesQuantumCopies() {
+        RogueliteCarUpgrades directAmplifier = configured(
+                RogueliteCardId.POWERUP_NEXUS,
+                RogueliteCardId.OVERDRIVE_COIL);
+        RogueliteCarUpgrades fullChain = configured(
+                RogueliteCardId.TECHNIQUE_SINGULARITY,
+                RogueliteCardId.POWERUP_NEXUS,
+                RogueliteCardId.OVERDRIVE_COIL);
+
+        assertEquals(7, directAmplifier.getMirrorTotalVehicleCount(
+                RogueliteCardId.OVERDRIVE_COIL));
+        assertEquals(13, fullChain.getMirrorTotalVehicleCount(
+                RogueliteCardId.OVERDRIVE_COIL));
+    }
+
+    @Test
     public void mirrorPowerupCanActivateAtRacingSpeed() {
         RogueliteCarUpgrades upgrades = configured(RogueliteCardId.MIRROR_DUO);
 
@@ -1915,7 +1953,7 @@ public class RogueliteCarUpgradesTest {
             assertMultiplier(upgrades.getSlipstreamRangeMultiplier(), 1f, 2f);
             assertMultiplier(upgrades.getSlipstreamStrengthMultiplier(), 1f, 2f);
             assertMultiplier(upgrades.getFrontCollisionRecoilMultiplier(), 0f, 1f);
-            assertMultiplier(upgrades.getFrontCollisionPushMultiplier(), 1f, 3f);
+            assertMultiplier(upgrades.getFrontCollisionPushMultiplier(), 1f, 7f);
             assertMultiplier(upgrades.adjustSurfaceGrip(0.58f), 0f, 1f);
             assertMultiplier(upgrades.getPowerupReadiness(), 0f, 1f);
             assertMultiplier(upgrades.getRevengeReadiness(), 0f, 1f);

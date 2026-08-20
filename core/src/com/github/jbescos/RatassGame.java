@@ -106,6 +106,7 @@ import com.github.jbescos.presentation.CameraTeleportFollow;
 import com.github.jbescos.presentation.CameraTargetTransition;
 import com.github.jbescos.presentation.CameraViewMode;
 import com.github.jbescos.presentation.CameraZoomControl;
+import com.github.jbescos.presentation.CarCameraHitTest;
 import com.github.jbescos.presentation.CarStatBonusText;
 import com.github.jbescos.presentation.CarVisualAssignment;
 import com.github.jbescos.presentation.CircuitLoadingTransition;
@@ -308,7 +309,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final float WORLD_HEIGHT = 18f;
     private static final float EDGE_FALLOFF_MARGIN = 0.35f;
     private static final float PHYSICS_STEP = 1f / 60f;
-    private static final int MAX_MIRROR_CARS_PER_OWNER = 3;
+    private static final int MAX_MIRROR_CARS_PER_OWNER =
+            MirrorPowerupSpec.MAX_MIRROR_COPIES;
     private static final int MIRROR_COLLISION_GROUP_MODULUS = 30000;
     private static final int VELOCITY_ITERATIONS = 6;
     private static final int POSITION_ITERATIONS = 2;
@@ -481,6 +483,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float CAMERA_TARGET_SWITCH_ZOOM_OUT = 0.28f;
     private static final float WHOLE_MAP_CAMERA_PADDING = 1.05f;
     private static final float FREE_CAMERA_DRAG_THRESHOLD_PIXELS = 12f;
+    private static final float CAR_CAMERA_TAP_PADDING_PIXELS = 14f;
     private static final float FREE_CAMERA_RETURN_HINT_DURATION = 4f;
     private static final int SANDBOX_SETTINGS_CONTROL_ROW = 0;
     private static final int SANDBOX_SETTINGS_WEATHER_ROW = 1;
@@ -1275,6 +1278,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Vector2 cameraSmoothedForwardDirection = new Vector2(0f, 1f);
     private final Vector2 cameraRightDirection = new Vector2(1f, 0f);
     private final Vector3 hudTouchPoint = new Vector3();
+    private final Vector3 worldTouchPoint = new Vector3();
     private final Vector3 carLabelProjection = new Vector3();
     private final Vector2 mapDebugPoint = new Vector2();
     private final Vector2 mapDebugTangent = new Vector2();
@@ -2487,7 +2491,7 @@ public class RatassGame extends ApplicationAdapter {
             for (int vehicleId = 1; vehicleId <= enemyCount; vehicleId++) {
                 rivalVehicleIds.add(Integer.valueOf(vehicleId));
             }
-            rogueliteRun.assignRivalStrategiesEvenly(rivalVehicleIds);
+            rogueliteRun.assignRivalStrategiesForRace(rivalVehicleIds);
         }
         for (int enemyIndex = 0; enemyIndex < enemyCount; enemyIndex++) {
             int visualIndex = getEnemyCarVisualIndex(enemyIndex);
@@ -7004,6 +7008,17 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
+        if (freeCameraDragCandidate
+                && freeCameraPointer >= 0
+                && !Gdx.input.isTouched(freeCameraPointer)) {
+            int tapScreenX = freeCameraDragStartScreenX;
+            int tapScreenY = freeCameraDragStartScreenY;
+            freeCameraDragCandidate = false;
+            freeCameraPointer = -1;
+            selectCameraTargetAtScreenPosition(tapScreenX, tapScreenY);
+            return;
+        }
+
         if (Gdx.input.justTouched()) {
             freeCameraDragging = false;
             freeCameraDragCandidate = firstPointer >= 0;
@@ -7060,6 +7075,49 @@ public class RatassGame extends ApplicationAdapter {
                 screenHeight);
         cameraTargetPosition.set(cameraSmoothedPosition);
         clampCameraToArena(cameraSmoothedPosition, smoothedCameraZoom);
+    }
+
+    private boolean selectCameraTargetAtScreenPosition(int screenX, int screenY) {
+        if (worldViewport == null || worldCamera == null) {
+            return false;
+        }
+        worldTouchPoint.set(screenX, screenY, 0f);
+        worldViewport.unproject(worldTouchPoint);
+
+        float worldUnitsPerPixelX =
+                worldCamera.viewportWidth
+                        * worldCamera.zoom
+                        / Math.max(1f, worldViewport.getScreenWidth());
+        float worldUnitsPerPixelY =
+                worldCamera.viewportHeight
+                        * worldCamera.zoom
+                        / Math.max(1f, worldViewport.getScreenHeight());
+        float padding = CAR_CAMERA_TAP_PADDING_PIXELS
+                * Math.max(worldUnitsPerPixelX, worldUnitsPerPixelY);
+        Car selectedCar = null;
+        float bestScore = Float.POSITIVE_INFINITY;
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            if (!isCameraFollowable(car) || car.template == null) {
+                continue;
+            }
+            Vector2 position = car.getRenderPosition();
+            float score = CarCameraHitTest.hitScore(
+                    worldTouchPoint.x,
+                    worldTouchPoint.y,
+                    position.x,
+                    position.y,
+                    car.getRenderAngleDeg() * MathUtils.degreesToRadians,
+                    car.getWidth() * CAR_SPRITE_WIDTH_SCALE * 0.5f,
+                    car.getHeight() * CAR_SPRITE_HEIGHT_SCALE * 0.5f,
+                    padding);
+            if (score < bestScore) {
+                selectedCar = car;
+                bestScore = score;
+            }
+        }
+        return selectedCar != null
+                && selectPlayerCameraTarget(selectedCar.template, true);
     }
 
     private int findCameraGesturePointer(int excludedPointer) {
@@ -9998,7 +10056,7 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
-        int totalVehicleCount = MirrorPowerupSpec.totalVehicleCount(cardId);
+        int totalVehicleCount = owner.rogueliteUpgrades.getMirrorTotalVehicleCount(cardId);
         int collisionGroup =
                 -1 - Math.abs(owner.template.vehicleId % MIRROR_COLLISION_GROUP_MODULUS);
         owner.setMirrorCollisionGroupIndex(collisionGroup);
@@ -11213,6 +11271,7 @@ public class RatassGame extends ApplicationAdapter {
         }
         if (advanceMap) {
             mapProgression.advance();
+            assignRivalCardStrategiesForRace();
         }
         if (changingPresentationMap) {
             currentMap = null;
@@ -11350,6 +11409,20 @@ public class RatassGame extends ApplicationAdapter {
             warmArenaSurfaceTextures();
         }
         invalidateLeaderboard();
+    }
+
+    private void assignRivalCardStrategiesForRace() {
+        if (rlTrainingMode || sandboxMode || roster.size <= 1) {
+            return;
+        }
+        List<Integer> rivalVehicleIds = new ArrayList<Integer>(roster.size - 1);
+        for (int i = 0; i < roster.size; i++) {
+            CarTemplate template = roster.get(i);
+            if (!template.playerControlled) {
+                rivalVehicleIds.add(Integer.valueOf(template.vehicleId));
+            }
+        }
+        rogueliteRun.assignRivalStrategiesForRace(rivalVehicleIds);
     }
 
     private void createMapWallFixtures() {
@@ -21537,6 +21610,11 @@ public class RatassGame extends ApplicationAdapter {
                 active
                         ? RacingHudLayout.cardStatusIconSize(bounds.height) + 6f
                         : 0f;
+        String statusText = active
+                ? RogueliteCardRowDisplay.debuffStatusText(
+                        target.debuffTargetVisual.getActiveRemainingSeconds())
+                : "";
+        float statusWidth = getCarPanelCardStatusWidth(bounds, statusText);
         float textTop = bounds.y + bounds.height * 0.78f;
         float textHeight = Math.max(1f, bounds.height * 0.62f);
 
@@ -21566,12 +21644,32 @@ public class RatassGame extends ApplicationAdapter {
                 active ? getDebuffTargetLabel(target) : "",
                 bounds.x + padding + categoryWidth + textGap,
                 textTop,
-                Math.max(1f, contentWidth - categoryWidth - textGap - iconWidth),
+                Math.max(
+                        1f,
+                        contentWidth
+                                - categoryWidth
+                                - textGap
+                                - iconWidth
+                                - statusWidth),
                 textHeight,
                 Align.left,
                 false,
                 1f,
                 0.68f);
+        if (statusText.length() > 0) {
+            labelFont.setColor(1f, 0.90f, 0.34f, 1f);
+            drawRoguelitePreferredFittedText(
+                    labelFont,
+                    statusText,
+                    bounds.x + bounds.width - padding - iconWidth - statusWidth,
+                    textTop,
+                    statusWidth,
+                    textHeight,
+                    Align.right,
+                    false,
+                    1f,
+                    0.68f);
+        }
     }
 
     private void drawCarPanelStatusIcons(Car target) {

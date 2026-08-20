@@ -12,6 +12,7 @@ public class CarStatBonusTextTest {
         assertEquals("-5%", CarStatBonusText.format(0.95f));
         assertEquals("+7.5%", CarStatBonusText.format(1.075f));
         assertEquals("-0.5%", CarStatBonusText.format(0.995f));
+        assertEquals("-90%", CarStatBonusText.format(0.10f));
     }
 
     @Test

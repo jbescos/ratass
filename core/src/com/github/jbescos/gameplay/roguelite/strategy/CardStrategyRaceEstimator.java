@@ -1,5 +1,6 @@
 package com.github.jbescos.gameplay.roguelite.strategy;
 
+import com.github.jbescos.gameplay.roguelite.CardAmplifierChain;
 import com.github.jbescos.gameplay.roguelite.DriverProfileCatalog;
 import com.github.jbescos.gameplay.roguelite.DriverProfileMetadata;
 import com.github.jbescos.gameplay.roguelite.RogueliteCarStatSnapshot;
@@ -81,10 +82,10 @@ final class CardStrategyRaceEstimator {
         }
         float techniqueEffectMultiplier =
                 RogueliteStrategyMetrics.techniqueEffectMultiplier(tuning);
-        float powerupEffectMultiplier = amplifyDeviation(
+        float powerupEffectMultiplier = CardAmplifierChain.combine(
                 RogueliteStrategyMetrics.powerupEffectMultiplier(technique),
                 techniqueEffectMultiplier);
-        float revengeEffectMultiplier = amplifyDeviation(
+        float revengeEffectMultiplier = CardAmplifierChain.combine(
                 RogueliteStrategyMetrics.revengeEffectMultiplier(powerup),
                 powerupEffectMultiplier);
         value += activeCardValue(powerup, 0.10f) * powerupEffectMultiplier;
@@ -113,10 +114,6 @@ final class CardStrategyRaceEstimator {
             return 0f;
         }
         return RogueliteCardCatalog.get(cardId).getTier() * tierWeight;
-    }
-
-    private static float amplifyDeviation(float multiplier, float scale) {
-        return 1f + (multiplier - 1f) * Math.max(0f, scale);
     }
 
     private static boolean validLap(float lap) {

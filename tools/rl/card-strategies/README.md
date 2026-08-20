@@ -4,14 +4,14 @@ Card strategies choose among the three card offers, or skip. They do not drive c
 create a LibGDX world. Training uses the real card/progression rules with a fast headless race
 estimator.
 
-The policy does not receive the current weather or a hand-authored synergy score. Weather remains
-part of the simulated race variability, while useful card combinations must improve XP, race
-positions, or the final championship result to be learned.
+The policy does not receive current weather. Weather remains part of simulated race variability.
+Winner learns combinations through race results; Engineer additionally receives a training-only
+reward from the same Tuning/Technique compatibility calculation used by the algorithmic selector.
 
 Opponent observations contain levels, race/championship positions, and driver metrics. Their
 equipped cards are intentionally excluded to keep the policy compact and easier to train.
 
-Run the balanced profile with:
+Run the Winner profile with:
 
 ```bash
 tools/rl/train_card_strategy.sh strategy00
@@ -49,31 +49,38 @@ Every profile inherits `default.properties` and can override these independent t
 - `CARD_STRATEGY_REWARD_AMPLIFIER_LINK`: each compatible amplifier-chain link newly formed.
 - `CARD_STRATEGY_REWARD_RANDOM_POWERUP`: same-tier random Powerup selection.
 - `CARD_STRATEGY_REWARD_RANDOM_REVENGE`: same-tier random Revenge selection.
+- `CARD_STRATEGY_REWARD_PREFERRED_CARDS`: comma-separated cards defining a specialist family.
+- `CARD_STRATEGY_REWARD_PREFERRED_CARD`: reward for entering that family or upgrading its tier.
+- `CARD_STRATEGY_REWARD_DISCOURAGED_CARDS`: comma-separated cards the specialist should avoid.
+- `CARD_STRATEGY_REWARD_DISCOURAGED_CARD_PENALTY`: penalty for discouraged cards and redundant
+  same-tier specialist replacements.
+- `CARD_STRATEGY_REWARD_LAP_WIN`: finishing a simulated lap in first place.
+- `CARD_STRATEGY_REWARD_CARD_SELECTION`: accepting an offered card instead of skipping.
+- `CARD_STRATEGY_REWARD_TUNING_TECHNIQUE_SYNERGY`: improvement from a compatible stat Tuning and
+  Technique pair; amplifier-chain cards are deliberately excluded.
+- `CARD_STRATEGY_REWARD_CARD_TYPE_ROTATION`: reward for choosing a card type used less than the
+  episode average and penalty for overused types.
 
 `CARD_STRATEGY_PERSONALITY_TEACHER_WEIGHT` controls how strongly those selection rewards influence
 the race-strength teacher. It remains conservative by default; specialist profiles can raise it
 without inflating their real episode rewards.
 
-`strategy00` is the balanced win optimizer. The other profiles are:
+`CARD_STRATEGY_TEACHER_ROLLOUT_RATIO` controls how often specialist distillation follows the
+teacher's choice into the next offer. It is zero for normal optimizers and nonzero for specialists,
+allowing training to observe complete specialist builds instead of only the old policy's states.
 
-- `strategy01`: XP Hunter.
-- `strategy02`: Engineer.
-- `strategy03`: Powerup Specialist.
-- `strategy04`: Avenger.
-- `strategy05`: Driver Scout.
-- `strategy06`: Adaptive.
-- `strategy07`: Wildcard.
-- `strategy08`: Chain Builder, focused on amplifier chains and random relays.
-- `strategy09`: Front Runner.
-- `strategy10`: Saboteur.
-- `strategy11`: Comeback.
-- `strategy12`: Chaos.
+The runtime roster is deliberately small:
 
-Untrained specialists initialize from `strategy00`, then optimize their own small shaping rewards.
-Reward-oriented profiles may trade at most four percentage points of held-out win rate for a
-stronger personality. This keeps winning dominant while allowing visibly different selections.
-Chain Builder permits eight points because the fast estimator does not execute the Powerup and
-Revenge effects amplified by its mechanically valid chain.
+- `algorithmic`: deterministic tier and synergy heuristic; it is not trained.
+- `strategy00` (`Winner`): unrestricted card choices, rewarded for lap and championship wins.
+- `strategy01` (`Explorer`): avoids skips and rotates selections across card types.
+- `strategy02` (`Engineer`): builds compatible Tuning and Technique stat combinations.
+- `strategy08` (`Amplifier`): builds the Tuning -> Technique -> Powerup -> Revenge multiplier
+  chain.
+
+Untrained specialists initialize from `strategy00`, then optimize their own shaping rewards.
+They may trade up to twenty percentage points of held-out win rate for a distinct personality,
+but the common evaluation currently leaves every neural specialist above twenty percent wins.
 The algorithmic selector remains available in the game and is always the fallback for missing or
 invalid neural policies.
 

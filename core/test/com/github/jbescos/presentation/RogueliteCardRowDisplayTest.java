@@ -105,6 +105,12 @@ public class RogueliteCardRowDisplayTest {
                         RogueliteSlotType.REVENGE,
                         0f,
                         0f,
-                        false));
+                false));
+    }
+
+    @Test
+    public void debuffStatusDisplaysItsRemainingTime() {
+        assertEquals("12.4s", RogueliteCardRowDisplay.debuffStatusText(12.36f));
+        assertEquals("", RogueliteCardRowDisplay.debuffStatusText(0f));
     }
 }

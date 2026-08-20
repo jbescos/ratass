@@ -17,14 +17,25 @@ final class CardStrategyRewardCalculator {
     float selection(
             RogueliteCardOffer offer,
             RogueliteLoadout loadout,
-            int priorSelections) {
+            int priorSelections,
+            int priorTypeSelections,
+            float averageTypeSelections) {
         if (offer == null) {
             return -config.getSkipPenalty();
         }
-        float reward = config.getCardTypeReward(offer.getSlotType()) * offer.getTier();
+        float reward = config.getCardSelection()
+                + config.getCardTypeReward(offer.getSlotType()) * offer.getTier();
+        if (config.getCardTypeRotation() != 0f) {
+            reward += config.getCardTypeRotation()
+                    * (averageTypeSelections - Math.max(0, priorTypeSelections));
+        }
         if (!offer.isDriver()) {
             reward += CardStrategyChainReward.selection(
                     loadout, offer.getCard().getId(), config);
+            reward += config.getCardPreferenceReward(loadout, offer.getCard().getId());
+            reward += Math.max(0f, TuningTechniqueSynergy.statSelectionGain(
+                    loadout, offer.getCard().getId()))
+                    * config.getTuningTechniqueSynergy();
         }
         if (config.getNovelty() != 0f) {
             reward += config.getNovelty()
@@ -42,6 +53,10 @@ final class CardStrategyRewardCalculator {
 
     float racePosition(int position, int fieldSize) {
         return normalizedPosition(position, fieldSize) * config.getRacePosition();
+    }
+
+    float lapWin(int position) {
+        return position == 1 ? config.getLapWin() : 0f;
     }
 
     float championship(int position, int fieldSize) {

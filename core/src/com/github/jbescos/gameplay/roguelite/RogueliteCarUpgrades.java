@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 public final class RogueliteCarUpgrades {
+    private static final float MIN_EFFECTIVE_STAT_MULTIPLIER = 0.10f;
     private static final float MIN_TOP_SPEED_MULTIPLIER = 0.65f;
     private static final float MAX_TOP_SPEED_MULTIPLIER = 1.35f;
 
@@ -77,10 +78,10 @@ public final class RogueliteCarUpgrades {
             rawPowerupCooldownRateMultiplier *=
                     effects.get(i).powerupCooldownRateMultiplier();
         }
-        powerupEffectMultiplier = amplifyDeviation(
+        powerupEffectMultiplier = CardAmplifierChain.combine(
                 rawPowerupEffectMultiplier,
                 techniqueEffectMultiplier);
-        powerupCooldownRateMultiplier = amplifyDeviation(
+        powerupCooldownRateMultiplier = CardAmplifierChain.combine(
                 rawPowerupCooldownRateMultiplier,
                 techniqueEffectMultiplier);
 
@@ -288,6 +289,12 @@ public final class RogueliteCarUpgrades {
         return slotType(effect) == RogueliteSlotType.POWERUP
                 ? remaining / Math.max(0.001f, powerupCooldownRateMultiplier)
                 : remaining;
+    }
+
+    public int getMirrorTotalVehicleCount(RogueliteCardId cardId) {
+        return MirrorPowerupSpec.amplifiedTotalVehicleCount(
+                cardId,
+                powerupEffectMultiplier);
     }
 
     private RogueliteUpgradeEffect findEffect(RogueliteCardId cardId) {
@@ -680,7 +687,7 @@ public final class RogueliteCarUpgrades {
         float combined = (1f + bonus) * externalMultiplier;
         return RogueliteEffectMath.clamp(
                 amplifyDeviation(combined, powerDeviationScale()),
-                0f,
+                MIN_EFFECTIVE_STAT_MULTIPLIER,
                 1.85f);
     }
 
@@ -745,7 +752,7 @@ public final class RogueliteCarUpgrades {
         }
         float combinedEfficiency = externalMultiplier / Math.max(0.01f, multiplier);
         return Math.max(
-                0.01f,
+                MIN_EFFECTIVE_STAT_MULTIPLIER,
                 amplifyDeviation(combinedEfficiency, aeroDeviationScale()));
     }
 
@@ -763,7 +770,7 @@ public final class RogueliteCarUpgrades {
         }
         return RogueliteEffectMath.clamp(
                 amplifyDeviation(multiplier * externalMultiplier, massDeviationScale()),
-                0.10f,
+                MIN_EFFECTIVE_STAT_MULTIPLIER,
                 2f);
     }
 
@@ -791,7 +798,7 @@ public final class RogueliteCarUpgrades {
         // Weather and other surface loss remain independent from Technique effects.
         return RogueliteEffectMath.clamp(
                 techniqueGrip * surfaceMultiplier,
-                0f,
+                MIN_EFFECTIVE_STAT_MULTIPLIER,
                 2f);
     }
 
@@ -1181,7 +1188,7 @@ public final class RogueliteCarUpgrades {
             RogueliteUpgradeEffect effect = effects.get(i);
             multiplier = Math.max(
                     multiplier,
-                    amplifyDeviation(
+                    CardAmplifierChain.combine(
                             effect.revengeEffectMultiplier(),
                             effectStrengthMultiplier(effect)));
         }

@@ -12,7 +12,9 @@ import java.util.List;
 public final class CardStrategyAssets {
     private static final String DIRECTORY = "ai/card-strategies";
     private static final String FILE_NAME = "rl_card_strategy_policy.json";
-    private static final int PROFILE_COUNT = 13;
+    private static final String[] PROFILE_IDS = {
+        "strategy00", "strategy01", "strategy02", "strategy08"
+    };
 
     private CardStrategyAssets() {
     }
@@ -22,8 +24,7 @@ public final class CardStrategyAssets {
         if (Gdx.files == null) {
             return new CardStrategyCatalog(strategies);
         }
-        for (int index = 0; index < PROFILE_COUNT; index++) {
-            String profileId = String.format("strategy%02d", Integer.valueOf(index));
+        for (String profileId : PROFILE_IDS) {
             FileHandle file = Gdx.files.internal(
                     DIRECTORY + "/" + profileId + "/" + FILE_NAME);
             if (!file.exists()) {

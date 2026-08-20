@@ -85,6 +85,13 @@ public final class DebuffTargetVisual {
         return activeCardId;
     }
 
+    public float getActiveRemainingSeconds() {
+        if (activeCardId == null) {
+            return 0f;
+        }
+        return Math.max(0f, remainingSeconds[activeCardId.ordinal()]);
+    }
+
     public float getPulse() {
         return isActive()
                 ? 0.5f + 0.5f * (float) Math.sin(activeAge * 7.5f)

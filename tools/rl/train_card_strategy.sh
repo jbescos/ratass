@@ -40,6 +40,9 @@ fi
 if [[ "${CARD_STRATEGY_REFRESH_IMITATION:-0}" == "1" ]]; then
   resume_args+=(--refresh-imitation)
 fi
+if [[ "${CARD_STRATEGY_EVALUATE_ONLY:-0}" == "1" ]]; then
+  resume_args+=(--evaluate-only)
+fi
 init_profile="${CARD_STRATEGY_INIT_PROFILE:-}"
 if [[ ! -f "${checkpoint}" && -n "${init_profile}" && "${init_profile}" != "${profile_id}" ]]; then
   init_checkpoint="${repo_root}/rl-checkpoints/card-strategies/${init_profile}/model.pt"
@@ -67,6 +70,7 @@ fi
   --lr "${CARD_STRATEGY_LR}" \
   --imitation-lr "${CARD_STRATEGY_IMITATION_LR}" \
   --personality-teacher-weight "${CARD_STRATEGY_PERSONALITY_TEACHER_WEIGHT}" \
+  --teacher-rollout-ratio "${CARD_STRATEGY_TEACHER_ROLLOUT_RATIO}" \
   --gamma "${CARD_STRATEGY_GAMMA}" \
   --entropy "${CARD_STRATEGY_ENTROPY}" \
   --value-coefficient "${CARD_STRATEGY_VALUE_COEFFICIENT}" \
@@ -96,4 +100,12 @@ fi
   --reward-revenge-amplifier "${CARD_STRATEGY_REWARD_REVENGE_AMPLIFIER}" \
   --reward-amplifier-link "${CARD_STRATEGY_REWARD_AMPLIFIER_LINK}" \
   --reward-random-powerup "${CARD_STRATEGY_REWARD_RANDOM_POWERUP}" \
-  --reward-random-revenge "${CARD_STRATEGY_REWARD_RANDOM_REVENGE}"
+  --reward-random-revenge "${CARD_STRATEGY_REWARD_RANDOM_REVENGE}" \
+  --reward-preferred-cards "${CARD_STRATEGY_REWARD_PREFERRED_CARDS}" \
+  --reward-preferred-card "${CARD_STRATEGY_REWARD_PREFERRED_CARD}" \
+  --reward-discouraged-cards "${CARD_STRATEGY_REWARD_DISCOURAGED_CARDS}" \
+  --reward-discouraged-card-penalty "${CARD_STRATEGY_REWARD_DISCOURAGED_CARD_PENALTY}" \
+  --reward-lap-win "${CARD_STRATEGY_REWARD_LAP_WIN}" \
+  --reward-card-selection "${CARD_STRATEGY_REWARD_CARD_SELECTION}" \
+  --reward-tuning-technique-synergy "${CARD_STRATEGY_REWARD_TUNING_TECHNIQUE_SYNERGY}" \
+  --reward-card-type-rotation "${CARD_STRATEGY_REWARD_CARD_TYPE_ROTATION}"

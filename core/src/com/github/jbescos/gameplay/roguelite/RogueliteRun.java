@@ -85,29 +85,31 @@ public final class RogueliteRun {
     public void configureCardStrategies(CardStrategyCatalog catalog) {
         cardStrategyCatalog = catalog == null
                 ? CardStrategyCatalog.algorithmicOnly() : catalog;
-        if (!rivals.isEmpty()) {
-            assignRivalStrategiesEvenly(
-                    new ArrayList<Integer>(rivals.keySet()));
-        }
+        repairRivalStrategyAssignments();
     }
 
-    /** Assigns selectable strategies across the active rivals with counts differing by at most one. */
-    public void assignRivalStrategiesEvenly(List<Integer> vehicleIds) {
+    /**
+     * Draws strategies for a new race. Every available strategy is represented once when the
+     * field is large enough; remaining rivals are independent random draws.
+     */
+    public void assignRivalStrategiesForRace(List<Integer> vehicleIds) {
         List<Integer> normalizedIds = normalizeVehicleIds(vehicleIds);
-        if (normalizedIds.isEmpty()
-                || hasBalancedStrategyAssignments(normalizedIds)) {
+        if (normalizedIds.isEmpty()) {
             return;
         }
 
         List<Integer> shuffledIds = new ArrayList<Integer>(normalizedIds);
-        List<String> shuffledProfiles =
+        List<String> guaranteedProfiles =
                 new ArrayList<String>(cardStrategyCatalog.getProfileIds());
         shuffle(shuffledIds);
-        shuffle(shuffledProfiles);
+        shuffle(guaranteedProfiles);
         for (int i = 0; i < shuffledIds.size(); i++) {
+            String profileId = i < guaranteedProfiles.size()
+                    ? guaranteedProfiles.get(i)
+                    : cardStrategyCatalog.chooseProfileId(strategyRandom);
             rivalStrategyProfileIds.put(
                     shuffledIds.get(i),
-                    shuffledProfiles.get(i % shuffledProfiles.size()));
+                    profileId);
         }
     }
 
@@ -165,8 +167,9 @@ public final class RogueliteRun {
             rivals.put(key, progress);
         }
         if (!rivalStrategyProfileIds.containsKey(key)) {
-            assignRivalStrategiesEvenly(
-                    new ArrayList<Integer>(rivals.keySet()));
+            rivalStrategyProfileIds.put(
+                    key,
+                    cardStrategyCatalog.chooseProfileId(strategyRandom));
         }
         return progress;
     }
@@ -401,8 +404,6 @@ public final class RogueliteRun {
         championshipNumber = snapshot.championshipNumber;
         startingTier = snapshot.startingTier;
         random.setState(snapshot.randomState);
-        assignRivalStrategiesEvenly(
-                new ArrayList<Integer>(restoredRivals.keySet()));
         return true;
     }
 
@@ -799,27 +800,15 @@ public final class RogueliteRun {
         return normalized;
     }
 
-    private boolean hasBalancedStrategyAssignments(List<Integer> vehicleIds) {
-        List<String> profileIds = cardStrategyCatalog.getProfileIds();
-        Map<String, Integer> counts = new LinkedHashMap<String, Integer>();
-        for (String profileId : profileIds) {
-            counts.put(profileId, Integer.valueOf(0));
-        }
-        for (Integer vehicleId : vehicleIds) {
+    private void repairRivalStrategyAssignments() {
+        for (Integer vehicleId : rivals.keySet()) {
             String profileId = rivalStrategyProfileIds.get(vehicleId);
-            Integer count = counts.get(profileId);
-            if (count == null) {
-                return false;
+            if (!cardStrategyCatalog.contains(profileId)) {
+                rivalStrategyProfileIds.put(
+                        vehicleId,
+                        cardStrategyCatalog.chooseProfileId(strategyRandom));
             }
-            counts.put(profileId, Integer.valueOf(count.intValue() + 1));
         }
-        int minimum = Integer.MAX_VALUE;
-        int maximum = Integer.MIN_VALUE;
-        for (Integer count : counts.values()) {
-            minimum = Math.min(minimum, count.intValue());
-            maximum = Math.max(maximum, count.intValue());
-        }
-        return maximum - minimum <= 1;
     }
 
     private static boolean containsSlot(

@@ -4,6 +4,7 @@ package com.github.jbescos.gameplay.roguelite;
 public final class MirrorPowerupSpec {
     public static final float COOLDOWN_SECONDS = 10f;
     public static final float DURATION_SECONDS = 5f;
+    public static final int MAX_MIRROR_COPIES = 12;
 
     private MirrorPowerupSpec() {
     }
@@ -25,6 +26,20 @@ public final class MirrorPowerupSpec {
             return 4;
         }
         return 1;
+    }
+
+    public static int amplifiedTotalVehicleCount(
+            RogueliteCardId cardId,
+            float powerupEffectMultiplier) {
+        int baseCopies = totalVehicleCount(cardId) - 1;
+        if (baseCopies <= 0) {
+            return 1;
+        }
+        float safeMultiplier = Float.isFinite(powerupEffectMultiplier)
+                ? Math.max(1f, powerupEffectMultiplier)
+                : 1f;
+        int copies = Math.round(baseCopies * safeMultiplier);
+        return 1 + Math.min(MAX_MIRROR_COPIES, Math.max(1, copies));
     }
 
     public static float durationSeconds(RogueliteCardId cardId) {
