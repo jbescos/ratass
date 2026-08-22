@@ -2,7 +2,7 @@ package com.github.jbescos.gameplay.roguelite;
 
 /** Delays a three-car race-position reversal after recording a qualified hit. */
 final class TriadCoupRevengeEffect extends RevengeUpgradeEffect {
-    static final float TRIGGER_DELAY_SECONDS = 3f;
+    static final float TRIGGER_DELAY_SECONDS = 1f;
 
     TriadCoupRevengeEffect() {
         super(RogueliteCardId.TRIAD_COUP, RevengeWorkflow.TARGET_DELAYED);

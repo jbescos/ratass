@@ -598,7 +598,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.RECOVERY_BEACON,
                 "Position Hijack",
                 "A qualified hit marks its offender. After charging, it exchanges positions only while they are ahead.",
-                "Activation: Rival hit\nAfter 3s: swap with offender if ahead",
+                "Activation: Rival hit\nAfter 1s: swap with offender if ahead",
                 2,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -717,7 +717,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.PAYBACK_SHIELD,
                 "Vendetta Hook",
                 "A qualified hit marks its offender. After charging, the hook pulls them back only while they are ahead.",
-                "Activation: Rival hit\nAfter 3s: if ahead, pull offender to you over 1s",
+                "Activation: Rival hit\nAfter 1s: if ahead, pull offender to you over 1s",
                 1,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -794,7 +794,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.TRIAD_COUP,
                 "Triad Coup",
                 "Binds the offender and the car directly behind you, then reverses their places while moving you to the front.",
-                "Activation: Rival hit\nAfter 3s: you lead | leading rival falls last",
+                "Activation: Rival hit\nAfter 1s: you lead | leading rival falls last",
                 3,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(

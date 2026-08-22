@@ -70,6 +70,49 @@ class RestoreAlgorithmCheckpointTest(unittest.TestCase):
             algorithm.restore.assert_called_once_with(str(checkpoint_dir.resolve()))
 
 
+class PpoRuntimeStateTest(unittest.TestCase):
+    def test_checkpoint_records_adaptive_kl_coefficient(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            checkpoint_dir = Path(temp_dir)
+            algorithm = SimpleNamespace(save=Mock(return_value=str(checkpoint_dir)))
+
+            with patch.object(
+                train_rllib,
+                "current_algorithm_kl_coeff",
+                return_value=1.25,
+            ):
+                saved_path = train_rllib.save_algorithm_checkpoint(
+                    algorithm,
+                    checkpoint_dir,
+                )
+
+            self.assertEqual(str(checkpoint_dir), saved_path)
+            state = json.loads(
+                (checkpoint_dir / train_rllib.PPO_RUNTIME_STATE_FILE).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(1.25, state["kl_coeff"])
+
+    def test_restore_applies_recorded_kl_coefficient(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            checkpoint_dir = Path(temp_dir)
+            (checkpoint_dir / train_rllib.PPO_RUNTIME_STATE_FILE).write_text(
+                '{"kl_coeff": 0.75}\n',
+                encoding="utf-8",
+            )
+            algorithm = SimpleNamespace()
+
+            with patch.object(
+                train_rllib,
+                "set_algorithm_kl_coeff",
+                return_value=True,
+            ) as set_kl:
+                train_rllib.restore_ppo_runtime_state(algorithm, checkpoint_dir)
+
+            set_kl.assert_called_once_with(algorithm, 0.75)
+
+
 class ExportedActorInitializationTest(unittest.TestCase):
     def test_state_dependent_mean_and_log_std_output_can_seed_free_log_std_mean(self):
         current = np.zeros((1, 4), dtype=np.float32)

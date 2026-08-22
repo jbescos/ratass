@@ -1585,7 +1585,7 @@ public class RogueliteCarUpgradesTest {
         positionSwap.onHitBy(7, 12f);
         assertEquals(7, positionSwap.getRevengeTargetVehicleId());
         assertFalse(positionSwap.isRevengeReady());
-        update(positionSwap, 2.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(positionSwap, 0.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertNull(positionSwap.tryActivateOffenderStrike(7, 4f, true));
         update(positionSwap, 0.2f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertTrue(positionSwap.isRevengeReady());
@@ -1615,7 +1615,7 @@ public class RogueliteCarUpgradesTest {
         armRevenge(hook);
         assertEquals(1, RogueliteCardCatalog.get(RogueliteCardId.PAYBACK_SHIELD).getTier());
         assertFalse(hook.isRevengeReady());
-        update(hook, 2.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(hook, 0.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertNull(hook.tryActivateOffenderStrike(42, 6f));
         update(hook, 0.2f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertTrue(hook.isRevengeReady());
@@ -1663,7 +1663,7 @@ public class RogueliteCarUpgradesTest {
         triad.setRevengeSecondaryTargetVehicleId(7);
         assertEquals(42, triad.getRevengeTargetVehicleId());
         assertEquals(7, triad.getRevengeSecondaryTargetVehicleId());
-        update(triad, 2.9f, 1f, false, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(triad, 0.9f, 1f, false, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertNull(triad.tryActivateOffenderStrike(42, 100f, false));
         update(triad, 0.2f, 1f, false, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
         RogueliteRevengeStrike triadStrike =
@@ -1710,7 +1710,10 @@ public class RogueliteCarUpgradesTest {
             upgrades.onHitBy(42, 12f);
             upgrades.setRevengeSecondaryTargetVehicleId(7);
 
-            update(upgrades, 2.9f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+            float triggerDelay = delayedCards[i] == RogueliteCardId.CROWN_ENGINE
+                    ? 3f
+                    : 1f;
+            update(upgrades, triggerDelay - 0.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
             float distance = delayedCards[i] == RogueliteCardId.CROWN_ENGINE
                     ? CrownBreakerRevengeEffect.RAM_TRIGGER_DISTANCE
                     : 100f;
@@ -1789,7 +1792,7 @@ public class RogueliteCarUpgradesTest {
         RogueliteCarUpgrades positionSwap = configured(RogueliteCardId.RECOVERY_BEACON);
         long activationSequence = positionSwap.getRevengeActivationSequence();
         positionSwap.onHitBy(42, 12f);
-        update(positionSwap, 3.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(positionSwap, 1.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
 
         assertTrue(positionSwap.expireOffenderStrikeIfConditionFailed(42, false));
         assertFalse(positionSwap.isRevengeArmed());
@@ -1805,7 +1808,7 @@ public class RogueliteCarUpgradesTest {
         RogueliteCarUpgrades hook = configured(RogueliteCardId.PAYBACK_SHIELD);
         long activationSequence = hook.getRevengeActivationSequence();
         hook.onHitBy(42, 12f);
-        update(hook, 3.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        update(hook, 1.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
 
         assertNull(hook.tryActivateOffenderStrike(42, 30f, false));
         assertTrue(hook.expireOffenderStrikeIfConditionFailed(42, false));

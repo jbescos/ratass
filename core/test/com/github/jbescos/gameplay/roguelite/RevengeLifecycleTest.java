@@ -15,12 +15,12 @@ public class RevengeLifecycleTest {
                 new TargetedRevengeEffect(RogueliteCardId.RECOVERY_BEACON);
 
         assertTrue(effect.onHitBy(42, 12f));
-        effect.advance(2.9f, 2.9f, new RogueliteDrivingFrame());
+        effect.advance(0.9f, 0.9f, new RogueliteDrivingFrame());
         assertTrue(effect.onHitBy(7, 12f));
 
         assertEquals(7, effect.revengeTargetVehicleId());
         assertEquals(0f, effect.readiness(), EPSILON);
-        effect.advance(2.9f, 2.9f, new RogueliteDrivingFrame());
+        effect.advance(0.9f, 0.9f, new RogueliteDrivingFrame());
         assertFalse(effect.isReady());
         effect.advance(0.2f, 0.2f, new RogueliteDrivingFrame());
         assertTrue(effect.isReady());

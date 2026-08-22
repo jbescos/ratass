@@ -12,8 +12,8 @@ public class PlayerDisplayNameTest {
     }
 
     @Test
-    public void trimsAndLimitsNameToFifteenPrintableCharacters() {
-        assertEquals("Road King Extra", PlayerDisplayName.sanitize("  Road King Extra Long  "));
+    public void trimsAndLimitsNameToNinePrintableCharacters() {
+        assertEquals("Road King", PlayerDisplayName.sanitize("  Road King Extra Long  "));
         assertEquals("AB", PlayerDisplayName.sanitize("A\nB"));
     }
 

@@ -74,6 +74,14 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
   if [[ "${stage}" == "mixed" && "${index}" -eq $((${#stages[@]} - 1)) ]]; then
     stage_output="${output}"
   fi
+  stage_map_ids="${RL_MAP_IDS:-}"
+  stage_best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS:-}"
+  stage_eval_episodes_per_map="${RL_RECOVERY_EVAL_EPISODES_PER_MAP:-9}"
+  if [[ "${stage}" == "map014_inflection" ]]; then
+    stage_map_ids="map014"
+    stage_best_eval_map_ids="map014"
+    stage_eval_episodes_per_map="${RL_RECOVERY_MAP014_EVAL_EPISODES_PER_MAP:-64}"
+  fi
 
   command=(
     "${python_bin}" tools/rl/train_rllib.py
@@ -99,16 +107,21 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
     --hidden-activation "${RL_RECOVERY_HIDDEN_ACTIVATION:-tanh}"
     --lr "${RL_RECOVERY_LR:-7.5e-5}"
     --gamma "${RL_RECOVERY_GAMMA:-0.995}"
+    --gae-lambda "${RL_RECOVERY_GAE_LAMBDA:-0.95}"
     --entropy-coeff "${RL_RECOVERY_ENTROPY_COEFF:-0.001}"
+    --clip-param "${RL_RECOVERY_CLIP_PARAM:-0.2}"
+    --kl-coeff "${RL_RECOVERY_KL_COEFF:-0.2}"
+    --kl-target "${RL_RECOVERY_KL_TARGET:-0.01}"
     --num-epochs "${RL_RECOVERY_NUM_EPOCHS:-5}"
     --grad-clip "${RL_RECOVERY_GRAD_CLIP:-1.0}"
-    --vf-clip-param "${RL_RECOVERY_VF_CLIP_PARAM:-5000.0}"
+    --vf-clip-param "${RL_RECOVERY_VF_CLIP_PARAM:-100000000.0}"
+    --vf-loss-coeff "${RL_RECOVERY_VF_LOSS_COEFF:-0.001}"
     --checkpoint-dir "${stage_dir}/checkpoint"
     --checkpoint-every "${RL_RECOVERY_CHECKPOINT_EVERY:-20}"
     --checkpoint-selection "${RL_RECOVERY_CHECKPOINT_SELECTION:-latest}"
     --best-export-output "${stage_output}"
     --best-export-objective shared-recovery-v1
-    --best-eval-episodes-per-map "${RL_RECOVERY_EVAL_EPISODES_PER_MAP:-7}"
+    --best-eval-episodes-per-map "${stage_eval_episodes_per_map}"
     --best-eval-min-route-targets "${stage_min_success_rate}"
     --best-eval-steps "${RL_RECOVERY_EVAL_STEPS:-300}"
     --best-eval-seed "${RL_RECOVERY_EVAL_SEED:-${RL_RECOVERY_SEED:-20260506}}"
@@ -138,11 +151,11 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
   if [[ -n "${RL_RECOVERY_EVAL_SCENARIO:-}" ]]; then
     command+=(--best-eval-recovery-scenario "${RL_RECOVERY_EVAL_SCENARIO}")
   fi
-  if [[ -n "${RL_MAP_IDS:-}" ]]; then
-    command+=(--map-ids "${RL_MAP_IDS}")
+  if [[ -n "${stage_map_ids}" ]]; then
+    command+=(--map-ids "${stage_map_ids}")
   fi
-  if [[ -n "${RL_BEST_EVAL_MAP_IDS:-}" ]]; then
-    command+=(--best-eval-map-ids "${RL_BEST_EVAL_MAP_IDS}")
+  if [[ -n "${stage_best_eval_map_ids}" ]]; then
+    command+=(--best-eval-map-ids "${stage_best_eval_map_ids}")
   fi
   if [[ -n "${RL_RAY_TEMP_DIR:-}" ]]; then
     command+=(--ray-temp-dir "${RL_RAY_TEMP_DIR}")

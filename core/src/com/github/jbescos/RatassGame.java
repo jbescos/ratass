@@ -843,24 +843,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SLIP_SOUND_MAX_VOLUME = 0.46f;
     private static final String[] DEFAULT_ENEMY_NAMES = new String[] {
             "Brim",
-            "Cinderskull",
             "Hellion",
             "Malice",
             "Ashfang",
-            "Dreadcoil",
-            "Embermaw",
+            "Dread",
+            "Ember",
             "Ruin",
             "Hex",
             "Scorch",
-            "Nightfire",
-            "Ravager",
-            "Obsidian",
-            "Vex",
-            "Doomspark",
-            "Sableclaw",
-            "Torment",
-            "Pyre",
-            "Wrath"
+            "Ravager"
     };
 
     private static final Color VOID = new Color(0.08f, 0.10f, 0.13f, 1f);
@@ -1057,16 +1048,16 @@ public class RatassGame extends ApplicationAdapter {
     };
     // Theme property files override these values; they also keep missing or malformed assets safe.
     private static final CarPerformance[] DEFAULT_CAR_PERFORMANCES = new CarPerformance[] {
-            new CarPerformance("Car 1", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 2", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 3", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 4", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 5", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 6", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 7", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 8", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 9", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 10", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f)
+            new CarPerformance("Veltryn VX", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Aurevox GT", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Caldris R", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Novaryn RS", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Torvane X", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Elystral S", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Vantory GT", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Orphira R", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Kavren XR", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Solvyr RS", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f)
     };
     private final Array<Car> cars = new Array<Car>();
     private final Array<Car> mirrorCars = new Array<Car>();
@@ -3158,7 +3149,10 @@ public class RatassGame extends ApplicationAdapter {
                 if (name.length() == 0 || name.startsWith("#")) {
                     continue;
                 }
-                themeEnemyNames.add(name);
+                themeEnemyNames.add(PlayerDisplayName.sanitize(name));
+                if (themeEnemyNames.size >= MAX_CAR_COUNT) {
+                    break;
+                }
             }
         } catch (RuntimeException exception) {
             Gdx.app.error("RatassGame", "Could not load enemy names from " + handle.path(), exception);
@@ -18197,12 +18191,18 @@ public class RatassGame extends ApplicationAdapter {
         RogueliteSlotType slotType = getRogueliteLoadoutSlotType(slotIndex);
         if (slotType == RogueliteSlotType.DRIVER) {
             return driver == null
-                    ? "EMPTY DRIVER SLOT"
+                    ? GameText.format(
+                            gameLanguage,
+                            "message.empty_slot",
+                            slotTypeLabel(slotType).toUpperCase(Locale.ROOT))
                     : getRogueliteDriverDetailText(driver);
         }
         RogueliteCardId cardId = loadout == null ? null : loadout.get(slotType);
         return cardId == null
-                ? "EMPTY " + slotTypeLabel(slotType).toUpperCase(Locale.ROOT) + " SLOT"
+                ? GameText.format(
+                        gameLanguage,
+                        "message.empty_slot",
+                        slotTypeLabel(slotType).toUpperCase(Locale.ROOT))
                 : getRogueliteCardDetailText(RogueliteCardCatalog.get(cardId));
     }
 
@@ -19479,9 +19479,10 @@ public class RatassGame extends ApplicationAdapter {
                 leaderboardFont,
                 isFinalRogueliteChampionship()
                         ? "FINAL CHAMPIONSHIP COMPLETE"
-                        : "CHAMPIONSHIP "
-                                + rogueliteRun.getChampionshipNumber()
-                                + " ENDED",
+                        : GameText.format(
+                                gameLanguage,
+                                "message.championship_ended",
+                                rogueliteRun.getChampionshipNumber()),
                 panelX + panelWidth * 0.5f,
                 panelY + panelHeight * 0.775f);
         titleFont.setColor(
@@ -22701,17 +22702,11 @@ public class RatassGame extends ApplicationAdapter {
     private void drawSidebarLapXpBarText(
             RogueliteCompetitorProgress progress,
             Rectangle bounds) {
-        String text =
-                "LAP XP "
-                        + progress.getLapExperience()
-                        + " / "
-                        + rogueliteRun.getRacecraftXpPerLapCap();
-        text = gameLanguage == GameLanguage.SPANISH
-                ? "XP VUELTA "
-                        + progress.getLapExperience()
-                        + " / "
-                        + rogueliteRun.getRacecraftXpPerLapCap()
-                : text;
+        String text = GameText.format(
+                gameLanguage,
+                "message.lap_xp",
+                progress.getLapExperience(),
+                rogueliteRun.getRacecraftXpPerLapCap());
         leaderboardFont.setColor(0.84f, 0.96f, 1f, 1f);
         float textY =
                 bounds.y
@@ -23737,14 +23732,14 @@ public class RatassGame extends ApplicationAdapter {
             return "No card effect active";
         }
 
-        String text = RogueliteCardCatalog.get(activeCards.get(0)).getTitle();
+        String text = ui(RogueliteCardCatalog.get(activeCards.get(0)).getTitle());
         for (int i = 1; i < activeCards.size(); i++) {
             String remaining = i + 1 < activeCards.size()
                     ? " +" + (activeCards.size() - i - 1)
                     : "";
             String candidate = text
                     + "  /  "
-                    + RogueliteCardCatalog.get(activeCards.get(i)).getTitle();
+                    + ui(RogueliteCardCatalog.get(activeCards.get(i)).getTitle());
             glyphLayout.setText(leaderboardFont, candidate + remaining);
             if (glyphLayout.width > maxWidth) {
                 return truncateTextToWidth(
@@ -24562,29 +24557,33 @@ public class RatassGame extends ApplicationAdapter {
     private String buildObjectiveText() {
         if (preRoundCountdownTimer > 0f) {
             if (sandboxMode && isLiveLapRaceMode()) {
-                return "Free practice";
+                return ui("Free practice");
             }
             return isLiveLapRaceMode()
-                    ? "Prepare for the horn. Complete "
-                            + getRaceLapsToWin()
-                            + " laps."
-                    : "This map needs a generated route before it can be raced.";
+                    ? GameText.format(
+                            gameLanguage,
+                            "message.prepare_laps",
+                            getRaceLapsToWin())
+                    : ui("This map needs a generated route before it can be raced.");
         }
 
         if (roundOver) {
-            return "Standings updated. Next circuit in a moment.";
+            return ui("Standings updated. Next circuit in a moment.");
         }
 
         if (isLiveLapRaceMode()) {
             if (raceFinishTimer >= 0f) {
-                return (winner != null && winner.playerControlled ? "You finished first. " : "Leader finished. ")
-                        + getRaceFinishSecondsLeft()
-                        + "s left for the rest to finish.";
+                return GameText.format(
+                        gameLanguage,
+                        winner != null && winner.playerControlled
+                                ? "message.finish_player"
+                                : "message.finish_leader",
+                        getRaceFinishSecondsLeft());
             }
             return "";
         }
 
-        return "Route missing.";
+        return ui("Route missing.");
     }
 
     private int getRaceFinishSecondsLeft() {
@@ -25804,6 +25803,7 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 pendingImpactImpulse = new Vector2();
         private final Vector2 impactRecoveryPoint = new Vector2();
         private final Vector2 impactOutward = new Vector2();
+        private final Vector2 autoRecoveryGoal = new Vector2();
         private final Vector2 autoRecoveryTarget = new Vector2();
         private final Vector2 autoRecoveryRouteTangent = new Vector2();
         private final Vector2 autoRecoveryToTarget = new Vector2();
@@ -28517,17 +28517,36 @@ public class RatassGame extends ApplicationAdapter {
                 float referenceProgress,
                 boolean recoveryPolicyAvailable) {
             updateAxes();
+            arenaMap.findRouteTangent(referenceProgress, autoRecoveryRouteTangent);
+            if (autoRecoveryRouteTangent.isZero(0.0001f)) {
+                autoRecoveryRouteTangent.set(forwardAxis);
+            }
             float routeProgress =
                     arenaMap.findRouteProgressNear(
                             body.getPosition(),
-                            forwardAxis,
+                            autoRecoveryRouteTangent,
                             referenceProgress);
             float targetProgress = recoveryPolicyAvailable
                     ? recoveryPolicyTargetRouteProgress(routeProgress)
                     : AutomaticRecoveryManeuver.targetRouteProgress(
                             routeProgress,
                             arenaMap.getRouteLength());
-            arenaMap.findRoutePoint(targetProgress, autoRecoveryTarget);
+            arenaMap.findRoutePoint(targetProgress, autoRecoveryGoal);
+            if (recoveryPolicyAvailable) {
+                autoRecoveryTarget.set(autoRecoveryGoal);
+            } else {
+                // A percentage lookahead can cross the inside of a tight hairpin. Follow the
+                // map's playable route field to the furthest directly reachable point instead.
+                arenaMap.findDriveTarget(
+                        body.getPosition(),
+                        autoRecoveryGoal,
+                        RL_ROUTE_MARGIN,
+                        autoRecoveryTarget);
+                targetProgress = arenaMap.findRouteProgressNear(
+                        autoRecoveryTarget,
+                        autoRecoveryRouteTangent,
+                        routeProgress);
+            }
             arenaMap.findRouteTangent(targetProgress, autoRecoveryRouteTangent);
             if (autoRecoveryRouteTangent.isZero(0.0001f)) {
                 autoRecoveryRouteTangent.set(forwardAxis);
@@ -31034,6 +31053,7 @@ public class RatassGame extends ApplicationAdapter {
         OFFROAD_HARD,
         OFFROAD_REVERSED,
         ONROAD_MISALIGNED,
+        MAP014_INFLECTION,
         BLOCKED_FRONT,
         NOSE_TO_NOSE;
 
@@ -31046,7 +31066,17 @@ public class RatassGame extends ApplicationAdapter {
                     ? "mixed"
                     : configured.trim().toLowerCase(Locale.ROOT).replace('-', '_');
             if ("mixed".equals(normalized) || normalized.length() == 0) {
-                RecoveryTrainingScenario[] scenarios = values();
+                RecoveryTrainingScenario[] scenarios = {
+                        OFFROAD_NEAR,
+                        OFFROAD_SHALLOW,
+                        OFFROAD_ANGLED,
+                        OFFROAD_HARD,
+                        OFFROAD_REVERSED,
+                        ONROAD_MISALIGNED,
+                        BLOCKED_FRONT,
+                        NOSE_TO_NOSE,
+                        MAP014_INFLECTION
+                };
                 return scenarios[Math.floorMod(episodeIndex, scenarios.length)];
             }
             if ("offroad_near".equals(normalized)) {
@@ -31067,6 +31097,9 @@ public class RatassGame extends ApplicationAdapter {
             if ("onroad_misaligned".equals(normalized)
                     || "onroad_stuck".equals(normalized)) {
                 return ONROAD_MISALIGNED;
+            }
+            if ("map014_inflection".equals(normalized)) {
+                return MAP014_INFLECTION;
             }
             if ("blocked_front".equals(normalized)
                     || "blocked".equals(normalized)) {
@@ -32285,7 +32318,8 @@ public class RatassGame extends ApplicationAdapter {
                             * MathUtils.random(85f, 180f)
                             * MathUtils.degreesToRadians;
                 }
-            } else if (recoveryScenario == RecoveryTrainingScenario.ONROAD_MISALIGNED) {
+            } else if (recoveryScenario == RecoveryTrainingScenario.ONROAD_MISALIGNED
+                    || recoveryScenario == RecoveryTrainingScenario.MAP014_INFLECTION) {
                 float side = MathUtils.random(-0.35f, 0.35f);
                 float clearance = Math.min(
                         map.getRouteLeftClearance(routeProgress),
@@ -32323,6 +32357,11 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private float selectRecoveryRouteProgress(ArenaMap map, float routeLength) {
+            if (recoveryScenario == RecoveryTrainingScenario.MAP014_INFLECTION) {
+                // The upper spiral joins the following leg around 12% route progress.
+                // Small variation covers both sides of the centerline inflection.
+                return routeLength * MathUtils.random(0.112f, 0.132f);
+            }
             float selectedProgress = MathUtils.random(0f, routeLength);
             if (recoveryScenario != RecoveryTrainingScenario.NOSE_TO_NOSE) {
                 return selectedProgress;

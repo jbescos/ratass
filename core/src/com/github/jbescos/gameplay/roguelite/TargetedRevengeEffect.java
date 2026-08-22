@@ -3,8 +3,8 @@ package com.github.jbescos.gameplay.roguelite;
 /** Arms against the exact rival responsible for a qualified hit. */
 final class TargetedRevengeEffect extends RevengeUpgradeEffect {
     private static final float POSITION_SWAP_MIN_DISTANCE = 3.2f;
-    private static final float POSITION_SWAP_DELAY_SECONDS = 3f;
-    private static final float HOOK_TRIGGER_DELAY_SECONDS = 3f;
+    private static final float POSITION_SWAP_DELAY_SECONDS = 1f;
+    private static final float HOOK_TRIGGER_DELAY_SECONDS = 1f;
 
     private final float effectDurationSeconds;
     private final float targetSpeedMultiplier;

@@ -18,7 +18,7 @@ public class PlayerNameEditorTest {
     }
 
     @Test
-    public void acceptsTypingBackspaceAndAtMostFifteenCharacters() {
+    public void acceptsTypingBackspaceAndAtMostNineCharacters() {
         PlayerNameEditor editor = new PlayerNameEditor();
         editor.begin("YOU");
 
@@ -28,8 +28,8 @@ public class PlayerNameEditorTest {
         editor.type('\b');
         editor.type('P');
 
-        assertEquals("ABCDEFGHIJKLMNP", editor.getDraft());
-        assertEquals("ABCDEFGHIJKLMNP", editor.commit());
+        assertEquals("ABCDEFGHP", editor.getDraft());
+        assertEquals("ABCDEFGHP", editor.commit());
         assertFalse(editor.isEditing());
     }
 

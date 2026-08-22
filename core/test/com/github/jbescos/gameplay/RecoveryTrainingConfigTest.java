@@ -53,4 +53,16 @@ public class RecoveryTrainingConfigTest {
         assertEquals(1, config.controlledAgentCount);
         assertEquals(1, config.fieldSize);
     }
+
+    @Test
+    public void map014InflectionRecoveryScenarioIsRetained() {
+        RatassGame.RlTrainingConfig config =
+                new RatassGame.RlTrainingConfig()
+                        .withRecoveryTraining(true)
+                        .withRecoveryScenario("map014_inflection");
+
+        assertEquals("map014_inflection", config.recoveryScenario);
+        assertEquals(1, config.controlledAgentCount);
+        assertEquals(1, config.fieldSize);
+    }
 }
