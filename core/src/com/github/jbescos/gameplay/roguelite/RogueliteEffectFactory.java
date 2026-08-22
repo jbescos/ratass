@@ -7,6 +7,12 @@ final class RogueliteEffectFactory {
     static RogueliteUpgradeEffect create(
             RogueliteCardId id,
             float powerupCycleOffset) {
+        if (AntennaPowerupSpec.isAntennaCard(id)) {
+            return new AntennaPowerupEffect(id);
+        }
+        if (id == RogueliteCardId.TIER_FOUR_SIGNAL) {
+            return new TierFourUnlockPowerupEffect();
+        }
         if (RandomCardEffect.isRandomCard(id)) {
             return new RandomCardEffect(id, powerupCycleOffset);
         }

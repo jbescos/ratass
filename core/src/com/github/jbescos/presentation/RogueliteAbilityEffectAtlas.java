@@ -4,7 +4,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteAbilityVisualStyle;
 
 /** Maps presentation-only ability styles to cells in the generated effect atlas. */
 public final class RogueliteAbilityEffectAtlas {
-    public static final int COLUMNS = 19;
+    public static final int COLUMNS = 23;
     public static final int ROWS = 1;
 
     private RogueliteAbilityEffectAtlas() {
@@ -53,6 +53,14 @@ public final class RogueliteAbilityEffectAtlas {
                 return 17;
             case HOTLINE_T2:
                 return 18;
+            case ANTENNA_T1:
+                return 19;
+            case ANTENNA_T2:
+                return 20;
+            case ANTENNA_T3:
+                return 21;
+            case TIER_FOUR_SIGNAL:
+                return 22;
             case ICON_ONLY:
             default:
                 return -1;
@@ -95,17 +103,20 @@ public final class RogueliteAbilityEffectAtlas {
                 return 2.10f;
             case HOTLINE_T2:
                 return 2.35f;
+            case ANTENNA_T1:
+                return 1.65f;
+            case ANTENNA_T2:
+                return 1.85f;
+            case ANTENNA_T3:
+                return 2.05f;
+            case TIER_FOUR_SIGNAL:
+                return 2.40f;
             case DRAFT:
             case SHIELD:
             case CLOAK:
             default:
                 return 1.82f;
         }
-    }
-
-    public static boolean usesDedicatedHotlineIcon(RogueliteAbilityVisualStyle style) {
-        return style == RogueliteAbilityVisualStyle.HOTLINE_T1
-                || style == RogueliteAbilityVisualStyle.HOTLINE_T2;
     }
 
     /** Places directional flame artwork behind the car instead of beneath its body. */

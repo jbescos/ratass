@@ -23,6 +23,9 @@ public final class RogueliteCardSkinAtlas {
     private static final float HEADER_TITLE_HEIGHT_RATIO = 0.11f;
     private static final float ARTWORK_WINDOW_BOTTOM_RATIO = 0.425f;
     private static final float ARTWORK_WINDOW_TOP_RATIO = 0.825f;
+    private static final float EXTENDED_ARTWORK_SIDE_INSET_RATIO = 0.025f;
+    private static final float EXTENDED_ARTWORK_BOTTOM_RATIO = 0.405f;
+    private static final float EXTENDED_ARTWORK_TOP_RATIO = 0.985f;
     private static final float INFORMATION_PANEL_BOTTOM_RATIO = 0.083f;
     private static final float INFORMATION_PANEL_TOP_RATIO = 0.39f;
     private static final float FOOTER_LABEL_LEFT_RATIO = 0.328125f;
@@ -87,6 +90,18 @@ public final class RogueliteCardSkinAtlas {
 
     public static float artworkWindowTop(float cardHeight) {
         return Math.max(0f, cardHeight * ARTWORK_WINDOW_TOP_RATIO);
+    }
+
+    public static float extendedArtworkSideInset(float cardWidth) {
+        return Math.max(0f, cardWidth * EXTENDED_ARTWORK_SIDE_INSET_RATIO);
+    }
+
+    public static float extendedArtworkBottom(float cardHeight) {
+        return Math.max(0f, cardHeight * EXTENDED_ARTWORK_BOTTOM_RATIO);
+    }
+
+    public static float extendedArtworkTop(float cardHeight) {
+        return Math.max(0f, cardHeight * EXTENDED_ARTWORK_TOP_RATIO);
     }
 
     public static float informationPanelBottom(float cardHeight) {

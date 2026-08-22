@@ -154,6 +154,14 @@ abstract class RogueliteUpgradeEffect {
         return 1f;
     }
 
+    float carCollisionAreaMultiplier() {
+        return 1f;
+    }
+
+    float carCollisionMassMultiplier() {
+        return 1f;
+    }
+
     float consumeForwardLaunchSpeedRatio() {
         return 0f;
     }

@@ -95,9 +95,17 @@ public class RogueliteProgressionBalanceTest {
         }
         List<RogueliteCardOffer> offers = run.createOffers(3);
         assertFalse(offers.isEmpty());
-        int tier = offers.get(0).getTier();
+        RogueliteCardOffer selected = offers.get(0);
+        for (RogueliteCardOffer offer : offers) {
+            if (offer.isDriver()
+                    || offer.getCard().getId() != RogueliteCardId.TIER_FOUR_SIGNAL) {
+                selected = offer;
+                break;
+            }
+        }
+        int tier = selected.getTier();
         selectionsByTier[tier]++;
-        assertTrue(run.select(offers.get(0)));
+        assertTrue(run.select(selected));
     }
 
     private static final class SimulationResult {

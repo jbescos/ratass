@@ -64,8 +64,7 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
             RogueliteCardDefinition card = cards.get(i);
             if (card.getSlotType() == slotType
                     && card.getTier() == tier
-                    && !isRandomCard(card.getId())
-                    && card.getId() != RogueliteCardId.PRIORITY_HOTLINE) {
+                    && !isRandomCard(card.getId())) {
                 matches.add(card.getId());
             }
         }
@@ -223,6 +222,16 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     @Override
     float frontCollisionRecoilMultiplier() {
         return delegate.frontCollisionRecoilMultiplier();
+    }
+
+    @Override
+    float carCollisionAreaMultiplier() {
+        return delegate.carCollisionAreaMultiplier();
+    }
+
+    @Override
+    float carCollisionMassMultiplier() {
+        return delegate.carCollisionMassMultiplier();
     }
 
     @Override

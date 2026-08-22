@@ -38,12 +38,20 @@ public final class RogueliteCarStatSnapshot {
     public static RogueliteCarStatSnapshot from(
             RogueliteLoadout loadout,
             RogueliteCardId previewCard) {
+        return from(loadout, previewCard, AntennaNetworkBonuses.NONE);
+    }
+
+    public static RogueliteCarStatSnapshot from(
+            RogueliteLoadout loadout,
+            RogueliteCardId previewCard,
+            AntennaNetworkBonuses antennaNetwork) {
         RogueliteLoadout previewLoadout = copy(loadout);
         if (previewCard != null) {
             previewLoadout.equip(previewCard);
         }
         RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
         upgrades.configure(previewLoadout);
+        upgrades.setAntennaNetwork(antennaNetwork);
         return new RogueliteCarStatSnapshot(
                 upgrades,
                 0f,

@@ -16,18 +16,19 @@ public class CustomGameRulesTest {
 
         for (RogueliteSlotType type : RogueliteSlotType.values()) {
             assertTrue(rules.isCardTypeAllowed(type));
-            for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
+            for (int tier = 1; tier <= CustomGameRules.MAX_CONFIGURABLE_CARD_TIER; tier++) {
                 assertTrue(rules.isCardTypeAllowed(tier, type));
             }
+            assertTrue(rules.isCardTypeAllowed(4, type));
         }
         assertEquals(1, rules.getTierUnlockLevel(1));
         assertEquals(10, rules.getTierUnlockLevel(2));
         assertEquals(20, rules.getTierUnlockLevel(3));
-        assertEquals(30, rules.getTierUnlockLevel(4));
+        assertEquals(1, rules.getTierUnlockLevel(4));
         for (WeatherType weather : WeatherType.values()) {
             assertTrue(rules.isWeatherAllowed(weather));
         }
-        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
+        for (int tier = 1; tier <= CustomGameRules.MAX_CONFIGURABLE_CARD_TIER; tier++) {
             assertTrue(rules.isTierAllowed(tier));
         }
         assertEquals(5, rules.getLaps());
@@ -66,7 +67,7 @@ public class CustomGameRulesTest {
         assertEquals(1, rules.resolveTierForLevel(4, 1));
         assertEquals(2, rules.resolveTierForLevel(8, 1));
         assertEquals(3, rules.resolveTierForLevel(12, 1));
-        assertEquals(4, rules.resolveTierForLevel(30, 1));
+        assertEquals(3, rules.resolveTierForLevel(30, 1));
     }
 
     @Test
@@ -83,7 +84,7 @@ public class CustomGameRulesTest {
         assertFalse(rules.toggleWeather(WeatherType.SUNNY));
         assertTrue(rules.toggleTier(2));
         assertTrue(rules.toggleTier(3));
-        assertTrue(rules.toggleTier(4));
+        assertFalse(rules.toggleTier(4));
         assertFalse(rules.toggleTier(1));
         assertTrue(rules.toggleMap("map001"));
         assertFalse(rules.toggleMap("map000"));

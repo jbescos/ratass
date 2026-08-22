@@ -1,7 +1,6 @@
 package com.github.jbescos.presentation;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.github.jbescos.gameplay.roguelite.RogueliteAbilityVisualStyle;
@@ -191,15 +190,44 @@ public class RogueliteAbilityEffectAtlasTest {
                 RogueliteAbilityVisualStyle.HOTLINE_T2,
                 RogueliteCardCatalog.get(RogueliteCardId.PRIORITY_HOTLINE)
                         .getAbilityVisualStyle());
-        assertTrue(
-                RogueliteAbilityEffectAtlas.usesDedicatedHotlineIcon(
-                        RogueliteAbilityVisualStyle.HOTLINE_T1));
-        assertTrue(
-                RogueliteAbilityEffectAtlas.usesDedicatedHotlineIcon(
-                        RogueliteAbilityVisualStyle.HOTLINE_T2));
-        assertFalse(
-                RogueliteAbilityEffectAtlas.usesDedicatedHotlineIcon(
-                        RogueliteAbilityVisualStyle.NITRO_T1));
+    }
+
+    @Test
+    public void antennaCardsUseDistinctIllustratedAtlasCells() {
+        RogueliteCardId[] cards = {
+                RogueliteCardId.TUNE_LINK,
+                RogueliteCardId.TECHNIQUE_LINK,
+                RogueliteCardId.GRID_LINK
+        };
+        RogueliteAbilityVisualStyle[] styles = {
+                RogueliteAbilityVisualStyle.ANTENNA_T1,
+                RogueliteAbilityVisualStyle.ANTENNA_T2,
+                RogueliteAbilityVisualStyle.ANTENNA_T3
+        };
+
+        for (int i = 0; i < cards.length; i++) {
+            assertEquals(styles[i], RogueliteCardCatalog.get(cards[i]).getAbilityVisualStyle());
+            assertEquals(19 + i, RogueliteAbilityEffectAtlas.indexFor(styles[i]));
+        }
+        assertTrue(RogueliteAbilityEffectAtlas.sizeScale(styles[1])
+                > RogueliteAbilityEffectAtlas.sizeScale(styles[0]));
+        assertTrue(RogueliteAbilityEffectAtlas.sizeScale(styles[2])
+                > RogueliteAbilityEffectAtlas.sizeScale(styles[1]));
+    }
+
+    @Test
+    public void tierFourUnlockUsesAKeyInsteadOfAnAntennaIdentity() {
+        assertEquals(
+                "Apex Key",
+                RogueliteCardCatalog.get(RogueliteCardId.TIER_FOUR_SIGNAL).getTitle());
+        assertEquals(
+                126,
+                RogueliteCardCatalog.get(RogueliteCardId.TIER_FOUR_SIGNAL)
+                        .getArtworkIndex());
+        assertEquals(
+                22,
+                RogueliteAbilityEffectAtlas.indexFor(
+                        RogueliteAbilityVisualStyle.TIER_FOUR_SIGNAL));
     }
 
     @Test

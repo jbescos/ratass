@@ -160,6 +160,7 @@ def parse_args() -> argparse.Namespace:
             "offroad_hard",
             "offroad_reversed",
             "onroad_misaligned",
+            "map014_inflection",
             "blocked_front",
             "nose_to_nose",
         ),

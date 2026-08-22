@@ -36,6 +36,7 @@ import com.badlogic.gdx.physics.box2d.FixtureDef;
 import com.badlogic.gdx.physics.box2d.Manifold;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.physics.box2d.WorldManifold;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.FloatArray;
@@ -48,12 +49,15 @@ import com.github.jbescos.ai.rl.RlPolicy;
 import com.github.jbescos.gameplay.AutomaticRecoveryExplosion;
 import com.github.jbescos.gameplay.AutomaticRecoveryManeuver;
 import com.github.jbescos.gameplay.ArenaMap;
+import com.github.jbescos.gameplay.CarCollisionLayers;
+import com.github.jbescos.gameplay.CarCollisionMassResponse;
 import com.github.jbescos.gameplay.HybridPlayerControl;
 import com.github.jbescos.gameplay.MapProgression;
 import com.github.jbescos.gameplay.LongStraightThrottleAssist;
 import com.github.jbescos.gameplay.MapWallBounce;
 import com.github.jbescos.gameplay.OvertakingSectorSensors;
 import com.github.jbescos.gameplay.PassingAssistGeometry;
+import com.github.jbescos.gameplay.RecoveryRewardShaping;
 import com.github.jbescos.gameplay.TimeDilationDecisionCadence;
 import com.github.jbescos.gameplay.TimeDilationMotionScale;
 import com.github.jbescos.gameplay.SkidMarkTrail;
@@ -64,6 +68,7 @@ import com.github.jbescos.gameplay.maps.ArenaMapCatalogEntry;
 import com.github.jbescos.gameplay.maps.ArenaMaps;
 import com.github.jbescos.gameplay.roguelite.DriverProfileCatalog;
 import com.github.jbescos.gameplay.roguelite.DriverProfileMetadata;
+import com.github.jbescos.gameplay.roguelite.AntennaNetworkBonuses;
 import com.github.jbescos.gameplay.roguelite.CustomGameRules;
 import com.github.jbescos.gameplay.roguelite.ForcedBrakeControl;
 import com.github.jbescos.gameplay.roguelite.HunterBarragePush;
@@ -108,6 +113,7 @@ import com.github.jbescos.presentation.CameraTargetTransition;
 import com.github.jbescos.presentation.CameraViewMode;
 import com.github.jbescos.presentation.CameraZoomControl;
 import com.github.jbescos.presentation.CarCameraHitTest;
+import com.github.jbescos.presentation.CarSizeTransition;
 import com.github.jbescos.presentation.CarStatBonusText;
 import com.github.jbescos.presentation.CarVisualAssignment;
 import com.github.jbescos.presentation.CircuitLoadingTransition;
@@ -281,7 +287,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final int MAIN_MENU_OPTIONS_SELECTION = 3;
     private static final int MAIN_MENU_THEME_SELECTION = 4;
     private static final int MAIN_MENU_EXIT_SELECTION = 5;
-    private static final int NEW_GAME_TIER_OPTION_COUNT = DriverProfileCatalog.MAX_TIER;
+    private static final int NEW_GAME_TIER_OPTION_COUNT = 1;
     private static final int NEW_GAME_CUSTOM_SELECTION = NEW_GAME_TIER_OPTION_COUNT;
     private static final int NEW_GAME_TIER_BACK_SELECTION = NEW_GAME_CUSTOM_SELECTION + 1;
     private static final int CUSTOM_TIER_UNLOCK_LEVEL_STEP = 1;
@@ -330,8 +336,6 @@ public class RatassGame extends ApplicationAdapter {
             DriverArtworkAtlas.THEMED_RELATIVE_PATH;
     private static final String ROGUELITE_ABILITY_EFFECT_PATH =
             "roguelite/cards/ability_effect_atlas.png";
-    private static final String BEST_DRIVER_HOTLINE_EFFECT_PATH =
-            "roguelite/effects/best_driver_hotline.png";
     private static final String DEBUFF_TARGET_ICON_PATH =
             "roguelite/effects/debuff_target_icon_atlas.png";
     private static final String ROGUELITE_CARD_SHELL_PATH =
@@ -843,24 +847,15 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SLIP_SOUND_MAX_VOLUME = 0.46f;
     private static final String[] DEFAULT_ENEMY_NAMES = new String[] {
             "Brim",
-            "Cinderskull",
             "Hellion",
             "Malice",
             "Ashfang",
-            "Dreadcoil",
-            "Embermaw",
+            "Dread",
+            "Ember",
             "Ruin",
             "Hex",
             "Scorch",
-            "Nightfire",
-            "Ravager",
-            "Obsidian",
-            "Vex",
-            "Doomspark",
-            "Sableclaw",
-            "Torment",
-            "Pyre",
-            "Wrath"
+            "Ravager"
     };
 
     private static final Color VOID = new Color(0.08f, 0.10f, 0.13f, 1f);
@@ -1057,16 +1052,16 @@ public class RatassGame extends ApplicationAdapter {
     };
     // Theme property files override these values; they also keep missing or malformed assets safe.
     private static final CarPerformance[] DEFAULT_CAR_PERFORMANCES = new CarPerformance[] {
-            new CarPerformance("Car 1", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 2", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 3", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 4", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 5", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 6", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 7", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 8", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 9", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
-            new CarPerformance("Car 10", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f)
+            new CarPerformance("Veltryn VX", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Aurevox GT", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Caldris R", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Novaryn RS", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Torvane X", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Elystral S", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Vantory GT", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Orphira R", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Kavren XR", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f),
+            new CarPerformance("Solvyr RS", 550, 1300, 280, 700f, 64f, 1.18f, 0.0030f)
     };
     private final Array<Car> cars = new Array<Car>();
     private final Array<Car> mirrorCars = new Array<Car>();
@@ -1163,16 +1158,17 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle[] customCardTableHeaderBounds =
             createRectangleArray(RogueliteSlotType.values().length + 2);
     private final Rectangle[] customTierLabelBounds =
-            createRectangleArray(RogueliteCardCatalog.MAX_CARD_TIER);
+            createRectangleArray(CustomGameRules.MAX_CONFIGURABLE_CARD_TIER);
     private final Rectangle[] customTierCardTypeBounds =
             createRectangleArray(
-                    RogueliteCardCatalog.MAX_CARD_TIER * RogueliteSlotType.values().length);
+                    CustomGameRules.MAX_CONFIGURABLE_CARD_TIER
+                            * RogueliteSlotType.values().length);
     private final Rectangle[] customTierUnlockBounds =
-            createRectangleArray(RogueliteCardCatalog.MAX_CARD_TIER);
+            createRectangleArray(CustomGameRules.MAX_CONFIGURABLE_CARD_TIER);
     private final Rectangle[] customTierUnlockDownBounds =
-            createRectangleArray(RogueliteCardCatalog.MAX_CARD_TIER);
+            createRectangleArray(CustomGameRules.MAX_CONFIGURABLE_CARD_TIER);
     private final Rectangle[] customTierUnlockUpBounds =
-            createRectangleArray(RogueliteCardCatalog.MAX_CARD_TIER);
+            createRectangleArray(CustomGameRules.MAX_CONFIGURABLE_CARD_TIER);
     private final Rectangle[] customWeatherBounds =
             createRectangleArray(WeatherType.values().length);
     private final Array<Rectangle> customMapBounds = new Array<Rectangle>();
@@ -1346,6 +1342,7 @@ public class RatassGame extends ApplicationAdapter {
     private Sound pickupSound;
     private Sound destructionSound;
     private Sound revengeSound;
+    private Sound levelUpSound;
     private Sound countdownSound;
     private Sound roundStartSound;
     private Sound engineSound;
@@ -1364,7 +1361,6 @@ public class RatassGame extends ApplicationAdapter {
     private Texture rogueliteCardArtworkTexture;
     private Texture rogueliteDriverArtworkTexture;
     private Texture rogueliteAbilityEffectTexture;
-    private Texture bestDriverHotlineEffectTexture;
     private Texture debuffTargetIconTexture;
     private Texture rogueliteCardShellTexture;
     private Texture rogueliteCardTypeIconTexture;
@@ -1383,7 +1379,6 @@ public class RatassGame extends ApplicationAdapter {
     private boolean rogueliteCardArtworkLoadAttempted;
     private boolean rogueliteDriverArtworkLoadAttempted;
     private boolean rogueliteAbilityEffectLoadAttempted;
-    private boolean bestDriverHotlineEffectLoadAttempted;
     private boolean debuffTargetIconLoadAttempted;
     private boolean rogueliteCardShellLoadAttempted;
     private boolean rogueliteCardTypeIconLoadAttempted;
@@ -2679,6 +2674,7 @@ public class RatassGame extends ApplicationAdapter {
                         sandboxLoadoutConfiguration.getLoadout(vehicleId),
                         isPresentationEnabled());
             }
+            refreshAntennaNetwork();
             return;
         }
     }
@@ -2694,6 +2690,7 @@ public class RatassGame extends ApplicationAdapter {
                     sandboxLoadoutConfiguration.getLoadout(car.template.vehicleId),
                     isPresentationEnabled());
         }
+        refreshAntennaNetwork();
     }
 
     private void setTemplateDriverPolicy(
@@ -2993,6 +2990,7 @@ public class RatassGame extends ApplicationAdapter {
         pickupSound = loadSound("audio/pickup.wav");
         destructionSound = loadSound("audio/destroy.wav");
         revengeSound = loadSound("audio/revenge_bell.wav");
+        levelUpSound = loadSound("audio/level_up.wav");
         countdownSound = loadSound("audio/countdown.wav");
         roundStartSound = loadSound("audio/start.wav");
         engineSound = loadSound("audio/engine.wav");
@@ -3023,6 +3021,7 @@ public class RatassGame extends ApplicationAdapter {
         disposeSound(pickupSound);
         disposeSound(destructionSound);
         disposeSound(revengeSound);
+        disposeSound(levelUpSound);
         disposeSound(countdownSound);
         disposeSound(roundStartSound);
         disposeSound(engineSound);
@@ -3034,6 +3033,7 @@ public class RatassGame extends ApplicationAdapter {
         pickupSound = null;
         destructionSound = null;
         revengeSound = null;
+        levelUpSound = null;
         countdownSound = null;
         roundStartSound = null;
         engineSound = null;
@@ -3158,7 +3158,10 @@ public class RatassGame extends ApplicationAdapter {
                 if (name.length() == 0 || name.startsWith("#")) {
                     continue;
                 }
-                themeEnemyNames.add(name);
+                themeEnemyNames.add(PlayerDisplayName.sanitize(name));
+                if (themeEnemyNames.size >= MAX_CAR_COUNT) {
+                    break;
+                }
             }
         } catch (RuntimeException exception) {
             Gdx.app.error("RatassGame", "Could not load enemy names from " + handle.path(), exception);
@@ -3668,6 +3671,12 @@ public class RatassGame extends ApplicationAdapter {
                 && car != null
                 && car.consumeRevengeActivationSound()) {
             playSound(revengeSound, 1f);
+        }
+    }
+
+    private void playLevelUpSound() {
+        if (isPresentationEnabled()) {
+            playSound(levelUpSound, 0.92f);
         }
     }
 
@@ -5322,7 +5331,7 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
         RogueliteSlotType[] cardTypes = RogueliteSlotType.values();
-        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
+        for (int tier = 1; tier <= CustomGameRules.MAX_CONFIGURABLE_CARD_TIER; tier++) {
             for (int typeIndex = 0; typeIndex < cardTypes.length; typeIndex++) {
                 int index = customTierCardTypeIndex(tier, typeIndex);
                 if (customTierCardTypeBounds[index].contains(x, y)) {
@@ -6386,7 +6395,7 @@ public class RatassGame extends ApplicationAdapter {
                 unlockColumnWidth,
                 rowHeight);
 
-        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
+        for (int tier = 1; tier <= CustomGameRules.MAX_CONFIGURABLE_CARD_TIER; tier++) {
             float rowY = cardHeaderY - tier * rowHeight;
             columnX = tableX;
             customTierLabelBounds[tier - 1].set(
@@ -6415,7 +6424,7 @@ public class RatassGame extends ApplicationAdapter {
                     rowHeight);
         }
         topY = cardHeaderY
-                - RogueliteCardCatalog.MAX_CARD_TIER * rowHeight
+                - CustomGameRules.MAX_CONFIGURABLE_CARD_TIER * rowHeight
                 - sectionGap;
 
         layoutCustomGrid(
@@ -7728,7 +7737,7 @@ public class RatassGame extends ApplicationAdapter {
                 customCardTableHeaderBounds[customCardTableHeaderBounds.length - 1],
                 "Unlock lvl",
                 true);
-        for (int tier = 1; tier <= RogueliteCardCatalog.MAX_CARD_TIER; tier++) {
+        for (int tier = 1; tier <= CustomGameRules.MAX_CONFIGURABLE_CARD_TIER; tier++) {
             drawCustomTableTextCell(
                     customTierLabelBounds[tier - 1],
                     Integer.toString(tier),
@@ -9828,6 +9837,21 @@ public class RatassGame extends ApplicationAdapter {
             }
             car.configureRogueliteCards(loadout, isPresentationEnabled());
         }
+        refreshAntennaNetwork();
+    }
+
+    private void refreshAntennaNetwork() {
+        AntennaNetworkBonuses.Builder builder = AntennaNetworkBonuses.builder();
+        for (int i = 0; i < cars.size; i++) {
+            Car car = cars.get(i);
+            builder.includeActive(
+                    getRogueliteLoadout(car),
+                    car.rogueliteUpgrades.getActiveAntennaCardId());
+        }
+        AntennaNetworkBonuses network = builder.build();
+        for (int i = 0; i < cars.size; i++) {
+            cars.get(i).rogueliteUpgrades.setAntennaNetwork(network);
+        }
     }
 
     private void updateCarRenderTransforms(float alpha) {
@@ -9900,7 +9924,14 @@ public class RatassGame extends ApplicationAdapter {
                     rlTrainingMode,
                     rlBenchmarkCardsEnabled);
         }
+        if (!rlTrainingMode || rlBenchmarkCardsEnabled) {
+            refreshAntennaNetwork();
+        }
         updateMirrorPowerups(delta, allowControl);
+        if (!rlTrainingMode && !sandboxMode) {
+            applyActiveTierFourSignals(cars);
+            applyActiveTierFourSignals(mirrorCars);
+        }
         if (isPresentationEnabled()) {
             emitAutomaticRecoveryExplosionEffects();
         }
@@ -9920,8 +9951,23 @@ public class RatassGame extends ApplicationAdapter {
                 mirrorCars.get(i).capturePreviousTransform();
             }
         }
+        boolean collisionPowerupsEnabled = !rlTrainingMode || rlBenchmarkCardsEnabled;
+        if (collisionPowerupsEnabled) {
+            for (int i = 0; i < cars.size; i++) {
+                cars.get(i).captureUnstoppableStepStart();
+            }
+            for (int i = 0; i < mirrorCars.size; i++) {
+                mirrorCars.get(i).captureUnstoppableStepStart();
+            }
+        }
         world.step(delta, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
-        if (!rlTrainingMode || rlBenchmarkCardsEnabled) {
+        if (collisionPowerupsEnabled) {
+            for (int i = 0; i < cars.size; i++) {
+                cars.get(i).restoreUnstoppableMotion(delta);
+            }
+            for (int i = 0; i < mirrorCars.size; i++) {
+                mirrorCars.get(i).restoreUnstoppableMotion(delta);
+            }
             applyPendingCollisionFixtureRebuilds();
         }
         if (!rlTrainingMode) {
@@ -9950,6 +9996,19 @@ public class RatassGame extends ApplicationAdapter {
                 if (GROWTH_PICKUP_ENABLED && !roundOver && !rlTrainingDisablePickups) {
                     updateGrowthPickup(delta);
                 }
+            }
+        }
+    }
+
+    private void applyActiveTierFourSignals(Array<Car> sourceCars) {
+        for (int i = 0; i < sourceCars.size; i++) {
+            Car car = sourceCars.get(i);
+            if (car.active
+                    && car.rogueliteUpgrades.getActivePowerupCardId()
+                            == RogueliteCardId.TIER_FOUR_SIGNAL) {
+                rogueliteRun.unlockTierFour(
+                        car.template.playerControlled,
+                        car.template.vehicleId);
             }
         }
     }
@@ -10346,6 +10405,14 @@ public class RatassGame extends ApplicationAdapter {
             }
             Car physicalSource = source.consumePendingRevengeOrigin();
             Car physicalTarget = source.consumePendingRevengeTarget(target);
+            if (target.effectiveRogueliteUpgrades().blocksRevengeCard(
+                    strike.getCardId())) {
+                if (strike.getAction() == RogueliteRevengeStrike.Action.HOOK) {
+                    source.rogueliteUpgrades.completeOffenderStrike(strike.getCardId());
+                }
+                source.clearPendingRevengeParticipants();
+                continue;
+            }
 
             float impactStrength = 0f;
             switch (strike.getAction()) {
@@ -10708,6 +10775,10 @@ public class RatassGame extends ApplicationAdapter {
 
         Car upgradeOwner = source.mirrorOwner == null ? source : source.mirrorOwner;
         upgradeOwner.clearPendingRevengeParticipants();
+        if (target.effectiveRogueliteUpgrades().blocksRevengeCard(
+                strike.getCardId())) {
+            return;
+        }
         float impactStrength = applyTargetedRevengeRamFromFamily(
                 source, target, strike);
         awardRogueliteExperience(upgradeOwner.template, Reason.REVENGE);
@@ -11015,6 +11086,9 @@ public class RatassGame extends ApplicationAdapter {
                 || amount <= 0) {
             return 0;
         }
+        int levelBeforeAward = template.playerControlled
+                ? rogueliteRun.getPlayerProgress().getLevel()
+                : 0;
         int gained =
                 template.playerControlled
                         ? rogueliteRun.awardPlayerRacecraftExperience(reason, amount)
@@ -11024,6 +11098,10 @@ public class RatassGame extends ApplicationAdapter {
                                 amount);
         if (gained <= 0) {
             return 0;
+        }
+        if (template.playerControlled
+                && rogueliteRun.getPlayerProgress().getLevel() > levelBeforeAward) {
+            playLevelUpSound();
         }
         if (!template.playerControlled) {
             updateCardStrategyRaceState();
@@ -11058,6 +11136,7 @@ public class RatassGame extends ApplicationAdapter {
         template.currentCar.configureRogueliteCards(
                 loadout,
                 isPresentationEnabled());
+        refreshAntennaNetwork();
     }
 
     private void applyDraftMagnetRepulsions(float delta) {
@@ -11090,7 +11169,9 @@ public class RatassGame extends ApplicationAdapter {
                 if (belongsToSameMirrorFamily(source, target)
                         || !target.active
                         || target.body == null
-                        || target.effectiveRogueliteUpgrades().blocksHostileEffects()) {
+                        || target.effectiveRogueliteUpgrades().blocksHostileEffects()
+                        || target.effectiveRogueliteUpgrades().blocksRevengeCard(
+                                sourceUpgrades.getRevengeCardId())) {
                     continue;
                 }
 
@@ -11450,6 +11531,8 @@ public class RatassGame extends ApplicationAdapter {
         fixtureDef.shape = edge;
         fixtureDef.friction = 0.55f;
         fixtureDef.restitution = 0.12f;
+        fixtureDef.filter.categoryBits = CarCollisionLayers.MAP_WALLS;
+        fixtureDef.filter.maskBits = CarCollisionLayers.ROAD;
         Vector2 start = new Vector2();
         Vector2 end = new Vector2();
         for (int i = 0; i < currentMap.getWallCount(); i++) {
@@ -12126,10 +12209,16 @@ public class RatassGame extends ApplicationAdapter {
             if (!rlTrainingMode && !sandboxMode) {
                 int finishExperience;
                 if (template.playerControlled) {
+                    int levelBeforeAward =
+                            rogueliteRun.getPlayerProgress().getLevel();
                     finishExperience =
                             rogueliteRun.awardPlayerRacePosition(
                                     template.roundFinishPosition,
                                     roster.size);
+                    if (rogueliteRun.getPlayerProgress().getLevel()
+                            > levelBeforeAward) {
+                        playLevelUpSound();
+                    }
                 } else {
                     finishExperience =
                             rogueliteRun.awardRivalRacePosition(
@@ -13400,6 +13489,7 @@ public class RatassGame extends ApplicationAdapter {
             drawGrowthPickup();
         }
         drawCarEffects();
+        drawCarLightEffects();
         drawPlayerSteeringTakeoverIndicator();
         shapeRenderer.end();
 
@@ -13415,7 +13505,6 @@ public class RatassGame extends ApplicationAdapter {
         spriteBatch.end();
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        drawCarLightEffects();
         raceParticleEffects.drawSparks(shapeRenderer);
         drawDestructionEffects();
         drawHighSpeedOverlay();
@@ -14933,14 +15022,16 @@ public class RatassGame extends ApplicationAdapter {
             float centerY = renderPosition.y;
             float carWidth = car.getWidth();
             float carHeight = car.getHeight();
+            float presentationWidth = car.getPresentationWidth();
+            float presentationHeight = car.getPresentationHeight();
             float carScale = car.getSizeScale();
 
             drawVehicleBrakeLightEffects(
                     car,
                     centerX,
                     centerY,
-                    carWidth,
-                    carHeight,
+                    presentationWidth,
+                    presentationHeight,
                     angleDeg);
             drawSlipstreamEffect(car, centerX, centerY, carWidth, carHeight, angleDeg, i);
             drawRevengeProjectileEffect(car);
@@ -14984,7 +15075,14 @@ public class RatassGame extends ApplicationAdapter {
             }
 
             if (car.template.spriteTexture == null && !car.isInvisible()) {
-                drawFallbackCarBody(car, centerX, centerY, carWidth, carHeight, carScale, angleDeg);
+                drawFallbackCarBody(
+                        car,
+                        centerX,
+                        centerY,
+                        car.getPresentationWidth(),
+                        car.getPresentationHeight(),
+                        carScale * car.getPresentationSizeScale(),
+                        angleDeg);
             }
         }
     }
@@ -15550,11 +15648,6 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
 
-        if (RogueliteAbilityEffectAtlas.usesDedicatedHotlineIcon(style)) {
-            drawBestDriverHotlineEffectSprite(car, visual, style);
-            return;
-        }
-
         int artworkIndex = RogueliteAbilityEffectAtlas.indexFor(style);
         if (artworkIndex < 0) {
             return;
@@ -15573,8 +15666,15 @@ public class RatassGame extends ApplicationAdapter {
         Vector2 renderPosition = car.getRenderPosition();
         float pulse = visual.getPulse();
         float flash = visual.getActivationFlash();
+        boolean rearExhaust = RogueliteAbilityEffectAtlas.usesRearExhaustAnchor(style);
+        float effectCarWidth = rearExhaust
+                ? car.getPresentationWidth()
+                : car.getWidth();
+        float effectCarHeight = rearExhaust
+                ? car.getPresentationHeight()
+                : car.getHeight();
         float carRelativeSize =
-                Math.max(car.getWidth(), car.getHeight())
+                Math.max(effectCarWidth, effectCarHeight)
                         * RogueliteAbilityEffectAtlas.sizeScale(style)
                         * (0.96f + pulse * 0.07f + flash * 0.10f);
         float effectRadius = style == RogueliteAbilityVisualStyle.DRAFT
@@ -15589,7 +15689,7 @@ public class RatassGame extends ApplicationAdapter {
         float carAngleDeg = car.getRenderAngleDeg();
         float localCenterY = RogueliteAbilityEffectAtlas.localCenterOffsetY(
                 style,
-                car.getHeight(),
+                effectCarHeight,
                 size);
         float centerX = renderPosition.x - localCenterY * MathUtils.sinDeg(carAngleDeg);
         float centerY = renderPosition.y + localCenterY * MathUtils.cosDeg(carAngleDeg);
@@ -15619,27 +15719,6 @@ public class RatassGame extends ApplicationAdapter {
                 texture.getHeight(),
                 false,
                 false);
-    }
-
-    private void drawBestDriverHotlineEffectSprite(
-            Car car,
-            AbilityActivationVisual visual,
-            RogueliteAbilityVisualStyle style) {
-        Vector2 center = car.getRenderPosition();
-        float pulse = visual.getPulse();
-        float flash = visual.getActivationFlash();
-        float size =
-                Math.max(car.getWidth(), car.getHeight())
-                        * RogueliteAbilityEffectAtlas.sizeScale(style)
-                        * (0.96f + pulse * 0.07f + flash * 0.10f);
-        drawSquareIconAtlasCellInBatch(
-                getBestDriverHotlineEffectTexture(),
-                0,
-                1,
-                center.x,
-                center.y,
-                size,
-                MathUtils.clamp(0.58f + pulse * 0.18f + flash * 0.20f, 0f, 1f));
     }
 
     private float abilityEffectRotation(
@@ -16177,8 +16256,8 @@ public class RatassGame extends ApplicationAdapter {
                     car,
                     renderPosition.x,
                     renderPosition.y,
-                    car.getWidth(),
-                    car.getHeight(),
+                    car.getPresentationWidth(),
+                    car.getPresentationHeight(),
                     car.getRenderAngleDeg(),
                     i);
         }
@@ -16356,8 +16435,8 @@ public class RatassGame extends ApplicationAdapter {
             }
             drawCarSpriteLayer(
                     car,
-                    car.getWidth() * CAR_SHADOW_OFFSET_X_RATIO * 1.25f,
-                    car.getHeight() * CAR_SHADOW_OFFSET_Y_RATIO * 1.25f,
+                    car.getPresentationWidth() * CAR_SHADOW_OFFSET_X_RATIO * 1.25f,
+                    car.getPresentationHeight() * CAR_SHADOW_OFFSET_Y_RATIO * 1.25f,
                     1.12f,
                     1.08f);
         }
@@ -16373,8 +16452,8 @@ public class RatassGame extends ApplicationAdapter {
             }
             drawCarSpriteLayer(
                     car,
-                    car.getWidth() * CAR_SHADOW_OFFSET_X_RATIO,
-                    car.getHeight() * CAR_SHADOW_OFFSET_Y_RATIO,
+                    car.getPresentationWidth() * CAR_SHADOW_OFFSET_X_RATIO,
+                    car.getPresentationHeight() * CAR_SHADOW_OFFSET_Y_RATIO,
                     1.06f,
                     1.04f);
         }
@@ -16411,8 +16490,8 @@ public class RatassGame extends ApplicationAdapter {
         Vector2 renderPosition = car.getRenderPosition();
         float centerX = renderPosition.x + offsetX;
         float centerY = renderPosition.y + offsetY;
-        float spriteWidth = car.getWidth() * CAR_SPRITE_WIDTH_SCALE * widthScale;
-        float spriteHeight = car.getHeight() * CAR_SPRITE_HEIGHT_SCALE * heightScale;
+        float spriteWidth = car.getPresentationWidth() * CAR_SPRITE_WIDTH_SCALE * widthScale;
+        float spriteHeight = car.getPresentationHeight() * CAR_SPRITE_HEIGHT_SCALE * heightScale;
 
         spriteBatch.draw(
                 sprite,
@@ -16702,7 +16781,7 @@ public class RatassGame extends ApplicationAdapter {
             Vector2 renderPosition = car.getRenderPosition();
             carLabelProjection.set(
                     renderPosition.x,
-                    renderPosition.y + car.getHeight() * 0.96f,
+                    renderPosition.y + car.getPresentationHeight() * 0.96f,
                     0f);
             worldViewport.project(carLabelProjection);
             carLabelProjection.y = Gdx.graphics.getHeight() - carLabelProjection.y;
@@ -18197,12 +18276,18 @@ public class RatassGame extends ApplicationAdapter {
         RogueliteSlotType slotType = getRogueliteLoadoutSlotType(slotIndex);
         if (slotType == RogueliteSlotType.DRIVER) {
             return driver == null
-                    ? "EMPTY DRIVER SLOT"
+                    ? GameText.format(
+                            gameLanguage,
+                            "message.empty_slot",
+                            slotTypeLabel(slotType).toUpperCase(Locale.ROOT))
                     : getRogueliteDriverDetailText(driver);
         }
         RogueliteCardId cardId = loadout == null ? null : loadout.get(slotType);
         return cardId == null
-                ? "EMPTY " + slotTypeLabel(slotType).toUpperCase(Locale.ROOT) + " SLOT"
+                ? GameText.format(
+                        gameLanguage,
+                        "message.empty_slot",
+                        slotTypeLabel(slotType).toUpperCase(Locale.ROOT))
                 : getRogueliteCardDetailText(RogueliteCardCatalog.get(cardId));
     }
 
@@ -18791,6 +18876,31 @@ public class RatassGame extends ApplicationAdapter {
                 minimumScale);
     }
 
+    private void drawRoguelitePreferredFittedRawText(
+            BitmapFont font,
+            String text,
+            float x,
+            float topY,
+            float width,
+            float maxHeight,
+            int alignment,
+            boolean wrap,
+            float preferredScale,
+            float minimumScale) {
+        drawRogueliteFittedText(
+                font,
+                text,
+                x,
+                topY,
+                width,
+                maxHeight,
+                alignment,
+                wrap,
+                preferredScale,
+                minimumScale,
+                false);
+    }
+
     private void drawRogueliteFittedText(
             BitmapFont font,
             String text,
@@ -18825,7 +18935,35 @@ public class RatassGame extends ApplicationAdapter {
             boolean wrap,
             float preferredScale,
             float minimumScale) {
-        text = ui(text);
+        drawRogueliteFittedText(
+                font,
+                text,
+                x,
+                topY,
+                width,
+                maxHeight,
+                alignment,
+                wrap,
+                preferredScale,
+                minimumScale,
+                true);
+    }
+
+    private void drawRogueliteFittedText(
+            BitmapFont font,
+            String text,
+            float x,
+            float topY,
+            float width,
+            float maxHeight,
+            int alignment,
+            boolean wrap,
+            float preferredScale,
+            float minimumScale,
+            boolean translate) {
+        if (translate) {
+            text = ui(text);
+        }
         if (text == null
                 || text.length() == 0
                 || width <= 0f
@@ -19058,18 +19196,20 @@ public class RatassGame extends ApplicationAdapter {
         }
         float padding = getRogueliteCardPadding(bounds);
         float contentWidth = Math.max(1f, bounds.width - padding * 2f);
-        float imageSize =
-                RogueliteCardSkinAtlas.fitSquareArtwork(
-                        contentWidth,
-                        getRogueliteCardImageHeight(bounds));
-        float imageX = bounds.x + (bounds.width - imageSize) * 0.5f;
-        float imageY = getRogueliteCardImageY(bounds, imageSize);
+        float artworkInset = RogueliteCardSkinAtlas.extendedArtworkSideInset(bounds.width);
+        float imageX = bounds.x + artworkInset;
+        float imageY = bounds.y + RogueliteCardSkinAtlas.extendedArtworkBottom(bounds.height);
+        float imageWidth = Math.max(1f, bounds.width - artworkInset * 2f);
+        float imageHeight = Math.max(
+                1f,
+                RogueliteCardSkinAtlas.extendedArtworkTop(bounds.height)
+                        - RogueliteCardSkinAtlas.extendedArtworkBottom(bounds.height));
         drawRogueliteCardArtwork(
                 card,
                 imageX,
                 imageY,
-                imageSize,
-                imageSize);
+                imageWidth,
+                imageHeight);
 
         drawRogueliteCardHeader(
                 bounds,
@@ -19152,6 +19292,16 @@ public class RatassGame extends ApplicationAdapter {
         float titleBottom =
                 bounds.y + RogueliteCardSkinAtlas.headerTitleBottom(bounds.height);
         float titleHeight = RogueliteCardSkinAtlas.headerTitleHeight(bounds.height);
+        hudFont.setColor(0.015f, 0.018f, 0.022f, 0.96f);
+        drawRogueliteCenteredBandText(
+                hudFont,
+                title,
+                titleX + 1.5f,
+                titleBottom - 1.5f,
+                titleWidth,
+                titleHeight,
+                1.08f,
+                0.52f);
         hudFont.setColor(0.98f, 0.94f, 0.82f, 1f);
         drawRogueliteCenteredBandText(
                 hudFont,
@@ -19206,31 +19356,28 @@ public class RatassGame extends ApplicationAdapter {
         }
         float padding = getRogueliteCardPadding(bounds);
         boolean horizontal = isHorizontalRogueliteCard(bounds);
-        float contentWidth =
-                horizontal
-                        ? getHorizontalRogueliteContentWidth(bounds)
-                        : Math.max(1f, bounds.width - padding * 2f);
-        float imageSize =
-                horizontal
-                        ? getHorizontalRogueliteArtworkSize(bounds)
-                        : RogueliteCardSkinAtlas.fitSquareArtwork(
-                                contentWidth,
-                                getRogueliteDriverImageHeight(bounds));
-        float imageX =
-                horizontal
-                        ? bounds.x + padding
-                        : bounds.x + (bounds.width - imageSize) * 0.5f;
-        float imageY =
-                horizontal
-                        ? getHorizontalRogueliteBodyBottom(bounds)
-                                + (getHorizontalRogueliteBodyHeight(bounds) - imageSize) * 0.5f
-                        : getRogueliteCardImageY(bounds, imageSize);
+        float imageSize = horizontal ? getHorizontalRogueliteArtworkSize(bounds) : 0f;
+        float artworkInset = RogueliteCardSkinAtlas.extendedArtworkSideInset(bounds.width);
+        float imageX = horizontal ? bounds.x + padding : bounds.x + artworkInset;
+        float imageY = horizontal
+                ? getHorizontalRogueliteBodyBottom(bounds)
+                        + (getHorizontalRogueliteBodyHeight(bounds) - imageSize) * 0.5f
+                : bounds.y + RogueliteCardSkinAtlas.extendedArtworkBottom(bounds.height);
+        float imageWidth = horizontal
+                ? imageSize
+                : Math.max(1f, bounds.width - artworkInset * 2f);
+        float imageHeight = horizontal
+                ? imageSize
+                : Math.max(
+                        1f,
+                        RogueliteCardSkinAtlas.extendedArtworkTop(bounds.height)
+                                - RogueliteCardSkinAtlas.extendedArtworkBottom(bounds.height));
         drawRogueliteDriverArtwork(
                 driver,
                 imageX,
                 imageY,
-                imageSize,
-                imageSize);
+                imageWidth,
+                imageHeight);
 
         drawRogueliteCardHeader(
                 bounds,
@@ -19479,9 +19626,10 @@ public class RatassGame extends ApplicationAdapter {
                 leaderboardFont,
                 isFinalRogueliteChampionship()
                         ? "FINAL CHAMPIONSHIP COMPLETE"
-                        : "CHAMPIONSHIP "
-                                + rogueliteRun.getChampionshipNumber()
-                                + " ENDED",
+                        : GameText.format(
+                                gameLanguage,
+                                "message.championship_ended",
+                                rogueliteRun.getChampionshipNumber()),
                 panelX + panelWidth * 0.5f,
                 panelY + panelHeight * 0.775f);
         titleFont.setColor(
@@ -19703,7 +19851,7 @@ public class RatassGame extends ApplicationAdapter {
             }
             RogueliteCompetitorProgress progress = getRogueliteCompetitorProgress(template);
             drawRogueliteEndStandingCell(formatRacePosition(position), left, rowTop, positionWidth, rowHeight, Align.left);
-            drawRogueliteEndStandingCell(
+            drawRogueliteEndStandingNameCell(
                     template.playerControlled ? playerName : template.name,
                     left + positionWidth,
                     rowTop,
@@ -19737,6 +19885,26 @@ public class RatassGame extends ApplicationAdapter {
         drawRoguelitePreferredFittedText(
                 leaderboardFont,
                 text,
+                x,
+                rowTop - rowHeight * 0.18f,
+                width,
+                rowHeight * 0.72f,
+                alignment,
+                false,
+                0.94f,
+                0.44f);
+    }
+
+    private void drawRogueliteEndStandingNameCell(
+            String name,
+            float x,
+            float rowTop,
+            float width,
+            float rowHeight,
+            int alignment) {
+        drawRoguelitePreferredFittedRawText(
+                leaderboardFont,
+                name,
                 x,
                 rowTop - rowHeight * 0.18f,
                 width,
@@ -20057,6 +20225,18 @@ public class RatassGame extends ApplicationAdapter {
         int sourceWidth = Math.max(1, cellWidth - inset * 2);
         int sourceHeight = Math.max(1, cellHeight - inset * 2);
 
+        float sourceAspect = sourceWidth / (float) sourceHeight;
+        float destinationAspect = imageWidth / Math.max(1f, imageHeight);
+        if (sourceAspect > destinationAspect) {
+            int croppedWidth = Math.max(1, Math.round(sourceHeight * destinationAspect));
+            sourceX0 += (sourceWidth - croppedWidth) / 2;
+            sourceWidth = croppedWidth;
+        } else if (sourceAspect < destinationAspect) {
+            int croppedHeight = Math.max(1, Math.round(sourceWidth / destinationAspect));
+            sourceY0 += (sourceHeight - croppedHeight) / 2;
+            sourceHeight = croppedHeight;
+        }
+
         spriteBatch.setColor(1f, 1f, 1f, 1f);
         spriteBatch.draw(
                 texture,
@@ -20124,19 +20304,6 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
         return rogueliteAbilityEffectTexture;
-    }
-
-    private Texture getBestDriverHotlineEffectTexture() {
-        if (!bestDriverHotlineEffectLoadAttempted) {
-            bestDriverHotlineEffectLoadAttempted = true;
-            bestDriverHotlineEffectTexture = loadTexture(BEST_DRIVER_HOTLINE_EFFECT_PATH);
-            if (bestDriverHotlineEffectTexture != null) {
-                bestDriverHotlineEffectTexture.setFilter(
-                        Texture.TextureFilter.Linear,
-                        Texture.TextureFilter.Linear);
-            }
-        }
-        return bestDriverHotlineEffectTexture;
     }
 
     private Texture getDebuffTargetIconTexture() {
@@ -22701,17 +22868,11 @@ public class RatassGame extends ApplicationAdapter {
     private void drawSidebarLapXpBarText(
             RogueliteCompetitorProgress progress,
             Rectangle bounds) {
-        String text =
-                "LAP XP "
-                        + progress.getLapExperience()
-                        + " / "
-                        + rogueliteRun.getRacecraftXpPerLapCap();
-        text = gameLanguage == GameLanguage.SPANISH
-                ? "XP VUELTA "
-                        + progress.getLapExperience()
-                        + " / "
-                        + rogueliteRun.getRacecraftXpPerLapCap()
-                : text;
+        String text = GameText.format(
+                gameLanguage,
+                "message.lap_xp",
+                progress.getLapExperience(),
+                rogueliteRun.getRacecraftXpPerLapCap());
         leaderboardFont.setColor(0.84f, 0.96f, 1f, 1f);
         float textY =
                 bounds.y
@@ -22951,19 +23112,21 @@ public class RatassGame extends ApplicationAdapter {
 
         y = viewportTop - contentY + sidebarTablesScrollOffset;
         font.setColor(0.98f, 0.95f, 0.84f, 1f);
-        drawSidebarTableText(
-                font,
-                watched == null
-                        ? "LAPS"
-                        : truncateTextToWidth(
-                                font,
-                                (watched.playerControlled ? playerName : watched.name)
-                                        .toUpperCase(Locale.ROOT),
-                                contentWidth),
-                x,
-                y,
-                viewportBottom,
-                viewportTop);
+        if (watched == null) {
+            drawSidebarTableText(font, "LAPS", x, y, viewportBottom, viewportTop);
+        } else {
+            drawSidebarTableRawText(
+                    font,
+                    truncateTextToWidth(
+                            font,
+                            (watched.playerControlled ? playerName : watched.name)
+                                    .toUpperCase(Locale.ROOT),
+                            contentWidth),
+                    x,
+                    y,
+                    viewportBottom,
+                    viewportTop);
+        }
         contentY += headerStep;
 
         y = viewportTop - contentY + sidebarTablesScrollOffset;
@@ -23104,8 +23267,21 @@ public class RatassGame extends ApplicationAdapter {
         if (playerControlled) {
             font.setColor(SIDEBAR_PLAYER_NAME_COLOR);
         }
-        drawSidebarTableText(font, text, x, y, viewportBottom, viewportTop);
+        drawSidebarTableRawText(font, text, x, y, viewportBottom, viewportTop);
         font.setColor(red, green, blue, alpha);
+    }
+
+    private void drawSidebarTableRawText(
+            BitmapFont font,
+            String text,
+            float x,
+            float y,
+            float viewportBottom,
+            float viewportTop) {
+        if (y - font.getLineHeight() < viewportBottom || y > viewportTop) {
+            return;
+        }
+        font.draw(spriteBatch, text, x, y);
     }
 
     private void drawSidebarTableRightAlignedText(
@@ -23737,14 +23913,14 @@ public class RatassGame extends ApplicationAdapter {
             return "No card effect active";
         }
 
-        String text = RogueliteCardCatalog.get(activeCards.get(0)).getTitle();
+        String text = ui(RogueliteCardCatalog.get(activeCards.get(0)).getTitle());
         for (int i = 1; i < activeCards.size(); i++) {
             String remaining = i + 1 < activeCards.size()
                     ? " +" + (activeCards.size() - i - 1)
                     : "";
             String candidate = text
                     + "  /  "
-                    + RogueliteCardCatalog.get(activeCards.get(i)).getTitle();
+                    + ui(RogueliteCardCatalog.get(activeCards.get(i)).getTitle());
             glyphLayout.setText(leaderboardFont, candidate + remaining);
             if (glyphLayout.width > maxWidth) {
                 return truncateTextToWidth(
@@ -24562,29 +24738,33 @@ public class RatassGame extends ApplicationAdapter {
     private String buildObjectiveText() {
         if (preRoundCountdownTimer > 0f) {
             if (sandboxMode && isLiveLapRaceMode()) {
-                return "Free practice";
+                return ui("Free practice");
             }
             return isLiveLapRaceMode()
-                    ? "Prepare for the horn. Complete "
-                            + getRaceLapsToWin()
-                            + " laps."
-                    : "This map needs a generated route before it can be raced.";
+                    ? GameText.format(
+                            gameLanguage,
+                            "message.prepare_laps",
+                            getRaceLapsToWin())
+                    : ui("This map needs a generated route before it can be raced.");
         }
 
         if (roundOver) {
-            return "Standings updated. Next circuit in a moment.";
+            return ui("Standings updated. Next circuit in a moment.");
         }
 
         if (isLiveLapRaceMode()) {
             if (raceFinishTimer >= 0f) {
-                return (winner != null && winner.playerControlled ? "You finished first. " : "Leader finished. ")
-                        + getRaceFinishSecondsLeft()
-                        + "s left for the rest to finish.";
+                return GameText.format(
+                        gameLanguage,
+                        winner != null && winner.playerControlled
+                                ? "message.finish_player"
+                                : "message.finish_leader",
+                        getRaceFinishSecondsLeft());
             }
             return "";
         }
 
-        return "Route missing.";
+        return ui("Route missing.");
     }
 
     private int getRaceFinishSecondsLeft() {
@@ -25175,9 +25355,6 @@ public class RatassGame extends ApplicationAdapter {
         disposeTexture(rogueliteAbilityEffectTexture);
         rogueliteAbilityEffectTexture = null;
         rogueliteAbilityEffectLoadAttempted = false;
-        disposeTexture(bestDriverHotlineEffectTexture);
-        bestDriverHotlineEffectTexture = null;
-        bestDriverHotlineEffectLoadAttempted = false;
         disposeTexture(debuffTargetIconTexture);
         debuffTargetIconTexture = null;
         debuffTargetIconLoadAttempted = false;
@@ -25242,8 +25419,6 @@ public class RatassGame extends ApplicationAdapter {
         rogueliteDriverArtworkTexture = null;
         disposeTexture(rogueliteAbilityEffectTexture);
         rogueliteAbilityEffectTexture = null;
-        disposeTexture(bestDriverHotlineEffectTexture);
-        bestDriverHotlineEffectTexture = null;
         disposeTexture(debuffTargetIconTexture);
         debuffTargetIconTexture = null;
         disposeTexture(rogueliteCardShellTexture);
@@ -25329,7 +25504,18 @@ public class RatassGame extends ApplicationAdapter {
                 return;
             }
 
-            contact.setFriction(Car.CAR_CONTACT_FRICTION);
+            boolean protectA = CarCollisionMassResponse.protectsFromContact(
+                    carA.isUnstoppable(), carB.isUnstoppable());
+            boolean protectB = CarCollisionMassResponse.protectsFromContact(
+                    carB.isUnstoppable(), carA.isUnstoppable());
+            if (protectA) {
+                carA.recordUnstoppableCarContact();
+            }
+            if (protectB) {
+                carB.recordUnstoppableCarContact();
+            }
+            contact.setFriction(
+                    protectA || protectB ? 0f : Car.CAR_CONTACT_FRICTION);
         }
 
         @Override
@@ -25346,16 +25532,46 @@ public class RatassGame extends ApplicationAdapter {
                 return;
             }
 
+            boolean protectA = CarCollisionMassResponse.protectsFromContact(
+                    carA.isUnstoppable(), carB.isUnstoppable());
+            boolean protectB = CarCollisionMassResponse.protectsFromContact(
+                    carB.isUnstoppable(), carA.isUnstoppable());
+
             Vector2 normal = contact.getWorldManifold().getNormal();
             if (normal.isZero(0.0001f)) {
                 return;
             }
 
-            float totalNormalImpulse = 0f;
+            WorldManifold worldManifold = contact.getWorldManifold();
+            Vector2[] contactPoints = worldManifold.getPoints();
             float[] normalImpulses = impulse.getNormalImpulses();
-            for (int i = 0; i < normalImpulses.length; i++) {
+            float[] tangentImpulses = impulse.getTangentImpulses();
+            int contactPointCount = Math.min(
+                    impulse.getCount(),
+                    worldManifold.getNumberOfContactPoints());
+            float totalNormalImpulse = 0f;
+            for (int i = 0; i < contactPointCount; i++) {
                 totalNormalImpulse += Math.abs(normalImpulses[i]);
+                if (protectA) {
+                    carA.cancelUnstoppableContactImpulse(
+                            normal,
+                            1f,
+                            normalImpulses[i],
+                            tangentImpulses[i],
+                            contactPoints[i]);
+                }
+                if (protectB) {
+                    carB.cancelUnstoppableContactImpulse(
+                            normal,
+                            -1f,
+                            normalImpulses[i],
+                            tangentImpulses[i],
+                            contactPoints[i]);
+                }
             }
+
+            carA.applyCarCollisionMassCorrection(normal, 1f, totalNormalImpulse);
+            carB.applyCarCollisionMassCorrection(normal, -1f, totalNormalImpulse);
 
             if (totalNormalImpulse < Car.MIN_COLLISION_RESPONSE_IMPULSE) {
                 return;
@@ -25804,6 +26020,7 @@ public class RatassGame extends ApplicationAdapter {
         private final Vector2 pendingImpactImpulse = new Vector2();
         private final Vector2 impactRecoveryPoint = new Vector2();
         private final Vector2 impactOutward = new Vector2();
+        private final Vector2 autoRecoveryGoal = new Vector2();
         private final Vector2 autoRecoveryTarget = new Vector2();
         private final Vector2 autoRecoveryRouteTangent = new Vector2();
         private final Vector2 autoRecoveryToTarget = new Vector2();
@@ -25853,6 +26070,7 @@ public class RatassGame extends ApplicationAdapter {
         private int carHitCount;
         private int carContactCount;
         private float sizeScale = 1f;
+        private float presentationCarScale = 1f;
         private float impactSlideTimer;
         private float impactSlideStrength;
         private float controlLockTimer;
@@ -25864,6 +26082,13 @@ public class RatassGame extends ApplicationAdapter {
         private float revengeGripMultiplier = 1f;
         private boolean collisionFixtureRebuildPending;
         private float collisionFixtureMassMultiplier = Float.NaN;
+        private float collisionFixtureCarScale = Float.NaN;
+        private float unstoppableStepStartX;
+        private float unstoppableStepStartY;
+        private float unstoppableStepStartAngle;
+        private boolean unstoppableStepCaptured;
+        private boolean unstoppableCarContactThisStep;
+        private boolean unstoppableWallContactThisStep;
         private float forcedBrakeTimer;
         private float forcedThrottleTimer;
         private float arenaWallContactTimer;
@@ -26027,6 +26252,8 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private void updateAbilityPresentation(float delta) {
+            presentationCarScale = CarSizeTransition.update(
+                    presentationCarScale, getCarCollisionScale(), delta);
             if (debuffTargetVisual != null) {
                 debuffTargetVisual.update(delta);
             }
@@ -26122,7 +26349,8 @@ public class RatassGame extends ApplicationAdapter {
         private void applyForcedBrake(
                 RogueliteCardId cardId,
                 float durationSeconds) {
-            if (effectiveRogueliteUpgrades().blocksHostileEffects()) {
+            if (effectiveRogueliteUpgrades().blocksHostileEffects()
+                    || effectiveRogueliteUpgrades().blocksRevengeCard(cardId)) {
                 return;
             }
             forcedBrakeTimer = Math.max(
@@ -26156,7 +26384,8 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private boolean isOpponentBlind() {
-            return effectiveOffenderCurse().isBlind();
+            return effectiveOffenderCurse().isBlind()
+                    || effectiveRogueliteUpgrades().blocksOpponentAwareness();
         }
 
         private OffenderCurseState effectiveOffenderCurse() {
@@ -26219,7 +26448,8 @@ public class RatassGame extends ApplicationAdapter {
                 float speedMultiplier,
                 float gripMultiplier,
                 float durationSeconds) {
-            if (effectiveRogueliteUpgrades().blocksHostileEffects()) {
+            if (effectiveRogueliteUpgrades().blocksHostileEffects()
+                    || effectiveRogueliteUpgrades().blocksRevengeCard(cardId)) {
                 return;
             }
             if (speedMultiplier < 1f) {
@@ -26303,7 +26533,8 @@ public class RatassGame extends ApplicationAdapter {
             if (target == null
                     || body == null
                     || target.body == null
-                    || effectiveRogueliteUpgrades().blocksHostileEffects()) {
+                    || effectiveRogueliteUpgrades().blocksHostileEffects()
+                    || effectiveRogueliteUpgrades().blocksRevengeCard(cardId)) {
                 return;
             }
             if (revengeHookTarget != null) {
@@ -26338,6 +26569,8 @@ public class RatassGame extends ApplicationAdapter {
                     || revengeHookTarget.body == null
                     || revengeHookTarget.effectiveRogueliteUpgrades()
                             .blocksHostileEffects()
+                    || effectiveRogueliteUpgrades().blocksRevengeCard(
+                            RogueliteCardId.PAYBACK_SHIELD)
                     || effectiveRogueliteUpgrades().blocksHostileEffects()) {
                 clearRevengeHookPull();
                 return;
@@ -26663,7 +26896,7 @@ public class RatassGame extends ApplicationAdapter {
                     revengeNearbyOpponentProximity,
                     longStraight);
             observeMirrorTechniqueConditions(arenaMap, familyMirrors);
-            rebuildCollisionFixtureIfMassChanged();
+            rebuildCollisionFixtureIfPropertiesChanged();
         }
 
         private void observeMirrorTechniqueConditions(
@@ -26711,9 +26944,11 @@ public class RatassGame extends ApplicationAdapter {
                     isLongStraightRoad(arenaMap));
         }
 
-        private void rebuildCollisionFixtureIfMassChanged() {
+        private void rebuildCollisionFixtureIfPropertiesChanged() {
             float effectiveMassMultiplier = getMassMultiplier();
-            if (Math.abs(effectiveMassMultiplier - collisionFixtureMassMultiplier) <= 0.0001f) {
+            float effectiveCarScale = getCarCollisionScale();
+            if (Math.abs(effectiveMassMultiplier - collisionFixtureMassMultiplier) <= 0.0001f
+                    && Math.abs(effectiveCarScale - collisionFixtureCarScale) <= 0.0001f) {
                 return;
             }
             collisionFixtureRebuildPending = false;
@@ -28517,17 +28752,36 @@ public class RatassGame extends ApplicationAdapter {
                 float referenceProgress,
                 boolean recoveryPolicyAvailable) {
             updateAxes();
+            arenaMap.findRouteTangent(referenceProgress, autoRecoveryRouteTangent);
+            if (autoRecoveryRouteTangent.isZero(0.0001f)) {
+                autoRecoveryRouteTangent.set(forwardAxis);
+            }
             float routeProgress =
                     arenaMap.findRouteProgressNear(
                             body.getPosition(),
-                            forwardAxis,
+                            autoRecoveryRouteTangent,
                             referenceProgress);
             float targetProgress = recoveryPolicyAvailable
                     ? recoveryPolicyTargetRouteProgress(routeProgress)
                     : AutomaticRecoveryManeuver.targetRouteProgress(
                             routeProgress,
                             arenaMap.getRouteLength());
-            arenaMap.findRoutePoint(targetProgress, autoRecoveryTarget);
+            arenaMap.findRoutePoint(targetProgress, autoRecoveryGoal);
+            if (recoveryPolicyAvailable) {
+                autoRecoveryTarget.set(autoRecoveryGoal);
+            } else {
+                // A percentage lookahead can cross the inside of a tight hairpin. Follow the
+                // map's playable route field to the furthest directly reachable point instead.
+                arenaMap.findDriveTarget(
+                        body.getPosition(),
+                        autoRecoveryGoal,
+                        RL_ROUTE_MARGIN,
+                        autoRecoveryTarget);
+                targetProgress = arenaMap.findRouteProgressNear(
+                        autoRecoveryTarget,
+                        autoRecoveryRouteTangent,
+                        routeProgress);
+            }
             arenaMap.findRouteTangent(targetProgress, autoRecoveryRouteTangent);
             if (autoRecoveryRouteTangent.isZero(0.0001f)) {
                 autoRecoveryRouteTangent.set(forwardAxis);
@@ -28981,6 +29235,7 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private void advanceCombatTimers(float delta) {
+            clearCollisionFieldBlockedRevengeEffects();
             recentImpactTimer = Math.max(0f, recentImpactTimer - delta);
             if (recentImpactTimer == 0f) {
                 lastAttackerId = -1;
@@ -29006,12 +29261,39 @@ public class RatassGame extends ApplicationAdapter {
             }
         }
 
+        private void clearCollisionFieldBlockedRevengeEffects() {
+            RogueliteCarUpgrades upgrades = effectiveRogueliteUpgrades();
+            if (!upgrades.isCollisionFieldActive()) {
+                return;
+            }
+            if (forcedBrakeTimer > 0f) {
+                forcedBrakeTimer = 0f;
+                clearDebuffTargetIcon(RogueliteCardId.EMP_SNARE);
+                clearDebuffTargetIcon(RogueliteCardId.VOID_ANCHOR);
+                if (voidAnchorVisual != null) {
+                    voidAnchorVisual.reset();
+                }
+            }
+            if (revengeGripTimer > 0f) {
+                revengeGripTimer = 0f;
+                revengeGripMultiplier = 1f;
+                clearDebuffTargetIcon(RogueliteCardId.TAR_TETHER);
+            }
+            if (revengeHookTarget != null) {
+                clearRevengeHookPull();
+            }
+        }
+
         private boolean hasRecentArenaWallContact() {
             return arenaWallContactTimer > 0f;
         }
 
         private boolean queueMapWallBounce(float normalX, float normalY) {
-            if (!active || body == null || mapWallBounceCooldown > 0f) {
+            if (!active || body == null) {
+                return false;
+            }
+            unstoppableWallContactThisStep = true;
+            if (mapWallBounceCooldown > 0f) {
                 return false;
             }
             arenaWallCorrection.set(normalX, normalY);
@@ -29696,6 +29978,9 @@ public class RatassGame extends ApplicationAdapter {
             if (!active || body == null) {
                 return;
             }
+            if (effectiveRogueliteUpgrades().isCollisionFieldActive()) {
+                return;
+            }
 
             float speedReboundBoost = 1f
                     + MathUtils.clamp(
@@ -29734,6 +30019,100 @@ public class RatassGame extends ApplicationAdapter {
             impactSlideTimer = Math.max(impactSlideTimer, IMPACT_SLIDE_DURATION);
         }
 
+        private void applyCarCollisionMassCorrection(
+                Vector2 normal,
+                float direction,
+                float normalImpulse) {
+            float collisionMassMultiplier =
+                    drivingUpgrades().getCarCollisionMassMultiplier();
+            if (!active
+                    || body == null
+                    || normalImpulse <= 0f
+                    || collisionMassMultiplier <= 1f
+                    || isUnstoppable()) {
+                return;
+            }
+            float cancelledImpulseFraction =
+                    CarCollisionMassResponse.correctionFraction(collisionMassMultiplier);
+            body.applyLinearImpulse(
+                    normal.x * normalImpulse * direction * cancelledImpulseFraction,
+                    normal.y * normalImpulse * direction * cancelledImpulseFraction,
+                    body.getWorldCenter().x,
+                    body.getWorldCenter().y,
+                    true);
+        }
+
+        private boolean isUnstoppable() {
+            return active
+                    && body != null
+                    && effectiveRogueliteUpgrades().isCollisionFieldActive();
+        }
+
+        private void captureUnstoppableStepStart() {
+            unstoppableStepCaptured = isUnstoppable();
+            unstoppableCarContactThisStep = false;
+            unstoppableWallContactThisStep = false;
+            if (!unstoppableStepCaptured) {
+                return;
+            }
+            unstoppableStepStartX = body.getPosition().x;
+            unstoppableStepStartY = body.getPosition().y;
+            unstoppableStepStartAngle = body.getAngle();
+        }
+
+        private void recordUnstoppableCarContact() {
+            if (unstoppableStepCaptured && isUnstoppable()) {
+                unstoppableCarContactThisStep = true;
+            }
+        }
+
+        private void cancelUnstoppableContactImpulse(
+                Vector2 normal,
+                float direction,
+                float normalImpulse,
+                float tangentImpulse,
+                Vector2 contactPoint) {
+            if (!isUnstoppable() || normal == null || contactPoint == null) {
+                return;
+            }
+            body.applyLinearImpulse(
+                    CarCollisionMassResponse.cancellationImpulseX(
+                            normal.x,
+                            normal.y,
+                            normalImpulse,
+                            tangentImpulse,
+                            direction),
+                    CarCollisionMassResponse.cancellationImpulseY(
+                            normal.x,
+                            normal.y,
+                            normalImpulse,
+                            tangentImpulse,
+                            direction),
+                    contactPoint.x,
+                    contactPoint.y,
+                    true);
+        }
+
+        private void restoreUnstoppableMotion(float delta) {
+            if (!unstoppableStepCaptured
+                    || !unstoppableCarContactThisStep
+                    || unstoppableWallContactThisStep
+                    || hasRecentArenaWallContact()
+                    || !isUnstoppable()) {
+                return;
+            }
+            Vector2 velocity = body.getLinearVelocity();
+            body.setTransform(
+                    CarCollisionMassResponse.collisionFreeCoordinate(
+                            unstoppableStepStartX, velocity.x, delta),
+                    CarCollisionMassResponse.collisionFreeCoordinate(
+                            unstoppableStepStartY, velocity.y, delta),
+                    CarCollisionMassResponse.collisionFreeCoordinate(
+                            unstoppableStepStartAngle,
+                            body.getAngularVelocity(),
+                            delta));
+        }
+
         private void clampPendingImpactImpulse() {
             float maxStoredImpulse = physics().maxCollisionImpulse * 1.35f;
             if (pendingImpactImpulse.len2() > maxStoredImpulse * maxStoredImpulse) {
@@ -29754,6 +30133,9 @@ public class RatassGame extends ApplicationAdapter {
             lastAttackerId = attacker == null ? -1 : attacker.template.vehicleId;
             recentImpactTimer = RECENT_IMPACT_DURATION;
             effectiveRogueliteUpgrades().onCollision(impactStrength);
+            if (effectiveRogueliteUpgrades().isCollisionFieldActive()) {
+                return;
+            }
             controlLockTimer = Math.max(
                     controlLockTimer,
                     MathUtils.clamp(
@@ -29826,6 +30208,14 @@ public class RatassGame extends ApplicationAdapter {
             if (other == null) {
                 return multiplier;
             }
+
+            float ownCollisionMass =
+                    drivingUpgrades().getCarCollisionMassMultiplier();
+            float otherCollisionMass =
+                    other.drivingUpgrades().getCarCollisionMassMultiplier();
+            multiplier *= CarCollisionMassResponse.reboundMultiplier(
+                    ownCollisionMass,
+                    otherCollisionMass);
 
             if (growthBoosted && other.growthBoosted) {
                 multiplier *= BOOSTED_VS_BOOSTED_REBOUND_MULTIPLIER;
@@ -29955,20 +30345,48 @@ public class RatassGame extends ApplicationAdapter {
                 body.destroyFixture(fixtures.first());
             }
 
-            PolygonShape shape = new PolygonShape();
-            shape.setAsBox(HALF_WIDTH * sizeScale, HALF_HEIGHT * sizeScale);
+            float carCollisionScale = getCarCollisionScale();
+            boolean enlargedCarCollision = carCollisionScale > 1.0001f;
+            PolygonShape roadShape = new PolygonShape();
+            roadShape.setAsBox(HALF_WIDTH * sizeScale, HALF_HEIGHT * sizeScale);
 
-            FixtureDef fixtureDef = new FixtureDef();
-            fixtureDef.shape = shape;
-            fixtureDef.density =
+            FixtureDef roadFixtureDef = new FixtureDef();
+            roadFixtureDef.shape = roadShape;
+            roadFixtureDef.density =
                     physics().fixtureDensity * getMassMultiplier() / (sizeScale * sizeScale);
-            fixtureDef.friction = physics().fixtureFriction;
-            fixtureDef.restitution = physics().fixtureRestitution;
-            fixtureDef.filter.groupIndex = mirrorCollisionGroupIndex;
-            body.createFixture(fixtureDef);
-            shape.dispose();
+            roadFixtureDef.friction = physics().fixtureFriction;
+            roadFixtureDef.restitution = physics().fixtureRestitution;
+            roadFixtureDef.filter.groupIndex = mirrorCollisionGroupIndex;
+            roadFixtureDef.filter.categoryBits =
+                    CarCollisionLayers.roadFixtureCategory(enlargedCarCollision);
+            roadFixtureDef.filter.maskBits =
+                    CarCollisionLayers.roadFixtureMask(enlargedCarCollision);
+            body.createFixture(roadFixtureDef);
+            roadShape.dispose();
+
+            if (enlargedCarCollision) {
+                PolygonShape carShape = new PolygonShape();
+                carShape.setAsBox(
+                        HALF_WIDTH * sizeScale * carCollisionScale,
+                        HALF_HEIGHT * sizeScale * carCollisionScale);
+                FixtureDef carFixtureDef = new FixtureDef();
+                carFixtureDef.shape = carShape;
+                carFixtureDef.density = 0f;
+                carFixtureDef.friction = CAR_CONTACT_FRICTION;
+                carFixtureDef.restitution = physics().fixtureRestitution;
+                carFixtureDef.filter.groupIndex = mirrorCollisionGroupIndex;
+                carFixtureDef.filter.categoryBits = CarCollisionLayers.CARS;
+                carFixtureDef.filter.maskBits = CarCollisionLayers.CARS;
+                body.createFixture(carFixtureDef);
+                carShape.dispose();
+            }
             body.resetMassData();
             collisionFixtureMassMultiplier = getMassMultiplier();
+            collisionFixtureCarScale = carCollisionScale;
+        }
+
+        private float getCarCollisionScale() {
+            return Math.max(1f, drivingUpgrades().getCarCollisionScale());
         }
 
         private float getMassMultiplier() {
@@ -30001,6 +30419,18 @@ public class RatassGame extends ApplicationAdapter {
 
         private float getSizeScale() {
             return sizeScale;
+        }
+
+        private float getPresentationSizeScale() {
+            return presentationCarScale;
+        }
+
+        private float getPresentationWidth() {
+            return getWidth() * getPresentationSizeScale();
+        }
+
+        private float getPresentationHeight() {
+            return getHeight() * getPresentationSizeScale();
         }
 
         private float getGrowthPickupReach() {
@@ -31034,6 +31464,7 @@ public class RatassGame extends ApplicationAdapter {
         OFFROAD_HARD,
         OFFROAD_REVERSED,
         ONROAD_MISALIGNED,
+        MAP014_INFLECTION,
         BLOCKED_FRONT,
         NOSE_TO_NOSE;
 
@@ -31046,7 +31477,17 @@ public class RatassGame extends ApplicationAdapter {
                     ? "mixed"
                     : configured.trim().toLowerCase(Locale.ROOT).replace('-', '_');
             if ("mixed".equals(normalized) || normalized.length() == 0) {
-                RecoveryTrainingScenario[] scenarios = values();
+                RecoveryTrainingScenario[] scenarios = {
+                        OFFROAD_NEAR,
+                        OFFROAD_SHALLOW,
+                        OFFROAD_ANGLED,
+                        OFFROAD_HARD,
+                        OFFROAD_REVERSED,
+                        ONROAD_MISALIGNED,
+                        BLOCKED_FRONT,
+                        NOSE_TO_NOSE,
+                        MAP014_INFLECTION
+                };
                 return scenarios[Math.floorMod(episodeIndex, scenarios.length)];
             }
             if ("offroad_near".equals(normalized)) {
@@ -31067,6 +31508,9 @@ public class RatassGame extends ApplicationAdapter {
             if ("onroad_misaligned".equals(normalized)
                     || "onroad_stuck".equals(normalized)) {
                 return ONROAD_MISALIGNED;
+            }
+            if ("map014_inflection".equals(normalized)) {
+                return MAP014_INFLECTION;
             }
             if ("blocked_front".equals(normalized)
                     || "blocked".equals(normalized)) {
@@ -32285,7 +32729,8 @@ public class RatassGame extends ApplicationAdapter {
                             * MathUtils.random(85f, 180f)
                             * MathUtils.degreesToRadians;
                 }
-            } else if (recoveryScenario == RecoveryTrainingScenario.ONROAD_MISALIGNED) {
+            } else if (recoveryScenario == RecoveryTrainingScenario.ONROAD_MISALIGNED
+                    || recoveryScenario == RecoveryTrainingScenario.MAP014_INFLECTION) {
                 float side = MathUtils.random(-0.35f, 0.35f);
                 float clearance = Math.min(
                         map.getRouteLeftClearance(routeProgress),
@@ -32323,6 +32768,11 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private float selectRecoveryRouteProgress(ArenaMap map, float routeLength) {
+            if (recoveryScenario == RecoveryTrainingScenario.MAP014_INFLECTION) {
+                // The upper spiral joins the following leg around 12% route progress.
+                // Small variation covers both sides of the centerline inflection.
+                return routeLength * MathUtils.random(0.112f, 0.132f);
+            }
             float selectedProgress = MathUtils.random(0f, routeLength);
             if (recoveryScenario != RecoveryTrainingScenario.NOSE_TO_NOSE) {
                 return selectedProgress;
@@ -33438,8 +33888,10 @@ public class RatassGame extends ApplicationAdapter {
                             1f);
                     float launchReward = 0f;
                     if (speedRatio < 0.08f && routeTargetsReached[agentIndex] == 0) {
-                        launchReward = currentActionThrottle[agentIndex]
-                                * recoveryTargetAlignment(agentIndex, after)
+                        launchReward = RecoveryRewardShaping.launchSignal(
+                                        currentActionThrottle[agentIndex],
+                                        currentActionTurn[agentIndex],
+                                        recoveryTargetAlignment(agentIndex, after))
                                 * config.recoveryLaunchThrottleReward;
                     }
                     float steeringReward = routeTargetsReached[agentIndex] == 0

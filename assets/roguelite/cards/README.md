@@ -1,6 +1,6 @@
 # Card Artwork Atlas
 
-Each theme provides a 6 by 19 artwork atlas at
+Each theme provides a 6 by 22 artwork atlas at
 `assets/theme/<theme>/roguelite/cards/card_art_atlas_v3.png`. Cells are addressed
 in row-major order by `RogueliteCardDefinition.artworkIndex`.
 
@@ -25,6 +25,9 @@ in row-major order by `RogueliteCardDefinition.artworkIndex`.
 | 17 | Nemesis Engine | Apex Expert | Sprint Expert | Slide Expert | Apex Master | Sprint Master |
 | 18 | Slide Master | Hunter Storm | Ace Hotline | Priority Hotline | Chrono Shift | Temporal Dominion |
 | 19 | Traction Focus | Traction Expert | Traction Master | Agility Focus | Agility Expert | Agility Master |
+| 20 | Technique Coupler | Technique Matrix | Technique Singularity | Powerup Link | Powerup Matrix | Powerup Nexus |
+| 21 | Bulk Field | Titan Field | Colossus Field | Tune Link | Technique Link | Grid Link |
+| 22 | Apex Key | Reserved | Reserved | Reserved | Reserved | Reserved |
 
 Every non-driver card has a unique artwork cell. Artwork must depict the card's
 actual mechanic in that theme; do not reuse another theme's cell with a tint or
@@ -36,17 +39,17 @@ Driver portraits are theme assets at
 `assets/theme/<theme>/drivers/driver_art_atlas.png`. Each sheet is a 5 by 2
 atlas mapped in row-major order from `profile00` through `profile09`.
 
-`ability_effect_atlas.png` is the active 19 by 1 alpha atlas for the centered
+`ability_effect_atlas.png` is the active 23 by 1 alpha atlas for the centered
 powerup and revenge effects. Cells map to Nitro T1, Grip T1, Ram, Draft, Shield,
 Mirror, Cloak, Grudge Spark, Vengeance Core, Nemesis Engine, Nitro T2, Nitro T3,
-Grip T2, Grip T3, Time T1, Time T2, Time T3, Ace Hotline, and Priority Hotline.
-The renderer tints the generated
-artwork by card type and keeps projectiles, physical mirror cars, and cloak
-transparency on their dedicated presentation paths. The Hotline cards use the
-dedicated green `effects/best_driver_hotline.png` artwork under the car; Priority
-Hotline keeps that visual and its Powerup indicator active while equipped. All effect
-sprites are loaded and updated only by the
-presentation path, so they do not affect RL training.
+Grip T2, Grip T3, Time T1, Time T2, Time T3, Ace Hotline, Priority Hotline,
+Antenna T1, Antenna T2, Antenna T3, and the Apex Key Tier 4 unlock.
+Nitro is anchored behind the exhaust. Every other under-car sprite reserves a
+transparent center and carries its readable symbols around the car as an aura.
+The renderer tints the generated artwork by card type and keeps projectiles,
+physical mirror cars, and cloak transparency on their dedicated presentation
+paths. All effect sprites are loaded and updated only by the presentation path,
+so they do not affect RL training.
 
 `card_shell_atlas_v2.png` is the 5 by 2 presentation atlas. Columns are
 Driver, Tuning, Technique, Powerup, and Revenge. The first row contains filled-card
@@ -87,16 +90,19 @@ Regenerate the ability-effect alpha atlas from its generated chroma-key source
 with:
 
 ```bash
-javac -d /tmp/ratass-visual-tools tools/BuildAbilityEffectAtlas.java
+javac -d /tmp/ratass-visual-tools \
+  tools/BuildAbilityEffectAtlas.java \
+  tools/BuildOrbitAura.java \
+  tools/ReplaceImageAtlasCells.java
 java -Djava.awt.headless=true -cp /tmp/ratass-visual-tools \
   BuildAbilityEffectAtlas \
   tools/art_sources/ability_effect_source.png \
   assets/roguelite/cards/ability_effect_atlas.png \
   15 344 1629 261 7 \
   --replace-column 1 tools/art_sources/ability_effects/grip_t1.png \
-  tools/art_sources/card_art/grudge_spark.png \
-  tools/art_sources/card_art/vengeance_core.png \
-  tools/art_sources/card_art/nemesis_engine.png \
+  tools/art_sources/ability_effects/revenge_boost_t1.png \
+  tools/art_sources/ability_effects/revenge_boost_t2.png \
+  tools/art_sources/ability_effects/revenge_boost_t3.png \
   tools/art_sources/ability_effects/nitro_t2.png \
   tools/art_sources/ability_effects/nitro_t3.png \
   tools/art_sources/ability_effects/grip_t2.png \
@@ -104,6 +110,32 @@ java -Djava.awt.headless=true -cp /tmp/ratass-visual-tools \
   tools/art_sources/ability_effects/time_t1.png \
   tools/art_sources/ability_effects/time_t2.png \
   tools/art_sources/ability_effects/time_t3.png \
-  tools/art_sources/ability_effects/hotline_t1.png \
-  tools/art_sources/ability_effects/hotline_t2.png
+  tools/art_sources/ability_effects/hotline_aura_t1.png \
+  tools/art_sources/ability_effects/hotline_aura_t2.png \
+  tools/art_sources/ability_effects/antenna_t1.png \
+  tools/art_sources/ability_effects/antenna_t2.png \
+  tools/art_sources/ability_effects/antenna_t3.png \
+  tools/art_sources/ability_effects/tier_four_unlock.png \
+  --hollow-column 1 --hollow-column 2 --hollow-column 3 \
+  --hollow-column 4 --hollow-column 7 --hollow-column 8 \
+  --hollow-column 9 --hollow-column 12 --hollow-column 13 \
+  --hollow-column 14 --hollow-column 15 --hollow-column 16 \
+  --hollow-column 17 --hollow-column 18 --hollow-column 19 \
+  --hollow-column 20 --hollow-column 21 --hollow-column 22
+```
+
+`BuildOrbitAura` places a family icon around the car before the center mask is
+applied. Replace themed card artwork without rebuilding unrelated cells with:
+
+```bash
+java -Djava.awt.headless=true -cp /tmp/ratass-visual-tools \
+  ReplaceImageAtlasCells \
+  assets/theme/gt3/roguelite/cards/card_art_atlas_v3.png \
+  assets/theme/gt3/roguelite/cards/card_art_atlas_v3.png \
+  6 250 126 tools/art_sources/card_art/gt3/apex_key.png
+java -Djava.awt.headless=true -cp /tmp/ratass-visual-tools \
+  ReplaceImageAtlasCells \
+  assets/theme/halloween/roguelite/cards/card_art_atlas_v3.png \
+  assets/theme/halloween/roguelite/cards/card_art_atlas_v3.png \
+  6 250 126 tools/art_sources/card_art/halloween/apex_key.png
 ```

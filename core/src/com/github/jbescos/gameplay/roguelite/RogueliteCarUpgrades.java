@@ -21,6 +21,7 @@ public final class RogueliteCarUpgrades {
     private float techniqueEffectMultiplier = 1f;
     private float powerupEffectMultiplier = 1f;
     private float powerupCooldownRateMultiplier = 1f;
+    private AntennaNetworkBonuses antennaNetwork = AntennaNetworkBonuses.NONE;
     private boolean overtakeInjectorEnabled;
     private RogueliteCardId activeRevengeCardId;
     private long revengeActivationSequence;
@@ -50,6 +51,7 @@ public final class RogueliteCarUpgrades {
         techniqueEffectMultiplier = 1f;
         powerupEffectMultiplier = 1f;
         powerupCooldownRateMultiplier = 1f;
+        antennaNetwork = AntennaNetworkBonuses.NONE;
         overtakeInjectorEnabled = false;
 
         if (loadout != null) {
@@ -92,6 +94,12 @@ public final class RogueliteCarUpgrades {
         refreshActiveCards();
     }
 
+    public void setAntennaNetwork(AntennaNetworkBonuses antennaNetwork) {
+        this.antennaNetwork = antennaNetwork == null
+                ? AntennaNetworkBonuses.NONE
+                : antennaNetwork;
+    }
+
     private static RogueliteUpgradeEffect takePreviousEffect(
             List<RogueliteUpgradeEffect> previousEffects,
             RogueliteCardId cardId) {
@@ -129,6 +137,17 @@ public final class RogueliteCarUpgrades {
 
     public RogueliteCardId getActivePowerupCardId() {
         return getActiveCardId(RogueliteSlotType.POWERUP);
+    }
+
+    public RogueliteCardId getActiveAntennaCardId() {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            RogueliteCardId cardId = effect.behaviorCardId();
+            if (effect.isActive() && AntennaPowerupSpec.isAntennaCard(cardId)) {
+                return cardId;
+            }
+        }
+        return null;
     }
 
     public RogueliteCardId getActiveTechniqueCardId() {
@@ -678,9 +697,14 @@ public final class RogueliteCarUpgrades {
     }
 
     public float getAccelerationMultiplier(float externalMultiplier) {
-        float bonus = 0f;
+        float bonus = sharesTuningThroughAntenna()
+                ? antennaNetwork.getPowerBonus()
+                : 0f;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
+            if (isReplacedTuningEffect(effect)) {
+                continue;
+            }
             bonus += effect.accelerationBonus() * effectStrengthMultiplier(effect);
         }
         float combined = (1f + bonus) * externalMultiplier;
@@ -690,9 +714,15 @@ public final class RogueliteCarUpgrades {
     }
 
     public float getDriveForceLimitMultiplier() {
-        float multiplier = 1f;
+        float multiplier = sharesTuningThroughAntenna()
+                ? (1f + antennaNetwork.getPowerBonus())
+                        / antennaNetwork.getMassMultiplier()
+                : 1f;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
+            if (isReplacedTuningEffect(effect)) {
+                continue;
+            }
             multiplier *= amplifyDeviation(
                     effect.driveForceLimitMultiplier(),
                     effectStrengthMultiplier(effect));
@@ -737,9 +767,14 @@ public final class RogueliteCarUpgrades {
     }
 
     public float getAerodynamicEfficiencyMultiplier(float externalMultiplier) {
-        float multiplier = 1f;
+        float multiplier = sharesTuningThroughAntenna()
+                ? 1f / antennaNetwork.getAerodynamicEfficiency()
+                : 1f;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
+            if (isReplacedTuningEffect(effect)) {
+                continue;
+            }
             multiplier *= amplifyDeviation(
                     effect.dragMultiplier(),
                     effectStrengthMultiplier(effect));
@@ -755,9 +790,14 @@ public final class RogueliteCarUpgrades {
     }
 
     public float getMassMultiplier(float externalMultiplier) {
-        float multiplier = 1f;
+        float multiplier = sharesTuningThroughAntenna()
+                ? antennaNetwork.getMassMultiplier()
+                : 1f;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
+            if (isReplacedTuningEffect(effect)) {
+                continue;
+            }
             multiplier *= amplifyDeviation(
                     effect.massMultiplier(),
                     effectStrengthMultiplier(effect));
@@ -779,9 +819,14 @@ public final class RogueliteCarUpgrades {
             float slip,
             float surfaceMultiplier,
             float carEffectMultiplier) {
-        float bonus = 0f;
+        float bonus = sharesTuningThroughAntenna()
+                ? antennaNetwork.getGripBonus()
+                : 0f;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
+            if (isReplacedTuningEffect(effect)) {
+                continue;
+            }
             bonus += effect.gripBonus(slip) * effectStrengthMultiplier(effect);
         }
         float carGrip = (1f + bonus) * carEffectMultiplier;
@@ -818,9 +863,17 @@ public final class RogueliteCarUpgrades {
         float scale = 1f;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
+            if (isReplacedTechniqueEffect(effect)) {
+                continue;
+            }
             scale *= amplifyDeviation(
                     effect.powerDeviationScale(),
                     effectStrengthMultiplier(effect));
+        }
+        if (sharesActiveTechniqueThroughAntenna()) {
+            scale *= amplifyDeviation(
+                    antennaNetwork.getPowerTechniqueScale(),
+                    techniqueEffectMultiplier);
         }
         return scale;
     }
@@ -829,9 +882,17 @@ public final class RogueliteCarUpgrades {
         float scale = 1f;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
+            if (isReplacedTechniqueEffect(effect)) {
+                continue;
+            }
             scale *= amplifyDeviation(
                     effect.gripDeviationScale(),
                     effectStrengthMultiplier(effect));
+        }
+        if (sharesActiveTechniqueThroughAntenna()) {
+            scale *= amplifyDeviation(
+                    antennaNetwork.getGripTechniqueScale(),
+                    techniqueEffectMultiplier);
         }
         return scale;
     }
@@ -840,9 +901,17 @@ public final class RogueliteCarUpgrades {
         float scale = 1f;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
+            if (isReplacedTechniqueEffect(effect)) {
+                continue;
+            }
             scale *= amplifyDeviation(
                     effect.aeroDeviationScale(),
                     effectStrengthMultiplier(effect));
+        }
+        if (sharesActiveTechniqueThroughAntenna()) {
+            scale *= amplifyDeviation(
+                    antennaNetwork.getAeroTechniqueScale(),
+                    techniqueEffectMultiplier);
         }
         return scale;
     }
@@ -851,11 +920,52 @@ public final class RogueliteCarUpgrades {
         float scale = 1f;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
+            if (isReplacedTechniqueEffect(effect)) {
+                continue;
+            }
             scale *= amplifyDeviation(
                     effect.massDeviationScale(),
                     effectStrengthMultiplier(effect));
         }
+        if (sharesActiveTechniqueThroughAntenna()) {
+            scale *= amplifyDeviation(
+                    antennaNetwork.getMassTechniqueScale(),
+                    techniqueEffectMultiplier);
+        }
         return scale;
+    }
+
+    private boolean sharesTuningThroughAntenna() {
+        return AntennaPowerupSpec.sharesTuning(configuredAntennaCardId());
+    }
+
+    private boolean sharesActiveTechniqueThroughAntenna() {
+        if (!AntennaPowerupSpec.sharesTechnique(configuredAntennaCardId())) {
+            return false;
+        }
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            if (effect instanceof RaceTechniqueEffect
+                    && ((RaceTechniqueEffect) effect)
+                            .isMultiplicativeTechniqueActive()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private RogueliteCardId configuredAntennaCardId() {
+        return getActiveAntennaCardId();
+    }
+
+    private boolean isReplacedTuningEffect(RogueliteUpgradeEffect effect) {
+        return sharesTuningThroughAntenna()
+                && effect instanceof TieredTuningEffect;
+    }
+
+    private boolean isReplacedTechniqueEffect(RogueliteUpgradeEffect effect) {
+        return sharesActiveTechniqueThroughAntenna()
+                && effect instanceof RaceTechniqueEffect;
     }
 
     private static float amplifyDeviation(float multiplier, float scale) {
@@ -899,6 +1009,34 @@ public final class RogueliteCarUpgrades {
             multiplier *= amplifyDeviation(
                     effect.frontCollisionPushMultiplier(),
                     effectStrengthMultiplier(effect));
+        }
+        return multiplier;
+    }
+
+    public float getCarCollisionScale() {
+        float areaMultiplier = 1f;
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            float effectAreaMultiplier = effect.carCollisionAreaMultiplier();
+            if (effectAreaMultiplier > 1f) {
+                areaMultiplier = Math.max(
+                        areaMultiplier,
+                        effectAreaMultiplier * effectStrengthMultiplier(effect));
+            }
+        }
+        return (float) Math.sqrt(areaMultiplier);
+    }
+
+    public float getCarCollisionMassMultiplier() {
+        float multiplier = 1f;
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            float effectMultiplier = effect.carCollisionMassMultiplier();
+            if (effectMultiplier > 1f) {
+                multiplier = Math.max(
+                        multiplier,
+                        effectMultiplier * effectStrengthMultiplier(effect));
+            }
         }
         return multiplier;
     }
@@ -1020,6 +1158,24 @@ public final class RogueliteCarUpgrades {
 
     public boolean blocksHostileEffects() {
         return isInvisible();
+    }
+
+    public boolean isCollisionFieldActive() {
+        for (int i = 0; i < effects.size(); i++) {
+            if (effects.get(i).carCollisionAreaMultiplier() > 1f) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean blocksRevengeCard(RogueliteCardId cardId) {
+        return isCollisionFieldActive()
+                && CollisionFieldPowerupSpec.blocksRevengeCard(cardId);
+    }
+
+    public boolean blocksOpponentAwareness() {
+        return isCollisionFieldActive();
     }
 
     public void deferInvisibilityExpiration() {

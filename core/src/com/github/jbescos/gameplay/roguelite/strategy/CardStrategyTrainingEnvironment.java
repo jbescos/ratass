@@ -1,6 +1,7 @@
 package com.github.jbescos.gameplay.roguelite.strategy;
 
 import com.github.jbescos.ai.rl.RlPolicy;
+import com.github.jbescos.gameplay.roguelite.AntennaNetworkBonuses;
 import com.github.jbescos.gameplay.roguelite.DriverProfileCatalog;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
@@ -290,14 +291,17 @@ public final class CardStrategyTrainingEnvironment {
         RogueliteCompetitorProgress progress = run.getPlayerProgress();
         float[] strengths = new float[offers.size() + 1];
         for (int i = 0; i < offers.size(); i++) {
+            AntennaNetworkBonuses network = buildAntennaNetwork(offers.get(i));
             strengths[i] = raceEstimator.estimate(
                     progress,
                     offers.get(i),
-                    STRATEGY_TEACHER_GRIP_WEIGHT);
+                    STRATEGY_TEACHER_GRIP_WEIGHT,
+                    network);
         }
         strengths[offers.size()] = raceEstimator.estimate(
                 progress,
-                STRATEGY_TEACHER_GRIP_WEIGHT);
+                STRATEGY_TEACHER_GRIP_WEIGHT,
+                buildAntennaNetwork(null));
         return strengths;
     }
 
@@ -364,9 +368,11 @@ public final class CardStrategyTrainingEnvironment {
         rankCompetitors();
         transitionReward += rewards.lapWin(racePositions[0]);
         updateRunRaceState();
+        AntennaNetworkBonuses network = buildAntennaNetwork(null);
         for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
             RogueliteCompetitorProgress progress = progress(vehicleId);
-            float strength = raceEstimator.estimate(progress, weatherGripWeight);
+            float strength = raceEstimator.estimate(
+                    progress, weatherGripWeight, network);
             int amount = Math.max(
                     4,
                     Math.min(
@@ -419,12 +425,14 @@ public final class CardStrategyTrainingEnvironment {
 
     private void rankCompetitors() {
         List<RankedCompetitor> ranked = new ArrayList<RankedCompetitor>(fieldSize);
+        AntennaNetworkBonuses network = buildAntennaNetwork(null);
         for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
             float noise = (random.nextFloat() + random.nextFloat() + random.nextFloat() - 1.5f)
                     * 0.18f;
             ranked.add(new RankedCompetitor(
                     vehicleId,
-                    raceEstimator.estimate(progress(vehicleId), weatherGripWeight) + noise));
+                    raceEstimator.estimate(
+                            progress(vehicleId), weatherGripWeight, network) + noise));
         }
         Collections.sort(ranked, new Comparator<RankedCompetitor>() {
             @Override
@@ -464,6 +472,22 @@ public final class CardStrategyTrainingEnvironment {
         finalPosition = championshipPositions[0];
         transitionReward += rewards.championship(finalPosition, fieldSize);
         done = true;
+    }
+
+    private AntennaNetworkBonuses buildAntennaNetwork(
+            RogueliteCardOffer playerPreview) {
+        AntennaNetworkBonuses.Builder builder = AntennaNetworkBonuses.builder();
+        RogueliteCardId previewCard = playerPreview == null || playerPreview.isDriver()
+                ? null
+                : playerPreview.getCard().getId();
+        for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
+            if (vehicleId == 0) {
+                builder.include(progress(vehicleId).getLoadout(), previewCard);
+            } else {
+                builder.include(progress(vehicleId).getLoadout());
+            }
+        }
+        return builder.build();
     }
 
     private CardStrategyContext buildContext() {

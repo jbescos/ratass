@@ -26,6 +26,7 @@ public final class RogueliteCompetitorProgress {
     private RogueliteExperienceAwards.Reason lastExperienceReason;
     private int lastExperienceAmount;
     private int pendingRewards;
+    private boolean tierFourUnlocked;
 
     RogueliteCompetitorProgress(String defaultDriverProfileId) {
         this(defaultDriverProfileId, CustomGameRules.DEFAULT_LEVEL_XP_INCREMENT);
@@ -103,6 +104,18 @@ public final class RogueliteCompetitorProgress {
 
     public int getPendingRewards() {
         return pendingRewards;
+    }
+
+    public boolean isTierFourUnlocked() {
+        return tierFourUnlocked;
+    }
+
+    boolean unlockTierFour() {
+        if (tierFourUnlocked) {
+            return false;
+        }
+        tierFourUnlocked = true;
+        return true;
     }
 
     public boolean hasPendingReward() {
@@ -187,7 +200,8 @@ public final class RogueliteCompetitorProgress {
     void restore(
             int restoredLevel,
             int restoredExperience,
-            int restoredPendingRewards) {
+            int restoredPendingRewards,
+            boolean restoredTierFourUnlocked) {
         if (restoredLevel < 1
                 || restoredExperience < 0
                 || restoredExperience >= experienceForLevel(restoredLevel)
@@ -197,6 +211,7 @@ public final class RogueliteCompetitorProgress {
         level = restoredLevel;
         experience = restoredExperience;
         pendingRewards = restoredPendingRewards > 0 ? 1 : 0;
+        tierFourUnlocked = restoredTierFourUnlocked;
     }
 
     static int experienceForPosition(int position, int fieldSize) {

@@ -1,21 +1,11 @@
 package com.github.jbescos.gameplay.roguelite;
 
-final class BestDriverOverrideEffect extends RogueliteUpgradeEffect {
+final class BestDriverOverrideEffect extends RepeatingPowerupEffect {
     BestDriverOverrideEffect(RogueliteCardId cardId) {
         super(cardId);
         if (cardId != RogueliteCardId.PRIORITY_HOTLINE) {
             throw new IllegalArgumentException("Unsupported best-driver override: " + cardId);
         }
-    }
-
-    @Override
-    boolean isActive() {
-        return true;
-    }
-
-    @Override
-    float readiness() {
-        return 1f;
     }
 
     @Override
@@ -25,6 +15,6 @@ final class BestDriverOverrideEffect extends RogueliteUpgradeEffect {
 
     @Override
     boolean usesBestDriver() {
-        return true;
+        return isActive();
     }
 }

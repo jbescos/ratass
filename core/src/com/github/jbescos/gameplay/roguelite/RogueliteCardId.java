@@ -124,5 +124,14 @@ public enum RogueliteCardId {
 
     GHOST_CLOAK,
     PHANTOM_CLOAK,
-    VOID_CLOAK
+    VOID_CLOAK,
+
+    BULK_FIELD,
+    TITAN_FIELD,
+    COLOSSUS_FIELD,
+
+    TUNE_LINK,
+    TECHNIQUE_LINK,
+    GRID_LINK,
+    TIER_FOUR_SIGNAL
 }

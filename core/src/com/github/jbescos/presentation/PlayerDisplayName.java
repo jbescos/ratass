@@ -3,7 +3,7 @@ package com.github.jbescos.presentation;
 /** Normalizes the short player label used throughout the game UI. */
 public final class PlayerDisplayName {
     public static final String DEFAULT = "YOU";
-    public static final int MAX_LENGTH = 15;
+    public static final int MAX_LENGTH = 9;
 
     private PlayerDisplayName() {
     }

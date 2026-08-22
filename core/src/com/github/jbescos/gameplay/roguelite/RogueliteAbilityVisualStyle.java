@@ -21,5 +21,9 @@ public enum RogueliteAbilityVisualStyle {
     TIME_T3,
     HOTLINE_T1,
     HOTLINE_T2,
+    ANTENNA_T1,
+    ANTENNA_T2,
+    ANTENNA_T3,
+    TIER_FOUR_SIGNAL,
     ICON_ONLY
 }

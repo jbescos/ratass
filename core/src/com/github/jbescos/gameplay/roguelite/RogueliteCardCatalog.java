@@ -567,6 +567,13 @@ public final class RogueliteCardCatalog {
                 1,
                 RogueliteAbilityVisualStyle.MIRROR));
         cards.add(powerup(
+                RogueliteCardId.BULK_FIELD,
+                "Bulk Field",
+                "Projects a larger car-only collision body without changing the road footprint. Unstoppable while active.",
+                "Nearby rival: area x2 | 10s | Unstoppable\nMass +20% | Grip +5% | CD 20s",
+                1,
+                RogueliteAbilityVisualStyle.ICON_ONLY));
+        cards.add(powerup(
                 RogueliteCardId.GRIP_FAN,
                 "Grip Fan",
                 "A glowing underbody fan pins the car down as a demanding corner arrives.",
@@ -598,7 +605,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.RECOVERY_BEACON,
                 "Position Hijack",
                 "A qualified hit marks its offender. After charging, it exchanges positions only while they are ahead.",
-                "Activation: Rival hit\nAfter 3s: swap with offender if ahead",
+                "Activation: Rival hit\nAfter 1s: swap with offender if ahead",
                 2,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -625,8 +632,8 @@ public final class RogueliteCardCatalog {
         cards.add(powerup(
                 RogueliteCardId.PRIORITY_HOTLINE,
                 "Priority Hotline",
-                "Replaces the active driver with the best benchmarked driver while this Powerup is equipped.",
-                "Always active\nDriver: best avg-lap",
+                "Renews advice from the best benchmarked driver in repeating ten-second sessions.",
+                "Automatic: best avg-lap driver | 10s\nCooldown: 10s",
                 2,
                 RogueliteAbilityVisualStyle.HOTLINE_T2));
         cards.add(powerup(
@@ -643,6 +650,13 @@ public final class RogueliteCardCatalog {
                 "Nearby rival on straight: 3 cars for 5s\nShared cards and Revenge | Cooldown: 10s",
                 2,
                 RogueliteAbilityVisualStyle.MIRROR));
+        cards.add(powerup(
+                RogueliteCardId.TITAN_FIELD,
+                "Titan Field",
+                "Projects a much larger car-only collision body without changing the road footprint. Unstoppable while active.",
+                "Nearby rival: area x3 | 10s | Unstoppable\nMass +20% | Grip +5% | CD 15s",
+                2,
+                RogueliteAbilityVisualStyle.ICON_ONLY));
         cards.add(powerup(
                 RogueliteCardId.PHANTOM_CLOAK,
                 "Phantom Cloak",
@@ -672,6 +686,13 @@ public final class RogueliteCardCatalog {
                 3,
                 RogueliteAbilityVisualStyle.MIRROR));
         cards.add(powerup(
+                RogueliteCardId.COLOSSUS_FIELD,
+                "Colossus Field",
+                "Projects an enormous car-only collision body without changing the road footprint. Unstoppable while active.",
+                "Nearby rival: area x4 | 10s | Unstoppable\nMass +20% | Grip +5% | CD 10s",
+                3,
+                RogueliteAbilityVisualStyle.ICON_ONLY));
+        cards.add(powerup(
                 RogueliteCardId.HYPERDRIVE,
                 "Hyperdrive",
                 "Open road triggers an extreme launch and turns the car into a visible streak.",
@@ -700,6 +721,34 @@ public final class RogueliteCardCatalog {
                 3,
                 RogueliteAbilityVisualStyle.NITRO_T3));
         cards.add(powerup(
+                RogueliteCardId.TUNE_LINK,
+                "Tune Link",
+                "A repeating antenna links its car to every other linked car and broadcasts their best Tuning attributes.",
+                "Automatic: share best Tuning | 10s\nCooldown: 10s",
+                1,
+                RogueliteAbilityVisualStyle.ANTENNA_T1));
+        cards.add(powerup(
+                RogueliteCardId.TECHNIQUE_LINK,
+                "Technique Link",
+                "A repeating antenna shares the best attribute multipliers from linked cars whenever your equipped Technique activates.",
+                "Technique active: share multipliers | 10s\nCooldown: 10s",
+                2,
+                RogueliteAbilityVisualStyle.ANTENNA_T2));
+        cards.add(powerup(
+                RogueliteCardId.GRID_LINK,
+                "Grid Link",
+                "A championship antenna combines linked Tuning attributes and Technique multipliers into one shared network.",
+                "Automatic: share Tuning + Technique | 10s\nCooldown: 10s",
+                3,
+                RogueliteAbilityVisualStyle.ANTENNA_T3));
+        cards.add(powerup(
+                RogueliteCardId.TIER_FOUR_SIGNAL,
+                "Apex Key",
+                "Using this key permanently unlocks Tier 4 offers for this driver, even after the card is replaced.",
+                "Automatic: unlock Tier 4 permanently | 10s\nCooldown: 10s",
+                3,
+                RogueliteAbilityVisualStyle.TIER_FOUR_SIGNAL));
+        cards.add(powerup(
                 RogueliteCardId.NEMESIS_ENGINE,
                 "Nemesis Engine",
                 "An extreme green engine doubles the consequences whenever Revenge activates.",
@@ -717,7 +766,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.PAYBACK_SHIELD,
                 "Vendetta Hook",
                 "A qualified hit marks its offender. After charging, the hook pulls them back only while they are ahead.",
-                "Activation: Rival hit\nAfter 3s: if ahead, pull offender to you over 1s",
+                "Activation: Rival hit\nAfter 1s: if ahead, pull offender to you over 1s",
                 1,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -794,7 +843,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.TRIAD_COUP,
                 "Triad Coup",
                 "Binds the offender and the car directly behind you, then reverses their places while moving you to the front.",
-                "Activation: Rival hit\nAfter 3s: you lead | leading rival falls last",
+                "Activation: Rival hit\nAfter 1s: you lead | leading rival falls last",
                 3,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -1078,6 +1127,8 @@ public final class RogueliteCardCatalog {
                 return 8;
             case MIRROR_DUO:
                 return 19;
+            case BULK_FIELD:
+                return 120;
             case GRIP_FAN:
                 return 4;
             case SPORT_TUNE:
@@ -1104,6 +1155,8 @@ public final class RogueliteCardCatalog {
                 return 106;
             case MIRROR_TRIO:
                 return 42;
+            case TITAN_FIELD:
+                return 121;
             case HEAVYWEIGHT_TUNE:
                 return 15;
             case APEX_FOCUS:
@@ -1114,6 +1167,16 @@ public final class RogueliteCardCatalog {
                 return 18;
             case OVERDRIVE_COIL:
                 return 43;
+            case COLOSSUS_FIELD:
+                return 122;
+            case TUNE_LINK:
+                return 123;
+            case TECHNIQUE_LINK:
+                return 124;
+            case GRID_LINK:
+                return 125;
+            case TIER_FOUR_SIGNAL:
+                return 126;
             case CHAMPIONSHIP_TUNE:
                 return 20;
             case STRAIGHT_EXPERT:

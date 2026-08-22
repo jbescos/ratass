@@ -1,6 +1,8 @@
 package com.github.jbescos.gameplay.roguelite.strategy;
 
 import com.github.jbescos.gameplay.roguelite.CardAmplifierChain;
+import com.github.jbescos.gameplay.roguelite.AntennaNetworkBonuses;
+import com.github.jbescos.gameplay.roguelite.AntennaPowerupSpec;
 import com.github.jbescos.gameplay.roguelite.DriverProfileCatalog;
 import com.github.jbescos.gameplay.roguelite.DriverProfileMetadata;
 import com.github.jbescos.gameplay.roguelite.RogueliteCarStatSnapshot;
@@ -36,13 +38,28 @@ final class CardStrategyRaceEstimator {
     float estimate(
             RogueliteCompetitorProgress progress,
             float gripWeight) {
-        return estimate(progress, null, gripWeight);
+        return estimate(progress, null, gripWeight, AntennaNetworkBonuses.NONE);
+    }
+
+    float estimate(
+            RogueliteCompetitorProgress progress,
+            float gripWeight,
+            AntennaNetworkBonuses antennaNetwork) {
+        return estimate(progress, null, gripWeight, antennaNetwork);
     }
 
     float estimate(
             RogueliteCompetitorProgress progress,
             RogueliteCardOffer preview,
             float gripWeight) {
+        return estimate(progress, preview, gripWeight, AntennaNetworkBonuses.NONE);
+    }
+
+    float estimate(
+            RogueliteCompetitorProgress progress,
+            RogueliteCardOffer preview,
+            float gripWeight,
+            AntennaNetworkBonuses antennaNetwork) {
         RogueliteLoadout loadout = progress.getLoadout();
         DriverProfileMetadata driver = preview != null && preview.isDriver()
                 ? preview.getDriver()
@@ -50,7 +67,8 @@ final class CardStrategyRaceEstimator {
         RogueliteCardId previewCard = preview == null || preview.isDriver()
                 ? null
                 : preview.getCard().getId();
-        RogueliteCarStatSnapshot stats = RogueliteCarStatSnapshot.from(loadout, previewCard);
+        RogueliteCarStatSnapshot stats = RogueliteCarStatSnapshot.from(
+                loadout, previewCard, antennaNetwork);
         float value = driverQuality(driver) * 2f;
         value += (stats.getAccelerationMultiplier() - 1f) * 1.50f;
         value += (stats.getMaxSpeedMultiplier() - 1f) * 1.10f;
@@ -79,6 +97,9 @@ final class CardStrategyRaceEstimator {
             } else if (preview.getSlotType() == RogueliteSlotType.REVENGE) {
                 revenge = previewCard;
             }
+        }
+        if (AntennaPowerupSpec.sharesTechnique(powerup)) {
+            value += antennaNetwork.techniquePerformanceGain(technique) * 0.18f;
         }
         float techniqueEffectMultiplier =
                 RogueliteStrategyMetrics.techniqueEffectMultiplier(tuning);

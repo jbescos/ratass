@@ -675,24 +675,34 @@ def build_algorithm(args):
     try:
         config = config.training(
             gamma=args.gamma,
+            lambda_=args.gae_lambda,
             lr=args.lr,
             entropy_coeff=args.entropy_coeff,
+            clip_param=args.clip_param,
+            kl_coeff=args.kl_coeff,
+            kl_target=args.kl_target,
             train_batch_size=args.train_batch_size,
             minibatch_size=args.minibatch_size,
             num_epochs=args.num_epochs,
             grad_clip=args.grad_clip,
             vf_clip_param=args.vf_clip_param,
+            vf_loss_coeff=args.vf_loss_coeff,
         )
     except TypeError:
         config = config.training(
             gamma=args.gamma,
+            lambda_=args.gae_lambda,
             lr=args.lr,
             entropy_coeff=args.entropy_coeff,
+            clip_param=args.clip_param,
+            kl_coeff=args.kl_coeff,
+            kl_target=args.kl_target,
             train_batch_size=args.train_batch_size,
             sgd_minibatch_size=args.minibatch_size,
             num_sgd_iter=args.num_epochs,
             grad_clip=args.grad_clip,
             vf_clip_param=args.vf_clip_param,
+            vf_loss_coeff=args.vf_loss_coeff,
         )
 
     config = config.multi_agent(
@@ -972,6 +982,7 @@ def restore_algorithm_checkpoint(algorithm, checkpoint_dir: Path) -> None:
     if not learner_checkpoint.is_dir():
         return
     algorithm.learner_group.restore_from_path(str(learner_checkpoint))
+    restore_ppo_runtime_state(algorithm, checkpoint_dir)
     algorithm.env_runner_group.sync_weights(
         from_worker_or_learner_group=algorithm.learner_group,
         inference_only=True,
@@ -1064,6 +1075,80 @@ def checkpoint_path(save_result) -> str:
     return os.fspath(path) if path is not None else str(save_result)
 
 
+PPO_RUNTIME_STATE_FILE = "ratass_ppo_runtime.json"
+
+
+def _read_learner_kl_coeff(learner) -> float:
+    return float(learner.curr_kl_coeffs_per_module["shared_policy"].item())
+
+
+def _write_learner_kl_coeff(learner, value: float) -> float:
+    variable = learner.curr_kl_coeffs_per_module["shared_policy"]
+    variable.data.fill_(value)
+    return float(variable.item())
+
+
+def current_algorithm_kl_coeff(algorithm) -> Optional[float]:
+    learner_group = getattr(algorithm, "learner_group", None)
+    if learner_group is None:
+        return None
+    results = learner_group.foreach_learner(_read_learner_kl_coeff)
+    for result in results.ignore_errors():
+        value = float(result.get())
+        if math.isfinite(value):
+            return value
+    return None
+
+
+def set_algorithm_kl_coeff(algorithm, value: float) -> bool:
+    learner_group = getattr(algorithm, "learner_group", None)
+    if learner_group is None:
+        return False
+    results = learner_group.foreach_learner(
+        _write_learner_kl_coeff,
+        value=value,
+    )
+    return any(result.ok for result in results)
+
+
+def write_ppo_runtime_state(algorithm, checkpoint_dir: Path) -> None:
+    kl_coeff = current_algorithm_kl_coeff(algorithm)
+    if kl_coeff is None:
+        return
+    state_path = checkpoint_dir / PPO_RUNTIME_STATE_FILE
+    temporary_path = state_path.with_suffix(".tmp")
+    with temporary_path.open("w", encoding="utf-8") as handle:
+        json.dump({"kl_coeff": kl_coeff}, handle, sort_keys=True)
+        handle.write("\n")
+    os.replace(temporary_path, state_path)
+
+
+def restore_ppo_runtime_state(algorithm, checkpoint_dir: Path) -> None:
+    state_path = checkpoint_dir / PPO_RUNTIME_STATE_FILE
+    if not state_path.exists():
+        return
+    try:
+        with state_path.open("r", encoding="utf-8") as handle:
+            kl_coeff = float(json.load(handle)["kl_coeff"])
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        print(f"ppo_runtime_state_ignored path={state_path}", flush=True)
+        return
+    if not math.isfinite(kl_coeff) or kl_coeff < 0.0:
+        print(f"ppo_runtime_state_ignored path={state_path}", flush=True)
+        return
+    if set_algorithm_kl_coeff(algorithm, kl_coeff):
+        print(
+            f"ppo_runtime_state_restored kl_coeff={kl_coeff:.5f} path={state_path}",
+            flush=True,
+        )
+
+
+def save_algorithm_checkpoint(algorithm, destination: Path) -> str:
+    saved_path = checkpoint_path(algorithm.save(str(destination)))
+    write_ppo_runtime_state(algorithm, Path(saved_path))
+    return saved_path
+
+
 def capture_checkpoint_candidate(
         algorithm,
         candidate_root: Path,
@@ -1074,7 +1159,7 @@ def capture_checkpoint_candidate(
     destination = candidate_root / f"iteration-{iteration:06d}"
     if destination.exists():
         shutil.rmtree(destination)
-    saved_path = checkpoint_path(algorithm.save(str(destination)))
+    saved_path = save_algorithm_checkpoint(algorithm, destination)
     return CheckpointCandidate(
         iteration=iteration,
         reward_mean=reward_mean,
@@ -1576,7 +1661,10 @@ def maybe_promote_best_policy(
     if archived_checkpoint.exists():
         shutil.rmtree(archived_checkpoint)
     archived_checkpoint.parent.mkdir(parents=True, exist_ok=True)
-    archived_checkpoint_path = checkpoint_path(algorithm.save(str(archived_checkpoint)))
+    archived_checkpoint_path = save_algorithm_checkpoint(
+        algorithm,
+        archived_checkpoint,
+    )
     next_state = {
         "best_score": score,
         "iteration": iteration,
@@ -1632,7 +1720,7 @@ def establish_stage_baseline(algorithm, args, checkpoint_dir: Path) -> Dict[str,
     if has_restorable_best_checkpoint(state) and state_uses_current_evaluation_score(state):
         archived_path = Path(str(state["best_rllib_checkpoint"])).resolve()
         restore_algorithm_checkpoint(algorithm, archived_path)
-        restored_path = checkpoint_path(algorithm.save(str(checkpoint_dir)))
+        restored_path = save_algorithm_checkpoint(algorithm, checkpoint_dir)
         print(
             f"stage_baseline_restored iteration={state.get('iteration', '?')} "
             f"score={state.get('best_score', '?')} "
@@ -1656,8 +1744,7 @@ def establish_stage_baseline(algorithm, args, checkpoint_dir: Path) -> Dict[str,
             flush=True,
         )
 
-    checkpoint = algorithm.save(str(checkpoint_dir))
-    saved_path = checkpoint_path(checkpoint)
+    saved_path = save_algorithm_checkpoint(algorithm, checkpoint_dir)
     print(
         f"stage_baseline_evaluation_start iteration=0 checkpoint={saved_path}",
         flush=True,
@@ -1695,8 +1782,7 @@ def save_checkpoint(
         args,
         iteration: int,
         policy_evaluation: Optional[PolicyEvaluation] = None) -> Dict[str, object]:
-    checkpoint = algorithm.save(str(checkpoint_dir))
-    saved_path = checkpoint_path(checkpoint)
+    saved_path = save_algorithm_checkpoint(algorithm, checkpoint_dir)
     print(f"checkpoint={saved_path}", flush=True)
     return maybe_promote_best_policy(
         algorithm,
@@ -1809,7 +1895,7 @@ def save_selected_checkpoint_candidate(
                 algorithm,
                 Path(latest_candidate.checkpoint_path),
             )
-            latest_checkpoint = checkpoint_path(algorithm.save(str(checkpoint_dir)))
+            latest_checkpoint = save_algorithm_checkpoint(algorithm, checkpoint_dir)
             print(
                 f"checkpoint_training_state_restored iteration={current_iteration} "
                 f"checkpoint={latest_checkpoint}",
@@ -1826,7 +1912,7 @@ def restore_stage_best_checkpoint(algorithm, args, checkpoint_dir: Path) -> bool
     archived_path = Path(str(archived_checkpoint)).resolve()
 
     restore_algorithm_checkpoint(algorithm, archived_path)
-    restored_path = checkpoint_path(algorithm.save(str(checkpoint_dir)))
+    restored_path = save_algorithm_checkpoint(algorithm, checkpoint_dir)
     print(
         f"stage_best_checkpoint_restored checkpoint={archived_path} "
         f"stage_iteration={state.get('iteration', '?')} output={restored_path}",
@@ -1919,6 +2005,7 @@ def parse_args() -> argparse.Namespace:
             "offroad_hard",
             "offroad_reversed",
             "onroad_misaligned",
+            "map014_inflection",
             "blocked_front",
             "nose_to_nose",
         ),
@@ -1985,8 +2072,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overtaking-failure-penalty", type=float, default=250.0)
     parser.add_argument("--overtaking-residual-penalty", type=float, default=0.02)
     parser.add_argument("--gamma", type=float, default=0.995)
+    parser.add_argument("--gae-lambda", type=float, default=0.95)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--entropy-coeff", type=float, default=0.005)
+    parser.add_argument("--clip-param", type=float, default=0.2)
+    parser.add_argument("--kl-coeff", type=float, default=0.2)
+    parser.add_argument("--kl-target", type=float, default=0.01)
     parser.add_argument(
         "--free-log-std",
         action="store_true",
@@ -2000,7 +2091,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--num-epochs", type=int, default=30)
     parser.add_argument("--grad-clip", type=float, default=40.0)
-    parser.add_argument("--vf-clip-param", type=float, default=100.0)
+    parser.add_argument("--vf-clip-param", type=float, default=100000000.0)
+    parser.add_argument("--vf-loss-coeff", type=float, default=0.001)
     parser.add_argument("--train-batch-size", type=int, default=8192)
     parser.add_argument("--minibatch-size", type=int, default=512)
     parser.add_argument(
@@ -2307,6 +2399,42 @@ def main() -> None:
                     ("env_runners", "num_env_steps_sampled"),
                     ("env_runners", "num_env_steps_sampled_lifetime"),
                 )
+                ppo_kl = read_metric(
+                    result,
+                    ("learners", "shared_policy", "mean_kl_loss"),
+                )
+                ppo_kl_coeff = read_metric(
+                    result,
+                    ("learners", "shared_policy", "curr_kl_coeff"),
+                )
+                ppo_entropy = read_metric(
+                    result,
+                    ("learners", "shared_policy", "entropy"),
+                )
+                ppo_policy_loss = read_metric(
+                    result,
+                    ("learners", "shared_policy", "policy_loss"),
+                )
+                ppo_vf_loss = read_metric(
+                    result,
+                    ("learners", "shared_policy", "vf_loss"),
+                )
+                ppo_vf_loss_unclipped = read_metric(
+                    result,
+                    ("learners", "shared_policy", "vf_loss_unclipped"),
+                )
+                ppo_vf_explained = read_metric(
+                    result,
+                    ("learners", "shared_policy", "vf_explained_var"),
+                )
+                ppo_grad_norm = read_metric(
+                    result,
+                    (
+                        "learners",
+                        "shared_policy",
+                        "gradients_default_optimizer_global_norm",
+                    ),
+                )
                 metric_status = (
                     "ok"
                     if has_metric(reward_mean) and has_metric(length_mean) and has_metric(episodes)
@@ -2319,6 +2447,18 @@ def main() -> None:
                     f"episodes={format_count_metric(episodes)} "
                     f"metric_status={metric_status} "
                     f"env_steps_sampled={format_count_metric(env_steps_sampled)}",
+                    flush=True,
+                )
+                print(
+                    f"ppo_metrics iteration={iteration} "
+                    f"kl={format_metric(ppo_kl, 5)} "
+                    f"kl_coeff={format_metric(ppo_kl_coeff, 5)} "
+                    f"entropy={format_metric(ppo_entropy, 5)} "
+                    f"policy_loss={format_metric(ppo_policy_loss, 5)} "
+                    f"vf_loss={format_metric(ppo_vf_loss, 3)} "
+                    f"vf_loss_unclipped={format_metric(ppo_vf_loss_unclipped, 3)} "
+                    f"vf_explained={format_metric(ppo_vf_explained, 5)} "
+                    f"grad_norm={format_metric(ppo_grad_norm, 3)}",
                     flush=True,
                 )
                 if not args.no_reward_summary:

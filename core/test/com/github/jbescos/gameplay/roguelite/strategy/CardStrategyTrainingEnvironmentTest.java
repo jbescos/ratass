@@ -1,6 +1,7 @@
 package com.github.jbescos.gameplay.roguelite.strategy;
 
 import com.github.jbescos.gameplay.roguelite.DriverProfileCatalog;
+import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -77,28 +78,33 @@ public final class CardStrategyTrainingEnvironmentTest {
     }
 
     @Test
-    public void championshipProvidesSeveralTierFourDecisions() {
-        CardStrategyTrainingEnvironment environment = environment("strategy00");
-        environment.reset(8127L);
-
-        int tierFourDecisions = 0;
-        int tierFourOffers = 0;
-        while (!environment.isDone()) {
-            if (environment.getLevel() >= 30) {
-                tierFourDecisions++;
-                int[] tiers = environment.getOfferTiers();
-                for (int tier : tiers) {
-                    if (tier == 4) {
-                        tierFourOffers++;
+    public void tierFourTrainingDecisionsRequireSelectingTheUnlockCard() {
+        boolean reachedTierFour = false;
+        for (long seed = 1L; seed <= 100L && !reachedTierFour; seed++) {
+            CardStrategyTrainingEnvironment environment = environment("strategy00");
+            environment.reset(seed);
+            boolean selectedUnlock = false;
+            while (!environment.isDone()) {
+                int action = environment.getRaceStrengthAction();
+                String[] offerIds = environment.getOfferIds();
+                for (int i = 0; i < offerIds.length; i++) {
+                    if (("card:" + RogueliteCardId.TIER_FOUR_SIGNAL.name())
+                            .equals(offerIds[i])) {
+                        action = i;
+                        selectedUnlock = true;
+                        break;
                     }
                 }
+                if (selectedUnlock) {
+                    for (int tier : environment.getOfferTiers()) {
+                        reachedTierFour |= tier == 4;
+                    }
+                }
+                environment.step(action);
             }
-            environment.step(environment.getRaceStrengthAction());
         }
 
-        assertTrue(environment.getLevel() >= 30);
-        assertTrue(tierFourDecisions >= 3);
-        assertTrue(tierFourOffers > 0);
+        assertTrue(reachedTierFour);
     }
 
     private static CardStrategyTrainingEnvironment environment(String profileId) {

@@ -46,6 +46,22 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
         return gripBonus;
     }
 
+    boolean modifiesPower() {
+        return accelerationBonus != 0f;
+    }
+
+    boolean modifiesGrip() {
+        return gripBonus != 0f;
+    }
+
+    boolean modifiesAero() {
+        return dragMultiplier != 1f;
+    }
+
+    boolean modifiesMass() {
+        return massMultiplier != 1f;
+    }
+
     private static TuningSetup setup(RogueliteCardId cardId) {
         switch (cardId) {
             // Tier 1: two benefits and one drawback.

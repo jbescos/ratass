@@ -20,6 +20,7 @@ public final class BuildAbilityEffectAtlas {
                     "Usage: BuildAbilityEffectAtlas <source> <output>"
                             + " <crop-x> <crop-y> <crop-width> <crop-height> <columns>"
                             + " [--replace-column <index> <transparent.png>]"
+                            + " [--hollow-column <output-index>]"
                             + " [transparent-extra.png ...]");
         }
 
@@ -32,7 +33,8 @@ public final class BuildAbilityEffectAtlas {
         int columns = Integer.parseInt(args[6]);
         List<ColumnReplacement> replacements = new ArrayList<>();
         List<File> extras = new ArrayList<>();
-        parseAdditionalSources(args, columns, replacements, extras);
+        List<Integer> hollowColumns = new ArrayList<>();
+        parseAdditionalSources(args, columns, replacements, extras, hollowColumns);
 
         BufferedImage source = ImageIO.read(sourceFile);
         validateCrop(source, cropX, cropY, cropWidth, cropHeight, columns);
@@ -92,6 +94,13 @@ public final class BuildAbilityEffectAtlas {
             drawCell(overlayGraphics, image, replacement.column * OUTPUT_CELL_SIZE);
         }
         overlayGraphics.dispose();
+        for (int column : hollowColumns) {
+            if (column < 0 || column >= columns + extras.size()) {
+                throw new IllegalArgumentException(
+                        "Hollow column is outside output atlas: " + column);
+            }
+            clearCenterForCar(output, column * OUTPUT_CELL_SIZE);
+        }
 
         File parent = outputFile.getParentFile();
         if (parent != null) {
@@ -104,22 +113,55 @@ public final class BuildAbilityEffectAtlas {
             String[] args,
             int columns,
             List<ColumnReplacement> replacements,
-            List<File> extras) {
+            List<File> extras,
+            List<Integer> hollowColumns) {
         for (int index = 7; index < args.length;) {
-            if (!"--replace-column".equals(args[index])) {
+            if ("--hollow-column".equals(args[index])) {
+                if (index + 1 >= args.length) {
+                    throw new IllegalArgumentException(
+                            "--hollow-column requires an output column index");
+                }
+                hollowColumns.add(Integer.parseInt(args[index + 1]));
+                index += 2;
+            } else if (!"--replace-column".equals(args[index])) {
                 extras.add(new File(args[index++]));
-                continue;
+            } else {
+                if (index + 2 >= args.length) {
+                    throw new IllegalArgumentException(
+                            "--replace-column requires an index and image path");
+                }
+                int column = Integer.parseInt(args[index + 1]);
+                if (column < 0 || column >= columns) {
+                    throw new IllegalArgumentException(
+                            "Replacement column is outside source atlas");
+                }
+                replacements.add(new ColumnReplacement(column, new File(args[index + 2])));
+                index += 3;
             }
-            if (index + 2 >= args.length) {
-                throw new IllegalArgumentException(
-                        "--replace-column requires an index and image path");
+        }
+    }
+
+    private static void clearCenterForCar(BufferedImage image, int targetX) {
+        float center = (OUTPUT_CELL_SIZE - 1) * 0.5f;
+        float transparentRadius = OUTPUT_CELL_SIZE * 0.23f;
+        float featherRadius = OUTPUT_CELL_SIZE * 0.30f;
+        for (int y = 0; y < OUTPUT_CELL_SIZE; y++) {
+            for (int x = 0; x < OUTPUT_CELL_SIZE; x++) {
+                float dx = x - center;
+                float dy = y - center;
+                float distance = (float) Math.sqrt(dx * dx + dy * dy);
+                if (distance >= featherRadius) {
+                    continue;
+                }
+                int argb = image.getRGB(targetX + x, y);
+                int alpha = (argb >>> 24) & 0xff;
+                float alphaScale = smoothStep(
+                        transparentRadius,
+                        featherRadius,
+                        distance);
+                int adjustedAlpha = Math.round(alpha * alphaScale);
+                image.setRGB(targetX + x, y, (argb & 0x00ffffff) | (adjustedAlpha << 24));
             }
-            int column = Integer.parseInt(args[index + 1]);
-            if (column < 0 || column >= columns) {
-                throw new IllegalArgumentException("Replacement column is outside source atlas");
-            }
-            replacements.add(new ColumnReplacement(column, new File(args[index + 2])));
-            index += 3;
         }
     }
 

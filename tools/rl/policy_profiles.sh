@@ -16,6 +16,28 @@ rl_policy_batch_active() {
   rl_policy_is_true "${RL_POLICY_BATCH_ACTIVE:-0}"
 }
 
+rl_policy_acquire_training_lock() {
+  local checkpoint_dir="${RL_CURRICULUM_CHECKPOINT_DIR:-${RL_CHECKPOINT_DIR:-}}"
+  if [[ -z "${checkpoint_dir}" || "${checkpoint_dir}" == "/" ]]; then
+    echo "invalid_policy_lock_checkpoint_dir=${checkpoint_dir:-none}" >&2
+    return 2
+  fi
+  if ! command -v flock >/dev/null 2>&1; then
+    echo "missing_training_dependency=flock" >&2
+    return 2
+  fi
+
+  local lock_file="${RL_POLICY_LOCK_FILE:-$(dirname "${checkpoint_dir}")/.$(basename "${checkpoint_dir}")-training.lock}"
+  mkdir -p "$(dirname "${lock_file}")"
+  exec {RL_POLICY_LOCK_FD}>>"${lock_file}"
+  if ! flock -n "${RL_POLICY_LOCK_FD}"; then
+    echo "policy_training_already_running policy=${RL_POLICY_ID:-unknown} checkpoint_dir=${checkpoint_dir} lock=${lock_file}" >&2
+    return 73
+  fi
+  export RL_POLICY_LOCK_FILE="${lock_file}"
+  echo "policy_training_lock_acquired policy=${RL_POLICY_ID:-unknown} checkpoint_dir=${checkpoint_dir} lock=${lock_file}"
+}
+
 rl_policy_normalize_id() {
   local raw="$1"
   local policy_id
@@ -211,6 +233,7 @@ rl_policy_run_batch() {
       export RL_POLICY_STATUS_FILE="${RL_POLICY_STATUS_FILE:-logs/rl-current-training-policy.txt}"
       export RL_FORCE_EXPORT_ON_FINISH="${RL_FORCE_EXPORT_ON_FINISH:-1}"
       export RL_POLICY_EXPLICIT_SELECTION="${explicit_selection}"
+      rl_policy_acquire_training_lock || exit $?
       rl_policy_configure_resume
       if [[ "${explicit_selection}" == "0" ]] \
         && [[ -n "${RL_POLICY_TRAINING_STATE:-}" ]] \

@@ -116,27 +116,45 @@ public class RogueliteRunTest {
 
         assertEquals(1, run.getUnlockedTier());
         run.getPlayerProgress().restore(
-                RogueliteRun.TIER_TWO_LEVEL - 1, 0, 0);
+                RogueliteRun.TIER_TWO_LEVEL - 1, 0, 0, false);
         assertEquals(1, run.getUnlockedTier());
-        run.getPlayerProgress().restore(RogueliteRun.TIER_TWO_LEVEL, 0, 0);
+        run.getPlayerProgress().restore(RogueliteRun.TIER_TWO_LEVEL, 0, 0, false);
         assertEquals(2, run.getUnlockedTier());
         run.getPlayerProgress().restore(
-                RogueliteRun.TIER_THREE_LEVEL - 1, 0, 0);
+                RogueliteRun.TIER_THREE_LEVEL - 1, 0, 0, false);
         assertEquals(2, run.getUnlockedTier());
-        run.getPlayerProgress().restore(RogueliteRun.TIER_THREE_LEVEL, 0, 0);
+        run.getPlayerProgress().restore(RogueliteRun.TIER_THREE_LEVEL, 0, 0, false);
         assertEquals(3, run.getUnlockedTier());
-        run.getPlayerProgress().restore(RogueliteRun.TIER_FOUR_LEVEL - 1, 0, 0);
+        run.getPlayerProgress().restore(30, 0, 0, false);
         assertEquals(3, run.getUnlockedTier());
-        run.getPlayerProgress().restore(RogueliteRun.TIER_FOUR_LEVEL, 0, 0);
-        assertEquals(4, run.getUnlockedTier());
+        run.getPlayerProgress().restore(99, 0, 0, false);
+        assertEquals(3, run.getUnlockedTier());
     }
 
     @Test
-    public void tierFourOffersKeepTierThreeAvailable() {
+    public void tierFourSignalPersistsAfterReplacementAndRestore() {
         RogueliteRun run = new RogueliteRun(117L);
-        run.getPlayerProgress().restore(RogueliteRun.TIER_FOUR_LEVEL, 0, 1);
+        run.getPlayerProgress().restore(RogueliteRun.TIER_THREE_LEVEL, 0, 1, false);
 
-        List<RogueliteCardOffer> offers = run.createOffers(200);
+        RogueliteCardOffer signal = RogueliteCardOffer.modification(
+                RogueliteCardCatalog.get(RogueliteCardId.TIER_FOUR_SIGNAL));
+        assertTrue(run.select(signal));
+        assertEquals(4, run.getUnlockedTier());
+
+        run.getPlayerProgress().restore(RogueliteRun.TIER_THREE_LEVEL, 0, 1, true);
+        RogueliteCardOffer replacement = RogueliteCardOffer.modification(
+                RogueliteCardCatalog.get(RogueliteCardId.HYPERDRIVE));
+        assertTrue(run.select(replacement));
+        assertFalse(run.getPlayerLoadout().has(RogueliteCardId.TIER_FOUR_SIGNAL));
+        assertEquals(4, run.getUnlockedTier());
+
+        RogueliteRun restored = new RogueliteRun(118L);
+        assertTrue(restored.restore(run.snapshot()));
+        assertEquals(4, restored.getUnlockedTier());
+
+        restored.getPlayerProgress().restore(RogueliteRun.TIER_THREE_LEVEL, 0, 1, true);
+
+        List<RogueliteCardOffer> offers = restored.createOffers(200);
 
         int tierThree = 0;
         int tierFour = 0;
@@ -149,6 +167,19 @@ public class RogueliteRunTest {
         }
         assertTrue(tierThree > 0);
         assertEquals(3, tierFour);
+    }
+
+    @Test
+    public void randomPowerupSignalCanPersistentlyUnlockAnyCompetitor() {
+        RogueliteRun run = new RogueliteRun(119L);
+
+        assertTrue(run.unlockTierFour(true, 0));
+        assertFalse(run.unlockTierFour(true, 0));
+        assertEquals(4, run.getUnlockedTier());
+
+        assertTrue(run.unlockTierFour(false, 7));
+        assertFalse(run.unlockTierFour(false, 7));
+        assertEquals(4, run.getRivalUnlockedTier(7));
     }
 
     @Test
@@ -188,7 +219,7 @@ public class RogueliteRunTest {
     @Test
     public void rivalsUnlockTiersFromTheirOwnLevels() {
         RogueliteRun run = new RogueliteRun(173L);
-        run.getRivalProgress(4).restore(RogueliteRun.TIER_TWO_LEVEL, 0, 0);
+        run.getRivalProgress(4).restore(RogueliteRun.TIER_TWO_LEVEL, 0, 0, false);
 
         assertEquals(1, run.getUnlockedTier());
         assertEquals(2, run.getRivalUnlockedTier(4));
@@ -669,7 +700,7 @@ public class RogueliteRunTest {
         assertTrue(loadout.equip(RogueliteCardId.CLUB_TUNE));
         assertTrue(loadout.equip(RogueliteCardId.CORNER_FOCUS));
         assertTrue(loadout.equip(RogueliteCardId.NITRO_PULSE));
-        run.getRivalProgress(2).restore(RogueliteRun.TIER_TWO_LEVEL, 0, 1);
+        run.getRivalProgress(2).restore(RogueliteRun.TIER_TWO_LEVEL, 0, 1, false);
         run.resolveRivalRewards(Arrays.asList(Integer.valueOf(2)));
 
         int tierTwoSlots =
@@ -868,7 +899,7 @@ public class RogueliteRunTest {
     @Test
     public void offersContainOnlyTheTierUnlockedByTheCompetitorLevel() {
         RogueliteRun run = new RogueliteRun(58L);
-        run.getPlayerProgress().restore(RogueliteRun.TIER_TWO_LEVEL, 0, 1);
+        run.getPlayerProgress().restore(RogueliteRun.TIER_TWO_LEVEL, 0, 1, false);
 
         List<RogueliteCardOffer> offers = run.createOffers(20);
 

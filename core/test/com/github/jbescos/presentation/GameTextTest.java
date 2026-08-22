@@ -3,6 +3,7 @@ package com.github.jbescos.presentation;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
 
 import com.github.jbescos.gameplay.roguelite.CustomGameRules.WeatherType;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardCatalog;
@@ -35,6 +36,29 @@ public class GameTextTest {
     }
 
     @Test
+    public void everyLanguageBundleDefinesEveryEnglishKey() {
+        for (GameLanguage language : GameLanguage.values()) {
+            assertEquals(
+                    language.toString(),
+                    GameTextBundle.keys(GameLanguage.ENGLISH),
+                    GameTextBundle.keys(language));
+        }
+    }
+
+    @Test
+    public void formatsRuntimeMessagesFromLanguageBundles() {
+        assertEquals(
+                "XP VUELTA 7 / 20",
+                GameText.format(GameLanguage.SPANISH, "message.lap_xp", 7, 20));
+        assertEquals(
+                "Bereit für den Start. Fahre 3 Runden.",
+                GameText.format(GameLanguage.GERMAN, "message.prepare_laps", 3));
+        assertEquals(
+                "Il leader ha finito. Restano 9s agli altri.",
+                GameText.format(GameLanguage.ITALIAN, "message.finish_leader", 9));
+    }
+
+    @Test
     public void leavesInternalAndEnglishTextStable() {
         assertEquals("map018", GameText.translate(GameLanguage.SPANISH, "map018"));
         assertEquals("New Game", GameText.translate(GameLanguage.ENGLISH, "New Game"));
@@ -44,6 +68,37 @@ public class GameTextTest {
         assertEquals(GameLanguage.ITALIAN, GameLanguage.fromLocale(Locale.ITALIAN));
         assertEquals(GameLanguage.ENGLISH, GameLanguage.fromLocale(Locale.JAPANESE));
         assertEquals(GameLanguage.ENGLISH, GameLanguage.fromStoredValue("unknown"));
+    }
+
+    @Test
+    public void carNamesStayTheSameInEveryLanguage() {
+        String[] carNames = {
+            "Veltryn VX",
+            "Aurevox GT",
+            "Caldris R",
+            "Novaryn RS",
+            "Torvane X",
+            "Elystral S",
+            "Vantory GT",
+            "Orphira R",
+            "Kavren XR",
+            "Solvyr RS",
+            "Noctyra VX",
+            "Morvane GT",
+            "Vesperon R",
+            "Grimvolt RS",
+            "Hexora X",
+            "Umbryss S",
+            "Corvane GT",
+            "Dreadwyn R",
+            "Ebonyx XR",
+            "Phantyr RS"
+        };
+        for (GameLanguage language : GameLanguage.values()) {
+            for (String carName : carNames) {
+                assertEquals(carName, GameText.translate(language, carName));
+            }
+        }
     }
 
     @Test
@@ -148,6 +203,15 @@ public class GameTextTest {
                         language + " effect " + card.getId(),
                         card.getEffectText(),
                         GameText.translate(language, card.getEffectText()));
+                assertTrue(
+                        language + " title bundle entry " + card.getId(),
+                        GameText.hasExplicitTranslation(language, card.getTitle()));
+                assertTrue(
+                        language + " description bundle entry " + card.getId(),
+                        GameText.hasExplicitTranslation(language, card.getDescription()));
+                assertTrue(
+                        language + " effect bundle entry " + card.getId(),
+                        GameText.hasExplicitTranslation(language, card.getEffectText()));
             }
         }
     }

@@ -15,6 +15,7 @@ if [[ -n "${RL_POLICY_ID:-}" ]] && ! rl_policy_batch_active; then
   export RL_CHECKPOINT_DIR="${RL_CHECKPOINT_DIR:-${RL_CURRICULUM_CHECKPOINT_DIR}}"
   export RL_TRAIN_LOG="${RL_TRAIN_LOG:-logs/rl-policy-${RL_POLICY_ID}-forever.log}"
   export RL_POLICY_EXPLICIT_SELECTION=1
+  rl_policy_acquire_training_lock || exit $?
   rl_policy_configure_resume
 fi
 
@@ -1012,10 +1013,15 @@ train_batch_size="${RL_TRAIN_BATCH_SIZE:-4096}"
 minibatch_size="${RL_MINIBATCH_SIZE:-512}"
 num_epochs="${RL_NUM_EPOCHS:-30}"
 grad_clip="${RL_GRAD_CLIP:-40.0}"
-vf_clip_param="${RL_VF_CLIP_PARAM:-100.0}"
+vf_clip_param="${RL_VF_CLIP_PARAM:-100000000.0}"
+vf_loss_coeff="${RL_VF_LOSS_COEFF:-0.001}"
 lr="${RL_LR:-3e-4}"
 gamma="${RL_GAMMA:-0.995}"
+gae_lambda="${RL_GAE_LAMBDA:-0.95}"
 entropy_coeff="${RL_ENTROPY_COEFF:-0.005}"
+clip_param="${RL_CLIP_PARAM:-0.2}"
+kl_coeff="${RL_KL_COEFF:-0.2}"
+kl_target="${RL_KL_TARGET:-0.01}"
 hidden_size="${RL_HIDDEN_SIZE:-1024}"
 hidden_layers="${RL_HIDDEN_LAYERS:-2}"
 hidden_activation="${RL_HIDDEN_ACTIVATION:-tanh}"
@@ -1139,7 +1145,7 @@ fi
 
 checkpoint_file="${checkpoint_dir}/rllib_checkpoint.json"
 
-echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} spawn_mode=${race_spawn_mode} random_race_spawns=${random_race_spawns} seed=${seed} spawn_seed_file=${route_spawn_seed_file:-none} route_targets=${route_targets} route_target_fraction=${route_target_fraction} max_action_steps=${max_action_steps} no_progress_max_action_steps=${no_progress_max_action_steps} off_road_failure_max_action_steps=${off_road_failure_max_action_steps} train_batch_size=${train_batch_size} minibatch_size=${minibatch_size} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} epochs=${num_epochs} grad_clip=${grad_clip} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} jvm_heap=${jvm_max_heap} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all} evaluate_all_checkpoint_candidates=${evaluate_all_checkpoint_candidates}"
+echo "training_step_start preset=${preset:-race} policy=${RL_POLICY_ID:-legacy} objective=${objective} checkpoint_dir=${checkpoint_dir} fresh_start=${RL_FRESH_START:-1} iterations_per_cycle=${iterations_per_cycle} max_cycles=${max_cycles} controlled_agents=${controlled_agents} field_size=${field_size} maps=${map_ids:-all} spawn_mode=${race_spawn_mode} random_race_spawns=${random_race_spawns} seed=${seed} spawn_seed_file=${route_spawn_seed_file:-none} route_targets=${route_targets} route_target_fraction=${route_target_fraction} max_action_steps=${max_action_steps} no_progress_max_action_steps=${no_progress_max_action_steps} off_road_failure_max_action_steps=${off_road_failure_max_action_steps} train_batch_size=${train_batch_size} minibatch_size=${minibatch_size} hidden=${hidden_size}x${hidden_layers} activation=${hidden_activation} epochs=${num_epochs} grad_clip=${grad_clip} vf_clip=${vf_clip_param} vf_loss_coeff=${vf_loss_coeff} gae_lambda=${gae_lambda} clip_param=${clip_param} kl_coeff=${kl_coeff} kl_target=${kl_target} workers=${workers} ray_cpus=${ray_num_cpus} sample_timeout_s=${sample_timeout_s} jvm_heap=${jvm_max_heap} init_policy=${init_policy:-none} best_eval_controlled_agents=${best_eval_controlled_agents} best_eval_maps=${best_eval_map_ids:-all} evaluate_all_checkpoint_candidates=${evaluate_all_checkpoint_candidates}"
 
 export RATASS_RL_JVM_MAX_HEAP="${jvm_max_heap}"
 
@@ -1160,9 +1166,14 @@ common_args=(
   --num-epochs "${num_epochs}"
   --grad-clip "${grad_clip}"
   --vf-clip-param "${vf_clip_param}"
+  --vf-loss-coeff "${vf_loss_coeff}"
   --lr "${lr}"
   --gamma "${gamma}"
+  --gae-lambda "${gae_lambda}"
   --entropy-coeff "${entropy_coeff}"
+  --clip-param "${clip_param}"
+  --kl-coeff "${kl_coeff}"
+  --kl-target "${kl_target}"
   --hidden-size "${hidden_size}"
   --hidden-layers "${hidden_layers}"
   --hidden-activation "${hidden_activation}"

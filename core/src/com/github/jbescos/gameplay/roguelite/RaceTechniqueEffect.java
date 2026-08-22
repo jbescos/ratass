@@ -2,10 +2,10 @@ package com.github.jbescos.gameplay.roguelite;
 
 /** Amplifies complete live car statistics when a driving condition is met. */
 final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
-    private static final int POWER_STAT = 1;
-    private static final int GRIP_STAT = 1 << 1;
-    private static final int AERO_STAT = 1 << 2;
-    private static final int MASS_STAT = 1 << 3;
+    static final int POWER_STAT = 1;
+    static final int GRIP_STAT = 1 << 1;
+    static final int AERO_STAT = 1 << 2;
+    static final int MASS_STAT = 1 << 3;
     private static final float CORNER_SEVERITY_THRESHOLD = 0.10f;
     private static final float CORNER_EXIT_SEVERITY_THRESHOLD = 0.07f;
     private static final float DRIFT_SLIP_THRESHOLD = 0.18f;
@@ -142,6 +142,25 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
 
     private boolean isTimedActive() {
         return !isPassiveCard() && isActive();
+    }
+
+    boolean isMultiplicativeTechniqueActive() {
+        return isTimedActive() && amplifiedStatMask(getCardId()) != 0;
+    }
+
+    static boolean hasMultiplicativeStats(RogueliteCardId cardId) {
+        return cardId != null
+                && RogueliteCardCatalog.get(cardId).getSlotType()
+                        == RogueliteSlotType.TECHNIQUE
+                && amplifiedStatMask(cardId) != 0;
+    }
+
+    static float networkShareScale(RogueliteCardId cardId) {
+        return hasMultiplicativeStats(cardId)
+                ? activeScaleFor(
+                        triggerFor(cardId),
+                        RogueliteCardCatalog.get(cardId).getTier())
+                : 1f;
     }
 
     private boolean isPassiveCard() {

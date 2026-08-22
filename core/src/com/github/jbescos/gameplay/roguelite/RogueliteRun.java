@@ -16,10 +16,9 @@ import java.util.Map;
 import java.util.Set;
 
 public final class RogueliteRun {
-    // Level 2 grants the first card; later tiers unlock at these level boundaries.
+    // Level 2 grants the first card; Tier 4 requires a persistent card unlock.
     public static final int TIER_TWO_LEVEL = 10;
     public static final int TIER_THREE_LEVEL = 20;
-    public static final int TIER_FOUR_LEVEL = 30;
     private DriverProfileCatalog driverCatalog;
     private RogueliteCompetitorProgress player;
     private final Map<Integer, RogueliteCompetitorProgress> rivals =
@@ -138,6 +137,13 @@ public final class RogueliteRun {
 
     public RogueliteCompetitorProgress getPlayerProgress() {
         return player;
+    }
+
+    /** Applies a persistent Tier 4 signal emitted by a direct or random Powerup. */
+    public boolean unlockTierFour(boolean playerControlled, int vehicleId) {
+        RogueliteCompetitorProgress progress = playerControlled
+                ? player : getRivalProgress(vehicleId);
+        return progress.unlockTierFour();
     }
 
     public RogueliteLoadout getPlayerLoadout() {
@@ -492,6 +498,9 @@ public final class RogueliteRun {
                             offer.getCard().getId());
             if (applied) {
                 progress.recordAcquiredModification(offer.getCard().getId());
+                if (offer.getCard().getId() == RogueliteCardId.TIER_FOUR_SIGNAL) {
+                    progress.unlockTierFour();
+                }
             }
         }
         return applied && progress.consumePendingReward();
@@ -569,6 +578,7 @@ public final class RogueliteRun {
         snapshot.experience = progress.getExperience();
         snapshot.lapExperience = progress.getLapExperience();
         snapshot.pendingRewards = progress.getPendingRewards();
+        snapshot.tierFourUnlocked = progress.isTierFourUnlocked();
         snapshot.acquiredDriverProfileIds.addAll(
                 progress.getAcquiredDriverProfileIds());
         for (RogueliteCardId cardId : progress.getAcquiredModificationCardIds()) {
@@ -625,7 +635,10 @@ public final class RogueliteRun {
             progress.restore(
                     snapshot.level,
                     snapshot.experience,
-                    snapshot.pendingRewards);
+                    snapshot.pendingRewards,
+                    snapshot.tierFourUnlocked
+                            || progress.hasAcquiredModification(
+                                    RogueliteCardId.TIER_FOUR_SIGNAL));
             progress.restoreLapExperience(
                     snapshot.lapExperience,
                     getRacecraftXpPerLapCap());
@@ -665,7 +678,10 @@ public final class RogueliteRun {
 
     private int getUnlockedTier(RogueliteCompetitorProgress progress) {
         int level = progress == null ? 1 : progress.getLevel();
-        return gameRules.resolveTierForLevel(level, startingTier);
+        int naturalTier = gameRules.resolveTierForLevel(level, startingTier);
+        return progress != null && progress.isTierFourUnlocked()
+                ? RogueliteCardCatalog.MAX_CARD_TIER
+                : naturalTier;
     }
 
     private static boolean isOfferTierEligible(int offerTier, int unlockedTier) {
@@ -862,6 +878,7 @@ public final class RogueliteRun {
         public int experience;
         public int lapExperience;
         public int pendingRewards;
+        public boolean tierFourUnlocked;
         // Retained only to normalize saves written by the former postpone system.
         public int rewardDeferredUntilLevel;
         public List<String> modificationCardIds = new ArrayList<String>();

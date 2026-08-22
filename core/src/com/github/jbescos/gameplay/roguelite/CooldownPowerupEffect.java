@@ -50,6 +50,15 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
                 grip = 0f;
                 steering = 0f;
                 break;
+            case BULK_FIELD:
+            case TITAN_FIELD:
+            case COLOSSUS_FIELD:
+                cooldown = CollisionFieldPowerupSpec.cooldownSeconds(cardId);
+                duration = CollisionFieldPowerupSpec.DURATION_SECONDS;
+                acceleration = 0f;
+                grip = CollisionFieldPowerupSpec.GRIP_BONUS;
+                steering = 0f;
+                break;
             case NITRO_PULSE:
                 cooldown = 9f;
                 duration = 1.4f;
@@ -262,6 +271,10 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
             case MIRROR_DUO:
             case MIRROR_TRIO:
                 return mirrorStraight && frame.nearbyOpponentProximity > 0f;
+            case BULK_FIELD:
+            case TITAN_FIELD:
+            case COLOSSUS_FIELD:
+                return frame.nearbyOpponentProximity > 0f;
             case HYPERDRIVE:
                 return stableLaunchStraight
                         && frame.speedRatio <= 0.52f
@@ -328,6 +341,25 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
     @Override
     float frontCollisionPushMultiplier() {
         return isActive() ? pushMultiplier : 1f;
+    }
+
+    @Override
+    float massMultiplier() {
+        return isActive() && CollisionFieldPowerupSpec.isCollisionFieldCard(getCardId())
+                ? CollisionFieldPowerupSpec.MASS_MULTIPLIER
+                : 1f;
+    }
+
+    @Override
+    float carCollisionAreaMultiplier() {
+        return isActive() ? CollisionFieldPowerupSpec.collisionAreaMultiplier(getCardId()) : 1f;
+    }
+
+    @Override
+    float carCollisionMassMultiplier() {
+        return isActive()
+                ? CollisionFieldPowerupSpec.collisionMassMultiplier(getCardId())
+                : 1f;
     }
 
     @Override

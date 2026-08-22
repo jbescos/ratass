@@ -38,11 +38,19 @@ public class RandomCardEffectTest {
     }
 
     @Test
-    public void randomPowerupsExcludePermanentPriorityHotline() {
+    public void randomPowerupsIncludeFinitePriorityHotline() {
         List<RogueliteCardId> candidates = RandomCardEffect.candidateCardIds(
                 RogueliteSlotType.POWERUP, 2);
 
-        assertFalse(candidates.contains(RogueliteCardId.PRIORITY_HOTLINE));
+        assertTrue(candidates.contains(RogueliteCardId.PRIORITY_HOTLINE));
+    }
+
+    @Test
+    public void tierFourUnlockCanBeLoadedByTierThreeRandomPowerups() {
+        List<RogueliteCardId> candidates = RandomCardEffect.candidateCardIds(
+                RogueliteSlotType.POWERUP, 3);
+
+        assertTrue(candidates.contains(RogueliteCardId.TIER_FOUR_SIGNAL));
     }
 
     @Test
