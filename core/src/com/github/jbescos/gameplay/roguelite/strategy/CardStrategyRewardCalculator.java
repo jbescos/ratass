@@ -33,9 +33,11 @@ final class CardStrategyRewardCalculator {
             reward += CardStrategyChainReward.selection(
                     loadout, offer.getCard().getId(), config);
             reward += config.getCardPreferenceReward(loadout, offer.getCard().getId());
-            reward += Math.max(0f, TuningTechniqueSynergy.statSelectionGain(
-                    loadout, offer.getCard().getId()))
-                    * config.getTuningTechniqueSynergy();
+            float repetitionScale = 1f / (float) Math.sqrt(1f + Math.max(0, priorSelections));
+            reward += TuningTechniqueSynergy.engineerSelectionGain(
+                            loadout, offer.getCard().getId())
+                    * config.getTuningTechniqueSynergy()
+                    * repetitionScale;
         }
         if (config.getNovelty() != 0f) {
             reward += config.getNovelty()

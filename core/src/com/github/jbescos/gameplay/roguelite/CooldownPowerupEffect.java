@@ -17,6 +17,7 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
     private float activeTimer;
     private float pendingForwardLaunchSpeedRatio;
     private boolean raceStarted;
+    private boolean loadedByRandomCard;
     private boolean invisibilityExitHeld;
     private boolean deferInvisibilityExit;
 
@@ -193,6 +194,7 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
 
     @Override
     void onLoadedByRandomCard() {
+        loadedByRandomCard = true;
         activeTimer = 0f;
         cooldownTimer = cooldownSeconds;
         pendingForwardLaunchSpeedRatio = 0f;
@@ -227,8 +229,10 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
             return;
         }
         deferInvisibilityExit = false;
-        if (cooldownTimer <= 0f && shouldActivate(frame)) {
+        if (cooldownTimer <= 0f
+                && (loadedByRandomCard || shouldActivate(frame))) {
             activeTimer = durationSeconds;
+            loadedByRandomCard = false;
             cooldownTimer = invisibility ? 0f : cooldownSeconds;
             pendingForwardLaunchSpeedRatio =
                     Math.min(

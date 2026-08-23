@@ -284,12 +284,50 @@ public final class RogueliteRun {
                 getRacecraftXpPerLapCap());
     }
 
+    public int stealLapExperience(
+            boolean recipientPlayerControlled,
+            int recipientVehicleId,
+            boolean offenderPlayerControlled,
+            int offenderVehicleId) {
+        RogueliteCompetitorProgress recipient = recipientPlayerControlled
+                ? player : getRivalProgress(recipientVehicleId);
+        RogueliteCompetitorProgress offender = offenderPlayerControlled
+                ? player : getRivalProgress(offenderVehicleId);
+        return recipient.stealLapExperienceFrom(
+                offender,
+                getRacecraftXpPerLapCap());
+    }
+
+    public int bankPlayerLapExperience() {
+        return player.bankLapExperience();
+    }
+
+    public int bankPlayerLapExperience(float multiplier) {
+        return player.bankLapExperience(multiplier);
+    }
+
+    public int bankRivalLapExperience(int vehicleId) {
+        return getRivalProgress(vehicleId).bankLapExperience();
+    }
+
+    public int bankRivalLapExperience(int vehicleId, float multiplier) {
+        return getRivalProgress(vehicleId).bankLapExperience(multiplier);
+    }
+
     public void resetPlayerLapExperience() {
         player.resetLapExperience();
     }
 
     public void resetRivalLapExperience(int vehicleId) {
         getRivalProgress(vehicleId).resetLapExperience();
+    }
+
+    public void discardLapExperience(boolean playerControlled, int vehicleId) {
+        if (playerControlled) {
+            resetPlayerLapExperience();
+        } else {
+            resetRivalLapExperience(vehicleId);
+        }
     }
 
     public void resetAllLapExperience() {

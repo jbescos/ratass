@@ -20,4 +20,12 @@ public class CarStatBonusTextTest {
         assertEquals("0%", CarStatBonusText.format(Float.NaN));
         assertEquals("0%", CarStatBonusText.format(Float.POSITIVE_INFINITY));
     }
+
+    @Test
+    public void formatsExplicitMultipliers() {
+        assertEquals("x1", CarStatBonusText.formatMultiplier(1f));
+        assertEquals("x1.25", CarStatBonusText.formatMultiplier(1.25f));
+        assertEquals("x1.5", CarStatBonusText.formatMultiplier(1.5f));
+        assertEquals("x2", CarStatBonusText.formatMultiplier(2f));
+    }
 }

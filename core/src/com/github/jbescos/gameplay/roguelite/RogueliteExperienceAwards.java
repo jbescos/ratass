@@ -6,7 +6,7 @@ public final class RogueliteExperienceAwards {
     public static final int REVENGE = 4;
     public static final int PUSH_RIVAL_OFF_ROAD = 6;
     public static final int DRIFT_SECOND = 1;
-    public static final int MAX_RACECRAFT_XP_PER_LAP = 30;
+    public static final int MAX_RACECRAFT_XP_PER_LAP = 40;
 
     public static final float DRIFT_AWARD_INTERVAL_SECONDS = 1f;
     public static final float DRIFT_MIN_SPEED_RATIO = 0.18f;

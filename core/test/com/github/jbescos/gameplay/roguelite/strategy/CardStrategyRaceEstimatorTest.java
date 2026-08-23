@@ -46,6 +46,14 @@ public final class CardStrategyRaceEstimatorTest {
         assertTrue(amplifiedRelay > relay);
     }
 
+    @Test
+    public void longerBuildSuppressionRaisesEstimatedRaceStrength() {
+        float shortSuppression = estimate(RogueliteCardId.TELEMETRY_THEFT);
+        float longSuppression = estimate(RogueliteCardId.APEX_PLUNDER);
+
+        assertTrue(longSuppression > shortSuppression);
+    }
+
     private float estimate(RogueliteCardId... cards) {
         RogueliteRun run = new RogueliteRun(19L, drivers);
         RogueliteCompetitorProgress progress = run.getPlayerProgress();

@@ -85,6 +85,33 @@ public final class DebuffTargetVisual {
         return activeCardId;
     }
 
+    public int getActiveCardCount() {
+        int count = 0;
+        for (int i = 0; i < remainingSeconds.length; i++) {
+            if (remainingSeconds[i] != 0f) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public RogueliteCardId getActiveCardId(int activeIndex) {
+        if (activeIndex < 0) {
+            return null;
+        }
+        int currentIndex = 0;
+        for (int i = 0; i < remainingSeconds.length; i++) {
+            if (remainingSeconds[i] == 0f) {
+                continue;
+            }
+            if (currentIndex == activeIndex) {
+                return CARD_IDS[i];
+            }
+            currentIndex++;
+        }
+        return null;
+    }
+
     public float getActiveRemainingSeconds() {
         if (activeCardId == null) {
             return 0f;

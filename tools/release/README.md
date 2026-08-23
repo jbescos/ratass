@@ -44,9 +44,32 @@ remains valid after 22 October 2033, as required by Google Play.
 
 ## Desktop
 
-Run the package script separately on Linux, Windows, and macOS. `jpackage`
-creates a native app image with a trimmed Java runtime, so Steam users do not
-need to install Java.
+The reproducible Docker build creates matching Linux and Windows Steam content
+from a Linux host. It uses `jpackage` for Linux and libGDX Packr with a pinned
+Temurin Windows runtime for Windows. Steam users do not need to install Java.
+
+```bash
+tools/release/package-desktop-docker.sh
+```
+
+The generated content roots are:
+
+```text
+dist/desktop/linux-x86_64/RogueCircuit
+dist/desktop/windows-x86_64/RogueCircuit
+```
+
+Set `RELEASE_PLATFORMS=linux` or `RELEASE_PLATFORMS=windows` to build only one
+depot. Docker is deliberately used only for packaging; Steam credentials and
+Steam Guard remain on the host.
+
+The Windows cross-build verifies the PE launcher, embedded icon, game entry
+point, and bundled Windows JVM. The JVM is executed under Wine; a final
+Steam-client launch on a private branch remains required because Wine does not
+faithfully validate native Windows graphics behavior. Set
+`WINDOWS_WINE_SMOKE_TEST=0` only when diagnosing the packaging environment.
+
+For a native package on the current operating system, use:
 
 ```bash
 tools/release/package-desktop.sh
@@ -58,6 +81,24 @@ performed on the generated app in the macOS CI job.
 
 The Steam-specific release and store checklist is in
 [`STEAM_RELEASE_CHECKLIST.md`](STEAM_RELEASE_CHECKLIST.md).
+
+To upload both platform depots as one atomic Steam build:
+
+```bash
+export STEAM_APP_ID=...
+export STEAM_LINUX_DEPOT_ID=...
+export STEAM_WINDOWS_DEPOT_ID=...
+export STEAM_USERNAME=...
+tools/release/release-steam-docker.sh
+```
+
+The script discovers the checked Steamworks SDK under
+`$HOME/programs/steamSDK/sdk/tools/ContentBuilder` or accepts an explicit
+`STEAMCMD_BIN`. Use `STEAM_DRY_RUN=1` to generate and validate the VDF files
+without logging in. Set `STEAM_BRANCH` to publish directly to a test branch;
+otherwise the build is uploaded without changing the live branch.
+Set `STEAM_SKIP_BUILD=1` only after validating the existing `dist/desktop`
+artifacts and when they are the exact files intended for upload.
 
 To upload one platform depot:
 

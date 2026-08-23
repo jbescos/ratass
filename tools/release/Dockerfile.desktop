@@ -1,0 +1,36 @@
+FROM maven:3.9.11-eclipse-temurin-21@sha256:6fdc855a6ed81d288ca7ca37ac6ff5e9308b612485c0801d70b25a858c83d237
+
+ARG PACKR_VERSION=4.0.0
+ARG PACKR_SHA256=e2047f5b098bd5ca05150a530f3ada3a7f07bd846be730b92378180bdd3d8be2
+ARG WINDOWS_JRE_VERSION=21.0.12.1_1
+ARG WINDOWS_JRE_SHA256=d35f31e712f0fcf6ac5a093edc90204fbff22f720ba3950bd09d331d5e621636
+ARG RCEDIT_VERSION=2.0.0
+ARG RCEDIT_SHA256=3e7801db1a5edbec91b49a24a094aad776cb4515488ea5a4ca2289c400eade2a
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        file \
+        unzip \
+        wine64 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL \
+        "https://github.com/libgdx/packr/releases/download/${PACKR_VERSION}/packr-all-${PACKR_VERSION}.jar" \
+        -o /opt/packr.jar \
+    && echo "${PACKR_SHA256}  /opt/packr.jar" | sha256sum -c - \
+    && curl -fsSL \
+        "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_windows_hotspot_${WINDOWS_JRE_VERSION}.zip" \
+        -o /opt/windows-jre.zip \
+    && echo "${WINDOWS_JRE_SHA256}  /opt/windows-jre.zip" | sha256sum -c - \
+    && curl -fsSL \
+        "https://github.com/electron/rcedit/releases/download/v${RCEDIT_VERSION}/rcedit-x64.exe" \
+        -o /opt/rcedit.exe \
+    && echo "${RCEDIT_SHA256}  /opt/rcedit.exe" | sha256sum -c -
+
+ENV PACKR_JAR=/opt/packr.jar
+ENV WINDOWS_JRE_ARCHIVE=/opt/windows-jre.zip
+ENV RCEDIT_EXE=/opt/rcedit.exe
+WORKDIR /workspace
+ENTRYPOINT ["/bin/bash", "tools/release/package-desktop-in-container.sh"]

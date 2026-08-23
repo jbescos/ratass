@@ -23,6 +23,8 @@ public final class RogueliteCompetitorProgress {
     private int experience;
     private int lapExperience;
     private int raceExperience;
+    private int raceBankedLapExperience;
+    private int raceFinishExperience;
     private RogueliteExperienceAwards.Reason lastExperienceReason;
     private int lastExperienceAmount;
     private int pendingRewards;
@@ -94,6 +96,14 @@ public final class RogueliteCompetitorProgress {
         return raceExperience;
     }
 
+    public int getRaceBankedLapExperience() {
+        return raceBankedLapExperience;
+    }
+
+    public int getRaceFinishExperience() {
+        return raceFinishExperience;
+    }
+
     public RogueliteExperienceAwards.Reason getLastExperienceReason() {
         return lastExperienceReason;
     }
@@ -163,10 +173,50 @@ public final class RogueliteCompetitorProgress {
             RogueliteExperienceAwards.Reason reason,
             int amount,
             int lapExperienceCap) {
+        if (hasPendingReward() || amount <= 0) {
+            return 0;
+        }
         int remaining = Math.max(0, lapExperienceCap - lapExperience);
-        int gained = awardExperience(Math.min(amount, remaining));
+        int gained = Math.min(amount, remaining);
         lapExperience += gained;
-        recordRaceAward(reason, gained);
+        recordLastExperience(reason, gained);
+        return gained;
+    }
+
+    int stealLapExperienceFrom(
+            RogueliteCompetitorProgress offender,
+            int lapExperienceCap) {
+        if (offender == null || offender == this) {
+            return 0;
+        }
+        int remainingCapacity = Math.max(0, lapExperienceCap - lapExperience);
+        int stolen = Math.min(remainingCapacity, offender.lapExperience);
+        if (stolen <= 0) {
+            return 0;
+        }
+        offender.lapExperience -= stolen;
+        lapExperience += stolen;
+        return stolen;
+    }
+
+    int bankLapExperience() {
+        return bankLapExperience(1f);
+    }
+
+    int bankLapExperience(float multiplier) {
+        if (lapExperience <= 0) {
+            return 0;
+        }
+        float safeMultiplier = Float.isFinite(multiplier)
+                ? Math.max(1f, multiplier)
+                : 1f;
+        int gained = awardExperience(Math.round(lapExperience * safeMultiplier));
+        if (gained <= 0) {
+            return 0;
+        }
+        lapExperience = 0;
+        raceExperience += gained;
+        raceBankedLapExperience += gained;
         return gained;
     }
 
@@ -177,6 +227,8 @@ public final class RogueliteCompetitorProgress {
     void resetRaceExperience() {
         lapExperience = 0;
         raceExperience = 0;
+        raceBankedLapExperience = 0;
+        raceFinishExperience = 0;
         lastExperienceReason = null;
         lastExperienceAmount = 0;
     }
@@ -233,6 +285,16 @@ public final class RogueliteCompetitorProgress {
             return;
         }
         raceExperience += gained;
+        raceFinishExperience += gained;
+        recordLastExperience(reason, gained);
+    }
+
+    private void recordLastExperience(
+            RogueliteExperienceAwards.Reason reason,
+            int gained) {
+        if (gained <= 0) {
+            return;
+        }
         if (reason != null) {
             lastExperienceReason = reason;
             lastExperienceAmount = gained;

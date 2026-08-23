@@ -62,26 +62,37 @@ fi
   --output "${output}" \
   --checkpoint "${checkpoint}" \
   "${resume_args[@]}" \
+  --evaluate-mode "${CARD_STRATEGY_EVALUATE_MODE}" \
   --episodes "${CARD_STRATEGY_EPISODES}" \
   --imitation-decisions "${CARD_STRATEGY_IMITATION_DECISIONS}" \
   --batch-episodes "${CARD_STRATEGY_BATCH_EPISODES}" \
   --eval-episodes "${CARD_STRATEGY_EVAL_EPISODES}" \
   --selection-eval-episodes "${CARD_STRATEGY_SELECTION_EVAL_EPISODES}" \
   --validation-every "${CARD_STRATEGY_VALIDATION_EVERY}" \
+  --early-stop-patience "${CARD_STRATEGY_EARLY_STOP_PATIENCE}" \
   --hidden-size "${CARD_STRATEGY_HIDDEN_SIZE}" \
   --hidden-layers "${CARD_STRATEGY_HIDDEN_LAYERS}" \
   --lr "${CARD_STRATEGY_LR}" \
   --imitation-lr "${CARD_STRATEGY_IMITATION_LR}" \
   --personality-teacher-weight "${CARD_STRATEGY_PERSONALITY_TEACHER_WEIGHT}" \
   --teacher-rollout-ratio "${CARD_STRATEGY_TEACHER_ROLLOUT_RATIO}" \
+  --teacher-rollout-final-ratio "${CARD_STRATEGY_TEACHER_ROLLOUT_FINAL_RATIO}" \
   --gamma "${CARD_STRATEGY_GAMMA}" \
   --entropy "${CARD_STRATEGY_ENTROPY}" \
+  --ppo-clip "${CARD_STRATEGY_PPO_CLIP}" \
+  --ppo-epochs "${CARD_STRATEGY_PPO_EPOCHS}" \
+  --elite-fraction "${CARD_STRATEGY_ELITE_FRACTION}" \
   --value-coefficient "${CARD_STRATEGY_VALUE_COEFFICIENT}" \
   --grad-clip "${CARD_STRATEGY_GRAD_CLIP}" \
   --self-play-ratio "${CARD_STRATEGY_SELF_PLAY_RATIO}" \
+  --mixed-training-ratio "${CARD_STRATEGY_MIXED_TRAINING_RATIO}" \
   --self-play-snapshot-every "${CARD_STRATEGY_SELF_PLAY_SNAPSHOT_EVERY}" \
+  --selection-opponents "${CARD_STRATEGY_SELECTION_OPPONENTS}" \
   --selection-mode "${CARD_STRATEGY_SELECTION_MODE}" \
   --max-win-rate-regression "${CARD_STRATEGY_MAX_WIN_RATE_REGRESSION}" \
+  --minimum-unique-cards "${CARD_STRATEGY_MINIMUM_UNIQUE_CARDS}" \
+  --minimum-stat-synergies-per-episode "${CARD_STRATEGY_MINIMUM_STAT_SYNERGIES_PER_EPISODE}" \
+  --mixed-opponent-policies "${CARD_STRATEGY_MIXED_OPPONENT_POLICIES}" \
   --field-size "${CARD_STRATEGY_FIELD_SIZE}" \
   --circuits "${CARD_STRATEGY_CIRCUITS}" \
   --laps "${CARD_STRATEGY_LAPS}" \

@@ -127,6 +127,16 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    boolean suppressesOffenderBuildAndTransfersLapExperience() {
+        return delegate.suppressesOffenderBuildAndTransfersLapExperience();
+    }
+
+    @Override
+    float revengeTargetAgeSeconds() {
+        return delegate.revengeTargetAgeSeconds();
+    }
+
+    @Override
     float cooldownTimeRemainingSeconds() {
         return delegate.cooldownTimeRemainingSeconds();
     }
@@ -456,8 +466,13 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
         }
         previousCardId = selected;
         delegate = RogueliteEffectFactory.create(selected, cycleOffset);
-        delegate.onLoadedByRandomCard();
         cycleExecuted = false;
         executionSettleTimer = 0f;
+        delegate.onLoadedByRandomCard();
+        if (slotType == RogueliteSlotType.POWERUP
+                && delegate.isActive()
+                && !delegate.isArmed()) {
+            markCycleExecuted();
+        }
     }
 }

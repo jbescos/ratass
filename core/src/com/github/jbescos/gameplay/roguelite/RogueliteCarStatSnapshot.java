@@ -8,6 +8,7 @@ public final class RogueliteCarStatSnapshot {
     private final float steeringMultiplier;
     private final float massMultiplier;
     private final float aerodynamicEfficiency;
+    private final float lapExperienceBankMultiplier;
 
     private RogueliteCarStatSnapshot(
             RogueliteCarUpgrades upgrades,
@@ -33,6 +34,7 @@ public final class RogueliteCarStatSnapshot {
         steeringMultiplier =
                 upgrades.getSteeringMultiplier(slip) * steeringEffectMultiplier;
         massMultiplier = upgrades.getMassMultiplier(massEffectMultiplier);
+        lapExperienceBankMultiplier = upgrades.getLapExperienceBankMultiplier();
     }
 
     public static RogueliteCarStatSnapshot from(
@@ -107,6 +109,10 @@ public final class RogueliteCarStatSnapshot {
 
     public float getAerodynamicEfficiency() {
         return aerodynamicEfficiency;
+    }
+
+    public float getLapExperienceBankMultiplier() {
+        return lapExperienceBankMultiplier;
     }
 
     private static RogueliteLoadout copy(RogueliteLoadout loadout) {

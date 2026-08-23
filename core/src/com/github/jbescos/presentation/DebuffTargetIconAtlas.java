@@ -5,7 +5,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 /** Maps target-side hostile card effects to cells in the generated icon atlas. */
 public final class DebuffTargetIconAtlas {
     public static final int COLUMNS = 3;
-    public static final int ROWS = 3;
+    public static final int ROWS = 4;
 
     private DebuffTargetIconAtlas() {
     }
@@ -33,6 +33,10 @@ public final class DebuffTargetIconAtlas {
                 return 7;
             case PAYBACK_SHIELD:
                 return 8;
+            case TELEMETRY_THEFT:
+            case BUILD_HEIST:
+            case APEX_PLUNDER:
+                return 9;
             default:
                 return -1;
         }

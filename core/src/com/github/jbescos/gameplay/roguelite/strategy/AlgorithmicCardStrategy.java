@@ -28,8 +28,20 @@ public final class AlgorithmicCardStrategy implements CardStrategy {
         CardStrategyDecision decision,
             CardStrategyRandom random) {
         RogueliteCompetitorProgress progress = decision.getProgress();
+        RogueliteCardOffer finalReckoning = findCard(
+                decision.getOffers(), RogueliteCardId.FINAL_RECKONING);
+        if (finalReckoning != null) {
+            return finalReckoning;
+        }
+        List<RogueliteCardOffer> eligibleOffers = decision.getOffers();
+        if (progress.getLoadout().has(RogueliteCardId.FINAL_RECKONING)) {
+            eligibleOffers = withoutSlot(eligibleOffers, RogueliteSlotType.REVENGE);
+            if (eligibleOffers.isEmpty()) {
+                return null;
+            }
+        }
         OfferBucket bucket = offerBucket(
-                decision.getDriverCatalog(), progress, decision.getOffers());
+                decision.getDriverCatalog(), progress, eligibleOffers);
         RogueliteCardOffer synergy = bestSynergyOffer(progress, bucket.offers);
         if (synergy != null) {
             if (random.nextInt(100) < EXPLORATION_CHANCE) {
@@ -46,6 +58,31 @@ public final class AlgorithmicCardStrategy implements CardStrategy {
         }
         return highestScoredOffer(
                 decision.getDriverCatalog(), progress, bucket.offers);
+    }
+
+    private static RogueliteCardOffer findCard(
+            List<RogueliteCardOffer> offers,
+            RogueliteCardId cardId) {
+        for (int i = 0; i < offers.size(); i++) {
+            RogueliteCardOffer offer = offers.get(i);
+            if (!offer.isDriver() && offer.getCard().getId() == cardId) {
+                return offer;
+            }
+        }
+        return null;
+    }
+
+    private static List<RogueliteCardOffer> withoutSlot(
+            List<RogueliteCardOffer> offers,
+            RogueliteSlotType excludedSlot) {
+        List<RogueliteCardOffer> filtered = new ArrayList<RogueliteCardOffer>();
+        for (int i = 0; i < offers.size(); i++) {
+            RogueliteCardOffer offer = offers.get(i);
+            if (offer.getSlotType() != excludedSlot) {
+                filtered.add(offer);
+            }
+        }
+        return filtered;
     }
 
     private static OfferBucket offerBucket(

@@ -182,14 +182,14 @@ public class RandomCardEffectTest {
     }
 
     @Test
-    public void powerupWildcardsKeepLoadedConditionalCardsUntilTheyExecute() {
-        assertBlockedPowerupWaitsForTrigger(
+    public void powerupWildcardsExecuteLoadedConditionalCardsWithoutTheirTrigger() {
+        assertBlockedPowerupExecutesWithoutTrigger(
                 RogueliteCardId.LUCKY_SPARK,
                 RogueliteCardId.MIRROR_DUO);
-        assertBlockedPowerupWaitsForTrigger(
+        assertBlockedPowerupExecutesWithoutTrigger(
                 RogueliteCardId.CHAOS_RELAY,
                 RogueliteCardId.MIRROR_TRIO);
-        assertBlockedPowerupWaitsForTrigger(
+        assertBlockedPowerupExecutesWithoutTrigger(
                 RogueliteCardId.WILDCARD_CORE,
                 RogueliteCardId.OVERDRIVE_COIL);
     }
@@ -273,7 +273,7 @@ public class RandomCardEffectTest {
         assertEquals(-1, effect.revengeTargetVehicleId());
     }
 
-    private static void assertBlockedPowerupWaitsForTrigger(
+    private static void assertBlockedPowerupExecutesWithoutTrigger(
             RogueliteCardId wildcardId,
             RogueliteCardId blockedCandidateId) {
         RandomCardEffect effect = effectPreparedAs(wildcardId, blockedCandidateId);
@@ -282,21 +282,12 @@ public class RandomCardEffectTest {
                 effect.cooldownTimeRemainingSeconds(),
                 0.0001f);
         RogueliteDrivingFrame noTraffic = straightWithoutTrafficFrame();
-        for (int step = 0; step < 700 && !effect.isReady(); step++) {
+        for (int step = 0; step < 700 && !effect.isActive(); step++) {
             effect.advance(0.1f, 0.1f, noTraffic);
         }
-        assertTrue(wildcardId + " never became ready", effect.isReady());
-        RogueliteCardId firstCard = effect.preparedCardId();
-
-        effect.advance(30f, 30f, noTraffic);
-
-        assertEquals(firstCard, effect.preparedCardId());
-        assertEquals(firstCard, effect.loadedDisplayCardId());
-        assertTrue(effect.isReady());
-
-        effect.advance(0.1f, 0.1f, straightDrivingFrame());
-        assertTrue(blockedCandidateId + " did not execute once its condition was met",
+        assertTrue(blockedCandidateId + " waited for its normal trigger",
                 effect.isActive());
+        assertEquals(blockedCandidateId, effect.activeDisplayCardId());
     }
 
     private static void assertEveryPowerupCandidateExecutes(
@@ -347,6 +338,11 @@ public class RandomCardEffectTest {
     private static void executePreparedRevenge(
             RandomCardEffect effect,
             RogueliteCardId candidateId) {
+        if (RivalBuildLeechSpec.isCard(candidateId)) {
+            assertTrue(candidateId + " did not activate", effect.isActive());
+            assertTrue(effect.suppressesOffenderBuildAndTransfersLapExperience());
+            return;
+        }
         switch (candidateId) {
             case DRAFT_MAGNET:
             case REPULSOR_WAVE:

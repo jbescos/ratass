@@ -9,7 +9,7 @@ public class RacingHudLayoutTest {
     public void telemetryUsesOneCompactColumnAtEveryResolution() {
         assertEquals(1, RacingHudLayout.telemetryColumns());
         assertEquals(6, RacingHudLayout.telemetryRows());
-        assertEquals(5, RacingHudLayout.carStatRows());
+        assertEquals(6, RacingHudLayout.carStatRows());
         assertEquals(6, RacingHudLayout.cardRows(5));
         float phoneStandingsWidth =
                 RacingHudLayout.standingsPanelWidth(720f, 260f);

@@ -2,6 +2,7 @@ package com.github.jbescos.gameplay.roguelite.strategy;
 
 import com.github.jbescos.ai.rl.RlPolicy;
 import com.github.jbescos.gameplay.roguelite.AntennaNetworkBonuses;
+import com.github.jbescos.gameplay.roguelite.RogueliteCarUpgrades;
 import com.github.jbescos.gameplay.roguelite.DriverProfileCatalog;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
@@ -9,6 +10,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCompetitorProgress;
 import com.github.jbescos.gameplay.roguelite.RogueliteExperienceAwards;
 import com.github.jbescos.gameplay.roguelite.RogueliteRun;
 import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
+import com.github.jbescos.gameplay.roguelite.RivalBuildLeechSpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -55,6 +57,8 @@ public final class CardStrategyTrainingEnvironment {
     private int finalPosition;
     private CardStrategy selfPlayStrategy;
     private boolean selfPlayOpponents;
+    private CardStrategyCatalog mixedOpponentCatalog;
+    private boolean mixedOpponents;
 
     public CardStrategyTrainingEnvironment(
             DriverProfileCatalog driverCatalog,
@@ -99,6 +103,8 @@ public final class CardStrategyTrainingEnvironment {
         run = new RogueliteRun(seed, driverCatalog);
         if (selfPlayOpponents && selfPlayStrategy != null) {
             run.configureCardStrategies(CardStrategyCatalog.fixed(selfPlayStrategy));
+        } else if (mixedOpponents && mixedOpponentCatalog != null) {
+            run.configureCardStrategies(mixedOpponentCatalog);
         }
         raceEstimator = new CardStrategyRaceEstimator(driverCatalog);
         points = new int[fieldSize];
@@ -108,8 +114,13 @@ public final class CardStrategyTrainingEnvironment {
         Arrays.fill(championshipPositions, 1);
         Arrays.fill(cardSelections, 0);
         Arrays.fill(cardTypeSelections, 0);
+        List<Integer> rivalIds = new ArrayList<Integer>();
         for (int vehicleId = 1; vehicleId < fieldSize; vehicleId++) {
             run.getRivalProgress(vehicleId);
+            rivalIds.add(Integer.valueOf(vehicleId));
+        }
+        if (mixedOpponents && mixedOpponentCatalog != null && !selfPlayOpponents) {
+            run.assignRivalStrategiesForRace(rivalIds);
         }
         circuitIndex = 1;
         nextLap = 1;
@@ -135,6 +146,25 @@ public final class CardStrategyTrainingEnvironment {
         selfPlayOpponents = enabled;
     }
 
+    public void setMixedOpponentPolicies(String[] profileIds, String[] policyJsons) {
+        if (profileIds == null
+                || policyJsons == null
+                || profileIds.length == 0
+                || profileIds.length != policyJsons.length) {
+            throw new IllegalArgumentException("Mixed opponent policies are invalid.");
+        }
+        List<CardStrategy> strategies = new ArrayList<CardStrategy>();
+        for (int i = 0; i < profileIds.length; i++) {
+            strategies.add(new NeuralCardStrategy(
+                    profileIds[i], RlPolicy.fromJson(policyJsons[i])));
+        }
+        mixedOpponentCatalog = new CardStrategyCatalog(strategies);
+    }
+
+    public void setMixedOpponents(boolean enabled) {
+        mixedOpponents = enabled;
+    }
+
     public float step(int actionIndex) {
         ensureDecision();
         if (actionIndex < 0 || actionIndex > offers.size()) {
@@ -152,6 +182,9 @@ public final class CardStrategyTrainingEnvironment {
                 priorSelections,
                 priorTypeSelections,
                 averageTypeSelections());
+        if (selectionReward > 0f && selected != null && !isCompetitiveOffer(actionIndex)) {
+            selectionReward = 0f;
+        }
         boolean applied = selected == null
                 ? run.skipPlayerReward()
                 : run.select(selected);
@@ -306,24 +339,45 @@ public final class CardStrategyTrainingEnvironment {
     }
 
     public float[] getTrainingTargetScores() {
-        float[] strengths = getRaceStrengthScores();
+        float[] raceStrengths = getRaceStrengthScores();
+        float[] strengths = Arrays.copyOf(raceStrengths, raceStrengths.length);
         for (int i = 0; i < offers.size(); i++) {
             RogueliteCardOffer offer = offers.get(i);
             int priorSelections = offer.isDriver()
                     ? 0 : cardSelections[offer.getCard().getId().ordinal()];
             int priorTypeSelections = cardTypeSelections[offer.getSlotType().ordinal()];
-            strengths[i] += rewards.selection(
+            float personalityReward = rewards.selection(
                             offer,
                             run.getPlayerProgress().getLoadout(),
                             priorSelections,
                             priorTypeSelections,
-                            averageTypeSelections())
-                    * personalityTeacherWeight;
+                            averageTypeSelections());
+            if (personalityReward > 0f && !isCompetitiveOffer(raceStrengths, i)) {
+                personalityReward = 0f;
+            }
+            strengths[i] += personalityReward * personalityTeacherWeight;
         }
         strengths[offers.size()] += rewards.selection(
                         null, run.getPlayerProgress().getLoadout(), 0, 0, 0f)
                 * personalityTeacherWeight;
         return strengths;
+    }
+
+    private boolean isCompetitiveOffer(int actionIndex) {
+        return isCompetitiveOffer(getRaceStrengthScores(), actionIndex);
+    }
+
+    private boolean isCompetitiveOffer(float[] strengths, int actionIndex) {
+        if (actionIndex < 0 || actionIndex >= offers.size()) {
+            return false;
+        }
+        int strongerOffers = 0;
+        for (int i = 0; i < offers.size(); i++) {
+            if (strengths[i] > strengths[actionIndex]) {
+                strongerOffers++;
+            }
+        }
+        return strongerOffers < 2;
     }
 
     private float averageTypeSelections() {
@@ -369,6 +423,7 @@ public final class CardStrategyTrainingEnvironment {
         transitionReward += rewards.lapWin(racePositions[0]);
         updateRunRaceState();
         AntennaNetworkBonuses network = buildAntennaNetwork(null);
+        int[] lapExperience = new int[fieldSize];
         for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
             RogueliteCompetitorProgress progress = progress(vehicleId);
             float strength = raceEstimator.estimate(
@@ -378,7 +433,46 @@ public final class CardStrategyTrainingEnvironment {
                     Math.min(
                             RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP,
                             Math.round(8f + strength * 4f + random.nextInt(7))));
-            awardExperience(vehicleId, amount);
+            lapExperience[vehicleId] = amount;
+        }
+        applyExpectedBuildLeechTransfers(lapExperience);
+        for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
+            accumulateLapExperience(vehicleId, lapExperience[vehicleId]);
+        }
+        for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
+            bankLapExperience(vehicleId);
+        }
+    }
+
+    private void applyExpectedBuildLeechTransfers(int[] lapExperience) {
+        List<Integer> recipients = new ArrayList<Integer>(fieldSize);
+        for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
+            recipients.add(Integer.valueOf(vehicleId));
+        }
+        Collections.shuffle(recipients, random);
+        int lapCap = run.getRacecraftXpPerLapCap();
+        for (int i = 0; i < recipients.size(); i++) {
+            int recipientId = recipients.get(i).intValue();
+            RogueliteCardId revenge = progress(recipientId)
+                    .getLoadout()
+                    .get(RogueliteSlotType.REVENGE);
+            if (!RivalBuildLeechSpec.isCard(revenge)) {
+                continue;
+            }
+            int offenderId = random.nextInt(fieldSize - 1);
+            if (offenderId >= recipientId) {
+                offenderId++;
+            }
+            int requested = Math.round(
+                    lapExperience[offenderId]
+                            * RivalBuildLeechSpec.expectedLapTransferFraction(revenge));
+            int transferred = Math.min(
+                    requested,
+                    Math.min(
+                            lapExperience[offenderId],
+                            Math.max(0, lapCap - lapExperience[recipientId])));
+            lapExperience[offenderId] -= transferred;
+            lapExperience[recipientId] += transferred;
         }
     }
 
@@ -407,13 +501,25 @@ public final class CardStrategyTrainingEnvironment {
         updateChampionshipPositions();
     }
 
-    private void awardExperience(int vehicleId, int amount) {
+    private void accumulateLapExperience(int vehicleId, int amount) {
+        if (vehicleId == 0) {
+            run.awardPlayerRacecraftExperience(amount);
+        } else {
+            run.awardRivalRacecraftExperience(vehicleId, amount);
+        }
+    }
+
+    private void bankLapExperience(int vehicleId) {
         RogueliteCompetitorProgress progress = progress(vehicleId);
         int beforeLevel = progress.getLevel();
         int requirement = progress.getExperienceForNextLevel();
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+        upgrades.configure(progress.getLoadout());
+        upgrades.setAntennaNetwork(buildAntennaNetwork(null));
+        float multiplier = upgrades.getLapExperienceBankMultiplier();
         int gained = vehicleId == 0
-                ? run.awardPlayerRacecraftExperience(amount)
-                : run.awardRivalRacecraftExperience(vehicleId, amount);
+                ? run.bankPlayerLapExperience(multiplier)
+                : run.bankRivalLapExperience(vehicleId, multiplier);
         if (vehicleId == 0) {
             totalExperience += gained;
             transitionReward += rewards.experience(

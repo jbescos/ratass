@@ -13,6 +13,9 @@ final class RogueliteEffectFactory {
         if (id == RogueliteCardId.TIER_FOUR_SIGNAL) {
             return new TierFourUnlockPowerupEffect();
         }
+        if (id == RogueliteCardId.FINAL_RECKONING) {
+            return new FinalReckoningEffect();
+        }
         if (RandomCardEffect.isRandomCard(id)) {
             return new RandomCardEffect(id, powerupCycleOffset);
         }
@@ -25,6 +28,9 @@ final class RogueliteEffectFactory {
                 || id == RogueliteCardId.POWERUP_MATRIX
                 || id == RogueliteCardId.POWERUP_NEXUS) {
             return new PowerupAmplifierTechniqueEffect(id);
+        }
+        if (LapExperienceTechniqueEffect.isLapExperienceCard(id)) {
+            return new LapExperienceTechniqueEffect(id);
         }
         if (id == RogueliteCardId.PRIORITY_HOTLINE) {
             return new BestDriverOverrideEffect(id);
@@ -44,6 +50,9 @@ final class RogueliteEffectFactory {
         }
         if (id == RogueliteCardId.CROWN_ENGINE) {
             return new CrownBreakerRevengeEffect();
+        }
+        if (RivalBuildLeechRevengeEffect.isSupported(id)) {
+            return new RivalBuildLeechRevengeEffect(id);
         }
         if (id == RogueliteCardId.HUNTER_BARRAGE
                 || id == RogueliteCardId.HUNTER_STORM) {

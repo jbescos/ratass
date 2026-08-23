@@ -187,10 +187,10 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
                 maximum = 0.10f;
                 break;
             case COMEBACK_DRIVE:
-                maximum = 0.25f;
+                maximum = 0.20f;
                 break;
             case LAST_PLACE_FURY:
-                maximum = 0.50f;
+                maximum = 0.40f;
                 break;
             default:
                 return 0f;
@@ -254,6 +254,9 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
             // Effect strength and cooldown recovery are separate benefits.
             return baseline + (effectiveMultiplier - 1f) * 2f;
         }
+        if (LapExperienceTechniqueEffect.isLapExperienceCard(techniqueCardId)) {
+            return tuningBaselineScore(tuningCardId);
+        }
         Trigger techniqueTrigger = triggerFor(techniqueCardId);
         if (techniqueTrigger == Trigger.POSITION
                 || techniqueTrigger == Trigger.NEARBY_RIVAL) {
@@ -305,10 +308,10 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
                 bonus = 0.10f;
                 break;
             case COMEBACK_DRIVE:
-                bonus = 0.25f;
+                bonus = 0.20f;
                 break;
             case LAST_PLACE_FURY:
-                bonus = 0.50f;
+                bonus = 0.40f;
                 break;
             case CLOSE_QUARTERS:
                 bonus = 0.05f;
@@ -366,6 +369,9 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
     }
 
     static int amplifiedStatMask(RogueliteCardId cardId) {
+        if (cardId == null) {
+            return 0;
+        }
         switch (cardId) {
             case DRAFT_FOCUS:
             case DRAFT_EXPERT:

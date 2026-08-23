@@ -67,7 +67,8 @@ public class RogueliteProgressionBalanceTest {
                 for (int second = 0; second < driftSeconds; second++) {
                     awardAndResolve(run, RogueliteExperienceAwards.Reason.DRIFT, selectionsByTier);
                 }
-                run.resetPlayerLapExperience();
+                run.bankPlayerLapExperience();
+                resolveReward(run, selectionsByTier);
             }
             run.awardPlayerRacePosition(finishingPosition, FIELD_SIZE);
             resolveReward(run, selectionsByTier);

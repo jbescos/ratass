@@ -7,7 +7,7 @@ public final class RacingHudLayout {
     private static final float MAX_BOTTOM_PANEL_HEIGHT = 194f;
     private static final float MIN_RACE_SUMMARY_HEIGHT = 44f;
     private static final float MAX_RACE_SUMMARY_HEIGHT = 58f;
-    private static final int CAR_STAT_ROWS = 5;
+    private static final int CAR_STAT_ROWS = 6;
     private static final int TELEMETRY_ROWS = 6;
     private static final float CAR_STATS_SECTION_RATIO = 0.27f;
     private static final float TELEMETRY_SECTION_RATIO = 0.40f;

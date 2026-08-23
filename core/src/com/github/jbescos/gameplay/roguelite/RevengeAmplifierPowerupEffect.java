@@ -46,6 +46,12 @@ final class RevengeAmplifierPowerupEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    void onLoadedByRandomCard() {
+        // A wildcard must rotate even when no Revenge happens during this cycle.
+        activeTimer = MINIMUM_VISIBLE_SECONDS;
+    }
+
+    @Override
     int activeDisplayPriority() {
         return 8;
     }

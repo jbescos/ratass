@@ -33,7 +33,7 @@ public class CustomGameRulesTest {
         }
         assertEquals(5, rules.getLaps());
         assertEquals(2, rules.getLevelXpIncrement());
-        assertEquals(30, rules.getRacecraftXpPerLapCap());
+        assertEquals(40, rules.getRacecraftXpPerLapCap());
         for (RogueliteExperienceAwards.Reason reason
                 : RogueliteExperienceAwards.Reason.values()) {
             if (reason.isCustomizable()) {

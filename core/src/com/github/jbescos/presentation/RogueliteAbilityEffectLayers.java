@@ -4,6 +4,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteAbilityVisualStyle;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardCatalog;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardDefinition;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
+import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
 
 /** Selects a concurrent revenge effect that must remain visible below its amplifier. */
 public final class RogueliteAbilityEffectLayers {
@@ -14,13 +15,20 @@ public final class RogueliteAbilityEffectLayers {
             RogueliteCardId primaryCardId,
             RogueliteCardId activePowerupCardId,
             RogueliteCardId activeRevengeCardId) {
-        if (activeRevengeCardId == null
-                || activeRevengeCardId == primaryCardId
-                || !isRevengeAmplifier(activePowerupCardId)
-                || !hasCenteredArtwork(activeRevengeCardId)) {
-            return null;
+        if (activeRevengeCardId != null
+                && activeRevengeCardId == primaryCardId
+                && !usesCenteredArtwork(primaryCardId)
+                && activePowerupCardId != null
+                && activePowerupCardId != primaryCardId
+                && usesCenteredArtwork(activePowerupCardId)) {
+            return activePowerupCardId;
         }
-        return activeRevengeCardId;
+        return activeRevengeCardId != null
+                        && activeRevengeCardId != primaryCardId
+                        && isRevengeAmplifier(activePowerupCardId)
+                        && usesCenteredArtwork(activeRevengeCardId)
+                ? activeRevengeCardId
+                : null;
     }
 
     private static boolean isRevengeAmplifier(RogueliteCardId cardId) {
@@ -36,7 +44,12 @@ public final class RogueliteAbilityEffectLayers {
                 || style == RogueliteAbilityVisualStyle.REVENGE_BOOST_T3;
     }
 
-    private static boolean hasCenteredArtwork(RogueliteCardId cardId) {
+    public static boolean usesCenteredArtwork(RogueliteCardId cardId) {
+        if (cardId == RogueliteCardId.DRAFT_MAGNET
+                || cardId == RogueliteCardId.REPULSOR_WAVE
+                || cardId == RogueliteCardId.REPULSOR_SURGE) {
+            return true;
+        }
         if (cardId == RogueliteCardId.DRAFT_VENDETTA
                 || cardId == RogueliteCardId.TAR_TETHER
                 || cardId == RogueliteCardId.EMP_SNARE
@@ -46,6 +59,10 @@ public final class RogueliteAbilityEffectLayers {
         }
         RogueliteCardDefinition card = RogueliteCardCatalog.get(cardId);
         if (card == null) {
+            return false;
+        }
+        // Other Revenge cards use their dedicated links, projectiles and target icons.
+        if (card.getSlotType() == RogueliteSlotType.REVENGE) {
             return false;
         }
         RogueliteAbilityVisualStyle style = card.getAbilityVisualStyle();

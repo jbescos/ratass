@@ -11,7 +11,11 @@ repository.
   macOS.
 - Steam shortcut icon (`assets/branding/steam-shortcut-icon.png`, 512x512) and
   app icon (`assets/branding/steam-app-icon.jpg`, 184x184).
-- Steam depot upload script (`tools/release/publish-steam.sh`).
+- Reproducible Docker packaging for Linux and Windows
+  (`tools/release/package-desktop-docker.sh`).
+- Atomic Linux and Windows Steam depot upload script
+  (`tools/release/publish-steam-all.sh`), plus the single-depot script for
+  targeted uploads.
 - Native Windows package, verification, and Steam upload scripts under
   `tools/release/*windows*`.
 - Checked-in trailer build recipe and poster under `marketing/trailer`; the
@@ -49,6 +53,10 @@ repository.
 
 ## Build Validation Before Release
 
+- Run `tools/release/package-desktop-docker.sh` from a clean checkout and retain
+  the exact generated depots that are validated and uploaded.
+- Run `STEAM_DRY_RUN=1 tools/release/publish-steam-all.sh` with the real app and
+  depot IDs to inspect the generated Steam VDF configuration before login.
 - Upload to a private Steam branch and install it through the Steam client.
 - Test launch, new game, save/continue, quit, update, uninstall/reinstall, audio,
   fullscreen/windowed modes, and common 720p/1080p resolutions.

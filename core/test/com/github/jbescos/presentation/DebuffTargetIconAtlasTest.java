@@ -17,6 +17,9 @@ public class DebuffTargetIconAtlasTest {
         assertEquals(6, DebuffTargetIconAtlas.indexFor(RogueliteCardId.VOID_ANCHOR));
         assertEquals(7, DebuffTargetIconAtlas.indexFor(RogueliteCardId.TOTAL_BLACKOUT));
         assertEquals(8, DebuffTargetIconAtlas.indexFor(RogueliteCardId.PAYBACK_SHIELD));
+        assertEquals(9, DebuffTargetIconAtlas.indexFor(RogueliteCardId.TELEMETRY_THEFT));
+        assertEquals(9, DebuffTargetIconAtlas.indexFor(RogueliteCardId.BUILD_HEIST));
+        assertEquals(9, DebuffTargetIconAtlas.indexFor(RogueliteCardId.APEX_PLUNDER));
     }
 
     @Test

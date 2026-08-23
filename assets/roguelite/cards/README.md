@@ -1,6 +1,6 @@
 # Card Artwork Atlas
 
-Each theme provides a 6 by 22 artwork atlas at
+Each theme provides a 6 by 23 artwork atlas at
 `assets/theme/<theme>/roguelite/cards/card_art_atlas_v3.png`. Cells are addressed
 in row-major order by `RogueliteCardDefinition.artworkIndex`.
 
@@ -26,8 +26,9 @@ in row-major order by `RogueliteCardDefinition.artworkIndex`.
 | 18 | Slide Master | Hunter Storm | Ace Hotline | Priority Hotline | Chrono Shift | Temporal Dominion |
 | 19 | Traction Focus | Traction Expert | Traction Master | Agility Focus | Agility Expert | Agility Master |
 | 20 | Technique Coupler | Technique Matrix | Technique Singularity | Powerup Link | Powerup Matrix | Powerup Nexus |
-| 21 | Bulk Field | Titan Field | Colossus Field | Tune Link | Technique Link | Grid Link |
-| 22 | Apex Key | Reserved | Reserved | Reserved | Reserved | Reserved |
+| 21 | Bulk Field | Titan Field | Colossus Field | Tune Link | Dual Link | Grid Link |
+| 22 | Apex Key | Lap Dividend | Lap Booster | Lap Doubler | Telemetry Theft | Build Heist |
+| 23 | Apex Plunder | Final Reckoning | Reserved | Reserved | Reserved | Reserved |
 
 Every non-driver card has a unique artwork cell. Artwork must depict the card's
 actual mechanic in that theme; do not reuse another theme's cell with a tint or

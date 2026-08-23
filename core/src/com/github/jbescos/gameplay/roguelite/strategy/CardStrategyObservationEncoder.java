@@ -1,6 +1,7 @@
 package com.github.jbescos.gameplay.roguelite.strategy;
 
 import com.github.jbescos.gameplay.roguelite.DriverProfileMetadata;
+import com.github.jbescos.gameplay.roguelite.DriverProfileCatalog;
 import com.github.jbescos.gameplay.roguelite.RogueliteCarStatSnapshot;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardCatalog;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
@@ -20,12 +21,17 @@ public final class CardStrategyObservationEncoder {
             2 + RogueliteSlotType.values().length + 1
                     + DRIVER_FEATURE_COUNT + CARD_COUNT + 5;
     private static final int OPPONENT_FEATURE_COUNT = 4 + DRIVER_FEATURE_COUNT;
+    private static final float CANDIDATE_STRENGTH_SCALE = 4f;
     private static final int OBSERVATION_SIZE =
             GLOBAL_FEATURE_COUNT
                     + DRIVER_FEATURE_COUNT
                     + RogueliteLoadout.MODIFICATION_SLOT_COUNT * LOADOUT_SLOT_FEATURE_COUNT
                     + CANDIDATE_FEATURE_COUNT
-                    + MAX_OPPONENTS * OPPONENT_FEATURE_COUNT;
+                    + MAX_OPPONENTS * OPPONENT_FEATURE_COUNT
+                    + 1;
+
+    private DriverProfileCatalog estimatorCatalog;
+    private CardStrategyRaceEstimator raceEstimator;
 
     public int getObservationSize() {
         return OBSERVATION_SIZE;
@@ -76,9 +82,21 @@ public final class CardStrategyObservationEncoder {
 
         writeCandidate(cursor, decision, candidate);
         writeOpponents(cursor, context.getOpponents(), fieldSize);
+        cursor.add(clampSigned(
+                estimatorFor(decision.getDriverCatalog()).estimate(
+                                decision.getProgress(), candidate, 1.45f)
+                        / CANDIDATE_STRENGTH_SCALE));
         if (cursor.index != OBSERVATION_SIZE) {
             throw new IllegalStateException("Card strategy observation layout is inconsistent.");
         }
+    }
+
+    private CardStrategyRaceEstimator estimatorFor(DriverProfileCatalog catalog) {
+        if (raceEstimator == null || estimatorCatalog != catalog) {
+            estimatorCatalog = catalog;
+            raceEstimator = new CardStrategyRaceEstimator(catalog);
+        }
+        return raceEstimator;
     }
 
     private static void writeCandidate(

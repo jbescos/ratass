@@ -25,4 +25,23 @@ public final class CarStatBonusText {
                 + (absoluteTenths % 10)
                 + "%";
     }
+
+    public static String formatMultiplier(float multiplier) {
+        if (!Float.isFinite(multiplier) || multiplier < 1f) {
+            return "x1";
+        }
+        int hundredths = Math.round(multiplier * 100f);
+        if (hundredths % 100 == 0) {
+            return "x" + (hundredths / 100);
+        }
+        if (hundredths % 10 == 0) {
+            return "x" + (hundredths / 100) + "." + ((hundredths / 10) % 10);
+        }
+        int decimals = hundredths % 100;
+        return "x"
+                + (hundredths / 100)
+                + "."
+                + (decimals < 10 ? "0" : "")
+                + decimals;
+    }
 }

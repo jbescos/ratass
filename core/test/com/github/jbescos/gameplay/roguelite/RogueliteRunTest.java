@@ -166,7 +166,7 @@ public class RogueliteRunTest {
             }
         }
         assertTrue(tierThree > 0);
-        assertEquals(3, tierFour);
+        assertEquals(4, tierFour);
     }
 
     @Test
@@ -933,7 +933,8 @@ public class RogueliteRunTest {
                             run,
                             RogueliteExperienceAwards.DRIFT_SECOND);
                 }
-                run.resetPlayerLapExperience();
+                run.bankPlayerLapExperience();
+                resolvePlayerReward(run);
             }
             run.awardPlayerRacePosition(3, 10);
             resolvePlayerReward(run);
@@ -957,7 +958,7 @@ public class RogueliteRunTest {
     public void onlyAnEventHeavyLapReachesTheRacecraftCap() {
         RogueliteRun run = new RogueliteRun(582L);
 
-        for (int overtake = 0; overtake < 3; overtake++) {
+        for (int overtake = 0; overtake < 4; overtake++) {
             awardRacecraftAndResolve(run, RogueliteExperienceAwards.PASS_RIVAL);
         }
         awardRacecraftAndResolve(run, RogueliteExperienceAwards.FASTEST_LAP);
@@ -970,6 +971,7 @@ public class RogueliteRunTest {
         assertEquals(
                 RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP,
                 run.getPlayerProgress().getLapExperience());
+        assertEquals(0, run.getPlayerProgress().getExperience());
         assertEquals(1, run.getPlayerProgress().getLevel());
         awardRacecraftAndResolve(run, RogueliteExperienceAwards.PASS_RIVAL);
         awardRacecraftAndResolve(run, RogueliteExperienceAwards.PASS_RIVAL);
@@ -978,28 +980,80 @@ public class RogueliteRunTest {
                 run.getPlayerProgress().getLapExperience());
         assertTrue(
                 RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP * 2
-                        < run.getPlayerProgress().getExperienceForNextLevel());
+                        <= run.getPlayerProgress().getExperienceForNextLevel());
     }
 
     @Test
     public void racecraftExperienceIsCappedPerCompetitorAndRestored() {
         RogueliteRun run = new RogueliteRun(583L);
 
-        assertEquals(30, run.awardPlayerRacecraftExperience(100));
+        assertEquals(40, run.awardPlayerRacecraftExperience(100));
         assertEquals(0, run.awardPlayerRacecraftExperience(1));
         assertEquals(
                 RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP,
                 run.getPlayerProgress().getLapExperience());
-        assertEquals(30, run.awardRivalRacecraftExperience(7, 200));
+        assertEquals(40, run.awardRivalRacecraftExperience(7, 200));
+        assertEquals(0, run.getPlayerProgress().getExperience());
+        assertEquals(0, run.getRivalProgress(7).getExperience());
 
         RogueliteRun restored = new RogueliteRun(584L);
         assertTrue(restored.restore(run.snapshot()));
-        assertEquals(30, restored.getPlayerProgress().getLapExperience());
-        assertEquals(30, restored.getRivalProgress(7).getLapExperience());
+        assertEquals(40, restored.getPlayerProgress().getLapExperience());
+        assertEquals(40, restored.getRivalProgress(7).getLapExperience());
 
         restored.resetPlayerLapExperience();
         assertEquals(0, restored.getPlayerProgress().getLapExperience());
-        assertEquals(30, restored.getRivalProgress(7).getLapExperience());
+        assertEquals(40, restored.getRivalProgress(7).getLapExperience());
+    }
+
+    @Test
+    public void crossingTheLineBanksLapExperienceIntoGlobalExperience() {
+        RogueliteRun run = new RogueliteRun(585L);
+
+        assertEquals(18, run.awardPlayerRacecraftExperience(18));
+        assertEquals(0, run.getPlayerProgress().getExperience());
+        assertEquals(18, run.getPlayerProgress().getLapExperience());
+        assertEquals(0, run.getPlayerProgress().getRaceExperience());
+
+        assertEquals(18, run.bankPlayerLapExperience());
+
+        assertEquals(18, run.getPlayerProgress().getExperience());
+        assertEquals(0, run.getPlayerProgress().getLapExperience());
+        assertEquals(18, run.getPlayerProgress().getRaceExperience());
+    }
+
+    @Test
+    public void unfinishedCarsDiscardPendingLapExperienceWithoutBankingIt() {
+        RogueliteRun run = new RogueliteRun(586L);
+        run.awardPlayerRacecraftExperience(18);
+        run.awardRivalRacecraftExperience(7, 24);
+
+        run.discardLapExperience(true, 0);
+        run.discardLapExperience(false, 7);
+
+        assertEquals(0, run.getPlayerProgress().getLapExperience());
+        assertEquals(0, run.getRivalProgress(7).getLapExperience());
+        assertEquals(0, run.getPlayerProgress().getExperience());
+        assertEquals(0, run.getRivalProgress(7).getExperience());
+    }
+
+    @Test
+    public void crownBreakerCanTransferPendingLapExperienceBetweenCompetitors() {
+        RogueliteRun run = new RogueliteRun(586L);
+        run.awardRivalRacecraftExperience(7, 40);
+        run.awardPlayerRacecraftExperience(20);
+
+        assertEquals(20, run.stealLapExperience(true, 0, false, 7));
+
+        assertEquals(40, run.getPlayerProgress().getLapExperience());
+        assertEquals(20, run.getRivalProgress(7).getLapExperience());
+        assertEquals(0, run.getPlayerProgress().getExperience());
+        assertEquals(0, run.getRivalProgress(7).getExperience());
+
+        run.awardRivalRacecraftExperience(8, 30);
+        assertEquals(10, run.stealLapExperience(false, 8, true, 0));
+        assertEquals(30, run.getPlayerProgress().getLapExperience());
+        assertEquals(40, run.getRivalProgress(8).getLapExperience());
     }
 
     @Test

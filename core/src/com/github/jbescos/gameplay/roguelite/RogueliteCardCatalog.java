@@ -499,14 +499,14 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.COMEBACK_DRIVE,
                 "Comeback Drive",
                 "Reads the field and gains performance as the car falls back, reaching full strength in last place.",
-                "Activation: Lower position\nPower up to +25%\nGrip up to +25%\nAero up to +25%\nMass up to -25%",
+                "Activation: Lower position\nPower up to +20%\nGrip up to +20%\nAero up to +20%\nMass up to -20%",
                 2,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
                 RogueliteCardId.LAST_PLACE_FURY,
                 "Last Place Fury",
                 "Reads the field and gains performance as the car falls back, reaching full strength in last place.",
-                "Activation: Lower position\nPower up to +50%\nGrip up to +50%\nAero up to +50%\nMass up to -50%",
+                "Activation: Lower position\nPower up to +40%\nGrip up to +40%\nAero up to +40%\nMass up to -40%",
                 3,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
@@ -528,6 +528,27 @@ public final class RogueliteCardCatalog {
                 "Traffic Dominance",
                 "Raises the car's pace whenever a rival is nearby, helping attacks and defensive runs.",
                 "Activation: Nearby rival\nPower +20%\nGrip +20%\nAero +20%\nMass -20%",
+                3,
+                RogueliteSlotType.TECHNIQUE));
+        cards.add(card(
+                RogueliteCardId.LAP_DIVIDEND,
+                "Lap Dividend",
+                "Crossing the line converts pending lap experience at a higher rate after the lap cap is applied. Finish XP is unchanged.",
+                "Activation: Lap complete\nBanked lap XP x1.25",
+                1,
+                RogueliteSlotType.TECHNIQUE));
+        cards.add(card(
+                RogueliteCardId.LAP_BOOSTER,
+                "Lap Booster",
+                "Crossing the line converts pending lap experience at a much higher rate after the lap cap is applied. Finish XP is unchanged.",
+                "Activation: Lap complete\nBanked lap XP x1.5",
+                2,
+                RogueliteSlotType.TECHNIQUE));
+        cards.add(card(
+                RogueliteCardId.LAP_DOUBLER,
+                "Lap Doubler",
+                "Crossing the line doubles pending lap experience after the lap cap is applied. Finish XP is unchanged.",
+                "Activation: Lap complete\nBanked lap XP x2",
                 3,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
@@ -723,22 +744,22 @@ public final class RogueliteCardCatalog {
         cards.add(powerup(
                 RogueliteCardId.TUNE_LINK,
                 "Tune Link",
-                "A repeating antenna links its car to every other linked car and broadcasts their best Tuning attributes.",
-                "Automatic: share best Tuning | 10s\nCooldown: 10s",
+                "An always-on antenna keeps your Tuning and imports the strongest missing Tuning attribute from linked cars.",
+                "Always active\nImport 1 Tuning attribute",
                 1,
                 RogueliteAbilityVisualStyle.ANTENNA_T1));
         cards.add(powerup(
                 RogueliteCardId.TECHNIQUE_LINK,
-                "Technique Link",
-                "A repeating antenna shares the best attribute multipliers from linked cars whenever your equipped Technique activates.",
-                "Technique active: share multipliers | 10s\nCooldown: 10s",
+                "Dual Link",
+                "An always-on antenna keeps your Tuning and imports the two strongest missing Tuning attributes from linked cars.",
+                "Always active\nImport 2 Tuning attributes",
                 2,
                 RogueliteAbilityVisualStyle.ANTENNA_T2));
         cards.add(powerup(
                 RogueliteCardId.GRID_LINK,
                 "Grid Link",
-                "A championship antenna combines linked Tuning attributes and Technique multipliers into one shared network.",
-                "Automatic: share Tuning + Technique | 10s\nCooldown: 10s",
+                "An always-on antenna imports the two strongest missing Tuning attributes and the strongest missing Technique from linked cars.",
+                "Always active\nImport 2 Tuning + 1 Technique",
                 3,
                 RogueliteAbilityVisualStyle.ANTENNA_T3));
         cards.add(powerup(
@@ -866,6 +887,34 @@ public final class RogueliteCardCatalog {
                 "A rival hit executes a random Tier 3 Revenge card, then prepares a different retaliation.",
                 "Activation: Rival hit\nRandom Tier 3 Revenge",
                 3,
+                RogueliteAbilityVisualStyle.RAM));
+        cards.add(revenge(
+                RogueliteCardId.TELEMETRY_THEFT,
+                "Telemetry Theft",
+                "For 10 seconds after a rival hit, the offender's Tuning and Technique cards are disabled and any new lap XP they earn flows to you.",
+                "Activation: Rival hit\nDisable Tuning + Technique | Steal lap XP | 10s",
+                1,
+                RogueliteAbilityVisualStyle.SHIELD));
+        cards.add(revenge(
+                RogueliteCardId.BUILD_HEIST,
+                "Build Heist",
+                "For 20 seconds after a rival hit, the offender's Tuning and Technique cards are disabled and any new lap XP they earn flows to you.",
+                "Activation: Rival hit\nDisable Tuning + Technique | Steal lap XP | 20s",
+                2,
+                RogueliteAbilityVisualStyle.SHIELD));
+        cards.add(revenge(
+                RogueliteCardId.APEX_PLUNDER,
+                "Apex Plunder",
+                "For 30 seconds after a rival hit, the offender's Tuning and Technique cards are disabled and any new lap XP they earn flows to you.",
+                "Activation: Rival hit\nDisable Tuning + Technique | Steal lap XP | 30s",
+                3,
+                RogueliteAbilityVisualStyle.SHIELD));
+        cards.add(revenge(
+                RogueliteCardId.FINAL_RECKONING,
+                "Final Reckoning",
+                "A rival hit activates Quantum Quartet, Colossus Field, and Temporal Dominion at the same time.",
+                "Activation: Rival hit\nQuantum Quartet + Colossus Field + Temporal Dominion",
+                4,
                 RogueliteAbilityVisualStyle.RAM));
 
         List<RogueliteCardDefinition> retiredCards =
@@ -1321,6 +1370,20 @@ public final class RogueliteCardCatalog {
                 return 112;
             case AGILITY_MASTER:
                 return 113;
+            case LAP_DIVIDEND:
+                return 127;
+            case LAP_BOOSTER:
+                return 128;
+            case LAP_DOUBLER:
+                return 129;
+            case TELEMETRY_THEFT:
+                return 130;
+            case BUILD_HEIST:
+                return 131;
+            case APEX_PLUNDER:
+                return 132;
+            case FINAL_RECKONING:
+                return 133;
             case TECHNIQUE_COUPLER:
                 return 114;
             case TECHNIQUE_MATRIX:

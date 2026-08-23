@@ -57,7 +57,9 @@ Every profile inherits `default.properties` and can override these independent t
 - `CARD_STRATEGY_REWARD_LAP_WIN`: finishing a simulated lap in first place.
 - `CARD_STRATEGY_REWARD_CARD_SELECTION`: accepting an offered card instead of skipping.
 - `CARD_STRATEGY_REWARD_TUNING_TECHNIQUE_SYNERGY`: improvement from a compatible stat Tuning and
-  Technique pair; amplifier-chain cards are deliberately excluded.
+  Technique pair; amplifier-chain cards are deliberately excluded. Repeated selections receive
+  diminishing credit. A higher-tier replacement always receives upgrade credit, even when it
+  temporarily breaks an old pairing while waiting for a matching card.
 - `CARD_STRATEGY_REWARD_CARD_TYPE_ROTATION`: reward for choosing a card type used less than the
   episode average and penalty for overused types.
 
@@ -68,6 +70,20 @@ without inflating their real episode rewards.
 `CARD_STRATEGY_TEACHER_ROLLOUT_RATIO` controls how often specialist distillation follows the
 teacher's choice into the next offer. It is zero for normal optimizers and nonzero for specialists,
 allowing training to observe complete specialist builds instead of only the old policy's states.
+`CARD_STRATEGY_TEACHER_ROLLOUT_FINAL_RATIO` optionally changes that probability halfway through
+distillation. Winner starts with stronger teacher guidance, then shifts toward student-generated
+states so the learned policy can recover from its own imperfect choices.
+
+Positive specialist selection rewards apply only to the two strongest offers according to the
+race estimator. Explorer therefore rotates among competitive cards instead of sacrificing races
+for variety, and Engineer cannot farm rewards by repeatedly replacing a strong Technique with a
+weaker one.
+
+`CARD_STRATEGY_MINIMUM_UNIQUE_CARDS` and
+`CARD_STRATEGY_MINIMUM_STAT_SYNERGIES_PER_EPISODE` protect each specialist's identity when
+selecting checkpoints. `CARD_STRATEGY_EARLY_STOP_PATIENCE` stops policy-gradient training after a
+configured number of validations without improvement while retaining the best distilled or
+trained state.
 
 The runtime roster is deliberately small:
 
@@ -75,13 +91,14 @@ The runtime roster is deliberately small:
 - `strategy00` (`Winner`): unrestricted card choices, rewarded for lap and championship wins.
 - `strategy01` (`Explorer`): avoids skips and rotates selections across card types.
 - `strategy02` (`Engineer`): builds compatible Tuning and Technique stat combinations.
-  chain.
 
 Untrained specialists initialize from `strategy00`, then optimize their own shaping rewards.
-They may trade up to twenty percentage points of held-out win rate for a distinct personality,
-but the common evaluation currently leaves every neural specialist above twenty percent wins.
 The algorithmic selector remains available in the game and is always the fallback for missing or
 invalid neural policies.
+
+Final evaluation also runs a mixed roster from `CARD_STRATEGY_MIXED_OPPONENT_POLICIES`. The roster
+uses the same guarantee as the game: Algorithmic, Winner, Explorer, and Engineer each appear when
+the field is large enough, then remaining rival slots are random draws from those strategies.
 
 `strategy00` resumes its last checkpoint and mixes algorithmic rivals with frozen self-play
 snapshots. `CARD_STRATEGY_SELF_PLAY_RATIO` controls that mix. Checkpoint selection uses

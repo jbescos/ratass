@@ -13,6 +13,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCompetitorProgress;
 import com.github.jbescos.gameplay.roguelite.RogueliteLoadout;
 import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
 import com.github.jbescos.gameplay.roguelite.RogueliteStrategyMetrics;
+import com.github.jbescos.gameplay.roguelite.RivalBuildLeechSpec;
 
 /** Fast strategic estimate used only for card-policy training and benchmarking. */
 final class CardStrategyRaceEstimator {
@@ -134,7 +135,12 @@ final class CardStrategyRaceEstimator {
         if (cardId == null) {
             return 0f;
         }
-        return RogueliteCardCatalog.get(cardId).getTier() * tierWeight;
+        float value = RogueliteCardCatalog.get(cardId).getTier() * tierWeight;
+        if (RivalBuildLeechSpec.isCard(cardId)) {
+            value += RivalBuildLeechSpec.expectedLapTransferFraction(cardId) * 0.12f;
+            value += RivalBuildLeechSpec.expectedBuildSuppressionFraction(cardId) * 0.12f;
+        }
+        return value;
     }
 
     private static boolean validLap(float lap) {

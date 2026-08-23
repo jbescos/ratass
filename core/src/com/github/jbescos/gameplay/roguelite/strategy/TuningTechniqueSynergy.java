@@ -8,6 +8,8 @@ import com.github.jbescos.gameplay.roguelite.RogueliteStrategyMetrics;
 
 /** Shared tuning-to-Technique compatibility calculation for selectors and training rewards. */
 final class TuningTechniqueSynergy {
+    private static final float TIER_UPGRADE_CREDIT = 0.05f;
+
     private TuningTechniqueSynergy() {
     }
 
@@ -17,6 +19,27 @@ final class TuningTechniqueSynergy {
 
     static float statSelectionGain(RogueliteLoadout loadout, RogueliteCardId candidate) {
         return selectionGain(loadout, candidate, true);
+    }
+
+    /**
+     * Gives Engineer credit for a stronger pairing without trapping it in an old tier.
+     * A tier upgrade is never treated as a broken build, even when its matching card
+     * has not been offered yet.
+     */
+    static float engineerSelectionGain(RogueliteLoadout loadout, RogueliteCardId candidate) {
+        if (loadout == null || candidate == null) {
+            return 0f;
+        }
+        RogueliteSlotType slot = RogueliteCardCatalog.get(candidate).getSlotType();
+        if (slot != RogueliteSlotType.TUNING && slot != RogueliteSlotType.TECHNIQUE) {
+            return 0f;
+        }
+        float gain = statSelectionGain(loadout, candidate);
+        RogueliteCardId equipped = loadout.get(slot);
+        int equippedTier = equipped == null ? 0 : RogueliteCardCatalog.get(equipped).getTier();
+        int candidateTier = RogueliteCardCatalog.get(candidate).getTier();
+        float upgradeCredit = Math.max(0, candidateTier - equippedTier) * TIER_UPGRADE_CREDIT;
+        return Math.max(upgradeCredit, Math.max(0f, gain));
     }
 
     private static float selectionGain(

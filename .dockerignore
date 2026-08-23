@@ -3,3 +3,5 @@
 !tools/rl/
 !tools/rl/Dockerfile
 !tools/rl/requirements.txt
+!tools/release/
+!tools/release/**

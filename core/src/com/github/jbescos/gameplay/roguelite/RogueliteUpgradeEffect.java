@@ -29,6 +29,36 @@ abstract class RogueliteUpgradeEffect {
         return null;
     }
 
+    RogueliteCardId activePowerupCardId() {
+        return null;
+    }
+
+    float nestedPowerupEffectMultiplier(RogueliteCardId candidateCardId) {
+        return 1f;
+    }
+
+    boolean containsCardEffect(RogueliteCardId candidateCardId) {
+        return behaviorCardId() == candidateCardId;
+    }
+
+    boolean isCardEffectActive(RogueliteCardId candidateCardId) {
+        return containsCardEffect(candidateCardId) && isActive();
+    }
+
+    boolean isCardEffectArmed(RogueliteCardId candidateCardId) {
+        return containsCardEffect(candidateCardId) && isArmed();
+    }
+
+    float cardEffectReadiness(RogueliteCardId candidateCardId) {
+        return containsCardEffect(candidateCardId) ? readiness() : 0f;
+    }
+
+    float cardEffectActiveTimeRemainingSeconds(RogueliteCardId candidateCardId) {
+        return containsCardEffect(candidateCardId)
+                ? activeTimeRemainingSeconds()
+                : 0f;
+    }
+
     void onLoadedByRandomCard() {
     }
 
@@ -54,6 +84,14 @@ abstract class RogueliteUpgradeEffect {
 
     float activeTimeRemainingSeconds() {
         return 0f;
+    }
+
+    boolean suppressesOffenderBuildAndTransfersLapExperience() {
+        return false;
+    }
+
+    float revengeTargetAgeSeconds() {
+        return Float.POSITIVE_INFINITY;
     }
 
     float cooldownTimeRemainingSeconds() {
@@ -83,6 +121,10 @@ abstract class RogueliteUpgradeEffect {
     }
 
     float powerupCooldownRateMultiplier() {
+        return 1f;
+    }
+
+    float lapExperienceBankMultiplier() {
         return 1f;
     }
 
