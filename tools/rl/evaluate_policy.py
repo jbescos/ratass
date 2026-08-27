@@ -81,8 +81,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-progress-max-action-steps",
         type=int,
-        default=600,
+        default=225,
     )
+    parser.add_argument("--stationary-grace-action-steps", type=int, default=15)
     parser.add_argument(
         "--off-road-failure-max-action-steps",
         type=int,
@@ -201,9 +202,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-off-road-penalty", type=float, default=0.80)
     parser.add_argument("--reward-off-road-distance-penalty", type=float, default=0.22)
     parser.add_argument("--reward-off-road-max-penalty", type=float, default=5.0)
-    parser.add_argument("--reward-no-progress-penalty", type=float, default=50.0)
+    parser.add_argument("--reward-no-progress-penalty", type=float, default=500.0)
+    parser.add_argument("--reward-stationary-penalty", type=float, default=0.50)
     parser.add_argument("--reward-off-road-recovery", type=float, default=4.0)
-    parser.add_argument("--reward-off-road-failure-penalty", type=float, default=50.0)
+    parser.add_argument("--reward-off-road-failure-penalty", type=float, default=500.0)
     parser.add_argument("--recovery-reward-distance", type=float, default=4.0)
     parser.add_argument("--recovery-reward-alignment", type=float, default=8.0)
     parser.add_argument("--recovery-reward-target-alignment", type=float, default=6.0)
@@ -336,6 +338,10 @@ def build_config(
         .withActionRepeat(max(1, args.action_repeat))
         .withMaxActionSteps(steps_limit)
         .withNoProgressMaxActionSteps(args.no_progress_max_action_steps)
+        .withStationaryPenalty(
+            args.stationary_grace_action_steps,
+            float(args.reward_stationary_penalty),
+        )
         .withOffRoadFailureMaxActionSteps(args.off_road_failure_max_action_steps)
         .withRouteTargets(args.route_targets)
         .withRouteTargetFraction(float(args.route_target_fraction))

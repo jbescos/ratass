@@ -111,6 +111,17 @@ public class RogueliteSaveRepositoryTest {
     }
 
     @Test
+    public void differentCardCatalogIsRejectedBeforeContinue() {
+        MemoryStore store = new MemoryStore();
+        RogueliteSaveRepository repository = new RogueliteSaveRepository(store);
+        RogueliteSaveData data = saveData(191);
+        data.cardCatalogSignature = "cards-v1-obsolete";
+
+        assertFalse(repository.save(data));
+        assertNull(repository.load());
+    }
+
+    @Test
     public void customRulesSurviveSaveAndLoad() {
         MemoryStore store = new MemoryStore();
         RogueliteSaveRepository repository = new RogueliteSaveRepository(store);
@@ -140,6 +151,8 @@ public class RogueliteSaveRepositoryTest {
         data.mapOrder.add("map000");
         data.mapOrder.add("map001");
         data.themeName = "gt3";
+        data.cardCatalogSignature =
+                RogueliteSaveCompatibility.currentCardCatalogSignature();
         data.carCount = 10;
         data.raceLaps = 5;
         data.run = new RogueliteRun(17L).snapshot();

@@ -103,6 +103,7 @@ import com.github.jbescos.gameplay.roguelite.strategy.AlgorithmicCardStrategy;
 import com.github.jbescos.gameplay.roguelite.strategy.CardStrategyAssets;
 import com.github.jbescos.gameplay.roguelite.strategy.CardStrategyRaceState;
 import com.github.jbescos.gameplay.roguelite.save.GdxPreferencesRogueliteSaveStore;
+import com.github.jbescos.gameplay.roguelite.save.RogueliteSaveCompatibility;
 import com.github.jbescos.gameplay.roguelite.save.RogueliteSaveData;
 import com.github.jbescos.gameplay.roguelite.save.RogueliteSaveRepository;
 import com.github.jbescos.presentation.AbilityActivationVisual;
@@ -738,11 +739,14 @@ public class RatassGame extends ApplicationAdapter {
     private static final float RL_PROGRESS_MOVEMENT_TOLERANCE = 1.50f;
     private static final float RL_PROGRESS_MOVEMENT_EPSILON = 0.05f;
     private static final float RL_NO_PROGRESS_RESET_DISTANCE = Car.HEIGHT * 0.50f;
-    private static final int RL_DEFAULT_NO_PROGRESS_MAX_ACTION_STEPS = 600;
-    private static final float RL_NO_PROGRESS_PENALTY = 50f;
+    private static final int RL_DEFAULT_NO_PROGRESS_MAX_ACTION_STEPS = 225;
+    private static final int RL_DEFAULT_STATIONARY_GRACE_ACTION_STEPS = 15;
+    private static final float RL_STATIONARY_SPEED_THRESHOLD = 0.75f;
+    private static final float RL_STATIONARY_PENALTY = 0.50f;
+    private static final float RL_NO_PROGRESS_PENALTY = 500f;
     private static final float RL_OFF_ROAD_RECOVERY_REWARD = 4f;
     private static final int RL_DEFAULT_OFF_ROAD_FAILURE_MAX_ACTION_STEPS = 45;
-    private static final float RL_OFF_ROAD_FAILURE_PENALTY = 50f;
+    private static final float RL_OFF_ROAD_FAILURE_PENALTY = 500f;
     private static final float RL_ROUTE_ALIGNMENT_REWARD = 0f;
     private static final float RL_STEERING_PENALTY = 0.010f;
     private static final float RL_STEERING_CHANGE_PENALTY = 0f;
@@ -9590,6 +9594,8 @@ public class RatassGame extends ApplicationAdapter {
         save.roundNumber = roundNumber;
         save.playerWins = Math.max(0, playerWins);
         save.themeName = configuredThemeName;
+        save.cardCatalogSignature =
+                RogueliteSaveCompatibility.currentCardCatalogSignature();
         save.carCount = Math.max(1, roster.size);
         save.playerCarIndex = Math.max(0, selectedPlayerCarIndex);
         save.raceLaps = getRaceLapsToWin();
@@ -10427,6 +10433,10 @@ public class RatassGame extends ApplicationAdapter {
                     || (!offenderCurse && !allowsOffRoadStrike && !isCarOnRoad(source))
                     || target.rogueliteUpgrades.blocksHostileEffects()
                     || (!offenderCurse && !allowsOffRoadStrike && !isCarOnRoad(target))) {
+                continue;
+            }
+            if (source.rogueliteUpgrades.isRevengeStrikeBlockedBy(
+                    target.effectiveRogueliteUpgrades())) {
                 continue;
             }
             float distance = source.body.getPosition().dst(target.body.getPosition());
@@ -26624,7 +26634,8 @@ public class RatassGame extends ApplicationAdapter {
         private void applyForcedThrottle(
                 RogueliteCardId cardId,
                 float durationSeconds) {
-            if (effectiveRogueliteUpgrades().blocksHostileEffects()) {
+            if (effectiveRogueliteUpgrades().blocksHostileEffects()
+                    || effectiveRogueliteUpgrades().blocksRevengeCard(cardId)) {
                 return;
             }
             forcedThrottleTimer = Math.max(
@@ -26657,7 +26668,8 @@ public class RatassGame extends ApplicationAdapter {
                 float massMultiplier,
                 float performanceMultiplier,
                 float durationSeconds) {
-            if (effectiveRogueliteUpgrades().blocksHostileEffects()) {
+            if (effectiveRogueliteUpgrades().blocksHostileEffects()
+                    || effectiveRogueliteUpgrades().blocksRevengeCard(cardId)) {
                 return;
             }
             if (offenderCurse.apply(
@@ -26759,7 +26771,8 @@ public class RatassGame extends ApplicationAdapter {
             if (target == null
                     || body == null
                     || target.body == null
-                    || target.effectiveRogueliteUpgrades().blocksHostileEffects()) {
+                    || target.effectiveRogueliteUpgrades().blocksHostileEffects()
+                    || target.effectiveRogueliteUpgrades().blocksRevengeCard(cardId)) {
                 return;
             }
 
@@ -29522,7 +29535,6 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private void advanceCombatTimers(float delta) {
-            clearCollisionFieldBlockedRevengeEffects();
             recentImpactTimer = Math.max(0f, recentImpactTimer - delta);
             if (recentImpactTimer == 0f) {
                 lastAttackerId = -1;
@@ -29545,29 +29557,6 @@ public class RatassGame extends ApplicationAdapter {
             if (mirrorOwner == null && offenderCurse.advance(delta)) {
                 requestCollisionFixtureRebuild();
                 clearOffenderCurseTargetIcons();
-            }
-        }
-
-        private void clearCollisionFieldBlockedRevengeEffects() {
-            RogueliteCarUpgrades upgrades = effectiveRogueliteUpgrades();
-            if (!upgrades.isCollisionFieldActive()) {
-                return;
-            }
-            if (forcedBrakeTimer > 0f) {
-                forcedBrakeTimer = 0f;
-                clearDebuffTargetIcon(RogueliteCardId.EMP_SNARE);
-                clearDebuffTargetIcon(RogueliteCardId.VOID_ANCHOR);
-                if (voidAnchorVisual != null) {
-                    voidAnchorVisual.reset();
-                }
-            }
-            if (revengeGripTimer > 0f) {
-                revengeGripTimer = 0f;
-                revengeGripMultiplier = 1f;
-                clearDebuffTargetIcon(RogueliteCardId.TAR_TETHER);
-            }
-            if (revengeHookTarget != null) {
-                clearRevengeHookPull();
             }
         }
 
@@ -31884,6 +31873,7 @@ public class RatassGame extends ApplicationAdapter {
         public int actionRepeat = RL_DEFAULT_ACTION_REPEAT;
         public int maxActionSteps = RL_DEFAULT_MAX_ACTION_STEPS;
         public int noProgressMaxActionSteps = RL_DEFAULT_NO_PROGRESS_MAX_ACTION_STEPS;
+        public int stationaryGraceActionSteps = RL_DEFAULT_STATIONARY_GRACE_ACTION_STEPS;
         public int offRoadFailureMaxActionSteps =
                 RL_DEFAULT_OFF_ROAD_FAILURE_MAX_ACTION_STEPS;
         public int routeTargets = RL_DEFAULT_ROUTE_TARGETS;
@@ -31921,6 +31911,7 @@ public class RatassGame extends ApplicationAdapter {
         public float offRoadPenalty = RL_OFF_ROAD_PENALTY;
         public float offRoadDistancePenalty = RL_OFF_ROAD_DISTANCE_PENALTY;
         public float offRoadMaxPenalty = RL_OFF_ROAD_MAX_PENALTY;
+        public float stationaryPenalty = RL_STATIONARY_PENALTY;
         public float noProgressPenalty = RL_NO_PROGRESS_PENALTY;
         public float offRoadRecoveryReward = RL_OFF_ROAD_RECOVERY_REWARD;
         public float offRoadFailurePenalty = RL_OFF_ROAD_FAILURE_PENALTY;
@@ -31970,6 +31961,14 @@ public class RatassGame extends ApplicationAdapter {
 
         public RlTrainingConfig withNoProgressMaxActionSteps(int noProgressMaxActionSteps) {
             this.noProgressMaxActionSteps = noProgressMaxActionSteps;
+            return this;
+        }
+
+        public RlTrainingConfig withStationaryPenalty(
+                int stationaryGraceActionSteps,
+                float stationaryPenalty) {
+            this.stationaryGraceActionSteps = Math.max(0, stationaryGraceActionSteps);
+            this.stationaryPenalty = Math.max(0f, stationaryPenalty);
             return this;
         }
 
@@ -32364,6 +32363,7 @@ public class RatassGame extends ApplicationAdapter {
         private final float[] continuousDriftSeconds;
         private final float[] progressSinceDeadlineReset;
         private final int[] actionsSinceProgress;
+        private final int[] consecutiveStationaryActions;
         private final int[] consecutiveOffRoadActions;
         private final float[] bestRaceRouteProgress;
         private final float[] routeDistanceSinceLastTarget;
@@ -32453,6 +32453,7 @@ public class RatassGame extends ApplicationAdapter {
             continuousDriftSeconds = new float[controlledAgentCount];
             progressSinceDeadlineReset = new float[controlledAgentCount];
             actionsSinceProgress = new int[controlledAgentCount];
+            consecutiveStationaryActions = new int[controlledAgentCount];
             consecutiveOffRoadActions = new int[controlledAgentCount];
             bestRaceRouteProgress = new float[controlledAgentCount];
             routeDistanceSinceLastTarget = new float[controlledAgentCount];
@@ -32648,6 +32649,7 @@ public class RatassGame extends ApplicationAdapter {
                 updateOvertakingGoal(elapsedSeconds);
             } else {
                 updateNoProgressState();
+                updateStationaryState();
                 updateOffRoadFailureState();
             }
             boolean trainingRaceCompleted = hasCompletedTrainingRace();
@@ -33654,6 +33656,16 @@ public class RatassGame extends ApplicationAdapter {
             return hasActiveAgent;
         }
 
+        private void updateStationaryState() {
+            for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
+                RlAgentSnapshot after = afterSnapshots[agentIndex];
+                consecutiveStationaryActions[agentIndex] =
+                        after.active && after.speed < RL_STATIONARY_SPEED_THRESHOLD
+                                ? consecutiveStationaryActions[agentIndex] + 1
+                                : 0;
+            }
+        }
+
         private void updateOffRoadFailureState() {
             for (int agentIndex = 0; agentIndex < getControlledAgentCount(); agentIndex++) {
                 RlAgentSnapshot after = afterSnapshots[agentIndex];
@@ -33737,6 +33749,13 @@ public class RatassGame extends ApplicationAdapter {
                             agentIndex,
                             RL_REWARD_CAR_PUSH,
                             -getCarPushPenalty(before, after));
+                    if (consecutiveStationaryActions[agentIndex]
+                            > config.stationaryGraceActionSteps) {
+                        reward += recordReward(
+                                agentIndex,
+                                RL_REWARD_NO_PROGRESS,
+                                -config.stationaryPenalty);
+                    }
                     if (episodeNoProgressFailure) {
                         reward += recordReward(
                                 agentIndex,
@@ -34456,6 +34475,9 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private float getReverseSpeedPenalty(RlAgentSnapshot snapshot) {
+            if (snapshot.offRoad) {
+                return 0f;
+            }
             float reverseSpeed =
                     Math.max(0f, -snapshot.signedForwardSpeed - config.reverseSpeedFreeEpsilon);
             return Math.min(
@@ -34632,6 +34654,7 @@ public class RatassGame extends ApplicationAdapter {
                 continuousDriftSeconds[i] = 0f;
                 progressSinceDeadlineReset[i] = 0f;
                 actionsSinceProgress[i] = 0;
+                consecutiveStationaryActions[i] = 0;
                 consecutiveOffRoadActions[i] = 0;
                 routeDistanceSinceLastTarget[i] = 0f;
                 raceTargetSequences[i] = 0;

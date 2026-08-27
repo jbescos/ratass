@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class RogueliteSaveData {
-    public static final int CURRENT_VERSION = 3;
+    public static final int CURRENT_VERSION = 4;
     public static final String PHASE_RACE = "race";
     public static final String PHASE_RESULT = "result";
     public static final String PHASE_REWARD = "reward";
@@ -20,6 +20,7 @@ public final class RogueliteSaveData {
     public int roundNumber = 1;
     public int playerWins;
     public String themeName = "gt3";
+    public String cardCatalogSignature = "";
     public int carCount = 1;
     public int playerCarIndex;
     public int raceLaps = 1;
@@ -46,6 +47,8 @@ public final class RogueliteSaveData {
                 || playerWins < 0
                 || themeName == null
                 || themeName.length() == 0
+                || !RogueliteSaveCompatibility.hasCurrentCardCatalog(
+                        cardCatalogSignature)
                 || carCount < 1
                 || playerCarIndex < 0
                 || raceLaps < 1

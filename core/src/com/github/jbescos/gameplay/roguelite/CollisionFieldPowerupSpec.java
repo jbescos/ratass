@@ -58,6 +58,9 @@ public final class CollisionFieldPowerupSpec {
         }
         switch (cardId) {
             case DRAFT_MAGNET:
+            case RECOVERY_BEACON:
+            case DRAFT_VENDETTA:
+            case PAYBACK_SHIELD:
             case REPULSOR_WAVE:
             case REPULSOR_SURGE:
             case HUNTER_BARRAGE:
@@ -65,7 +68,10 @@ public final class CollisionFieldPowerupSpec {
             case TAR_TETHER:
             case EMP_SNARE:
             case VOID_ANCHOR:
-            case PAYBACK_SHIELD:
+            case SENSOR_JAMMER:
+            case GRID_BLACKOUT:
+            case TOTAL_BLACKOUT:
+            case TRIAD_COUP:
             case CROWN_ENGINE:
                 return true;
             default:

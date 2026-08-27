@@ -590,8 +590,8 @@ public final class RogueliteCardCatalog {
         cards.add(powerup(
                 RogueliteCardId.BULK_FIELD,
                 "Bulk Field",
-                "Projects a larger car-only collision body without changing the road footprint. Unstoppable while active.",
-                "Nearby rival: area x2 | 10s | Unstoppable\nMass +20% | Grip +5% | CD 20s",
+                "Projects a larger car-only collision body without changing the road footprint. Blind and immune to control-disrupting Revenge effects while active.",
+                "Nearby rival: area x2 | 10s | Blind\nControl-Revenge immune | Mass +20% | Grip +5% | CD 20s",
                 1,
                 RogueliteAbilityVisualStyle.ICON_ONLY));
         cards.add(powerup(
@@ -674,8 +674,8 @@ public final class RogueliteCardCatalog {
         cards.add(powerup(
                 RogueliteCardId.TITAN_FIELD,
                 "Titan Field",
-                "Projects a much larger car-only collision body without changing the road footprint. Unstoppable while active.",
-                "Nearby rival: area x3 | 10s | Unstoppable\nMass +20% | Grip +5% | CD 15s",
+                "Projects a much larger car-only collision body without changing the road footprint. Blind and immune to control-disrupting Revenge effects while active.",
+                "Nearby rival: area x3 | 10s | Blind\nControl-Revenge immune | Mass +20% | Grip +5% | CD 15s",
                 2,
                 RogueliteAbilityVisualStyle.ICON_ONLY));
         cards.add(powerup(
@@ -709,8 +709,8 @@ public final class RogueliteCardCatalog {
         cards.add(powerup(
                 RogueliteCardId.COLOSSUS_FIELD,
                 "Colossus Field",
-                "Projects an enormous car-only collision body without changing the road footprint. Unstoppable while active.",
-                "Nearby rival: area x4 | 10s | Unstoppable\nMass +20% | Grip +5% | CD 10s",
+                "Projects an enormous car-only collision body without changing the road footprint. Blind and immune to control-disrupting Revenge effects while active.",
+                "Nearby rival: area x4 | 10s | Blind\nControl-Revenge immune | Mass +20% | Grip +5% | CD 10s",
                 3,
                 RogueliteAbilityVisualStyle.ICON_ONLY));
         cards.add(powerup(

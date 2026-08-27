@@ -119,6 +119,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", required=True)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--init-checkpoint")
+    parser.add_argument("--init-policy")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--refresh-imitation", action="store_true")
     parser.add_argument("--evaluate-only", action="store_true")
@@ -978,6 +979,48 @@ def restore_checkpoint(
     return True
 
 
+def restore_exported_policy(path: Path, actor: CandidateScorer) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"Cannot read strategy policy {path}: {error}") from error
+
+    exported_layers = payload.get("layers")
+    actor_layers = [layer for layer in actor.network if isinstance(layer, nn.Linear)]
+    if not isinstance(exported_layers, list) or len(exported_layers) != len(actor_layers):
+        raise ValueError(f"Strategy policy layer count does not match the actor: {path}")
+
+    with torch.no_grad():
+        for index, (exported, layer) in enumerate(zip(exported_layers, actor_layers)):
+            if not isinstance(exported, dict):
+                raise ValueError(f"Invalid strategy policy layer {index}: {path}")
+            input_size = int(exported.get("inputSize", -1))
+            output_size = int(exported.get("outputSize", -1))
+            can_append_input = index == 0 and input_size == layer.in_features - 1
+            if output_size != layer.out_features or (
+                input_size != layer.in_features and not can_append_input
+            ):
+                raise ValueError(
+                    f"Strategy policy layer {index} shape does not match the actor: {path}"
+                )
+            weights = torch.tensor(exported.get("weights", []), dtype=layer.weight.dtype)
+            biases = torch.tensor(exported.get("bias", []), dtype=layer.bias.dtype)
+            if weights.numel() != output_size * input_size:
+                raise ValueError(f"Invalid strategy policy weights in layer {index}: {path}")
+            if biases.numel() != output_size:
+                raise ValueError(f"Invalid strategy policy bias in layer {index}: {path}")
+            restored_weights = weights.reshape(output_size, input_size)
+            if can_append_input:
+                restored_weights = nn.functional.pad(restored_weights, (0, 1))
+            layer.weight.copy_(restored_weights)
+            layer.bias.copy_(biases)
+
+    print(f"strategy_initialized policy={path}")
+    return True
+
+
 def append_zero_input_feature(
     state: dict[str, torch.Tensor],
 ) -> dict[str, torch.Tensor]:
@@ -1033,11 +1076,23 @@ def main() -> None:
     actor = CandidateScorer(observation_size, args.hidden_size, args.hidden_layers)
     critic = StateValue(observation_size, args.hidden_size, args.hidden_layers)
     checkpoint_path = Path(args.checkpoint)
-    resumed = args.resume and restore_checkpoint(checkpoint_path, actor, critic)
-    initialized = False
-    if not resumed and args.init_checkpoint:
+    initialized = bool(
+        args.init_policy
+        and restore_exported_policy(Path(args.init_policy), actor)
+    )
+    resumed = (
+        not initialized
+        and args.resume
+        and restore_checkpoint(checkpoint_path, actor, critic)
+    )
+    if not resumed and not initialized and args.init_checkpoint:
         initialized = restore_checkpoint(
             Path(args.init_checkpoint), actor, critic, restore_critic=False
+        )
+    if args.resume and not resumed and not initialized:
+        raise ValueError(
+            "Strategy resume requested, but no compatible checkpoint or exported policy "
+            "could be restored."
         )
     warm_started = resumed or initialized
     installed_state = copy.deepcopy(actor.state_dict()) if warm_started else None

@@ -281,7 +281,11 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         training_config.withActionRepeat(int(env_config.get("action_repeat", 4)))
         training_config.withMaxActionSteps(int(env_config.get("max_action_steps", 19200)))
         training_config.withNoProgressMaxActionSteps(
-            int(env_config.get("no_progress_max_action_steps", 600))
+            int(env_config.get("no_progress_max_action_steps", 225))
+        )
+        training_config.withStationaryPenalty(
+            int(env_config.get("stationary_grace_action_steps", 15)),
+            float(env_config.get("reward_stationary_penalty", 0.50)),
         )
         training_config.withOffRoadFailureMaxActionSteps(
             int(env_config.get("off_road_failure_max_action_steps", 45))
@@ -336,13 +340,13 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             float(env_config.get("reward_off_road_max_penalty", 5.0)),
         )
         training_config.withNoProgressPenalty(
-            float(env_config.get("reward_no_progress_penalty", 50.0))
+            float(env_config.get("reward_no_progress_penalty", 500.0))
         )
         training_config.withOffRoadRecoveryReward(
             float(env_config.get("reward_off_road_recovery", 4.0))
         )
         training_config.withOffRoadFailurePenalty(
-            float(env_config.get("reward_off_road_failure_penalty", 50.0))
+            float(env_config.get("reward_off_road_failure_penalty", 500.0))
         )
         training_config.withRecoveryRewards(
             float(env_config.get("recovery_reward_distance", 4.0)),
@@ -610,6 +614,7 @@ def build_algorithm(args):
         "action_repeat": args.action_repeat,
         "max_action_steps": args.max_action_steps,
         "no_progress_max_action_steps": args.no_progress_max_action_steps,
+        "stationary_grace_action_steps": args.stationary_grace_action_steps,
         "off_road_failure_max_action_steps": args.off_road_failure_max_action_steps,
         "route_targets": args.route_targets,
         "route_target_fraction": args.route_target_fraction,
@@ -640,6 +645,7 @@ def build_algorithm(args):
         "reward_off_road_distance_penalty": args.reward_off_road_distance_penalty,
         "reward_off_road_max_penalty": args.reward_off_road_max_penalty,
         "reward_no_progress_penalty": args.reward_no_progress_penalty,
+        "reward_stationary_penalty": args.reward_stationary_penalty,
         "reward_off_road_recovery": args.reward_off_road_recovery,
         "reward_off_road_failure_penalty": args.reward_off_road_failure_penalty,
         "recovery_reward_distance": args.recovery_reward_distance,
@@ -1298,6 +1304,8 @@ def run_policy_evaluation(
         str(args.route_target_fraction),
         "--no-progress-max-action-steps",
         str(args.no_progress_max_action_steps),
+        "--stationary-grace-action-steps",
+        str(args.stationary_grace_action_steps),
         "--off-road-failure-max-action-steps",
         str(args.off_road_failure_max_action_steps),
         "--seed",
@@ -1334,6 +1342,8 @@ def run_policy_evaluation(
         str(args.reward_off_road_max_penalty),
         "--reward-no-progress-penalty",
         str(args.reward_no_progress_penalty),
+        "--reward-stationary-penalty",
+        str(args.reward_stationary_penalty),
         "--reward-off-road-recovery",
         str(args.reward_off_road_recovery),
         "--reward-off-road-failure-penalty",
@@ -1943,8 +1953,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-progress-max-action-steps",
         type=int,
-        default=600,
+        default=225,
         help="truncate an episode after this many actions without meaningful forward progress; 0 disables it",
+    )
+    parser.add_argument(
+        "--stationary-grace-action-steps",
+        type=int,
+        default=15,
+        help="number of stationary actions allowed before dense stall penalties begin",
     )
     parser.add_argument(
         "--off-road-failure-max-action-steps",
@@ -2052,9 +2068,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-off-road-penalty", type=float, default=0.80)
     parser.add_argument("--reward-off-road-distance-penalty", type=float, default=0.22)
     parser.add_argument("--reward-off-road-max-penalty", type=float, default=5.0)
-    parser.add_argument("--reward-no-progress-penalty", type=float, default=50.0)
+    parser.add_argument("--reward-no-progress-penalty", type=float, default=500.0)
+    parser.add_argument("--reward-stationary-penalty", type=float, default=0.50)
     parser.add_argument("--reward-off-road-recovery", type=float, default=4.0)
-    parser.add_argument("--reward-off-road-failure-penalty", type=float, default=50.0)
+    parser.add_argument("--reward-off-road-failure-penalty", type=float, default=500.0)
     parser.add_argument("--recovery-reward-distance", type=float, default=4.0)
     parser.add_argument("--recovery-reward-alignment", type=float, default=8.0)
     parser.add_argument("--recovery-reward-target-alignment", type=float, default=6.0)

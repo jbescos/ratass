@@ -1516,6 +1516,9 @@ public class RogueliteCarUpgradesTest {
         };
         RogueliteCardId[] blockedRevengeCards = {
             RogueliteCardId.DRAFT_MAGNET,
+            RogueliteCardId.RECOVERY_BEACON,
+            RogueliteCardId.DRAFT_VENDETTA,
+            RogueliteCardId.PAYBACK_SHIELD,
             RogueliteCardId.REPULSOR_WAVE,
             RogueliteCardId.REPULSOR_SURGE,
             RogueliteCardId.HUNTER_BARRAGE,
@@ -1523,8 +1526,17 @@ public class RogueliteCarUpgradesTest {
             RogueliteCardId.TAR_TETHER,
             RogueliteCardId.EMP_SNARE,
             RogueliteCardId.VOID_ANCHOR,
-            RogueliteCardId.PAYBACK_SHIELD,
+            RogueliteCardId.SENSOR_JAMMER,
+            RogueliteCardId.GRID_BLACKOUT,
+            RogueliteCardId.TOTAL_BLACKOUT,
+            RogueliteCardId.TRIAD_COUP,
             RogueliteCardId.CROWN_ENGINE
+        };
+        RogueliteCardId[] allowedRevengeCards = {
+            RogueliteCardId.TELEMETRY_THEFT,
+            RogueliteCardId.BUILD_HEIST,
+            RogueliteCardId.APEX_PLUNDER,
+            RogueliteCardId.FINAL_RECKONING
         };
 
         for (int i = 0; i < collisionFields.length; i++) {
@@ -1532,7 +1544,7 @@ public class RogueliteCarUpgradesTest {
             assertTrue(
                     RogueliteCardCatalog.get(collisionFields[i])
                             .getEffectText()
-                            .contains("Unstoppable"));
+                            .contains("Control-Revenge immune"));
             assertFalse(upgrades.isCollisionFieldActive());
             assertFalse(upgrades.blocksOpponentAwareness());
             activateNearbyStraightPowerup(upgrades);
@@ -1541,10 +1553,35 @@ public class RogueliteCarUpgradesTest {
             for (int j = 0; j < blockedRevengeCards.length; j++) {
                 assertTrue(upgrades.blocksRevengeCard(blockedRevengeCards[j]));
             }
-            assertFalse(upgrades.blocksRevengeCard(RogueliteCardId.DRAFT_VENDETTA));
-            assertFalse(upgrades.blocksRevengeCard(RogueliteCardId.RECOVERY_BEACON));
+            for (int j = 0; j < allowedRevengeCards.length; j++) {
+                assertFalse(upgrades.blocksRevengeCard(allowedRevengeCards[j]));
+            }
             assertFalse(upgrades.blocksRevengeCard(null));
         }
+    }
+
+    @Test
+    public void collisionFieldDefersAnArmedControlRevengeWithoutConsumingIt() {
+        RogueliteCarUpgrades tar = configured(RogueliteCardId.TAR_TETHER);
+        RogueliteCarUpgrades collisionField = configured(RogueliteCardId.BULK_FIELD);
+        tar.onHitBy(42, 12f);
+        update(tar, 2.1f, 1f, true, 0f, 0.65f, 0f, 0f, 1f, 0f, 0f, 0f);
+        activateNearbyStraightPowerup(collisionField);
+
+        assertTrue(tar.isRevengeReady());
+        assertTrue(tar.isRevengeStrikeBlockedBy(collisionField));
+        assertTrue(tar.isRevengeArmed());
+        assertEquals(42, tar.getRevengeTargetVehicleId());
+
+        for (int i = 0; i < 101; i++) {
+            updateStraightPowerupAtSpeed(collisionField, 0.72f, false, 0f);
+        }
+
+        assertFalse(collisionField.isCollisionFieldActive());
+        assertFalse(tar.isRevengeStrikeBlockedBy(collisionField));
+        RogueliteRevengeStrike strike = tar.tryActivateOffenderStrike(42, 100f);
+        assertNotNull(strike);
+        assertEquals(RogueliteCardId.TAR_TETHER, strike.getCardId());
     }
 
     @Test

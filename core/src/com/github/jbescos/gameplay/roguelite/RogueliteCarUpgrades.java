@@ -1288,6 +1288,11 @@ public final class RogueliteCarUpgrades {
                 && CollisionFieldPowerupSpec.blocksRevengeCard(cardId);
     }
 
+    public boolean isRevengeStrikeBlockedBy(RogueliteCarUpgrades targetUpgrades) {
+        return targetUpgrades != null
+                && targetUpgrades.blocksRevengeCard(getRevengeCardId());
+    }
+
     public boolean blocksOpponentAwareness() {
         return isCollisionFieldActive();
     }
