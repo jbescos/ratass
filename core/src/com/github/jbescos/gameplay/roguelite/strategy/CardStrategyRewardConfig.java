@@ -25,6 +25,8 @@ public final class CardStrategyRewardConfig {
     private final float cardSelection;
     private final float tuningTechniqueSynergy;
     private final float cardTypeRotation;
+    private final float rivalPowerupOverlapPenalty;
+    private final float rivalRevengeOverlapPenalty;
     private final CardStrategyCardPreference cardPreference;
     private final Map<RogueliteSlotType, Float> cardTypeRewards;
 
@@ -63,6 +65,8 @@ public final class CardStrategyRewardConfig {
                 "",
                 0f,
                 "",
+                0f,
+                0f,
                 0f,
                 0f,
                 0f,
@@ -115,6 +119,8 @@ public final class CardStrategyRewardConfig {
                 0f,
                 0f,
                 0f,
+                0f,
+                0f,
                 0f);
     }
 
@@ -144,7 +150,9 @@ public final class CardStrategyRewardConfig {
             float lapWin,
             float cardSelection,
             float tuningTechniqueSynergy,
-            float cardTypeRotation) {
+            float cardTypeRotation,
+            float rivalPowerupOverlapPenalty,
+            float rivalRevengeOverlapPenalty) {
         this.championshipWin = finite(championshipWin);
         this.finalPosition = finite(finalPosition);
         this.racePosition = finite(racePosition);
@@ -162,6 +170,10 @@ public final class CardStrategyRewardConfig {
         this.cardSelection = finite(cardSelection);
         this.tuningTechniqueSynergy = finite(tuningTechniqueSynergy);
         this.cardTypeRotation = finite(cardTypeRotation);
+        this.rivalPowerupOverlapPenalty = Math.max(
+                0f, finite(rivalPowerupOverlapPenalty));
+        this.rivalRevengeOverlapPenalty = Math.max(
+                0f, finite(rivalRevengeOverlapPenalty));
         cardPreference = new CardStrategyCardPreference(
                 preferredCardIds,
                 preferredCardReward,
@@ -241,6 +253,16 @@ public final class CardStrategyRewardConfig {
 
     public float getCardTypeRotation() {
         return cardTypeRotation;
+    }
+
+    public float getRivalCardOverlapPenalty(RogueliteSlotType slotType) {
+        if (slotType == RogueliteSlotType.POWERUP) {
+            return rivalPowerupOverlapPenalty;
+        }
+        if (slotType == RogueliteSlotType.REVENGE) {
+            return rivalRevengeOverlapPenalty;
+        }
+        return 0f;
     }
 
     public float getCardPreferenceReward(RogueliteLoadout loadout, RogueliteCardId cardId) {

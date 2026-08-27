@@ -1,15 +1,17 @@
 package com.github.jbescos.presentation;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-public class RivalXpTransferVisualTest {
+public class CarProgressVisualTest {
     @Test
     public void movesOnceFromTheOffenderToTheRecipientThenExpires() {
-        RivalXpTransferVisual visual = new RivalXpTransferVisual(7, 3, 6);
+        CarProgressVisual visual = CarProgressVisual.experienceTransfer(7, 3, 6);
 
+        assertEquals(CarProgressVisual.Kind.EXPERIENCE, visual.getKind());
         assertEquals(7, visual.getSourceVehicleId());
         assertEquals(3, visual.getDestinationVehicleId());
         assertEquals(6, visual.getAmount());
@@ -24,21 +26,33 @@ public class RivalXpTransferVisualTest {
         assertEquals(1f, visual.getProgress(), 0.0001f);
         assertTrue(visual.isActive());
         visual.update(0.7f);
-        assertTrue(!visual.isActive());
+        assertFalse(visual.isActive());
     }
 
     @Test
     public void localAwardRemainsAttachedToOneCar() {
-        RivalXpTransferVisual visual = RivalXpTransferVisual.award(4, 2);
+        CarProgressVisual visual = CarProgressVisual.experienceAward(4, 2);
 
+        assertEquals(CarProgressVisual.Kind.EXPERIENCE, visual.getKind());
         assertEquals(4, visual.getSourceVehicleId());
         assertEquals(4, visual.getDestinationVehicleId());
         assertEquals(2, visual.getAmount());
-        assertTrue(!visual.isTransfer());
+        assertFalse(visual.isTransfer());
+    }
+
+    @Test
+    public void levelUpRemainsAttachedAndCarriesNoExperienceAmount() {
+        CarProgressVisual visual = CarProgressVisual.levelUp(5);
+
+        assertEquals(CarProgressVisual.Kind.LEVEL_UP, visual.getKind());
+        assertEquals(5, visual.getSourceVehicleId());
+        assertEquals(5, visual.getDestinationVehicleId());
+        assertEquals(0, visual.getAmount());
+        assertFalse(visual.isTransfer());
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsEmptyTransfers() {
-        new RivalXpTransferVisual(7, 3, 0);
+    public void rejectsEmptyExperienceTransfers() {
+        CarProgressVisual.experienceTransfer(7, 3, 0);
     }
 }

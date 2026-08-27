@@ -122,4 +122,6 @@ fi
   --reward-lap-win "${CARD_STRATEGY_REWARD_LAP_WIN}" \
   --reward-card-selection "${CARD_STRATEGY_REWARD_CARD_SELECTION}" \
   --reward-tuning-technique-synergy "${CARD_STRATEGY_REWARD_TUNING_TECHNIQUE_SYNERGY}" \
-  --reward-card-type-rotation "${CARD_STRATEGY_REWARD_CARD_TYPE_ROTATION}"
+  --reward-card-type-rotation "${CARD_STRATEGY_REWARD_CARD_TYPE_ROTATION}" \
+  --reward-rival-powerup-overlap-penalty "${CARD_STRATEGY_REWARD_RIVAL_POWERUP_OVERLAP_PENALTY}" \
+  --reward-rival-revenge-overlap-penalty "${CARD_STRATEGY_REWARD_RIVAL_REVENGE_OVERLAP_PENALTY}"

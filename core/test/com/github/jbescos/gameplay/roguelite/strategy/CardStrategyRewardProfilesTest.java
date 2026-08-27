@@ -26,8 +26,16 @@ public final class CardStrategyRewardProfilesTest {
                 .getCardSelection() > 0f);
         assertTrue(CardStrategyRewardProfiles.forProfile("strategy01")
                 .getCardTypeRotation() > 0f);
+        assertTrue(CardStrategyRewardProfiles.forProfile("strategy01")
+                .getRivalCardOverlapPenalty(RogueliteSlotType.POWERUP) > 0f);
+        assertTrue(CardStrategyRewardProfiles.forProfile("strategy01")
+                .getRivalCardOverlapPenalty(RogueliteSlotType.REVENGE) > 0f);
         assertTrue(CardStrategyRewardProfiles.forProfile("strategy02")
                 .getTuningTechniqueSynergy() > 0f);
+        assertTrue(CardStrategyRewardProfiles.forProfile("strategy02")
+                .getRivalCardOverlapPenalty(RogueliteSlotType.POWERUP) > 0f);
+        assertEquals(0f, CardStrategyRewardProfiles.forProfile("strategy00")
+                .getRivalCardOverlapPenalty(RogueliteSlotType.POWERUP), 0.001f);
     }
 
     @Test

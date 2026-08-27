@@ -19,7 +19,8 @@ final class CardStrategyRewardCalculator {
             RogueliteLoadout loadout,
             int priorSelections,
             int priorTypeSelections,
-            float averageTypeSelections) {
+            float averageTypeSelections,
+            float rivalCardOverlap) {
         if (offer == null) {
             return -config.getSkipPenalty();
         }
@@ -38,6 +39,8 @@ final class CardStrategyRewardCalculator {
                             loadout, offer.getCard().getId())
                     * config.getTuningTechniqueSynergy()
                     * repetitionScale;
+            reward -= config.getRivalCardOverlapPenalty(offer.getSlotType())
+                    * Math.max(0f, Math.min(1f, rivalCardOverlap));
         }
         if (config.getNovelty() != 0f) {
             reward += config.getNovelty()

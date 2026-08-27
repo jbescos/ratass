@@ -9,16 +9,16 @@ public final class CardStrategyRewardProfiles {
         if ("strategy01".equals(profileId)) {
             return config(100f, 30f, 3f, 1f, 0.10f, 0f,
                     4f, 0f, 0f, 0f, 0f, 0f,
-                    0f, 1f, 0f, 2.5f);
+                    0f, 1f, 0f, 2.5f, 4f, 4f);
         }
         if ("strategy02".equals(profileId)) {
             return config(100f, 30f, 3f, 1f, 0.10f, 0f,
                     0.5f, 0f, 0f, 0f, 0f, 0f,
-                    0f, 0f, 30f, 0f);
+                    0f, 0f, 30f, 0f, 4f, 4f);
         }
         return config(200f, 40f, 2f, 0.25f, 0.02f, 0f,
                 0.5f, 0f, 0f, 0f, 0f, 0f,
-                3f, 0f, 0f, 0f);
+                3f, 0f, 0f, 0f, 0f, 0f);
     }
 
     private static CardStrategyRewardConfig config(
@@ -37,13 +37,16 @@ public final class CardStrategyRewardProfiles {
             float lapWin,
             float cardSelection,
             float tuningTechniqueSynergy,
-            float cardTypeRotation) {
+            float cardTypeRotation,
+            float rivalPowerupOverlapPenalty,
+            float rivalRevengeOverlapPenalty) {
         return new CardStrategyRewardConfig(
                 win, finalPosition, racePosition, level, experience,
                 novelty, skip,
                 driver, tuning, technique, powerup, revenge,
                 0f, 0f, 0f, 0f, 0f, 0f,
                 "", 0f, "", 0f,
-                lapWin, cardSelection, tuningTechniqueSynergy, cardTypeRotation);
+                lapWin, cardSelection, tuningTechniqueSynergy, cardTypeRotation,
+                rivalPowerupOverlapPenalty, rivalRevengeOverlapPenalty);
     }
 }

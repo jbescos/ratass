@@ -3,8 +3,7 @@ package com.github.jbescos.gameplay.roguelite;
 /** Arms against the exact rival responsible for a qualified hit. */
 final class TargetedRevengeEffect extends RevengeUpgradeEffect {
     private static final float POSITION_SWAP_MIN_DISTANCE = 3.2f;
-    private static final float POSITION_SWAP_DELAY_SECONDS = 1f;
-    private static final float HOOK_TRIGGER_DELAY_SECONDS = 1f;
+    static final float TRIGGER_DELAY_SECONDS = 2f;
 
     private final float effectDurationSeconds;
     private final float targetSpeedMultiplier;
@@ -200,10 +199,10 @@ final class TargetedRevengeEffect extends RevengeUpgradeEffect {
 
     private float triggerDelaySeconds() {
         if (getCardId() == RogueliteCardId.RECOVERY_BEACON) {
-            return POSITION_SWAP_DELAY_SECONDS;
+            return TRIGGER_DELAY_SECONDS;
         }
         if (getCardId() == RogueliteCardId.PAYBACK_SHIELD) {
-            return HOOK_TRIGGER_DELAY_SECONDS;
+            return TRIGGER_DELAY_SECONDS;
         }
         return 0f;
     }

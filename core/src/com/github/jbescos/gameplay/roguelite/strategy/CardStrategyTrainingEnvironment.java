@@ -181,7 +181,8 @@ public final class CardStrategyTrainingEnvironment {
                 run.getPlayerProgress().getLoadout(),
                 priorSelections,
                 priorTypeSelections,
-                averageTypeSelections());
+                averageTypeSelections(),
+                context.equippedCandidateOverlap(selected));
         if (selectionReward > 0f && selected != null && !isCompetitiveOffer(actionIndex)) {
             selectionReward = 0f;
         }
@@ -351,14 +352,15 @@ public final class CardStrategyTrainingEnvironment {
                             run.getPlayerProgress().getLoadout(),
                             priorSelections,
                             priorTypeSelections,
-                            averageTypeSelections());
+                            averageTypeSelections(),
+                            context.equippedCandidateOverlap(offer));
             if (personalityReward > 0f && !isCompetitiveOffer(raceStrengths, i)) {
                 personalityReward = 0f;
             }
             strengths[i] += personalityReward * personalityTeacherWeight;
         }
         strengths[offers.size()] += rewards.selection(
-                        null, run.getPlayerProgress().getLoadout(), 0, 0, 0f)
+                        null, run.getPlayerProgress().getLoadout(), 0, 0, 0f, 0f)
                 * personalityTeacherWeight;
         return strengths;
     }
@@ -617,7 +619,8 @@ public final class CardStrategyTrainingEnvironment {
                     progress.getLevel(),
                     racePositions[vehicleId],
                     championshipPositions[vehicleId],
-                    driverCatalog.get(progress.getLoadout().getDriverProfileId())));
+                    driverCatalog.get(progress.getLoadout().getDriverProfileId()),
+                    progress.getLoadout()));
         }
         return new CardStrategyContext(
                 circuitIndex,

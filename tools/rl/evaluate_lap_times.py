@@ -128,6 +128,12 @@ def parse_args() -> argparse.Namespace:
         help="optional RogueliteCardId tuning card for isolated balance benchmarks",
     )
     parser.add_argument(
+        "--tuning-effect-multiplier",
+        type=float,
+        default=1.0,
+        help="headless-only multiplier for the selected Tuning card deviations",
+    )
+    parser.add_argument(
         "--powerup-card",
         default="",
         help="optional RogueliteCardId powerup card for isolated balance benchmarks",
@@ -357,6 +363,7 @@ def make_environment(
         raise ValueError("only one benchmark card can be equipped")
     if tuning_card:
         config.withBenchmarkTuningCard(tuning_card)
+        config.withBenchmarkTuningEffectMultiplier(args.tuning_effect_multiplier)
     if powerup_card:
         config.withBenchmarkPowerupCard(powerup_card)
     if technique_card:

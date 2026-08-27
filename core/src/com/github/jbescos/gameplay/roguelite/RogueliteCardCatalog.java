@@ -188,84 +188,84 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.CHAMPIONSHIP_TUNE,
                 "Aero Prototype",
                 "Power and aero efficiency improve together.",
-                "Power +18%\nAero +42%",
+                "Power +28%\nAero +55%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.GROUND_EFFECT,
                 "Ground Effect",
                 "Grip and aero efficiency improve together.",
-                "Grip +13%\nAero +28%",
+                "Grip +11%\nAero +18%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.VELOCITY_SHELL,
                 "Velocity Shell",
                 "Power and grip improve together.",
-                "Power +14%\nGrip +4%",
+                "Power +26%\nGrip +2%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.TORQUE_VECTORING,
                 "Power Monocoque",
                 "Power and grip improve together.",
-                "Power +10%\nGrip +7%",
+                "Power +5%\nGrip +8%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.GRAPHENE_CHASSIS,
                 "Graphene Chassis",
                 "Grip and lower mass improve together.",
-                "Grip +11%\nMass -6%",
+                "Grip +9%\nMass -3%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.TITANIUM_SKELETON,
                 "Titanium Skeleton",
                 "Power and lower mass improve together.",
-                "Power +16%\nMass -4%",
+                "Power +24%\nMass -6%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.HYPERCAR_CORE,
                 "Hypercar Core",
                 "Power and aero efficiency improve together.",
-                "Power +22%\nAero +24%",
+                "Power +32%\nAero +16%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.ACTIVE_AERO_SHELL,
                 "Active Aero Shell",
                 "Aero efficiency and lower mass improve together.",
-                "Aero +58%\nMass -16%",
+                "Aero +50%\nMass -22%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.CARBON_PROTOTYPE,
                 "Carbon Prototype",
                 "Power and lower mass improve together.",
-                "Power +7%\nMass -10%",
+                "Power +9%\nMass -18%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.TRACK_VACUUM,
                 "Track Vacuum",
                 "Grip and aero efficiency improve together.",
-                "Grip +12%\nAero +44%",
+                "Grip +10%\nAero +70%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.WING_CAR,
                 "Wing Car",
                 "Aero efficiency and lower mass improve together.",
-                "Aero +24%\nMass -18%",
+                "Aero +30%\nMass -24%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.FEATHERWEIGHT_GROUND_EFFECT,
                 "Feather Ground",
                 "Grip and lower mass improve together.",
-                "Grip +7%\nMass -10%",
+                "Grip +5%\nMass -10%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -308,7 +308,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.RALLY_FOCUS,
                 "Rally Focus",
                 "Leaving the road amplifies every active power, aero, and mass bonus or penalty, plus active grip bonuses. Grip penalties and weather stay unchanged.",
-                "Activation: Off-road | 10s\nPower x2\nGrip x2\nAero x2\nMass x2",
+                "Activation: Off-road | 10s\nPower x1.5\nGrip x1.5\nAero x1.5\nMass x1.5",
                 1,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
@@ -379,7 +379,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.RALLY_EXPERT,
                 "Rally Expert",
                 "Leaving the road amplifies every active power, aero, and mass bonus or penalty, plus active grip bonuses. Grip penalties and weather stay unchanged.",
-                "Activation: Off-road | 10s\nPower x3\nGrip x3\nAero x3\nMass x3",
+                "Activation: Off-road | 10s\nPower x2\nGrip x2\nAero x2\nMass x2",
                 2,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
@@ -450,7 +450,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.RALLY_MASTER,
                 "Rally Master",
                 "Leaving the road amplifies every active power, aero, and mass bonus or penalty, plus active grip bonuses. Grip penalties and weather stay unchanged.",
-                "Activation: Off-road | 10s\nPower x4\nGrip x4\nAero x4\nMass x4",
+                "Activation: Off-road | 10s\nPower x3\nGrip x3\nAero x3\nMass x3",
                 3,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
@@ -746,20 +746,13 @@ public final class RogueliteCardCatalog {
                 "Tune Link",
                 "An always-on antenna keeps your Tuning and imports the strongest missing Tuning attribute from linked cars.",
                 "Always active\nImport 1 Tuning attribute",
-                1,
-                RogueliteAbilityVisualStyle.ANTENNA_T1));
+                2,
+                RogueliteAbilityVisualStyle.ANTENNA_T2));
         cards.add(powerup(
                 RogueliteCardId.TECHNIQUE_LINK,
                 "Dual Link",
                 "An always-on antenna keeps your Tuning and imports the two strongest missing Tuning attributes from linked cars.",
                 "Always active\nImport 2 Tuning attributes",
-                2,
-                RogueliteAbilityVisualStyle.ANTENNA_T2));
-        cards.add(powerup(
-                RogueliteCardId.GRID_LINK,
-                "Grid Link",
-                "An always-on antenna imports the two strongest missing Tuning attributes and the strongest missing Technique from linked cars.",
-                "Always active\nImport 2 Tuning + 1 Technique",
                 3,
                 RogueliteAbilityVisualStyle.ANTENNA_T3));
         cards.add(powerup(
@@ -891,22 +884,22 @@ public final class RogueliteCardCatalog {
         cards.add(revenge(
                 RogueliteCardId.TELEMETRY_THEFT,
                 "Telemetry Theft",
-                "For 10 seconds after a rival hit, the offender's Tuning and Technique cards are disabled and any new lap XP they earn flows to you.",
-                "Activation: Rival hit\nDisable Tuning + Technique | Steal lap XP | 10s",
+                "For 5 seconds after a rival hit, the offender's Tuning and Technique cards are disabled and any new lap XP they earn flows to you.",
+                "Activation: Rival hit\nDisable Tuning + Technique | Steal lap XP | 5s",
                 1,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
                 RogueliteCardId.BUILD_HEIST,
                 "Build Heist",
-                "For 20 seconds after a rival hit, the offender's Tuning and Technique cards are disabled and any new lap XP they earn flows to you.",
-                "Activation: Rival hit\nDisable Tuning + Technique | Steal lap XP | 20s",
+                "For 10 seconds after a rival hit, the offender's Tuning and Technique cards are disabled and any new lap XP they earn flows to you.",
+                "Activation: Rival hit\nDisable Tuning + Technique | Steal lap XP | 10s",
                 2,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
                 RogueliteCardId.APEX_PLUNDER,
                 "Apex Plunder",
-                "For 30 seconds after a rival hit, the offender's Tuning and Technique cards are disabled and any new lap XP they earn flows to you.",
-                "Activation: Rival hit\nDisable Tuning + Technique | Steal lap XP | 30s",
+                "For 15 seconds after a rival hit, the offender's Tuning and Technique cards are disabled and any new lap XP they earn flows to you.",
+                "Activation: Rival hit\nDisable Tuning + Technique | Steal lap XP | 15s",
                 3,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -919,6 +912,13 @@ public final class RogueliteCardCatalog {
 
         List<RogueliteCardDefinition> retiredCards =
                 new ArrayList<RogueliteCardDefinition>();
+        retiredCards.add(powerup(
+                RogueliteCardId.GRID_LINK,
+                "Grid Link",
+                "An always-on antenna imports the two strongest missing Tuning attributes and the strongest missing Technique from linked cars.",
+                "Always active\nImport 2 Tuning + 1 Technique",
+                3,
+                RogueliteAbilityVisualStyle.ANTENNA_T3));
         retiredCards.add(card(
                 RogueliteCardId.TECHNIQUE_COUPLER,
                 "Technique Coupler",

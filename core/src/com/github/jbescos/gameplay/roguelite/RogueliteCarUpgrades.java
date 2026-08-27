@@ -26,6 +26,7 @@ public final class RogueliteCarUpgrades {
     private float techniqueEffectMultiplier = 1f;
     private float powerupEffectMultiplier = 1f;
     private float powerupCooldownRateMultiplier = 1f;
+    private float benchmarkTuningEffectMultiplier = 1f;
     private AntennaNetworkBonuses antennaNetwork = AntennaNetworkBonuses.NONE;
     private boolean buildCardsSuppressed;
     private boolean overtakeInjectorEnabled;
@@ -109,6 +110,11 @@ public final class RogueliteCarUpgrades {
                 configuredCardId(RogueliteSlotType.TUNING),
                 configuredCardId(RogueliteSlotType.TECHNIQUE),
                 getActiveAntennaCardId());
+    }
+
+    /** Scales Tuning deviations for isolated headless balance benchmarks only. */
+    public void setBenchmarkTuningEffectMultiplier(float multiplier) {
+        benchmarkTuningEffectMultiplier = Math.max(0f, multiplier);
     }
 
     public void setBuildCardsSuppressed(boolean suppressed) {
@@ -956,7 +962,7 @@ public final class RogueliteCarUpgrades {
     }
 
     private float powerDeviationScale() {
-        float scale = 1f;
+        float scale = benchmarkTuningEffectMultiplier;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
             if (isReplacedTechniqueEffect(effect)) {
@@ -975,7 +981,7 @@ public final class RogueliteCarUpgrades {
     }
 
     private float gripDeviationScale() {
-        float scale = 1f;
+        float scale = benchmarkTuningEffectMultiplier;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
             if (isReplacedTechniqueEffect(effect)) {
@@ -994,7 +1000,7 @@ public final class RogueliteCarUpgrades {
     }
 
     private float aeroDeviationScale() {
-        float scale = 1f;
+        float scale = benchmarkTuningEffectMultiplier;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
             if (isReplacedTechniqueEffect(effect)) {
@@ -1013,7 +1019,7 @@ public final class RogueliteCarUpgrades {
     }
 
     private float massDeviationScale() {
-        float scale = 1f;
+        float scale = benchmarkTuningEffectMultiplier;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
             if (isReplacedTechniqueEffect(effect)) {

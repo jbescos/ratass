@@ -13,13 +13,13 @@ public final class RivalBuildLeechSpec {
 
     public static float durationSeconds(RogueliteCardId cardId) {
         if (cardId == RogueliteCardId.TELEMETRY_THEFT) {
-            return 10f;
+            return 5f;
         }
         if (cardId == RogueliteCardId.BUILD_HEIST) {
-            return 20f;
+            return 10f;
         }
         if (cardId == RogueliteCardId.APEX_PLUNDER) {
-            return 30f;
+            return 15f;
         }
         throw new IllegalArgumentException("Not a build-leech Revenge card: " + cardId);
     }

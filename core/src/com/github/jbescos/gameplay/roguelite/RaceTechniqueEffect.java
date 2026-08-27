@@ -336,9 +336,6 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
         if (trigger == Trigger.SLIPSTREAM) {
             return tier == 1 ? 2f : tier == 2 ? 3f : 4f;
         }
-        if (trigger == Trigger.OFF_ROAD) {
-            return tier == 1 ? 2f : tier == 2 ? 3f : 4f;
-        }
         return tier == 1 ? 1.5f : tier == 2 ? 2f : 3f;
     }
 

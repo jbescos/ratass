@@ -1,32 +1,53 @@
 package com.github.jbescos.presentation;
 
-/** Rendering-agnostic state for an XP popup or a transfer between two cars. */
-public final class RivalXpTransferVisual {
+/** Rendering-agnostic state for an XP transfer, XP award, or level-up popup. */
+public final class CarProgressVisual {
+    public enum Kind {
+        EXPERIENCE,
+        LEVEL_UP
+    }
+
     private static final float DURATION_SECONDS = 2f;
     private static final float TRAVEL_FRACTION = 0.65f;
     private static final float FADE_START_FRACTION = 0.72f;
 
+    private final Kind kind;
     private final int sourceVehicleId;
     private final int destinationVehicleId;
     private final int amount;
-    private final boolean transfer;
     private float ageSeconds;
 
-    public RivalXpTransferVisual(
+    private CarProgressVisual(
+            Kind kind,
+            int sourceVehicleId,
+            int destinationVehicleId,
+            int amount) {
+        this.kind = kind;
+        this.sourceVehicleId = sourceVehicleId;
+        this.destinationVehicleId = destinationVehicleId;
+        this.amount = amount;
+    }
+
+    public static CarProgressVisual experienceTransfer(
             int sourceVehicleId,
             int destinationVehicleId,
             int amount) {
         if (amount <= 0) {
             throw new IllegalArgumentException("XP transfer amount must be positive");
         }
-        this.sourceVehicleId = sourceVehicleId;
-        this.destinationVehicleId = destinationVehicleId;
-        this.amount = amount;
-        transfer = sourceVehicleId != destinationVehicleId;
+        return new CarProgressVisual(
+                Kind.EXPERIENCE,
+                sourceVehicleId,
+                destinationVehicleId,
+                amount);
     }
 
-    public static RivalXpTransferVisual award(int vehicleId, int amount) {
-        return new RivalXpTransferVisual(vehicleId, vehicleId, amount);
+    public static CarProgressVisual experienceAward(int vehicleId, int amount) {
+        return experienceTransfer(vehicleId, vehicleId, amount);
+    }
+
+    public static CarProgressVisual levelUp(int vehicleId) {
+        return new CarProgressVisual(Kind.LEVEL_UP, vehicleId, vehicleId, 0);
     }
 
     public void update(float deltaSeconds) {
@@ -57,6 +78,10 @@ public final class RivalXpTransferVisual {
                         / (1f - FADE_START_FRACTION));
     }
 
+    public Kind getKind() {
+        return kind;
+    }
+
     public int getSourceVehicleId() {
         return sourceVehicleId;
     }
@@ -70,6 +95,6 @@ public final class RivalXpTransferVisual {
     }
 
     public boolean isTransfer() {
-        return transfer;
+        return sourceVehicleId != destinationVehicleId;
     }
 }

@@ -113,6 +113,7 @@ import com.github.jbescos.presentation.CameraTargetTransition;
 import com.github.jbescos.presentation.CameraViewMode;
 import com.github.jbescos.presentation.CameraZoomControl;
 import com.github.jbescos.presentation.CarCameraHitTest;
+import com.github.jbescos.presentation.CarProgressVisual;
 import com.github.jbescos.presentation.CarSizeTransition;
 import com.github.jbescos.presentation.CarStatBonusText;
 import com.github.jbescos.presentation.CarVisualAssignment;
@@ -146,7 +147,6 @@ import com.github.jbescos.presentation.RogueliteCardRowDisplay;
 import com.github.jbescos.presentation.RogueliteCardSkinAtlas;
 import com.github.jbescos.presentation.RogueliteCardTypeIconAtlas;
 import com.github.jbescos.presentation.RogueliteTierIconAtlas;
-import com.github.jbescos.presentation.RivalXpTransferVisual;
 import com.github.jbescos.presentation.RogueliteEndArtworkLayout;
 import com.github.jbescos.presentation.RogueliteResponsiveCardLayout;
 import com.github.jbescos.presentation.RaceIncidentPopup;
@@ -1072,8 +1072,8 @@ public class RatassGame extends ApplicationAdapter {
     private final Array<CarTemplate> projectedChampionshipEntries =
             new Array<CarTemplate>();
     private final Array<DestructionEffect> destructionEffects = new Array<DestructionEffect>();
-    private final Array<RivalXpTransferVisual> rivalXpTransferVisuals =
-            new Array<RivalXpTransferVisual>();
+    private final Array<CarProgressVisual> carProgressVisuals =
+            new Array<CarProgressVisual>();
     private final SkidMarkTrail skidMarkTrail = new SkidMarkTrail();
     private final RaceParticleEffects raceParticleEffects = new RaceParticleEffects();
     private final Array<CarVisual> themeCarVisuals = new Array<CarVisual>();
@@ -9172,7 +9172,7 @@ public class RatassGame extends ApplicationAdapter {
             raceParticleEffects.update(delta);
             updatePresentationState(delta);
             updateDestructionEffects(delta);
-            updateRivalXpTransferVisuals(delta);
+            updateCarProgressVisuals(delta);
         }
         updateWeather(delta);
 
@@ -11212,9 +11212,9 @@ public class RatassGame extends ApplicationAdapter {
         if (rlTrainingMode || sandboxMode || template == null) {
             return;
         }
-        int levelBeforeBank = template.playerControlled
-                ? rogueliteRun.getPlayerProgress().getLevel()
-                : 0;
+        RogueliteCompetitorProgress progress =
+                getRogueliteCompetitorProgress(template);
+        int levelBeforeBank = progress == null ? 0 : progress.getLevel();
         float lapExperienceMultiplier = template.currentCar == null
                 ? 1f
                 : template.currentCar.rogueliteUpgrades
@@ -11230,10 +11230,7 @@ public class RatassGame extends ApplicationAdapter {
         if (gained <= 0) {
             return;
         }
-        if (template.playerControlled
-                && rogueliteRun.getPlayerProgress().getLevel() > levelBeforeBank) {
-            playLevelUpSound();
-        }
+        showRogueliteLevelUpIfNeeded(template, levelBeforeBank);
         if (!template.playerControlled) {
             updateCardStrategyRaceState();
             rogueliteRun.resolveRivalReward(template.vehicleId);
@@ -11518,7 +11515,7 @@ public class RatassGame extends ApplicationAdapter {
         cars.clear();
         mirrorCars.clear();
         destructionEffects.clear();
-        rivalXpTransferVisuals.clear();
+        carProgressVisuals.clear();
         skidMarkTrail.clear();
         if (isPresentationEnabled()) {
             raceParticleEffects.reset();
@@ -12335,18 +12332,15 @@ public class RatassGame extends ApplicationAdapter {
                             template.playerControlled,
                             template.vehicleId);
                 }
+                RogueliteCompetitorProgress progress =
+                        getRogueliteCompetitorProgress(template);
+                int levelBeforeAward = progress == null ? 0 : progress.getLevel();
                 int finishExperience;
                 if (template.playerControlled) {
-                    int levelBeforeAward =
-                            rogueliteRun.getPlayerProgress().getLevel();
                     finishExperience =
                             rogueliteRun.awardPlayerRacePosition(
                                     template.roundFinishPosition,
                                     roster.size);
-                    if (rogueliteRun.getPlayerProgress().getLevel()
-                            > levelBeforeAward) {
-                        playLevelUpSound();
-                    }
                 } else {
                     finishExperience =
                             rogueliteRun.awardRivalRacePosition(
@@ -12355,6 +12349,7 @@ public class RatassGame extends ApplicationAdapter {
                                     roster.size);
                     rogueliteRun.resolveRivalReward(template.vehicleId);
                 }
+                showRogueliteLevelUpIfNeeded(template, levelBeforeAward);
             }
         }
 
@@ -12439,12 +12434,12 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private void updateRivalXpTransferVisuals(float delta) {
-        for (int i = rivalXpTransferVisuals.size - 1; i >= 0; i--) {
-            RivalXpTransferVisual visual = rivalXpTransferVisuals.get(i);
+    private void updateCarProgressVisuals(float delta) {
+        for (int i = carProgressVisuals.size - 1; i >= 0; i--) {
+            CarProgressVisual visual = carProgressVisuals.get(i);
             visual.update(delta);
             if (!visual.isActive()) {
-                rivalXpTransferVisuals.removeIndex(i);
+                carProgressVisuals.removeIndex(i);
             }
         }
     }
@@ -12459,7 +12454,7 @@ public class RatassGame extends ApplicationAdapter {
                 || amount <= 0) {
             return;
         }
-        rivalXpTransferVisuals.add(new RivalXpTransferVisual(
+        carProgressVisuals.add(CarProgressVisual.experienceTransfer(
                 source.vehicleId,
                 destination.vehicleId,
                 amount));
@@ -12469,9 +12464,25 @@ public class RatassGame extends ApplicationAdapter {
         if (!isPresentationEnabled() || recipient == null || amount <= 0) {
             return;
         }
-        rivalXpTransferVisuals.add(RivalXpTransferVisual.award(
+        carProgressVisuals.add(CarProgressVisual.experienceAward(
                 recipient.vehicleId,
                 amount));
+    }
+
+    private void showRogueliteLevelUpIfNeeded(
+            CarTemplate template,
+            int previousLevel) {
+        RogueliteCompetitorProgress progress =
+                getRogueliteCompetitorProgress(template);
+        if (progress == null || progress.getLevel() <= previousLevel) {
+            return;
+        }
+        if (template.playerControlled) {
+            playLevelUpSound();
+        }
+        if (isPresentationEnabled()) {
+            carProgressVisuals.add(CarProgressVisual.levelUp(template.vehicleId));
+        }
     }
 
     private void updateSkidMarkEmission(float delta) {
@@ -17026,7 +17037,7 @@ public class RatassGame extends ApplicationAdapter {
         }
         drawRaceSummaryText(hudWidth, hudHeight);
         drawCarLabels(playfieldWidth);
-        drawRivalXpTransferLabels(playfieldWidth);
+        drawCarProgressLabels(playfieldWidth);
         if (shouldDrawSandboxDebugGuides()) {
             drawSandboxRlSensorHudLabels(playfieldWidth, hudHeight);
         }
@@ -17083,11 +17094,11 @@ public class RatassGame extends ApplicationAdapter {
         }
     }
 
-    private void drawRivalXpTransferLabels(float playfieldWidth) {
+    private void drawCarProgressLabels(float playfieldWidth) {
         float playfieldRight = playfieldHudX + playfieldWidth;
         float playfieldTop = playfieldHudY + Math.max(1f, playfieldHudHeight);
-        for (int i = 0; i < rivalXpTransferVisuals.size; i++) {
-            RivalXpTransferVisual visual = rivalXpTransferVisuals.get(i);
+        for (int i = 0; i < carProgressVisuals.size; i++) {
+            CarProgressVisual visual = carProgressVisuals.get(i);
             Car source = findActiveCarByVehicleId(visual.getSourceVehicleId());
             Car destination = findActiveCarByVehicleId(visual.getDestinationVehicleId());
             if (source == null || destination == null) {
@@ -17122,9 +17133,16 @@ public class RatassGame extends ApplicationAdapter {
                     || carLabelProjection.y > playfieldTop) {
                 continue;
             }
-            String label = "+" + visual.getAmount() + " XP";
+            boolean levelUp = visual.getKind() == CarProgressVisual.Kind.LEVEL_UP;
+            String label = levelUp
+                    ? ui("LEVEL UP")
+                    : "+" + visual.getAmount() + " XP";
             glyphLayout.setText(labelFont, label);
-            labelFont.setColor(1f, 0.86f, 0.24f, visual.getAlpha());
+            if (levelUp) {
+                labelFont.setColor(0.36f, 1f, 0.62f, visual.getAlpha());
+            } else {
+                labelFont.setColor(1f, 0.86f, 0.24f, visual.getAlpha());
+            }
             drawTextWithShadow(
                     labelFont,
                     label,
@@ -31871,6 +31889,7 @@ public class RatassGame extends ApplicationAdapter {
         public int routeTargets = RL_DEFAULT_ROUTE_TARGETS;
         public int carPerformanceIndex = -1;
         public RogueliteCardId benchmarkCard;
+        public float benchmarkTuningEffectMultiplier = 1f;
         public float routeTargetFraction;
         public long seed = 1L;
         public boolean skipCountdown = true;
@@ -31979,6 +31998,16 @@ public class RatassGame extends ApplicationAdapter {
         /** Applies one tuning card for headless lap benchmarking only. */
         public RlTrainingConfig withBenchmarkTuningCard(String cardId) {
             return withBenchmarkCard(cardId, RogueliteSlotType.TUNING);
+        }
+
+        /** Scales the selected Tuning card for headless balance benchmarks only. */
+        public RlTrainingConfig withBenchmarkTuningEffectMultiplier(float multiplier) {
+            if (!Float.isFinite(multiplier) || multiplier <= 0f) {
+                throw new IllegalArgumentException(
+                        "Benchmark Tuning effect multiplier must be positive.");
+            }
+            benchmarkTuningEffectMultiplier = multiplier;
+            return this;
         }
 
         /** Applies one powerup card for headless lap benchmarking only. */
@@ -33095,6 +33124,8 @@ public class RatassGame extends ApplicationAdapter {
                 Car car = getControlledCar(i);
                 if (car != null) {
                     car.configureRogueliteCards(loadout, false);
+                    car.rogueliteUpgrades.setBenchmarkTuningEffectMultiplier(
+                            config.benchmarkTuningEffectMultiplier);
                 }
             }
         }

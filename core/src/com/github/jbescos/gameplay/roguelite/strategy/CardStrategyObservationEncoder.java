@@ -28,7 +28,7 @@ public final class CardStrategyObservationEncoder {
                     + RogueliteLoadout.MODIFICATION_SLOT_COUNT * LOADOUT_SLOT_FEATURE_COUNT
                     + CANDIDATE_FEATURE_COUNT
                     + MAX_OPPONENTS * OPPONENT_FEATURE_COUNT
-                    + 1;
+                    + 2;
 
     private DriverProfileCatalog estimatorCatalog;
     private CardStrategyRaceEstimator raceEstimator;
@@ -86,6 +86,7 @@ public final class CardStrategyObservationEncoder {
                 estimatorFor(decision.getDriverCatalog()).estimate(
                                 decision.getProgress(), candidate, 1.45f)
                         / CANDIDATE_STRENGTH_SCALE));
+        cursor.add(context.equippedCandidateOverlap(candidate));
         if (cursor.index != OBSERVATION_SIZE) {
             throw new IllegalStateException("Card strategy observation layout is inconsistent.");
         }

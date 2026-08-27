@@ -34,6 +34,12 @@ def parse_args() -> argparse.Namespace:
         help="benchmark one tuning-card enum ID; default benchmarks the selected tier",
     )
     parser.add_argument("--exclude-baseline", action="store_true")
+    parser.add_argument(
+        "--tuning-effect-multiplier",
+        type=float,
+        default=1.0,
+        help="headless-only multiplier applied to each Tuning deviation",
+    )
     return parser.parse_args()
 
 
@@ -83,6 +89,7 @@ def main() -> None:
         seed=args.seed,
         write_driver_metadata=False,
         tuning_card="",
+        tuning_effect_multiplier=args.tuning_effect_multiplier,
     )
     for card_id, title, tier in choices:
         run_args.tuning_card = card_id
@@ -101,7 +108,8 @@ def main() -> None:
 
     print(
         f"tuning_card_benchmark profile={args.profile} maps={len(maps)} "
-        f"laps={args.laps} seed={args.seed}"
+        f"laps={args.laps} seed={args.seed} "
+        f"effect_multiplier={args.tuning_effect_multiplier:g}"
     )
     lap_eval.print_overall_profile_averages(rows)
 

@@ -1,9 +1,15 @@
 package com.github.jbescos.gameplay.roguelite.strategy;
 
 import com.github.jbescos.gameplay.roguelite.DriverProfileMetadata;
+import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
+import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
+import com.github.jbescos.gameplay.roguelite.RogueliteLoadout;
+import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /** Race and championship state that can affect the long-term value of a card. */
 public final class CardStrategyContext {
@@ -77,21 +83,68 @@ public final class CardStrategyContext {
         return opponents;
     }
 
+    public float equippedCandidateOverlap(RogueliteCardOffer offer) {
+        if (offer == null
+                || opponents.isEmpty()
+                || offer.isDriver()
+                || (offer.getSlotType() != RogueliteSlotType.POWERUP
+                        && offer.getSlotType() != RogueliteSlotType.REVENGE)) {
+            return 0f;
+        }
+        return equippedCardOverlap(offer.getSlotType(), offer.getCard().getId());
+    }
+
+    float equippedCardOverlap(RogueliteSlotType slot, RogueliteCardId cardId) {
+        if ((slot != RogueliteSlotType.POWERUP && slot != RogueliteSlotType.REVENGE)
+                || cardId == null
+                || opponents.isEmpty()) {
+            return 0f;
+        }
+        int matches = 0;
+        for (Opponent opponent : opponents) {
+            matches += cardId == opponent.getCard(slot) ? 1 : 0;
+        }
+        return matches / (float) opponents.size();
+    }
+
     public static final class Opponent {
         private final int level;
         private final int racePosition;
         private final int championshipPosition;
         private final DriverProfileMetadata driver;
+        private final Map<RogueliteSlotType, RogueliteCardId> cards;
 
         public Opponent(
                 int level,
                 int racePosition,
                 int championshipPosition,
                 DriverProfileMetadata driver) {
+            this(level, racePosition, championshipPosition, driver, null);
+        }
+
+        public Opponent(
+                int level,
+                int racePosition,
+                int championshipPosition,
+                DriverProfileMetadata driver,
+                RogueliteLoadout loadout) {
             this.level = Math.max(1, level);
             this.racePosition = Math.max(0, racePosition);
             this.championshipPosition = Math.max(0, championshipPosition);
             this.driver = driver;
+            cards = new EnumMap<RogueliteSlotType, RogueliteCardId>(RogueliteSlotType.class);
+            if (loadout != null) {
+                RogueliteSlotType[] sharedSlots = {
+                    RogueliteSlotType.POWERUP,
+                    RogueliteSlotType.REVENGE
+                };
+                for (RogueliteSlotType slot : sharedSlots) {
+                    RogueliteCardId cardId = loadout.get(slot);
+                    if (cardId != null) {
+                        cards.put(slot, cardId);
+                    }
+                }
+            }
         }
 
         public int getLevel() {
@@ -108,6 +161,10 @@ public final class CardStrategyContext {
 
         public DriverProfileMetadata getDriver() {
             return driver;
+        }
+
+        public RogueliteCardId getCard(RogueliteSlotType slot) {
+            return cards.get(slot);
         }
 
     }

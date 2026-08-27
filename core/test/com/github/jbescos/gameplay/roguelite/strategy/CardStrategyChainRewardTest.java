@@ -14,7 +14,7 @@ public final class CardStrategyChainRewardTest {
                     0.5f, 0f, 0f, 0f, 0f, 0f,
                     10f, 10f, 10f, 20f, 0f, 0f,
                     "", 0f, "", 0f,
-                    0f, 0f, 0f, 0f);
+                    0f, 0f, 0f, 0f, 0f, 0f);
 
     @Test
     public void rewardsExactAmplifiersButNotUnrelatedTechniqueCards() {

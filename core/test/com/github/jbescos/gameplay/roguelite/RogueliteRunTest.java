@@ -812,7 +812,7 @@ public class RogueliteRunTest {
         RogueliteRun run = new RogueliteRun(581L);
         RogueliteCompetitorProgress rival = run.getRivalProgress(2);
         RogueliteLoadout loadout = rival.getLoadout();
-        assertTrue(loadout.equip(RogueliteCardId.TRACK_VACUUM));
+        assertTrue(loadout.equip(RogueliteCardId.TORQUE_VECTORING));
         assertTrue(loadout.equip(RogueliteCardId.TRAFFIC_DOMINANCE));
         assertTrue(loadout.equip(RogueliteCardId.HYPERDRIVE));
         assertTrue(loadout.equip(RogueliteCardId.FATES_REVENGE));

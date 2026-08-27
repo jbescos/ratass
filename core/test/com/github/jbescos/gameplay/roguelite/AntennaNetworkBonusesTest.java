@@ -1,12 +1,23 @@
 package com.github.jbescos.gameplay.roguelite;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
 public class AntennaNetworkBonusesTest {
     private static final float EPSILON = 0.0001f;
+
+    @Test
+    public void gridLinkIsRetiredAndRemainingLinksUseHigherTiers() {
+        assertEquals(2, RogueliteCardCatalog.get(RogueliteCardId.TUNE_LINK).getTier());
+        assertEquals(
+                3,
+                RogueliteCardCatalog.get(RogueliteCardId.TECHNIQUE_LINK).getTier());
+        assertFalse(isActiveCatalogCard(RogueliteCardId.GRID_LINK));
+        assertFalse(AntennaPowerupSpec.isAntennaCard(RogueliteCardId.GRID_LINK));
+    }
 
     @Test
     public void antennaTiersImportOnlyTheirAllowedNumberOfMissingAttributes() {
@@ -69,82 +80,6 @@ public class AntennaNetworkBonusesTest {
     }
 
     @Test
-    public void sharedTechniqueMultipliersUseRecipientsOwnActivationCondition() {
-        RogueliteLoadout driftingSource = loadout(
-                RogueliteCardId.CARBON_PROTOTYPE,
-                RogueliteCardId.DRIFT_FOCUS,
-                RogueliteCardId.TUNE_LINK);
-        RogueliteLoadout cornerReceiver = loadout(
-                RogueliteCardId.VELOCITY_SHELL,
-                RogueliteCardId.CORNER_EXPERT,
-                RogueliteCardId.GRID_LINK);
-        AntennaNetworkBonuses network = AntennaNetworkBonuses.builder()
-                .include(driftingSource)
-                .include(cornerReceiver)
-                .build();
-        RogueliteCarUpgrades receiver = upgrades(cornerReceiver, network);
-
-        assertEquals(1.14f, receiver.getAccelerationMultiplier(), EPSILON);
-        updateInCorner(receiver);
-
-        // The receiver's corner trigger applies the x1.5 power multiplier shared
-        // from the other car's drifting Technique.
-        assertEquals(1.21f, receiver.getAccelerationMultiplier(), EPSILON);
-        assertTrue(receiver.getActiveCardIds().contains(RogueliteCardId.GRID_LINK));
-    }
-
-    @Test
-    public void gridLinkImportsOneWholeTechniqueInsteadOfBestStatsFromSeveral() {
-        RogueliteLoadout receiver = loadout(
-                RogueliteCardId.SHORT_GEARING,
-                RogueliteCardId.CORNER_FOCUS,
-                RogueliteCardId.GRID_LINK);
-        RogueliteLoadout draftSource = loadout(
-                RogueliteCardId.AERO_TRIM,
-                RogueliteCardId.DRAFT_MASTER,
-                RogueliteCardId.TUNE_LINK);
-        RogueliteLoadout driftSource = loadout(
-                RogueliteCardId.CLUB_TUNE,
-                RogueliteCardId.DRIFT_MASTER,
-                RogueliteCardId.TECHNIQUE_LINK);
-        AntennaNetworkBonuses network = AntennaNetworkBonuses.builder()
-                .include(receiver)
-                .include(draftSource)
-                .include(driftSource)
-                .build();
-        RogueliteCarUpgrades upgrades = upgrades(receiver, network);
-
-        updateInCorner(upgrades);
-
-        // Draft Master is the strongest missing card and adds power/aero x4.
-        // Drift Master's mass multiplier must not be merged into that selection.
-        assertEquals(1.52f, upgrades.getAccelerationMultiplier(), EPSILON);
-        assertEquals(1.05f, upgrades.getMassMultiplier(), EPSILON);
-    }
-
-    @Test
-    public void gridLinkConsumesBothNetworkChannels() {
-        RogueliteLoadout first = loadout(
-                RogueliteCardId.AERO_TRIM,
-                RogueliteCardId.DRIFT_FOCUS,
-                RogueliteCardId.TUNE_LINK);
-        RogueliteLoadout grid = loadout(
-                RogueliteCardId.LIGHT_COMPOUND,
-                RogueliteCardId.CORNER_MASTER,
-                RogueliteCardId.GRID_LINK);
-        AntennaNetworkBonuses network = AntennaNetworkBonuses.builder()
-                .include(first)
-                .include(grid)
-                .build();
-        RogueliteCarUpgrades upgrades = upgrades(grid, network);
-
-        assertEquals(1.12f, upgrades.getAccelerationMultiplier(), EPSILON);
-        assertEquals(0.92f, upgrades.getMassMultiplier(), EPSILON);
-        updateInCorner(upgrades);
-        assertEquals(1.18f, upgrades.getAccelerationMultiplier(), EPSILON);
-    }
-
-    @Test
     public void techniqueAntennasShareTheBestLapExperienceMultiplier() {
         RogueliteLoadout source = loadout(
                 RogueliteCardId.CLUB_TUNE,
@@ -194,6 +129,15 @@ public class AntennaNetworkBonusesTest {
         upgrades.configure(loadout);
         upgrades.setAntennaNetwork(network);
         return upgrades;
+    }
+
+    private static boolean isActiveCatalogCard(RogueliteCardId cardId) {
+        for (RogueliteCardDefinition definition : RogueliteCardCatalog.all()) {
+            if (definition.getId() == cardId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void updateInCorner(RogueliteCarUpgrades upgrades) {

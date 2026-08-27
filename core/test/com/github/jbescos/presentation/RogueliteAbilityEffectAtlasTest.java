@@ -196,23 +196,19 @@ public class RogueliteAbilityEffectAtlasTest {
     public void antennaCardsUseDistinctIllustratedAtlasCells() {
         RogueliteCardId[] cards = {
                 RogueliteCardId.TUNE_LINK,
-                RogueliteCardId.TECHNIQUE_LINK,
-                RogueliteCardId.GRID_LINK
+                RogueliteCardId.TECHNIQUE_LINK
         };
         RogueliteAbilityVisualStyle[] styles = {
-                RogueliteAbilityVisualStyle.ANTENNA_T1,
                 RogueliteAbilityVisualStyle.ANTENNA_T2,
                 RogueliteAbilityVisualStyle.ANTENNA_T3
         };
 
         for (int i = 0; i < cards.length; i++) {
             assertEquals(styles[i], RogueliteCardCatalog.get(cards[i]).getAbilityVisualStyle());
-            assertEquals(19 + i, RogueliteAbilityEffectAtlas.indexFor(styles[i]));
+            assertEquals(20 + i, RogueliteAbilityEffectAtlas.indexFor(styles[i]));
         }
         assertTrue(RogueliteAbilityEffectAtlas.sizeScale(styles[1])
                 > RogueliteAbilityEffectAtlas.sizeScale(styles[0]));
-        assertTrue(RogueliteAbilityEffectAtlas.sizeScale(styles[2])
-                > RogueliteAbilityEffectAtlas.sizeScale(styles[1]));
     }
 
     @Test

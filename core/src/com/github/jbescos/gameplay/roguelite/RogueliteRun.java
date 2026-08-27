@@ -843,7 +843,8 @@ public final class RogueliteRun {
                 progress.getLevel(),
                 raceState == null ? 0 : raceState.getRacePosition(),
                 raceState == null ? 0 : raceState.getChampionshipPosition(),
-                driverCatalog.get(progress.getLoadout().getDriverProfileId()));
+                driverCatalog.get(progress.getLoadout().getDriverProfileId()),
+                progress.getLoadout());
     }
 
     private List<Integer> normalizeVehicleIds(List<Integer> vehicleIds) {

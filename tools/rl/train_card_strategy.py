@@ -196,6 +196,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-card-selection", type=float, default=0.0)
     parser.add_argument("--reward-tuning-technique-synergy", type=float, default=0.0)
     parser.add_argument("--reward-card-type-rotation", type=float, default=0.0)
+    parser.add_argument("--reward-rival-powerup-overlap-penalty", type=float, default=0.0)
+    parser.add_argument("--reward-rival-revenge-overlap-penalty", type=float, default=0.0)
     return parser.parse_args()
 
 
@@ -275,6 +277,8 @@ def create_environment(args: argparse.Namespace):
         args.reward_card_selection,
         args.reward_tuning_technique_synergy,
         args.reward_card_type_rotation,
+        args.reward_rival_powerup_overlap_penalty,
+        args.reward_rival_revenge_overlap_penalty,
     )
     environment = environment_class(
         load_driver_catalog(Path(args.policy_root)),
@@ -459,7 +463,7 @@ def evaluate(
                         action = int(environment.getRaceStrengthAction())
                     elif mode == "observable_strength":
                         action = int(
-                            torch.argmax(candidate_tensor(environment)[:, -1]).item()
+                            torch.argmax(candidate_tensor(environment)[:, -2]).item()
                         )
                     elif mode == "random":
                         action = rng.randrange(int(environment.getActionCount()))
@@ -672,7 +676,11 @@ def train(
         (best_metrics.win_rate if best_metrics is not None else 0.0)
         - args.max_win_rate_regression,
     )
-    if not warm_started or args.refresh_imitation:
+    ran_imitation = (
+        (not warm_started or args.refresh_imitation)
+        and args.imitation_decisions > 0
+    )
+    if ran_imitation:
         imitate_race_strength(
             environment,
             actor,
@@ -685,16 +693,18 @@ def train(
             mixed_opponents=selection_mixed,
         )
 
-    initial = evaluate(
-        environment,
-        actor,
-        "model",
-        selection_episodes,
-        args.seed + 700000,
-        self_play=selection_self_play,
-        mixed_opponents=selection_mixed,
-    )
-    print(format_metrics("strategy_after_distillation", initial))
+    initial = best_metrics
+    if initial is None or ran_imitation:
+        initial = evaluate(
+            environment,
+            actor,
+            "model",
+            selection_episodes,
+            args.seed + 700000,
+            self_play=selection_self_play,
+            mixed_opponents=selection_mixed,
+        )
+        print(format_metrics("strategy_after_distillation", initial))
     if best_metrics is None or is_better(
         initial,
         best_metrics,
@@ -706,7 +716,7 @@ def train(
     ):
         best_metrics = initial
         best_state = copy.deepcopy(actor.state_dict())
-    else:
+    elif ran_imitation:
         actor.load_state_dict(best_state)
         print("strategy_distillation_reverted reason=no_selection_improvement")
     install_self_play_snapshot(environment, actor, best_state)
@@ -818,9 +828,11 @@ def train(
 
                 optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(
-                    list(actor.parameters()) + list(critic.parameters()), args.grad_clip
-                )
+                # The critic learns from large championship-scale returns. Clipping
+                # both networks as one vector lets that loss suppress the actor's
+                # much smaller policy gradient almost completely.
+                nn.utils.clip_grad_norm_(actor.parameters(), args.grad_clip)
+                nn.utils.clip_grad_norm_(critic.parameters(), args.grad_clip)
                 optimizer.step()
 
         completed = batch_end
@@ -855,6 +867,8 @@ def train(
                 validations_without_improvement = 0
             else:
                 validations_without_improvement += 1
+                actor.load_state_dict(best_state)
+                optimizer.state.clear()
                 if (
                     args.early_stop_patience > 0
                     and validations_without_improvement >= args.early_stop_patience
