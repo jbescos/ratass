@@ -88,6 +88,10 @@ public final class SandboxLoadoutConfiguration {
         return availableChoices;
     }
 
+    public List<RogueliteSetDefinition> getAvailableSets() {
+        return RogueliteSetCatalog.allSets();
+    }
+
     public boolean select(RogueliteCardOffer choice) {
         return select(0, choice);
     }
@@ -112,6 +116,30 @@ public final class SandboxLoadoutConfiguration {
             return loadout.unequip(slotType);
         }
         return loadout.equip(cardId);
+    }
+
+    public boolean selectSet(int vehicleId, RogueliteSetDefinition set) {
+        if (set == null || RogueliteSetCatalog.get(set.getId()) != set) {
+            return false;
+        }
+        RogueliteLoadout loadout = getLoadout(vehicleId);
+        if (set.isCompletedBy(loadout)) {
+            boolean changed = false;
+            for (RogueliteSlotType slotType : RogueliteSlotType.modificationSlots()) {
+                changed |= loadout.unequip(slotType);
+            }
+            return changed;
+        }
+
+        boolean changed = false;
+        for (RogueliteSlotType slotType : RogueliteSlotType.modificationSlots()) {
+            changed |= loadout.equip(set.getRequiredCard(slotType));
+        }
+        return changed;
+    }
+
+    public boolean isSetEquipped(int vehicleId, RogueliteSetDefinition set) {
+        return set != null && set.isCompletedBy(getLoadout(vehicleId));
     }
 
     public boolean isEquipped(RogueliteCardOffer choice) {

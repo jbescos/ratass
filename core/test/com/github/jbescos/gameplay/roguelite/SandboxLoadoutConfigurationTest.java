@@ -19,8 +19,11 @@ public final class SandboxLoadoutConfigurationTest {
                 drivers.getWorst().getProfileId(),
                 configuration.getLoadout().getDriverProfileId());
         assertEquals(
-                drivers.all().size() + RogueliteCardCatalog.all().size(),
-                configuration.getAvailableChoices().size());
+                drivers.all().size()
+                        + RogueliteCardCatalog.all().size()
+                        + RogueliteSetCatalog.allSets().size(),
+                configuration.getAvailableChoices().size()
+                        + configuration.getAvailableSets().size());
 
         configuration.cycleControlMode();
         assertFalse(configuration.isAutomatic());
@@ -105,6 +108,27 @@ public final class SandboxLoadoutConfigurationTest {
 
         assertTrue(configuration.getLoadout().isFull());
         assertEquals(4, configuration.getLoadout().getModifications().size());
+    }
+
+    @Test
+    public void setSelectionEquipsAndTogglesAllFourRecipeCards() {
+        SandboxLoadoutConfiguration configuration =
+                new SandboxLoadoutConfiguration(DriverProfileCatalog.fallback());
+        RogueliteSetDefinition set = configuration.getAvailableSets().get(0);
+
+        assertTrue(configuration.selectSet(0, set));
+        assertTrue(configuration.isSetEquipped(0, set));
+        for (RogueliteSlotType slotType : RogueliteSlotType.modificationSlots()) {
+            assertEquals(
+                    set.getRequiredCard(slotType),
+                    configuration.getLoadout().get(slotType));
+        }
+
+        assertTrue(configuration.selectSet(0, set));
+        assertFalse(configuration.isSetEquipped(0, set));
+        for (RogueliteSlotType slotType : RogueliteSlotType.modificationSlots()) {
+            assertNull(configuration.getLoadout().get(slotType));
+        }
     }
 
     @Test

@@ -56,8 +56,11 @@ class StateValue(nn.Module):
 @dataclass
 class Metrics:
     episodes: int
+    championships: int
     wins: int
+    first_wins: int
     final_position_sum: float
+    first_position_sum: float
     level_sum: float
     experience_sum: float
     reward_sum: float
@@ -70,14 +73,29 @@ class Metrics:
     skip_count: int
     stat_synergy_count: int
     stat_synergy_gain_sum: float
+    set_completion_count: int
+    set_episode_count: int
+    final_set_count: int
+    best_set_progress_sum: float
+    completed_set_counts: dict[str, int]
+    championships_with_set: int
+    championship_set_counts: dict[str, int]
 
     @property
     def win_rate(self) -> float:
-        return self.wins / max(1, self.episodes)
+        return self.wins / max(1, self.championships)
+
+    @property
+    def first_win_rate(self) -> float:
+        return self.first_wins / max(1, self.episodes)
 
     @property
     def average_position(self) -> float:
-        return self.final_position_sum / max(1, self.episodes)
+        return self.final_position_sum / max(1, self.championships)
+
+    @property
+    def average_first_position(self) -> float:
+        return self.first_position_sum / max(1, self.episodes)
 
     @property
     def average_reward(self) -> float:
@@ -87,7 +105,7 @@ class Metrics:
         self,
         selection_mode: str,
         preferred_cards: frozenset[str] = frozenset(),
-    ) -> tuple[float, float, float]:
+    ) -> tuple[float, ...]:
         if selection_mode == "preference":
             selections = sum(
                 self.card_counts.get(f"card:{card_id}", 0)
@@ -96,17 +114,27 @@ class Metrics:
             return (selections, self.win_rate, -self.average_position)
         if selection_mode == "reward":
             return (self.average_reward, self.win_rate, -self.average_position)
+        if selection_mode == "set":
+            set_rate = self.championships_with_set / max(1, self.championships)
+            return (set_rate, self.win_rate, -self.average_position)
+        if selection_mode == "explore":
+            skip_rate = self.skip_count / max(1, self.decision_sum)
+            set_rate = self.championships_with_set / max(1, self.championships)
+            return (-skip_rate, float(len(self.card_counts)), set_rate, self.win_rate)
         return (self.win_rate, -self.average_position, self.average_reward)
 
     def satisfies_identity(
         self,
         minimum_unique_cards: int,
         minimum_stat_synergies_per_episode: float,
+        minimum_set_completion_rate: float,
     ) -> bool:
         synergies_per_episode = self.stat_synergy_count / max(1, self.episodes)
         return (
             len(self.card_counts) >= minimum_unique_cards
             and synergies_per_episode >= minimum_stat_synergies_per_episode
+            and self.set_episode_count / max(1, self.episodes)
+            >= minimum_set_completion_rate
         )
 
 
@@ -122,10 +150,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--init-policy")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--refresh-imitation", action="store_true")
+    parser.add_argument("--preserve-first-championship-policy", action="store_true")
     parser.add_argument("--evaluate-only", action="store_true")
     parser.add_argument(
         "--evaluate-mode",
-        choices=("model", "algorithmic", "race_strength", "observable_strength", "random"),
+        choices=(
+            "model",
+            "algorithmic",
+            "race_strength",
+            "training_strength",
+            "observable_strength",
+            "random",
+        ),
         default="model",
     )
     parser.add_argument("--force-export", action="store_true")
@@ -141,6 +177,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--imitation-lr", type=float, default=3e-4)
     parser.add_argument("--personality-teacher-weight", type=float, default=0.0035)
+    parser.add_argument(
+        "--imitation-teacher",
+        choices=("strength", "algorithmic"),
+        default="strength",
+    )
+    parser.add_argument("--set-imitation-weight", type=float, default=0.0)
     parser.add_argument("--teacher-rollout-ratio", type=float, default=0.0)
     parser.add_argument("--teacher-rollout-final-ratio", type=float, default=-1.0)
     parser.add_argument("--gamma", type=float, default=0.995)
@@ -160,16 +202,21 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--selection-mode",
-        choices=("win", "reward", "preference"),
+        choices=("win", "reward", "preference", "set", "explore"),
         default="win",
     )
     parser.add_argument("--max-win-rate-regression", type=float, default=0.0)
     parser.add_argument("--minimum-unique-cards", type=int, default=0)
     parser.add_argument("--minimum-stat-synergies-per-episode", type=float, default=0.0)
+    parser.add_argument("--minimum-set-completion-rate", type=float, default=0.0)
     parser.add_argument("--mixed-opponent-policies", default="")
     parser.add_argument("--field-size", type=int, default=10)
     parser.add_argument("--circuits", type=int, default=19)
     parser.add_argument("--laps", type=int, default=5)
+    parser.add_argument("--min-championships", type=int, default=1)
+    parser.add_argument("--max-championships", type=int, default=1)
+    parser.add_argument("--continuation-eval-championships", type=int, default=3)
+    parser.add_argument("--max-first-win-rate-regression", type=float, default=0.02)
     parser.add_argument("--seed", type=int, default=20260819)
     parser.add_argument("--reward-championship-win", type=float, default=100.0)
     parser.add_argument("--reward-final-position", type=float, default=30.0)
@@ -199,6 +246,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-card-type-rotation", type=float, default=0.0)
     parser.add_argument("--reward-rival-powerup-overlap-penalty", type=float, default=0.0)
     parser.add_argument("--reward-rival-revenge-overlap-penalty", type=float, default=0.0)
+    parser.add_argument("--reward-set-progress", type=float, default=0.0)
+    parser.add_argument("--reward-set-completion", type=float, default=0.0)
+    parser.add_argument("--reward-set-break-penalty", type=float, default=0.0)
     return parser.parse_args()
 
 
@@ -280,6 +330,9 @@ def create_environment(args: argparse.Namespace):
         args.reward_card_type_rotation,
         args.reward_rival_powerup_overlap_penalty,
         args.reward_rival_revenge_overlap_penalty,
+        args.reward_set_progress,
+        args.reward_set_completion,
+        args.reward_set_break_penalty,
     )
     environment = environment_class(
         load_driver_catalog(Path(args.policy_root)),
@@ -288,6 +341,9 @@ def create_environment(args: argparse.Namespace):
         args.circuits,
         args.laps,
         args.personality_teacher_weight,
+    )
+    environment.setChampionshipRange(
+        args.min_championships, args.max_championships
     )
     configure_mixed_opponents(environment, args.mixed_opponent_policies)
     return environment
@@ -350,6 +406,9 @@ def imitate_race_strength(
     seed: int,
     teacher_rollout_ratio: float,
     teacher_rollout_final_ratio: float,
+    teacher_mode: str,
+    set_imitation_weight: float,
+    first_championship_teacher: CandidateScorer | None = None,
     self_play: bool = False,
     mixed_opponents: bool = False,
 ) -> None:
@@ -370,11 +429,23 @@ def imitate_race_strength(
             while not environment.isDone() and completed < decision_count:
                 observations = candidate_tensor(environment)
                 logits = actor(observations)
-                strengths = torch.from_numpy(
-                    np.asarray(
-                        environment.getTrainingTargetScores(), dtype=np.float32
-                    ).copy()
+                preserve_first = (
+                    first_championship_teacher is not None
+                    and int(environment.getCompletedChampionshipCount()) == 0
                 )
+                if preserve_first:
+                    with torch.no_grad():
+                        strengths = first_championship_teacher(observations).detach()
+                elif teacher_mode == "algorithmic":
+                    teacher_index = int(environment.getAlgorithmicAction())
+                    strengths = torch.zeros(logits.shape[0], dtype=torch.float32)
+                    strengths[teacher_index] = 1.0
+                else:
+                    strengths = torch.from_numpy(
+                        np.asarray(
+                            environment.getTrainingTargetScores(), dtype=np.float32
+                        ).copy()
+                    )
                 centered = strengths - strengths.mean()
                 scale = centered.std()
                 targets = centered / (scale + 1e-6)
@@ -386,7 +457,15 @@ def imitate_race_strength(
                     logits.reshape(1, -1), teacher_action
                 )
                 score_shape_loss = nn.functional.mse_loss(logits, targets)
-                losses.append(choice_loss + score_shape_loss * 0.10)
+                selected_depth = int(
+                    environment.getOfferSetDepths()[teacher_action.item()]
+                )
+                set_weight = 1.0 + set_imitation_weight * max(
+                    0, selected_depth - 1
+                )
+                losses.append(
+                    (choice_loss + score_shape_loss * 0.10) * set_weight
+                )
                 rollout_ratio = teacher_rollout_ratio
                 if (
                     teacher_rollout_final_ratio >= 0.0
@@ -436,13 +515,42 @@ def evaluate(
     seed: int,
     self_play: bool = False,
     mixed_opponents: bool = False,
+    championship_range: tuple[int, int] | None = None,
 ) -> Metrics:
     rng = random.Random(seed ^ 0x7134A91)
     metrics = Metrics(
-        episodes, 0, 0.0, 0.0, 0.0, 0.0, 0, {}, {}, {}, {}, {}, 0, 0, 0.0
+        episodes=episodes,
+        championships=0,
+        wins=0,
+        first_wins=0,
+        final_position_sum=0.0,
+        first_position_sum=0.0,
+        level_sum=0.0,
+        experience_sum=0.0,
+        reward_sum=0.0,
+        decision_sum=0,
+        card_counts={},
+        tier_counts={},
+        type_counts={},
+        card_tiers={},
+        cards_by_type={},
+        skip_count=0,
+        stat_synergy_count=0,
+        stat_synergy_gain_sum=0.0,
+        set_completion_count=0,
+        set_episode_count=0,
+        final_set_count=0,
+        best_set_progress_sum=0.0,
+        completed_set_counts={},
+        championships_with_set=0,
+        championship_set_counts={},
     )
     if actor is not None:
         actor.eval()
+    previous_minimum = int(environment.getMinimumChampionships())
+    previous_maximum = int(environment.getMaximumChampionships())
+    if championship_range is not None:
+        environment.setChampionshipRange(*championship_range)
     environment.setSelfPlayOpponents(self_play)
     environment.setMixedOpponents(mixed_opponents)
     try:
@@ -462,6 +570,8 @@ def evaluate(
                         action = int(environment.getAlgorithmicAction())
                     elif mode == "race_strength":
                         action = int(environment.getRaceStrengthAction())
+                    elif mode == "training_strength":
+                        action = int(environment.getTrainingTargetAction())
                     elif mode == "observable_strength":
                         action = int(
                             torch.argmax(candidate_tensor(environment)[:, -2]).item()
@@ -489,15 +599,42 @@ def evaluate(
                             metrics.stat_synergy_gain_sum += stat_synergy_gains[action]
                     episode_reward += float(environment.step(action))
                     metrics.decision_sum += 1
-                position = int(environment.getFinalPosition())
-                metrics.wins += int(position == 1)
-                metrics.final_position_sum += position
+                championships = int(environment.getCompletedChampionshipCount())
+                first_position = int(environment.getFirstChampionshipPosition())
+                metrics.championships += championships
+                metrics.wins += int(environment.getChampionshipWinCount())
+                metrics.first_wins += int(first_position == 1)
+                metrics.final_position_sum += int(
+                    environment.getChampionshipPositionSum()
+                )
+                metrics.first_position_sum += first_position
                 metrics.level_sum += int(environment.getLevel())
                 metrics.experience_sum += int(environment.getTotalExperience())
                 metrics.reward_sum += episode_reward
+                set_completions = int(environment.getSetCompletionCount())
+                metrics.set_completion_count += set_completions
+                metrics.set_episode_count += int(set_completions > 0)
+                metrics.final_set_count += int(
+                    bool(str(environment.getCurrentCompletedSetId()))
+                )
+                metrics.best_set_progress_sum += int(environment.getBestSetProgress())
+                for set_id in environment.getCompletedSetIds():
+                    normalized_id = str(set_id)
+                    metrics.completed_set_counts[normalized_id] = (
+                        metrics.completed_set_counts.get(normalized_id, 0) + 1
+                    )
+                metrics.championships_with_set += int(
+                    environment.getChampionshipsWithSet()
+                )
+                for set_id in environment.getChampionshipSetOccurrences():
+                    normalized_id = str(set_id)
+                    metrics.championship_set_counts[normalized_id] = (
+                        metrics.championship_set_counts.get(normalized_id, 0) + 1
+                    )
     finally:
         environment.setSelfPlayOpponents(False)
         environment.setMixedOpponents(False)
+        environment.setChampionshipRange(previous_minimum, previous_maximum)
     return metrics
 
 
@@ -536,9 +673,22 @@ def format_metrics(name: str, metrics: Metrics) -> str:
     average_synergy_gain = metrics.stat_synergy_gain_sum / max(
         1, metrics.stat_synergy_count
     )
+    set_episode_rate = metrics.set_episode_count / max(1, metrics.episodes)
+    final_set_rate = metrics.final_set_count / max(1, metrics.episodes)
+    set_completions = metrics.set_completion_count / max(1, metrics.episodes)
+    championship_set_rate = (
+        metrics.championships_with_set / max(1, metrics.championships)
+    )
+    top_set, top_set_count = max(
+        metrics.completed_set_counts.items(),
+        key=lambda item: (item[1], item[0]),
+        default=("none", 0),
+    )
     return (
-        f"{name} episodes={metrics.episodes} win_rate={metrics.win_rate:.3f} "
+        f"{name} episodes={metrics.episodes} championships={metrics.championships} "
+        f"win_rate={metrics.win_rate:.3f} first_win_rate={metrics.first_win_rate:.3f} "
         f"avg_position={metrics.average_position:.3f} "
+        f"avg_first_position={metrics.average_first_position:.3f} "
         f"avg_level={metrics.level_sum / metrics.episodes:.2f} "
         f"avg_xp={metrics.experience_sum / metrics.episodes:.1f} "
         f"avg_reward={metrics.reward_sum / metrics.episodes:.3f} "
@@ -547,9 +697,44 @@ def format_metrics(name: str, metrics: Metrics) -> str:
         f"skip_rate={skip_rate:.3f} "
         f"stat_synergies={stat_synergies:.2f}/ep "
         f"avg_synergy_gain={average_synergy_gain:.3f} "
+        f"set_episode_rate={set_episode_rate:.3f} "
+        f"set_completions={set_completions:.3f}/ep "
+        f"championship_set_rate={championship_set_rate:.3f} "
+        f"distinct_sets={len(metrics.championship_set_counts)} "
+        f"final_set_rate={final_set_rate:.3f} "
+        f"avg_set_progress={metrics.best_set_progress_sum / max(1, metrics.episodes):.3f}/4 "
+        f"top_set={top_set} top_set_rate={top_set_count / max(1, metrics.episodes):.3f} "
         f"top_card={top_card} top_card_selections={top_card_count / max(1, metrics.episodes):.2f}/ep "
         f"tier_selections={tiers} type_selections={card_types}"
     )
+
+
+def format_set_preferences(name: str, metrics: Metrics) -> str:
+    ordered = sorted(
+        metrics.championship_set_counts.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    sets = ",".join(
+        f"{set_id}={count / max(1, metrics.championships):.3f}/champ"
+        for set_id, count in ordered
+    )
+    return f"{name}_sets sets={sets or 'none'}"
+
+
+def format_tier_top_cards(
+    name: str, metrics: Metrics, tier: int, limit: int = 5
+) -> str:
+    counts = [
+        (card_id, count)
+        for card_id, count in metrics.card_counts.items()
+        if metrics.card_tiers.get(card_id) == tier
+    ]
+    ordered = sorted(counts, key=lambda item: (-item[1], item[0]))[:limit]
+    cards = ",".join(
+        f"{card_id}={count / max(1, metrics.championships):.3f}/champ"
+        for card_id, count in ordered
+    )
+    return f"{name}_tier_top tier={tier} cards={cards or 'none'}"
 
 
 def format_card_preferences(
@@ -617,17 +802,26 @@ def is_better(
     minimum_win_rate: float,
     minimum_unique_cards: int,
     minimum_stat_synergies_per_episode: float,
+    minimum_set_completion_rate: float,
     preferred_cards: frozenset[str] = frozenset(),
 ) -> bool:
-    return (
-        candidate.win_rate >= minimum_win_rate
-        and candidate.satisfies_identity(
-            minimum_unique_cards,
-            minimum_stat_synergies_per_episode,
-        )
-        and candidate.rank_key(selection_mode, preferred_cards)
-        > incumbent.rank_key(selection_mode, preferred_cards)
+    if candidate.win_rate < minimum_win_rate:
+        return False
+    candidate_identity = candidate.satisfies_identity(
+        minimum_unique_cards,
+        minimum_stat_synergies_per_episode,
+        minimum_set_completion_rate,
     )
+    incumbent_identity = incumbent.satisfies_identity(
+        minimum_unique_cards,
+        minimum_stat_synergies_per_episode,
+        minimum_set_completion_rate,
+    )
+    if candidate_identity != incumbent_identity:
+        return candidate_identity
+    return candidate.rank_key(
+        selection_mode, preferred_cards
+    ) > incumbent.rank_key(selection_mode, preferred_cards)
 
 
 def discounted_returns(rewards: Iterable[float], gamma: float) -> list[float]:
@@ -637,6 +831,21 @@ def discounted_returns(rewards: Iterable[float], gamma: float) -> list[float]:
         value = reward + gamma * value
         result.append(value)
     result.reverse()
+    return result
+
+
+def championship_discounted_returns(
+    rewards: list[float], championship_boundaries: list[bool], gamma: float
+) -> list[float]:
+    if len(rewards) != len(championship_boundaries):
+        raise ValueError("A boundary flag is required for every strategy reward.")
+    result = [0.0] * len(rewards)
+    value = 0.0
+    for index in range(len(rewards) - 1, -1, -1):
+        if championship_boundaries[index]:
+            value = 0.0
+        value = rewards[index] + gamma * value
+        result[index] = value
     return result
 
 
@@ -660,6 +869,7 @@ def train(
     selection_self_play = args.selection_opponents == "self_play"
     selection_mixed = args.selection_opponents == "mixed"
     best_metrics = None
+    best_first_metrics = None
     best_state = copy.deepcopy(actor.state_dict())
     if warm_started:
         best_metrics = evaluate(
@@ -672,16 +882,36 @@ def train(
             mixed_opponents=selection_mixed,
         )
         print(format_metrics("strategy_before_distillation", best_metrics))
+        best_first_metrics = evaluate(
+            environment,
+            actor,
+            "model",
+            selection_episodes,
+            args.seed + 710000,
+            self_play=selection_self_play,
+            mixed_opponents=selection_mixed,
+            championship_range=(1, 1),
+        )
+        print(format_metrics("strategy_before_distillation_first", best_first_metrics))
     minimum_win_rate = max(
         0.0,
         (best_metrics.win_rate if best_metrics is not None else 0.0)
         - args.max_win_rate_regression,
+    )
+    minimum_first_win_rate = max(
+        0.0,
+        (best_first_metrics.win_rate if best_first_metrics is not None else 0.0)
+        - args.max_first_win_rate_regression,
     )
     ran_imitation = (
         (not warm_started or args.refresh_imitation)
         and args.imitation_decisions > 0
     )
     if ran_imitation:
+        first_championship_teacher = None
+        if warm_started and args.preserve_first_championship_policy:
+            first_championship_teacher = copy.deepcopy(actor)
+            first_championship_teacher.eval()
         imitate_race_strength(
             environment,
             actor,
@@ -690,11 +920,15 @@ def train(
             args.seed - 100000,
             args.teacher_rollout_ratio,
             args.teacher_rollout_final_ratio,
+            args.imitation_teacher,
+            args.set_imitation_weight,
+            first_championship_teacher,
             self_play=selection_self_play,
             mixed_opponents=selection_mixed,
         )
 
     initial = best_metrics
+    initial_first = best_first_metrics
     if initial is None or ran_imitation:
         initial = evaluate(
             environment,
@@ -706,16 +940,36 @@ def train(
             mixed_opponents=selection_mixed,
         )
         print(format_metrics("strategy_after_distillation", initial))
-    if best_metrics is None or is_better(
-        initial,
-        best_metrics,
-        args.selection_mode,
-        minimum_win_rate,
-        args.minimum_unique_cards,
-        args.minimum_stat_synergies_per_episode,
-        preferred_cards,
+        initial_first = evaluate(
+            environment,
+            actor,
+            "model",
+            selection_episodes,
+            args.seed + 710000,
+            self_play=selection_self_play,
+            mixed_opponents=selection_mixed,
+            championship_range=(1, 1),
+        )
+        print(format_metrics("strategy_after_distillation_first", initial_first))
+    initial_preserves_first = (
+        initial_first is not None
+        and initial_first.win_rate >= minimum_first_win_rate
+    )
+    if best_metrics is None or (
+        initial_preserves_first
+        and is_better(
+            initial,
+            best_metrics,
+            args.selection_mode,
+            minimum_win_rate,
+            args.minimum_unique_cards,
+            args.minimum_stat_synergies_per_episode,
+            args.minimum_set_completion_rate,
+            preferred_cards,
+        )
     ):
         best_metrics = initial
+        best_first_metrics = initial_first
         best_state = copy.deepcopy(actor.state_dict())
     elif ran_imitation:
         actor.load_state_dict(best_state)
@@ -732,7 +986,7 @@ def train(
         old_log_probs: list[torch.Tensor] = []
         all_returns: list[float] = []
         episode_trajectories: list[
-            tuple[int, float, list[torch.Tensor], list[int]]
+            tuple[float, float, list[torch.Tensor], list[int]]
         ] = []
         batch_end = min(args.episodes, batch_start + args.batch_episodes)
         for episode in range(batch_start, batch_end):
@@ -750,12 +1004,20 @@ def train(
             episode_observations: list[torch.Tensor] = []
             episode_actions: list[int] = []
             episode_old_log_probs: list[torch.Tensor] = []
+            episode_boundaries: list[bool] = []
             while not environment.isDone():
                 candidates = candidate_tensor(environment)
                 logits = actor(candidates)
                 distribution = Categorical(logits=logits)
                 action = distribution.sample()
+                championships_before = int(
+                    environment.getCompletedChampionshipCount()
+                )
                 reward = float(environment.step(int(action.item())))
+                episode_boundaries.append(
+                    int(environment.getCompletedChampionshipCount())
+                    > championships_before
+                )
                 episode_observations.append(candidates)
                 episode_actions.append(int(action.item()))
                 episode_old_log_probs.append(distribution.log_prob(action).detach())
@@ -763,10 +1025,15 @@ def train(
             observations.extend(episode_observations)
             actions.extend(episode_actions)
             old_log_probs.extend(episode_old_log_probs)
-            all_returns.extend(discounted_returns(episode_rewards, args.gamma))
+            all_returns.extend(
+                championship_discounted_returns(
+                    episode_rewards, episode_boundaries, args.gamma
+                )
+            )
             episode_trajectories.append(
                 (
-                    int(environment.getFinalPosition()),
+                    float(environment.getChampionshipPositionSum())
+                    / max(1, int(environment.getCompletedChampionshipCount())),
                     sum(episode_rewards),
                     episode_observations,
                     episode_actions,
@@ -852,16 +1119,32 @@ def train(
                 f"value_loss={value_loss.item():.4f} entropy={entropy.item():.4f}"
             )
             print(format_metrics("strategy_candidate", current))
-            if is_better(
-                current,
-                best_metrics,
-                args.selection_mode,
-                minimum_win_rate,
-                args.minimum_unique_cards,
-                args.minimum_stat_synergies_per_episode,
-                preferred_cards,
+            current_first = evaluate(
+                environment,
+                actor,
+                "model",
+                selection_episodes,
+                args.seed + 710000,
+                self_play=selection_self_play,
+                mixed_opponents=selection_mixed,
+                championship_range=(1, 1),
+            )
+            print(format_metrics("strategy_candidate_first", current_first))
+            if (
+                current_first.win_rate >= minimum_first_win_rate
+                and is_better(
+                    current,
+                    best_metrics,
+                    args.selection_mode,
+                    minimum_win_rate,
+                    args.minimum_unique_cards,
+                    args.minimum_stat_synergies_per_episode,
+                    args.minimum_set_completion_rate,
+                    preferred_cards,
+                )
             ):
                 best_metrics = current
+                best_first_metrics = current_first
                 best_state = copy.deepcopy(actor.state_dict())
                 if completed % args.self_play_snapshot_every == 0:
                     install_self_play_snapshot(environment, actor, best_state)
@@ -952,10 +1235,8 @@ def restore_checkpoint(
     checkpoint_observation_size = int(checkpoint.get("observation_size", -1))
     current_observation_size = actor.network[0].in_features
     if (
-        checkpoint_observation_size not in (
-            current_observation_size,
-            current_observation_size - 1,
-        )
+        checkpoint_observation_size <= 0
+        or checkpoint_observation_size > current_observation_size
         or int(checkpoint.get("hidden_size", -1)) != actor.network[0].out_features
         or int(checkpoint.get("hidden_layers", -1))
         != sum(isinstance(layer, nn.Tanh) for layer in actor.network)
@@ -963,8 +1244,8 @@ def restore_checkpoint(
         print(f"strategy_resume_skipped reason=shape_mismatch checkpoint={path}")
         return False
     actor_state = checkpoint["actor"]
-    if checkpoint_observation_size == current_observation_size - 1:
-        actor_state = append_zero_input_feature(actor_state)
+    if checkpoint_observation_size < current_observation_size:
+        actor_state = append_zero_input_features(actor_state, current_observation_size)
         print(
             "strategy_checkpoint_migrated "
             f"observation_size={checkpoint_observation_size}->{current_observation_size}"
@@ -972,8 +1253,10 @@ def restore_checkpoint(
     actor.load_state_dict(actor_state)
     critic_state = checkpoint.get("critic")
     if restore_critic and critic_state is not None:
-        if checkpoint_observation_size == current_observation_size - 1:
-            critic_state = append_zero_input_feature(critic_state)
+        if checkpoint_observation_size < current_observation_size:
+            critic_state = append_zero_input_features(
+                critic_state, current_observation_size
+            )
         critic.load_state_dict(critic_state)
     print(f"strategy_resumed checkpoint={path}")
     return True
@@ -998,7 +1281,7 @@ def restore_exported_policy(path: Path, actor: CandidateScorer) -> bool:
                 raise ValueError(f"Invalid strategy policy layer {index}: {path}")
             input_size = int(exported.get("inputSize", -1))
             output_size = int(exported.get("outputSize", -1))
-            can_append_input = index == 0 and input_size == layer.in_features - 1
+            can_append_input = index == 0 and 0 < input_size < layer.in_features
             if output_size != layer.out_features or (
                 input_size != layer.in_features and not can_append_input
             ):
@@ -1013,7 +1296,9 @@ def restore_exported_policy(path: Path, actor: CandidateScorer) -> bool:
                 raise ValueError(f"Invalid strategy policy bias in layer {index}: {path}")
             restored_weights = weights.reshape(output_size, input_size)
             if can_append_input:
-                restored_weights = nn.functional.pad(restored_weights, (0, 1))
+                restored_weights = nn.functional.pad(
+                    restored_weights, (0, layer.in_features - input_size)
+                )
             layer.weight.copy_(restored_weights)
             layer.bias.copy_(biases)
 
@@ -1021,13 +1306,14 @@ def restore_exported_policy(path: Path, actor: CandidateScorer) -> bool:
     return True
 
 
-def append_zero_input_feature(
+def append_zero_input_features(
     state: dict[str, torch.Tensor],
+    observation_size: int,
 ) -> dict[str, torch.Tensor]:
     migrated = copy.deepcopy(state)
     weight = migrated["network.0.weight"]
     expanded = torch.zeros(
-        (weight.shape[0], weight.shape[1] + 1),
+        (weight.shape[0], observation_size),
         dtype=weight.dtype,
         device=weight.device,
     )
@@ -1062,7 +1348,11 @@ def main() -> None:
         raise ValueError("Final teacher rollout ratio must be between zero and one")
     if args.self_play_snapshot_every <= 0:
         raise ValueError("Self-play snapshot interval must be positive")
-    if args.minimum_unique_cards < 0 or args.minimum_stat_synergies_per_episode < 0.0:
+    if (
+        args.minimum_unique_cards < 0
+        or args.minimum_stat_synergies_per_episode < 0.0
+        or not 0.0 <= args.minimum_set_completion_rate <= 1.0
+    ):
         raise ValueError("Strategy identity thresholds cannot be negative")
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -1108,23 +1398,57 @@ def main() -> None:
             args.evaluate_mode,
             args.eval_episodes,
             args.seed + 900000,
+            championship_range=(1, 1),
         )
-        name = f"{args.profile_id}_evaluation"
+        name = f"{args.profile_id}_evaluation_first"
         print(format_metrics(name, metrics))
         for card_type in ("driver", "tuning", "technique", "powerup", "revenge"):
             print(format_card_preferences(name, metrics, card_type))
         for tier in range(1, 5):
             print(format_tier_preferences(name, metrics, tier))
+            print(format_tier_top_cards(name, metrics, tier))
         print(format_technique_families(name, metrics))
-        mixed = evaluate(
+        print(format_set_preferences(name, metrics))
+        continued = evaluate(
             environment,
             actor if args.evaluate_mode == "model" else None,
             args.evaluate_mode,
             args.eval_episodes,
             args.seed + 910000,
+            championship_range=(
+                args.continuation_eval_championships,
+                args.continuation_eval_championships,
+            ),
+        )
+        continued_name = f"{args.profile_id}_evaluation_continued"
+        print(format_metrics(continued_name, continued))
+        for tier in range(1, 5):
+            print(format_tier_top_cards(continued_name, continued, tier))
+        print(format_set_preferences(continued_name, continued))
+        mixed = evaluate(
+            environment,
+            actor if args.evaluate_mode == "model" else None,
+            args.evaluate_mode,
+            args.eval_episodes,
+            args.seed + 920000,
             mixed_opponents=True,
+            championship_range=(1, 1),
         )
         print(format_metrics(f"{name}_mixed", mixed))
+        continued_mixed = evaluate(
+            environment,
+            actor if args.evaluate_mode == "model" else None,
+            args.evaluate_mode,
+            args.eval_episodes,
+            args.seed + 930000,
+            mixed_opponents=True,
+            championship_range=(
+                args.continuation_eval_championships,
+                args.continuation_eval_championships,
+            ),
+        )
+        print(format_metrics(f"{continued_name}_mixed", continued_mixed))
+        print(format_set_preferences(f"{continued_name}_mixed", continued_mixed))
         if args.evaluate_mode == "model":
             export_policy(actor, Path(args.output), observation_size, args.strategy_type)
             print(f"strategy_policy_exported output={args.output}")
@@ -1227,6 +1551,7 @@ def main() -> None:
         minimum_win_rate,
         args.minimum_unique_cards,
         args.minimum_stat_synergies_per_episode,
+        args.minimum_set_completion_rate,
         preferred_cards,
     ):
         print(
@@ -1266,6 +1591,16 @@ def main() -> None:
                 },
                 "algorithmic_win_rate": final_algorithmic.win_rate,
                 "algorithmic_average_position": final_algorithmic.average_position,
+                "set_episode_rate": (
+                    final_selection.set_episode_count / final_selection.episodes
+                ),
+                "set_completions_per_episode": (
+                    final_selection.set_completion_count / final_selection.episodes
+                ),
+                "final_set_rate": (
+                    final_selection.final_set_count / final_selection.episodes
+                ),
+                "completed_sets": final_selection.completed_set_counts,
             },
         },
         checkpoint_path,

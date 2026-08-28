@@ -8,6 +8,7 @@ import com.github.jbescos.gameplay.roguelite.strategy.CardStrategyContext;
 import com.github.jbescos.gameplay.roguelite.strategy.CardStrategyDecision;
 import com.github.jbescos.gameplay.roguelite.strategy.CardStrategyRandom;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.junit.Test;
 
@@ -54,6 +55,35 @@ public final class AlgorithmicFinalReckoningTest {
                 offer(RogueliteCardId.APEX_PLUNDER))));
     }
 
+    @Test
+    public void completesTheStrongestPartialSet() {
+        RogueliteSetDefinition set = RogueliteSetCatalog.tierThreeSets().get(0);
+        RogueliteCompetitorProgress progress = progress();
+        progress.getLoadout().equip(set.getTuningCardId());
+        progress.getLoadout().equip(set.getTechniqueCardId());
+        progress.getLoadout().equip(set.getPowerupCardId());
+
+        RogueliteCardOffer selected = chooseWithSets(progress, Arrays.asList(
+                offer(RogueliteCardId.HUNTER_STORM),
+                offer(set.getRevengeCardId())));
+
+        assertEquals(set.getRevengeCardId(), selected.getCard().getId());
+    }
+
+    @Test
+    public void preservesAThreeCardRecipeWhenOffersWouldBreakIt() {
+        RogueliteSetDefinition set = RogueliteSetCatalog.tierThreeSets().get(0);
+        RogueliteCompetitorProgress progress = progress();
+        progress.getLoadout().equip(set.getTuningCardId());
+        progress.getLoadout().equip(set.getTechniqueCardId());
+        progress.getLoadout().equip(set.getPowerupCardId());
+
+        assertNull(chooseWithSets(progress, Arrays.asList(
+                offer(RogueliteCardId.HYPERCAR_CORE),
+                offer(RogueliteCardId.DRAFT_MASTER),
+                offer(RogueliteCardId.WILDCARD_CORE))));
+    }
+
     private static RogueliteCardOffer choose(
             RogueliteCompetitorProgress progress,
             List<RogueliteCardOffer> offers) {
@@ -63,6 +93,28 @@ public final class AlgorithmicFinalReckoningTest {
                         DriverProfileCatalog.fallback(),
                         offers,
                         CardStrategyContext.empty()),
+                FIRST);
+    }
+
+    private static RogueliteCardOffer chooseWithSets(
+            RogueliteCompetitorProgress progress,
+            List<RogueliteCardOffer> offers) {
+        CardStrategyContext context = new CardStrategyContext(
+                1,
+                19,
+                1,
+                5,
+                1,
+                1,
+                18,
+                Collections.<CardStrategyContext.Opponent>emptyList(),
+                RogueliteSetCatalog.allSetIds());
+        return new AlgorithmicCardStrategy().choose(
+                new CardStrategyDecision(
+                        progress,
+                        DriverProfileCatalog.fallback(),
+                        offers,
+                        context),
                 FIRST);
     }
 

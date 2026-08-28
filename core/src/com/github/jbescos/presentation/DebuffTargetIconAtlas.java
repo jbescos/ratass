@@ -37,6 +37,8 @@ public final class DebuffTargetIconAtlas {
             case BUILD_HEIST:
             case APEX_PLUNDER:
                 return 9;
+            case FINAL_RECKONING:
+                return 10;
             default:
                 return -1;
         }

@@ -685,9 +685,9 @@ public class RogueliteRunTest {
         assertTrue(loadout.isFull());
         assertEquals(3, run.getDriverTier(loadout.getDriverProfileId()));
         for (int i = 0; i < loadout.getModifications().size(); i++) {
-            assertEquals(
-                    3,
-                    RogueliteCardCatalog.get(loadout.getModifications().get(i)).getTier());
+            assertTrue(
+                    RogueliteCardCatalog.get(loadout.getModifications().get(i)).getTier()
+                            >= 3);
         }
         assertFalse(defaultDriver.equals(loadout.getDriverProfileId()));
     }

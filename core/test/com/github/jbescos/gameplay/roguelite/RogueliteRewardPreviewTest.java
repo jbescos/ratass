@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 
+import java.util.Collections;
 import org.junit.Test;
 
 public class RogueliteRewardPreviewTest {
@@ -58,8 +59,57 @@ public class RogueliteRewardPreviewTest {
         assertNull(
                 RogueliteRewardPreview.resolveCard(
                         new RogueliteLoadout("profile00"),
-                        RogueliteSlotType.DRIVER,
-                        preview));
+                RogueliteSlotType.DRIVER,
+                preview));
+    }
+
+    @Test
+    public void pendingFinalComponentPreviewsSetUntilOfferIsCancelled() {
+        RogueliteSetDefinition set =
+                RogueliteSetCatalog.get(RogueliteSetId.CHAOS_CIRCUIT);
+        RogueliteLoadout loadout = new RogueliteLoadout("profile00");
+        loadout.equip(set.getTuningCardId());
+        loadout.equip(set.getTechniqueCardId());
+        loadout.equip(set.getPowerupCardId());
+        RogueliteCardOffer preview = RogueliteCardOffer.modification(
+                RogueliteCardCatalog.get(set.getRevengeCardId()));
+
+        assertSame(
+                set,
+                RogueliteRewardPreview.resolveCompletedSet(
+                        loadout,
+                        preview,
+                        Collections.singletonList(set.getId())));
+        assertNull(
+                RogueliteRewardPreview.resolveCompletedSet(
+                        loadout,
+                        null,
+                        Collections.singletonList(set.getId())));
+    }
+
+    @Test
+    public void previewReplacingASetComponentHidesCompletedSet() {
+        RogueliteSetDefinition set =
+                RogueliteSetCatalog.get(RogueliteSetId.CHAOS_CIRCUIT);
+        RogueliteLoadout loadout = new RogueliteLoadout("profile00");
+        loadout.equip(set.getTuningCardId());
+        loadout.equip(set.getTechniqueCardId());
+        loadout.equip(set.getPowerupCardId());
+        loadout.equip(set.getRevengeCardId());
+        RogueliteCardOffer preview = RogueliteCardOffer.modification(
+                RogueliteCardCatalog.get(RogueliteCardId.HUNTER_STORM));
+
+        assertNull(
+                RogueliteRewardPreview.resolveCompletedSet(
+                        loadout,
+                        preview,
+                        Collections.singletonList(set.getId())));
+        assertSame(
+                set,
+                RogueliteRewardPreview.resolveCompletedSet(
+                        loadout,
+                        null,
+                        Collections.singletonList(set.getId())));
     }
 
     private static DriverProfileMetadata driver(String profileId) {

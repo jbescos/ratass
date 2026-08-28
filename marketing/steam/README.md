@@ -11,7 +11,7 @@ The generator requires Pillow. It validates every output dimension and writes
 the final files under `store-assets/`.
 
 Gameplay footage is intentionally kept outside Git. To rebuild the screenshots
-from locally retained footage under `marketing/trailer/raw/`, also install
+from current footage under `marketing/trailer/raw/current/`, also install
 `ffmpeg` and run:
 
 ```bash

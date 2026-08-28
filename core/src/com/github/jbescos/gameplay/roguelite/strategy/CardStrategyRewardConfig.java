@@ -27,6 +27,9 @@ public final class CardStrategyRewardConfig {
     private final float cardTypeRotation;
     private final float rivalPowerupOverlapPenalty;
     private final float rivalRevengeOverlapPenalty;
+    private final float setProgress;
+    private final float setCompletion;
+    private final float setBreakPenalty;
     private final CardStrategyCardPreference cardPreference;
     private final Map<RogueliteSlotType, Float> cardTypeRewards;
 
@@ -153,6 +156,72 @@ public final class CardStrategyRewardConfig {
             float cardTypeRotation,
             float rivalPowerupOverlapPenalty,
             float rivalRevengeOverlapPenalty) {
+        this(
+                championshipWin,
+                finalPosition,
+                racePosition,
+                levelGain,
+                normalizedExperience,
+                novelty,
+                skipPenalty,
+                driver,
+                tuning,
+                technique,
+                powerup,
+                revenge,
+                techniqueAmplifier,
+                powerupAmplifier,
+                revengeAmplifier,
+                amplifierLink,
+                randomPowerup,
+                randomRevenge,
+                preferredCardIds,
+                preferredCardReward,
+                discouragedCardIds,
+                discouragedCardPenalty,
+                lapWin,
+                cardSelection,
+                tuningTechniqueSynergy,
+                cardTypeRotation,
+                rivalPowerupOverlapPenalty,
+                rivalRevengeOverlapPenalty,
+                0f,
+                0f,
+                0f);
+    }
+
+    public CardStrategyRewardConfig(
+            float championshipWin,
+            float finalPosition,
+            float racePosition,
+            float levelGain,
+            float normalizedExperience,
+            float novelty,
+            float skipPenalty,
+            float driver,
+            float tuning,
+            float technique,
+            float powerup,
+            float revenge,
+            float techniqueAmplifier,
+            float powerupAmplifier,
+            float revengeAmplifier,
+            float amplifierLink,
+            float randomPowerup,
+            float randomRevenge,
+            String preferredCardIds,
+            float preferredCardReward,
+            String discouragedCardIds,
+            float discouragedCardPenalty,
+            float lapWin,
+            float cardSelection,
+            float tuningTechniqueSynergy,
+            float cardTypeRotation,
+            float rivalPowerupOverlapPenalty,
+            float rivalRevengeOverlapPenalty,
+            float setProgress,
+            float setCompletion,
+            float setBreakPenalty) {
         this.championshipWin = finite(championshipWin);
         this.finalPosition = finite(finalPosition);
         this.racePosition = finite(racePosition);
@@ -174,6 +243,9 @@ public final class CardStrategyRewardConfig {
                 0f, finite(rivalPowerupOverlapPenalty));
         this.rivalRevengeOverlapPenalty = Math.max(
                 0f, finite(rivalRevengeOverlapPenalty));
+        this.setProgress = Math.max(0f, finite(setProgress));
+        this.setCompletion = Math.max(0f, finite(setCompletion));
+        this.setBreakPenalty = Math.max(0f, finite(setBreakPenalty));
         cardPreference = new CardStrategyCardPreference(
                 preferredCardIds,
                 preferredCardReward,
@@ -263,6 +335,18 @@ public final class CardStrategyRewardConfig {
             return rivalRevengeOverlapPenalty;
         }
         return 0f;
+    }
+
+    public float getSetProgress() {
+        return setProgress;
+    }
+
+    public float getSetCompletion() {
+        return setCompletion;
+    }
+
+    public float getSetBreakPenalty() {
+        return setBreakPenalty;
     }
 
     public float getCardPreferenceReward(RogueliteLoadout loadout, RogueliteCardId cardId) {

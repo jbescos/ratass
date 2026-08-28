@@ -9,6 +9,9 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCompetitorProgress;
 import com.github.jbescos.gameplay.roguelite.RogueliteLoadout;
 import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
 import com.github.jbescos.gameplay.roguelite.RogueliteStrategyMetrics;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetCatalog;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetDefinition;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -40,9 +43,26 @@ public final class AlgorithmicCardStrategy implements CardStrategy {
                 return null;
             }
         }
+        RogueliteCardOffer setOffer = bestSetBuildingOffer(
+                progress.getLoadout(),
+                eligibleOffers,
+                decision.getContext().getEnabledSetIds());
+        if (setOffer != null) {
+            return setOffer;
+        }
+        eligibleOffers = preserveStrongestPartialSet(
+                progress.getLoadout(),
+                eligibleOffers,
+                decision.getContext().getEnabledSetIds());
+        if (eligibleOffers.isEmpty()) {
+            return null;
+        }
         OfferBucket bucket = offerBucket(
                 decision.getDriverCatalog(), progress, eligibleOffers);
-        RogueliteCardOffer synergy = bestSynergyOffer(progress, bucket.offers);
+        RogueliteCardOffer synergy = bestSynergyOffer(
+                progress,
+                bucket.offers,
+                decision.getContext());
         if (synergy != null) {
             if (random.nextInt(100) < EXPLORATION_CHANCE) {
                 return randomOffer(bucket.offers, random);
@@ -58,6 +78,78 @@ public final class AlgorithmicCardStrategy implements CardStrategy {
         }
         return highestScoredOffer(
                 decision.getDriverCatalog(), progress, bucket.offers);
+    }
+
+    private static RogueliteCardOffer bestSetBuildingOffer(
+            RogueliteLoadout loadout,
+            List<RogueliteCardOffer> offers,
+            List<RogueliteSetId> enabledSetIds) {
+        int currentBest = RogueliteSetCatalog.bestMatchingCardCount(loadout, enabledSetIds);
+        RogueliteCardOffer bestOffer = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (RogueliteCardOffer offer : offers) {
+            if (offer.isDriver()) {
+                continue;
+            }
+            RogueliteCardId candidate = offer.getCard().getId();
+            for (RogueliteSetId setId : enabledSetIds) {
+                RogueliteSetDefinition set = RogueliteSetCatalog.get(setId);
+                if (set == null || set.getRequiredCard(offer.getSlotType()) != candidate) {
+                    continue;
+                }
+                int before = set.matchingCardCount(loadout);
+                int after = RogueliteSetCatalog.matchingCardCountAfter(
+                        loadout, candidate, set);
+                if (after <= before || after < currentBest) {
+                    continue;
+                }
+                int score = after * 1000 + before * 100 + set.getTier();
+                if (after == RogueliteLoadout.MODIFICATION_SLOT_COUNT) {
+                    score += 100000;
+                }
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestOffer = offer;
+                }
+            }
+        }
+        return bestOffer;
+    }
+
+    private static List<RogueliteCardOffer> preserveStrongestPartialSet(
+            RogueliteLoadout loadout,
+            List<RogueliteCardOffer> offers,
+            List<RogueliteSetId> enabledSetIds) {
+        int currentBest = RogueliteSetCatalog.bestMatchingCardCount(loadout, enabledSetIds);
+        if (currentBest < 1) {
+            return offers;
+        }
+        List<RogueliteCardOffer> preserved = new ArrayList<RogueliteCardOffer>();
+        for (RogueliteCardOffer offer : offers) {
+            if (offer.isDriver()
+                    || !breaksStrongestSet(
+                            loadout, offer.getCard().getId(), enabledSetIds, currentBest)) {
+                preserved.add(offer);
+            }
+        }
+        return preserved;
+    }
+
+    private static boolean breaksStrongestSet(
+            RogueliteLoadout loadout,
+            RogueliteCardId candidate,
+            List<RogueliteSetId> enabledSetIds,
+            int currentBest) {
+        for (RogueliteSetId setId : enabledSetIds) {
+            RogueliteSetDefinition set = RogueliteSetCatalog.get(setId);
+            if (set != null
+                    && set.matchingCardCount(loadout) == currentBest
+                    && RogueliteSetCatalog.matchingCardCountAfter(loadout, candidate, set)
+                            < currentBest) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static RogueliteCardOffer findCard(
@@ -116,17 +208,23 @@ public final class AlgorithmicCardStrategy implements CardStrategy {
 
     private static RogueliteCardOffer bestSynergyOffer(
             RogueliteCompetitorProgress progress,
-            List<RogueliteCardOffer> offers) {
+            List<RogueliteCardOffer> offers,
+            CardStrategyContext context) {
         RogueliteCardOffer best = null;
         float bestGain = MIN_SYNERGY_GAIN;
         for (RogueliteCardOffer offer : offers) {
-            if (offer.isDriver()
-                    || (offer.getSlotType() != RogueliteSlotType.TUNING
-                            && offer.getSlotType() != RogueliteSlotType.TECHNIQUE)) {
+            if (offer.isDriver()) {
                 continue;
             }
-            float gain = TuningTechniqueSynergy.selectionGain(
-                    progress.getLoadout(), offer.getCard().getId());
+            float gain = RogueliteSetCatalog.selectionGain(
+                    progress.getLoadout(),
+                    offer.getCard().getId(),
+                    context.getEnabledSetIds());
+            if (offer.getSlotType() == RogueliteSlotType.TUNING
+                    || offer.getSlotType() == RogueliteSlotType.TECHNIQUE) {
+                gain += TuningTechniqueSynergy.selectionGain(
+                        progress.getLoadout(), offer.getCard().getId());
+            }
             if (gain > bestGain) {
                 best = offer;
                 bestGain = gain;

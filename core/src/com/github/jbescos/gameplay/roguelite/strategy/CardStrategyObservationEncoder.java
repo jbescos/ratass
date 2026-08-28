@@ -8,6 +8,9 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
 import com.github.jbescos.gameplay.roguelite.RogueliteLoadout;
 import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetCatalog;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetDefinition;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetId;
 import java.util.List;
 
 /** Converts one candidate and its strategic context into a stable normalized feature vector. */
@@ -21,6 +24,7 @@ public final class CardStrategyObservationEncoder {
             2 + RogueliteSlotType.values().length + 1
                     + DRIVER_FEATURE_COUNT + CARD_COUNT + 5;
     private static final int OPPONENT_FEATURE_COUNT = 4 + DRIVER_FEATURE_COUNT;
+    private static final int SET_FEATURE_COUNT = RogueliteSetId.values().length * 3 + 5;
     private static final float CANDIDATE_STRENGTH_SCALE = 4f;
     private static final int OBSERVATION_SIZE =
             GLOBAL_FEATURE_COUNT
@@ -28,6 +32,7 @@ public final class CardStrategyObservationEncoder {
                     + RogueliteLoadout.MODIFICATION_SLOT_COUNT * LOADOUT_SLOT_FEATURE_COUNT
                     + CANDIDATE_FEATURE_COUNT
                     + MAX_OPPONENTS * OPPONENT_FEATURE_COUNT
+                    + SET_FEATURE_COUNT
                     + 2;
 
     private DriverProfileCatalog estimatorCatalog;
@@ -82,14 +87,53 @@ public final class CardStrategyObservationEncoder {
 
         writeCandidate(cursor, decision, candidate);
         writeOpponents(cursor, context.getOpponents(), fieldSize);
-        cursor.add(clampSigned(
-                estimatorFor(decision.getDriverCatalog()).estimate(
-                                decision.getProgress(), candidate, 1.45f)
-                        / CANDIDATE_STRENGTH_SCALE));
+        RogueliteCardId candidateId = candidate == null || candidate.isDriver()
+                ? null
+                : candidate.getCard().getId();
+        writeSets(cursor, loadout, candidateId, context.getEnabledSetIds());
+        float candidateStrength = estimatorFor(decision.getDriverCatalog()).estimate(
+                decision.getProgress(), candidate, 1.45f);
+        if (candidateId != null) {
+            candidateStrength += RogueliteSetCatalog.selectionGain(
+                    loadout,
+                    candidateId,
+                    context.getEnabledSetIds());
+        }
+        cursor.add(clampSigned(candidateStrength / CANDIDATE_STRENGTH_SCALE));
         cursor.add(context.equippedCandidateOverlap(candidate));
         if (cursor.index != OBSERVATION_SIZE) {
             throw new IllegalStateException("Card strategy observation layout is inconsistent.");
         }
+    }
+
+    private static void writeSets(
+            Cursor cursor,
+            RogueliteLoadout loadout,
+            RogueliteCardId candidate,
+            List<RogueliteSetId> enabledSetIds) {
+        int bestBefore = 0;
+        int bestAfter = 0;
+        for (RogueliteSetId setId : RogueliteSetId.values()) {
+            boolean enabled = enabledSetIds.contains(setId);
+            RogueliteSetDefinition set = RogueliteSetCatalog.get(setId);
+            int before = enabled ? set.matchingCardCount(loadout) : 0;
+            int after = enabled
+                    ? RogueliteSetCatalog.matchingCardCountAfter(loadout, candidate, set)
+                    : 0;
+            bestBefore = Math.max(bestBefore, before);
+            bestAfter = Math.max(bestAfter, after);
+            cursor.add(enabled ? 1f : 0f);
+            cursor.add(before / (float) RogueliteLoadout.MODIFICATION_SLOT_COUNT);
+            cursor.add(after / (float) RogueliteLoadout.MODIFICATION_SLOT_COUNT);
+        }
+        cursor.add(bestBefore / (float) RogueliteLoadout.MODIFICATION_SLOT_COUNT);
+        cursor.add(bestAfter / (float) RogueliteLoadout.MODIFICATION_SLOT_COUNT);
+        cursor.add(Math.max(0, bestAfter - bestBefore)
+                / (float) RogueliteLoadout.MODIFICATION_SLOT_COUNT);
+        cursor.add(RogueliteSetCatalog.completesSetAfter(
+                loadout, candidate, enabledSetIds) ? 1f : 0f);
+        cursor.add(RogueliteSetCatalog.breaksCompletedSet(
+                loadout, candidate, enabledSetIds) ? 1f : 0f);
     }
 
     private CardStrategyRaceEstimator estimatorFor(DriverProfileCatalog catalog) {

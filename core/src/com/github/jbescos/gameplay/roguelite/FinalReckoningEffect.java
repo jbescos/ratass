@@ -1,14 +1,25 @@
 package com.github.jbescos.gameplay.roguelite;
 
-/** Activates three Tier 3 Powerups together when the equipped Revenge is hit. */
-final class FinalReckoningEffect extends RevengeUpgradeEffect {
-    private static final RogueliteCardId MIRROR_CARD_ID = RogueliteCardId.OVERDRIVE_COIL;
-    private static final RogueliteCardId COLLISION_CARD_ID = RogueliteCardId.COLOSSUS_FIELD;
-    private static final RogueliteCardId TIME_CARD_ID = RogueliteCardId.TEMPORAL_DOMINION;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
-    private float mirrorTimer;
-    private float collisionTimer;
-    private float timeTimer;
+/** Marks one offender and lets the whole field repeatedly hunt it for lap XP. */
+final class FinalReckoningEffect extends RevengeUpgradeEffect {
+    static final float PREPARATION_SECONDS = 0f;
+    static final float HUNT_DURATION_SECONDS = 15f;
+    static final float RAM_TRIGGER_DISTANCE = 5f;
+    static final float RAM_COOLDOWN_SECONDS = 1.5f;
+
+    private static final float POWER_BONUS = 0.50f;
+    private static final float RECOIL_REDUCTION = 1.50f;
+    private static final float PUSH_BONUS = 1.50f;
+    private static final float ATTACKER_LAUNCH_SPEED_RATIO = 0.48f;
+    private static final float TARGET_PUSH_SPEED_RATIO = 0.72f;
+
+    private final Map<Integer, Float> ramCooldownByVehicleId =
+            new HashMap<Integer, Float>();
+    private float huntTimeRemaining;
     private float effectMultiplier = 1f;
     private boolean amplificationApplied;
 
@@ -17,74 +28,30 @@ final class FinalReckoningEffect extends RevengeUpgradeEffect {
     }
 
     @Override
-    boolean containsCardEffect(RogueliteCardId candidateCardId) {
-        return candidateCardId == getCardId()
-                || candidateCardId == MIRROR_CARD_ID
-                || candidateCardId == COLLISION_CARD_ID
-                || candidateCardId == TIME_CARD_ID;
-    }
-
-    @Override
-    boolean isCardEffectActive(RogueliteCardId candidateCardId) {
-        if (candidateCardId == getCardId()) {
-            return isActive();
-        }
-        if (candidateCardId == MIRROR_CARD_ID) {
-            return mirrorTimer > 0f;
-        }
-        if (candidateCardId == COLLISION_CARD_ID) {
-            return collisionTimer > 0f;
-        }
-        if (candidateCardId == TIME_CARD_ID) {
-            return timeTimer > 0f;
-        }
-        return false;
-    }
-
-    @Override
-    float cardEffectReadiness(RogueliteCardId candidateCardId) {
-        return containsCardEffect(candidateCardId) ? 1f : 0f;
-    }
-
-    @Override
-    float cardEffectActiveTimeRemainingSeconds(RogueliteCardId candidateCardId) {
-        if (candidateCardId == MIRROR_CARD_ID) {
-            return mirrorTimer;
-        }
-        if (candidateCardId == COLLISION_CARD_ID) {
-            return collisionTimer;
-        }
-        if (candidateCardId == TIME_CARD_ID) {
-            return timeTimer;
-        }
-        return candidateCardId == getCardId() ? activeTimeRemainingSeconds() : 0f;
-    }
-
-    @Override
-    RogueliteCardId activePowerupCardId() {
-        return mirrorTimer > 0f ? MIRROR_CARD_ID : null;
-    }
-
-    @Override
-    float nestedPowerupEffectMultiplier(RogueliteCardId candidateCardId) {
-        return candidateCardId == MIRROR_CARD_ID && mirrorTimer > 0f
-                ? effectMultiplier
-                : 1f;
-    }
-
-    @Override
     boolean isActive() {
-        return mirrorTimer > 0f || collisionTimer > 0f || timeTimer > 0f;
+        return hasTarget();
+    }
+
+    @Override
+    boolean isReady() {
+        return hasTarget()
+                && targetAgeSeconds() >= PREPARATION_SECONDS
+                && huntTimeRemaining > 0f;
+    }
+
+    @Override
+    boolean isArmed() {
+        return hasTarget();
     }
 
     @Override
     float readiness() {
-        return 1f;
+        return hasTarget() ? 1f : 0f;
     }
 
     @Override
     float activeTimeRemainingSeconds() {
-        return Math.max(mirrorTimer, Math.max(collisionTimer, timeTimer));
+        return huntTimeRemaining;
     }
 
     @Override
@@ -94,87 +61,122 @@ final class FinalReckoningEffect extends RevengeUpgradeEffect {
 
     @Override
     void update(float delta, float timerDelta, RogueliteDrivingFrame frame) {
-        float elapsed = Math.max(0f, timerDelta);
-        mirrorTimer = Math.max(0f, mirrorTimer - elapsed);
-        collisionTimer = Math.max(0f, collisionTimer - elapsed);
-        timeTimer = Math.max(0f, timeTimer - elapsed);
-        if (!isActive()) {
-            clearTarget();
-            effectMultiplier = 1f;
-            amplificationApplied = false;
+        float elapsed = sanitizeElapsed(delta);
+        updateRamCooldowns(elapsed);
+        if (!hasTarget()) {
+            return;
+        }
+
+        float previousAge = targetAgeSeconds();
+        advanceTargetAge(elapsed);
+        float activeElapsed = Math.max(0f, targetAgeSeconds() - PREPARATION_SECONDS)
+                - Math.max(0f, previousAge - PREPARATION_SECONDS);
+        huntTimeRemaining = Math.max(0f, huntTimeRemaining - activeElapsed);
+        if (huntTimeRemaining <= 0f) {
+            reset();
         }
     }
 
     @Override
+    float accelerationBonus() {
+        return isReady() ? POWER_BONUS * effectMultiplier : 0f;
+    }
+
+    @Override
+    float frontCollisionRecoilMultiplier() {
+        return isReady()
+                ? Math.max(0f, 1f - RECOIL_REDUCTION * effectMultiplier)
+                : 1f;
+    }
+
+    @Override
+    float frontCollisionPushMultiplier() {
+        return isReady() ? 1f + PUSH_BONUS * effectMultiplier : 1f;
+    }
+
+    @Override
     protected void prepareFromHit(int vehicleId, float impactStrength) {
-        mirrorTimer = MirrorPowerupSpec.durationSeconds(MIRROR_CARD_ID);
-        collisionTimer = CollisionFieldPowerupSpec.DURATION_SECONDS;
-        timeTimer = TimeDilationPowerupSpec.durationSeconds(TIME_CARD_ID);
+        huntTimeRemaining = HUNT_DURATION_SECONDS;
         effectMultiplier = 1f;
         amplificationApplied = false;
+        ramCooldownByVehicleId.clear();
     }
 
     @Override
     protected boolean isExecutionInProgress() {
-        return isActive();
+        return hasTarget();
     }
 
     @Override
     protected void onTargetCancelled() {
-        mirrorTimer = 0f;
-        collisionTimer = 0f;
-        timeTimer = 0f;
-        effectMultiplier = 1f;
-        amplificationApplied = false;
+        resetState();
     }
 
     @Override
     void amplifyActiveRevenge(float multiplier) {
-        if (!isActive() || amplificationApplied) {
+        if (!hasTarget() || amplificationApplied) {
             return;
         }
         float safeMultiplier = Float.isFinite(multiplier)
                 ? Math.max(1f, multiplier)
                 : 1f;
-        mirrorTimer *= safeMultiplier;
-        collisionTimer *= safeMultiplier;
-        timeTimer *= safeMultiplier;
+        huntTimeRemaining *= safeMultiplier;
         effectMultiplier = safeMultiplier;
         amplificationApplied = true;
     }
 
-    @Override
-    boolean acceleratesOwnDecisions() {
-        return timeTimer > 0f;
+    RogueliteRevengeStrike tryActivateHuntRam(
+            int rammerVehicleId,
+            int targetVehicleId,
+            float distance) {
+        if (!isReady()
+                || rammerVehicleId < 0
+                || rammerVehicleId == targetVehicleId
+                || !targets(targetVehicleId)
+                || !Float.isFinite(distance)
+                || distance > RAM_TRIGGER_DISTANCE
+                || ramCooldownByVehicleId.containsKey(Integer.valueOf(rammerVehicleId))) {
+            return null;
+        }
+        ramCooldownByVehicleId.put(
+                Integer.valueOf(rammerVehicleId),
+                Float.valueOf(RAM_COOLDOWN_SECONDS));
+        return RogueliteRevengeStrike.hardImpact(
+                getCardId(),
+                ATTACKER_LAUNCH_SPEED_RATIO * effectMultiplier,
+                TARGET_PUSH_SPEED_RATIO * effectMultiplier);
     }
 
-    @Override
-    float massMultiplier() {
-        return collisionTimer > 0f
-                ? 1f + (CollisionFieldPowerupSpec.MASS_MULTIPLIER - 1f) * effectMultiplier
-                : 1f;
+    private void updateRamCooldowns(float elapsed) {
+        if (elapsed <= 0f || ramCooldownByVehicleId.isEmpty()) {
+            return;
+        }
+        Iterator<Map.Entry<Integer, Float>> iterator =
+                ramCooldownByVehicleId.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Integer, Float> entry = iterator.next();
+            float remaining = entry.getValue().floatValue() - elapsed;
+            if (remaining <= 0f) {
+                iterator.remove();
+            } else {
+                entry.setValue(Float.valueOf(remaining));
+            }
+        }
     }
 
-    @Override
-    float gripBonus(float slip) {
-        return collisionTimer > 0f
-                ? CollisionFieldPowerupSpec.GRIP_BONUS * effectMultiplier
-                : 0f;
+    private void reset() {
+        clearTarget();
+        resetState();
     }
 
-    @Override
-    float carCollisionAreaMultiplier() {
-        return collisionTimer > 0f
-                ? CollisionFieldPowerupSpec.collisionAreaMultiplier(COLLISION_CARD_ID)
-                        * effectMultiplier
-                : 1f;
+    private void resetState() {
+        huntTimeRemaining = 0f;
+        effectMultiplier = 1f;
+        amplificationApplied = false;
+        ramCooldownByVehicleId.clear();
     }
 
-    @Override
-    float carCollisionMassMultiplier() {
-        return collisionTimer > 0f
-                ? CollisionFieldPowerupSpec.collisionMassMultiplier(COLLISION_CARD_ID)
-                        * effectMultiplier
-                : 1f;
+    private static float sanitizeElapsed(float delta) {
+        return Float.isFinite(delta) ? Math.max(0f, delta) : 0f;
     }
 }

@@ -17,6 +17,7 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
     private final float activeDuration;
     private float activeTimer;
     private boolean conditionActive;
+    private boolean alwaysActive;
 
     RaceTechniqueEffect(RogueliteCardId cardId) {
         super(cardId);
@@ -28,6 +29,9 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
 
     @Override
     boolean isActive() {
+        if (alwaysActive) {
+            return true;
+        }
         if (isPassiveCard()) {
             return passiveActivationBonus() > 0.001f;
         }
@@ -41,7 +45,7 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
 
     @Override
     float activeTimeRemainingSeconds() {
-        return activeTimer;
+        return alwaysActive ? 0f : activeTimer;
     }
 
     @Override
@@ -141,7 +145,11 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
     }
 
     private boolean isTimedActive() {
-        return !isPassiveCard() && isActive();
+        return !isPassiveCard() && (alwaysActive || isActive());
+    }
+
+    void setAlwaysActive(boolean alwaysActive) {
+        this.alwaysActive = alwaysActive;
     }
 
     boolean isMultiplicativeTechniqueActive() {

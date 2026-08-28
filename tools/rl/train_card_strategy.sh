@@ -40,6 +40,9 @@ fi
 if [[ "${CARD_STRATEGY_REFRESH_IMITATION:-0}" == "1" ]]; then
   resume_args+=(--refresh-imitation)
 fi
+if [[ "${CARD_STRATEGY_PRESERVE_FIRST_CHAMPIONSHIP_POLICY:-0}" == "1" ]]; then
+  resume_args+=(--preserve-first-championship-policy)
+fi
 if [[ "${CARD_STRATEGY_EVALUATE_ONLY:-0}" == "1" ]]; then
   resume_args+=(--evaluate-only)
 fi
@@ -82,6 +85,8 @@ fi
   --lr "${CARD_STRATEGY_LR}" \
   --imitation-lr "${CARD_STRATEGY_IMITATION_LR}" \
   --personality-teacher-weight "${CARD_STRATEGY_PERSONALITY_TEACHER_WEIGHT}" \
+  --imitation-teacher "${CARD_STRATEGY_IMITATION_TEACHER}" \
+  --set-imitation-weight "${CARD_STRATEGY_SET_IMITATION_WEIGHT}" \
   --teacher-rollout-ratio "${CARD_STRATEGY_TEACHER_ROLLOUT_RATIO}" \
   --teacher-rollout-final-ratio "${CARD_STRATEGY_TEACHER_ROLLOUT_FINAL_RATIO}" \
   --gamma "${CARD_STRATEGY_GAMMA}" \
@@ -99,10 +104,15 @@ fi
   --max-win-rate-regression "${CARD_STRATEGY_MAX_WIN_RATE_REGRESSION}" \
   --minimum-unique-cards "${CARD_STRATEGY_MINIMUM_UNIQUE_CARDS}" \
   --minimum-stat-synergies-per-episode "${CARD_STRATEGY_MINIMUM_STAT_SYNERGIES_PER_EPISODE}" \
+  --minimum-set-completion-rate "${CARD_STRATEGY_MINIMUM_SET_COMPLETION_RATE}" \
   --mixed-opponent-policies "${CARD_STRATEGY_MIXED_OPPONENT_POLICIES}" \
   --field-size "${CARD_STRATEGY_FIELD_SIZE}" \
   --circuits "${CARD_STRATEGY_CIRCUITS}" \
   --laps "${CARD_STRATEGY_LAPS}" \
+  --min-championships "${CARD_STRATEGY_MIN_CHAMPIONSHIPS}" \
+  --max-championships "${CARD_STRATEGY_MAX_CHAMPIONSHIPS}" \
+  --continuation-eval-championships "${CARD_STRATEGY_CONTINUATION_EVAL_CHAMPIONSHIPS}" \
+  --max-first-win-rate-regression "${CARD_STRATEGY_MAX_FIRST_WIN_RATE_REGRESSION}" \
   --seed "${CARD_STRATEGY_SEED}" \
   --reward-championship-win "${CARD_STRATEGY_REWARD_CHAMPIONSHIP_WIN}" \
   --reward-final-position "${CARD_STRATEGY_REWARD_FINAL_POSITION}" \
@@ -131,4 +141,7 @@ fi
   --reward-tuning-technique-synergy "${CARD_STRATEGY_REWARD_TUNING_TECHNIQUE_SYNERGY}" \
   --reward-card-type-rotation "${CARD_STRATEGY_REWARD_CARD_TYPE_ROTATION}" \
   --reward-rival-powerup-overlap-penalty "${CARD_STRATEGY_REWARD_RIVAL_POWERUP_OVERLAP_PENALTY}" \
-  --reward-rival-revenge-overlap-penalty "${CARD_STRATEGY_REWARD_RIVAL_REVENGE_OVERLAP_PENALTY}"
+  --reward-rival-revenge-overlap-penalty "${CARD_STRATEGY_REWARD_RIVAL_REVENGE_OVERLAP_PENALTY}" \
+  --reward-set-progress "${CARD_STRATEGY_REWARD_SET_PROGRESS}" \
+  --reward-set-completion "${CARD_STRATEGY_REWARD_SET_COMPLETION}" \
+  --reward-set-break-penalty "${CARD_STRATEGY_REWARD_SET_BREAK_PENALTY}"

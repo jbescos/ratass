@@ -32,6 +32,10 @@ public final class RogueliteRun {
     private CardStrategyCatalog cardStrategyCatalog = CardStrategyCatalog.algorithmicOnly();
     private CardStrategyRaceState cardStrategyRaceState = CardStrategyRaceState.empty();
     private CustomGameRules gameRules = new CustomGameRules();
+    private final List<RogueliteSetId> enabledSetIds =
+            new ArrayList<RogueliteSetId>(RogueliteSetId.values().length);
+    private final List<RogueliteSetId> readOnlyEnabledSetIds =
+            Collections.unmodifiableList(enabledSetIds);
     private int championshipNumber = 1;
     private int startingTier = 1;
 
@@ -59,6 +63,7 @@ public final class RogueliteRun {
         };
         this.driverCatalog = requireCatalog(driverCatalog);
         player = newPlayerProgress();
+        enableStaticSets();
     }
 
     public void configureDriverCatalog(DriverProfileCatalog catalog) {
@@ -133,6 +138,7 @@ public final class RogueliteRun {
         cardStrategyRaceState = CardStrategyRaceState.empty();
         championshipNumber = 1;
         startingTier = selectedStartingTier;
+        enableStaticSets();
     }
 
     public RogueliteCompetitorProgress getPlayerProgress() {
@@ -202,6 +208,18 @@ public final class RogueliteRun {
         return startingTier;
     }
 
+    public List<RogueliteSetId> getEnabledSetIds() {
+        return readOnlyEnabledSetIds;
+    }
+
+    public RogueliteSetDefinition getCompletedSet(RogueliteLoadout loadout) {
+        return RogueliteSetCatalog.completedSet(loadout, enabledSetIds);
+    }
+
+    public RogueliteSetDefinition getSetForComponent(RogueliteCardId cardId) {
+        return RogueliteSetCatalog.componentSet(cardId, enabledSetIds);
+    }
+
     public int getRacecraftXpPerLapCap() {
         return gameRules.getRacecraftXpPerLapCap();
     }
@@ -229,6 +247,7 @@ public final class RogueliteRun {
 
     public void restartChampionship() {
         championshipNumber = 1;
+        enableStaticSets();
     }
 
     public void removeRival(int vehicleId) {
@@ -391,6 +410,9 @@ public final class RogueliteRun {
         snapshot.randomState = random.getState();
         snapshot.championshipNumber = championshipNumber;
         snapshot.startingTier = startingTier;
+        for (int i = 0; i < enabledSetIds.size(); i++) {
+            snapshot.enabledSetIds.add(enabledSetIds.get(i).name());
+        }
         snapshot.player = snapshotProgress(player);
         for (Map.Entry<Integer, RogueliteCompetitorProgress> entry : rivals.entrySet()) {
             RivalSnapshot rival = new RivalSnapshot();
@@ -449,6 +471,7 @@ public final class RogueliteRun {
         championshipNumber = snapshot.championshipNumber;
         startingTier = snapshot.startingTier;
         random.setState(snapshot.randomState);
+        enableStaticSets();
         return true;
     }
 
@@ -833,7 +856,8 @@ public final class RogueliteRun {
                         0,
                         cardStrategyRaceState.getCircuitCount()
                                 - cardStrategyRaceState.getCircuitIndex()),
-                opponents);
+                opponents,
+                enabledSetIds);
     }
 
     private CardStrategyContext.Opponent strategyOpponent(
@@ -895,6 +919,11 @@ public final class RogueliteRun {
         }
     }
 
+    private void enableStaticSets() {
+        enabledSetIds.clear();
+        enabledSetIds.addAll(RogueliteSetCatalog.allSetIds());
+    }
+
     private static DriverProfileCatalog requireCatalog(
             DriverProfileCatalog catalog) {
         if (catalog == null) {
@@ -907,6 +936,7 @@ public final class RogueliteRun {
         public int randomState;
         public int championshipNumber = 1;
         public int startingTier = 1;
+        public List<String> enabledSetIds = new ArrayList<String>();
         public ProgressSnapshot player = new ProgressSnapshot();
         public List<RivalSnapshot> rivals = new ArrayList<RivalSnapshot>();
     }

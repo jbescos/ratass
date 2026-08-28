@@ -2,7 +2,7 @@ package com.github.jbescos.presentation;
 
 import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 
-/** Rendering-agnostic geometry for the Crown Breaker armed state. */
+/** Rendering-agnostic geometry for Crown Breaker-family armed states. */
 public final class CrownBreakerStarVisual {
     public static final int POINT_COUNT = 10;
 
@@ -13,8 +13,11 @@ public final class CrownBreakerStarVisual {
             RogueliteCardId equippedRevengeCard,
             RogueliteCardId activeCard,
             boolean revengeArmed) {
-        return equippedRevengeCard == RogueliteCardId.CROWN_ENGINE
-                && (revengeArmed || activeCard == RogueliteCardId.CROWN_ENGINE);
+        boolean supported = equippedRevengeCard == RogueliteCardId.CROWN_ENGINE
+                || equippedRevengeCard == RogueliteCardId.FINAL_RECKONING;
+        return supported
+                && (revengeArmed
+                        || activeCard == equippedRevengeCard);
     }
 
     public static float radiusScale(float pulse) {

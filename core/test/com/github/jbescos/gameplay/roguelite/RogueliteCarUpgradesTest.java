@@ -38,6 +38,67 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
+    public void apexAscensionAddsItsFixedStatsWithoutChangingSteering() {
+        RogueliteSetDefinition set = RogueliteSetCatalog.tierFourSet();
+        RogueliteLoadout loadout = new RogueliteLoadout("profile00");
+        loadout.equip(set.getTuningCardId());
+        loadout.equip(set.getTechniqueCardId());
+        loadout.equip(set.getPowerupCardId());
+        loadout.equip(set.getRevengeCardId());
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+
+        upgrades.configure(loadout, 0f, set);
+
+        assertEquals(set, upgrades.getConfiguredSetBonus());
+        assertFalse(upgrades.isTimeDilationActive());
+        assertEquals(1.8f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(2f, upgrades.getAerodynamicEfficiencyMultiplier(1f), EPSILON);
+        assertEquals(1.2f, upgrades.getGripMultiplier(0f), EPSILON);
+        assertEquals(0.7f, upgrades.getMassMultiplier(), EPSILON);
+        assertEquals(1f, upgrades.getSteeringMultiplier(0f), EPSILON);
+        assertEquals(1f / 0.595f, upgrades.getSteeringTorqueMultiplier(), EPSILON);
+        assertEquals(1.8f / 0.7f, upgrades.getDriveForceLimitMultiplier(), EPSILON);
+
+        upgrades.reconfigurePreservingCardState(loadout, 0f, null);
+
+        assertNull(upgrades.getConfiguredSetBonus());
+        assertFalse(upgrades.isTimeDilationActive());
+        assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1f, upgrades.getAerodynamicEfficiencyMultiplier(1f), EPSILON);
+        assertEquals(1f, upgrades.getGripMultiplier(0f), EPSILON);
+        assertEquals(1f, upgrades.getMassMultiplier(), EPSILON);
+        assertEquals(1f, upgrades.getSteeringMultiplier(0f), EPSILON);
+        assertEquals(1f, upgrades.getSteeringTorqueMultiplier(), EPSILON);
+        assertEquals(1f, upgrades.getDriveForceLimitMultiplier(), EPSILON);
+    }
+
+    @Test
+    public void chaosCircuitKeepsTechniqueActiveUntilSetBreaks() {
+        RogueliteSetDefinition set =
+                RogueliteSetCatalog.get(RogueliteSetId.CHAOS_CIRCUIT);
+        RogueliteLoadout loadout = new RogueliteLoadout("profile00");
+        loadout.equip(set.getTuningCardId());
+        loadout.equip(set.getTechniqueCardId());
+        loadout.equip(set.getPowerupCardId());
+        loadout.equip(set.getRevengeCardId());
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+
+        upgrades.configure(loadout, 0f, set);
+        update(upgrades, 0.1f, 1f, true, 0f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
+
+        assertEquals(RogueliteCardId.DRAFT_MASTER, upgrades.getActiveTechniqueCardId());
+        float setPower = upgrades.getAccelerationMultiplier();
+        float setAero = upgrades.getAerodynamicEfficiencyMultiplier(1f);
+
+        upgrades.reconfigurePreservingCardState(loadout, 0f, null);
+        update(upgrades, 0.1f, 1f, true, 0f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
+
+        assertNull(upgrades.getActiveTechniqueCardId());
+        assertTrue(setPower > upgrades.getAccelerationMultiplier());
+        assertTrue(setAero > upgrades.getAerodynamicEfficiencyMultiplier(1f));
+    }
+
+    @Test
     public void buildSuppressionDisablesTuningAndTechniqueUntilCleared() {
         RogueliteLoadout loadout = new RogueliteLoadout("profile00");
         assertTrue(loadout.equip(RogueliteCardId.AERO_TRIM));
@@ -1950,22 +2011,42 @@ public class RogueliteCarUpgradesTest {
     }
 
     @Test
-    public void finalReckoningActivatesNestedTierThreePowerups() {
+    public void finalReckoningImmediatelyArmsPersistentFieldHunt() {
         RogueliteCarUpgrades upgrades = configured(RogueliteCardId.FINAL_RECKONING);
 
         upgrades.onHitBy(42, 12f);
 
-        assertTrue(upgrades.isCardEffectActive(RogueliteCardId.OVERDRIVE_COIL));
-        assertTrue(upgrades.isCardEffectActive(RogueliteCardId.COLOSSUS_FIELD));
-        assertTrue(upgrades.isCardEffectActive(RogueliteCardId.TEMPORAL_DOMINION));
-        assertEquals(RogueliteCardId.OVERDRIVE_COIL, upgrades.getActivePowerupCardId());
+        assertFalse(upgrades.isCardEffectActive(RogueliteCardId.OVERDRIVE_COIL));
+        assertFalse(upgrades.isCardEffectActive(RogueliteCardId.COLOSSUS_FIELD));
+        assertNull(upgrades.getActivePowerupCardId());
         assertEquals(RogueliteCardId.FINAL_RECKONING, upgrades.getActiveAbilityCardId());
-        assertTrue(upgrades.isTimeDilationActive());
-        assertEquals(4, upgrades.getMirrorTotalVehicleCount(
-                RogueliteCardId.OVERDRIVE_COIL));
-        assertEquals(2f, upgrades.getCarCollisionScale(), EPSILON);
-        assertEquals(1.20f, upgrades.getMassMultiplier(), EPSILON);
-        assertEquals(1.05f, upgrades.getGripMultiplier(0f), EPSILON);
+        assertTrue(upgrades.isFinalReckoningHuntActive());
+        assertEquals(1.50f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(0f, upgrades.getFrontCollisionRecoilMultiplier(), EPSILON);
+        assertEquals(2.50f, upgrades.getFrontCollisionPushMultiplier(), EPSILON);
+        assertNotNull(upgrades.tryActivateFinalReckoningRam(3, 42, 4f));
+        assertNull(upgrades.tryActivateFinalReckoningRam(3, 42, 4f));
+        assertTrue(upgrades.isFinalReckoningHuntActive());
+        assertEquals(42, upgrades.getRevengeTargetVehicleId());
+    }
+
+    @Test
+    public void ironGiantSetReplacesItsOldStatBonusWithDebuffImmunity() {
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+        RogueliteLoadout loadout = new RogueliteLoadout("profile00");
+
+        upgrades.configure(
+                loadout,
+                0f,
+                RogueliteSetCatalog.get(RogueliteSetId.IRON_GIANT));
+
+        assertTrue(upgrades.blocksDebuffs());
+        assertFalse(upgrades.blocksHostileEffects());
+        assertEquals(1f, upgrades.getAccelerationMultiplier(), EPSILON);
+
+        upgrades.configure(loadout, 0f, null);
+
+        assertFalse(upgrades.blocksDebuffs());
     }
 
     @Test
@@ -1979,12 +2060,16 @@ public class RogueliteCarUpgradesTest {
         upgrades.onHitBy(42, 12f);
 
         assertEquals(8f, upgrades.getRevengeEffectMultiplier(), EPSILON);
-        assertEquals(13, upgrades.getMirrorTotalVehicleCount(
-                RogueliteCardId.OVERDRIVE_COIL));
-        assertEquals((float) Math.sqrt(32f), upgrades.getCarCollisionScale(), EPSILON);
-        assertEquals(2.60f, upgrades.getMassMultiplier(), EPSILON);
-        assertEquals(1.40f, upgrades.getGripMultiplier(0f), EPSILON);
-        assertEquals(80f, upgrades.getRevengeActiveTimeRemainingSeconds(), EPSILON);
+        assertEquals(120f, upgrades.getRevengeActiveTimeRemainingSeconds(), EPSILON);
+        assertTrue(upgrades.isFinalReckoningHuntActive());
+        assertEquals(5f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertEquals(0f, upgrades.getFrontCollisionRecoilMultiplier(), EPSILON);
+        assertEquals(13f, upgrades.getFrontCollisionPushMultiplier(), EPSILON);
+        RogueliteRevengeStrike strike =
+                upgrades.tryActivateFinalReckoningRam(3, 42, 4f);
+        assertNotNull(strike);
+        assertEquals(3.84f, strike.getAttackerLaunchSpeedRatio(), EPSILON);
+        assertEquals(5.76f, strike.getTargetPushSpeedRatio(), EPSILON);
     }
 
     @Test

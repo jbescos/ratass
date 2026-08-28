@@ -626,7 +626,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.RECOVERY_BEACON,
                 "Position Hijack",
                 "A qualified hit marks its offender. After charging, it exchanges positions only while they are ahead.",
-                "Activation: Rival hit\nAfter 1s: swap with offender if ahead",
+                "Activation: Rival hit\nAfter 2s: swap with offender if ahead",
                 2,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -780,7 +780,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.PAYBACK_SHIELD,
                 "Vendetta Hook",
                 "A qualified hit marks its offender. After charging, the hook pulls them back only while they are ahead.",
-                "Activation: Rival hit\nAfter 1s: if ahead, pull offender to you over 1s",
+                "Activation: Rival hit\nAfter 2s: if ahead, pull offender to you over 1s",
                 1,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -857,7 +857,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.TRIAD_COUP,
                 "Triad Coup",
                 "Binds the offender and the car directly behind you, then reverses their places while moving you to the front.",
-                "Activation: Rival hit\nAfter 1s: you lead | leading rival falls last",
+                "Activation: Rival hit\nAfter 2s: you lead | leading rival falls last",
                 3,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
@@ -905,8 +905,8 @@ public final class RogueliteCardCatalog {
         cards.add(revenge(
                 RogueliteCardId.FINAL_RECKONING,
                 "Final Reckoning",
-                "A rival hit activates Quantum Quartet, Colossus Field, and Temporal Dominion at the same time.",
-                "Activation: Rival hit\nQuantum Quartet + Colossus Field + Temporal Dominion",
+                "A rival hit immediately marks the offender for a 15-second hunt. You gain power and impact control while every nearby car rams the target and transfers stolen lap XP to you.",
+                "Activation: Rival hit\n15s hunt | Power +50% | Recoil -150% | Push +150% | XP",
                 4,
                 RogueliteAbilityVisualStyle.RAM));
 

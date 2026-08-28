@@ -18,6 +18,8 @@ public class CrownBreakerLinkVisualTest {
                 RogueliteCardId.CROWN_ENGINE, true, true, false));
         assertFalse(CrownBreakerLinkVisual.shouldDraw(
                 RogueliteCardId.RECOVERY_BEACON, true, true, true));
+        assertTrue(CrownBreakerLinkVisual.shouldDraw(
+                RogueliteCardId.FINAL_RECKONING, true, true, true));
     }
 
     @Test

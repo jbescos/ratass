@@ -14,7 +14,7 @@ from PIL import Image, ImageEnhance, ImageFilter
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MENU_ART = REPO_ROOT / "assets" / "game_menu.png"
 LIBRARY_HERO_ART = REPO_ROOT / "marketing" / "steam" / "source" / "library-hero-art.png"
-TRAILER_ROOT = REPO_ROOT / "marketing" / "trailer" / "raw"
+TRAILER_ROOT = REPO_ROOT / "marketing" / "trailer" / "raw" / "current"
 OUTPUT_ROOT = REPO_ROOT / "marketing" / "steam" / "store-assets"
 
 ASSET_SIZES = {
@@ -29,12 +29,12 @@ ASSET_SIZES = {
 }
 
 SCREENSHOTS = (
-    ("screenshot_01_starting_grid.png", "advanced-gt3.mp4", 16),
-    ("screenshot_02_powerup_battle.png", "advanced-gt3.mp4", 32),
-    ("screenshot_03_pack_racing.png", "advanced-gt3.mp4", 48),
-    ("screenshot_04_card_choice.png", "advanced-gt3.mp4", 104),
-    ("screenshot_05_halloween_pack.png", "advanced-halloween.mp4", 40),
-    ("screenshot_06_halloween_chase.png", "advanced-halloween.mp4", 48),
+    ("screenshot_01_starting_grid.png", "gt3-current.mp4", 20),
+    ("screenshot_02_powerup_battle.png", "gt3-current.mp4", 35),
+    ("screenshot_03_pack_racing.png", "gt3-current.mp4", 90),
+    ("screenshot_04_card_choice.png", "gt3-current.mp4", 5),
+    ("screenshot_05_halloween_pack.png", "halloween-current.mp4", 30),
+    ("screenshot_06_halloween_chase.png", "halloween-current.mp4", 100),
 )
 
 

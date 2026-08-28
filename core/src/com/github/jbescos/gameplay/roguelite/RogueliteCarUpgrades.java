@@ -33,23 +33,38 @@ public final class RogueliteCarUpgrades {
     private RogueliteCardId activeRevengeCardId;
     private long revengeActivationSequence;
     private RogueliteUpgradeEffect amplifiedActiveRevengeEffect;
+    private RogueliteSetDefinition configuredSetBonus;
 
     public void configure(RogueliteLoadout loadout) {
         configure(loadout, 0f);
     }
 
     public void configure(RogueliteLoadout loadout, float powerupCycleOffset) {
+        configure(loadout, powerupCycleOffset, null);
+    }
+
+    public void configure(
+            RogueliteLoadout loadout,
+            float powerupCycleOffset,
+            RogueliteSetDefinition setBonus) {
         effects.clear();
         activeCardIds.clear();
         activeRevengeCardId = null;
         amplifiedActiveRevengeEffect = null;
         buildCardsSuppressed = false;
-        reconfigurePreservingCardState(loadout, powerupCycleOffset);
+        reconfigurePreservingCardState(loadout, powerupCycleOffset, setBonus);
     }
 
     public void reconfigurePreservingCardState(
             RogueliteLoadout loadout,
             float powerupCycleOffset) {
+        reconfigurePreservingCardState(loadout, powerupCycleOffset, null);
+    }
+
+    public void reconfigurePreservingCardState(
+            RogueliteLoadout loadout,
+            float powerupCycleOffset,
+            RogueliteSetDefinition setBonus) {
         List<RogueliteUpgradeEffect> previousEffects =
                 new ArrayList<RogueliteUpgradeEffect>(effects);
         effects.clear();
@@ -61,6 +76,7 @@ public final class RogueliteCarUpgrades {
         powerupCooldownRateMultiplier = 1f;
         antennaNetwork = AntennaNetworkBonuses.NONE;
         overtakeInjectorEnabled = false;
+        configuredSetBonus = setBonus;
 
         if (loadout != null) {
             List<RogueliteCardId> cardIds = loadout.getModifications();
@@ -74,6 +90,27 @@ public final class RogueliteCarUpgrades {
                 effects.add(effect);
                 timedEffectDecay = Math.min(timedEffectDecay, effect.timedEffectDecay());
                 overtakeInjectorEnabled |= effect.tracksRacePosition();
+            }
+        }
+
+        if (setBonus != null) {
+            RogueliteCardId bonusCardId = setBonus.getBonusCardId();
+            RogueliteUpgradeEffect bonusEffect =
+                    takePreviousEffect(previousEffects, bonusCardId);
+            if (!matchesSetBonusEffect(setBonus, bonusEffect)) {
+                bonusEffect = createSetBonusEffect(setBonus, powerupCycleOffset);
+            }
+            effects.add(bonusEffect);
+            timedEffectDecay = Math.min(timedEffectDecay, bonusEffect.timedEffectDecay());
+            overtakeInjectorEnabled |= bonusEffect.tracksRacePosition();
+        }
+
+        boolean techniqueAlwaysActive = setBonus != null
+                && setBonus.getId() == RogueliteSetId.CHAOS_CIRCUIT;
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            if (effect instanceof RaceTechniqueEffect) {
+                ((RaceTechniqueEffect) effect).setAlwaysActive(techniqueAlwaysActive);
             }
         }
 
@@ -100,6 +137,10 @@ public final class RogueliteCarUpgrades {
             notifyRevengeAmplifierFinished();
         }
         refreshActiveCards();
+    }
+
+    public RogueliteSetDefinition getConfiguredSetBonus() {
+        return configuredSetBonus;
     }
 
     public void setAntennaNetwork(AntennaNetworkBonuses antennaNetwork) {
@@ -369,7 +410,7 @@ public final class RogueliteCarUpgrades {
             return 0f;
         }
         float remaining = effect.activeTimeRemainingSeconds();
-        return slotType(effect) == RogueliteSlotType.POWERUP
+        return isAmplifiablePowerup(effect)
                 ? remaining * effectivePowerupEffectMultiplier()
                 : remaining;
     }
@@ -380,7 +421,7 @@ public final class RogueliteCarUpgrades {
             return 0f;
         }
         float remaining = effect.cooldownTimeRemainingSeconds();
-        return slotType(effect) == RogueliteSlotType.POWERUP
+        return isAmplifiablePowerup(effect)
                 ? remaining / Math.max(0.001f, effectivePowerupCooldownRateMultiplier())
                 : remaining;
     }
@@ -716,7 +757,7 @@ public final class RogueliteCarUpgrades {
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
             float effectTimerDelta = timerDelta;
-            if (slotType(effect) == RogueliteSlotType.POWERUP) {
+            if (isAmplifiablePowerup(effect)) {
                 effectTimerDelta *= effect.isActive()
                         ? 1f / Math.max(0.001f, effectivePowerupEffectMultiplier())
                         : effectivePowerupCooldownRateMultiplier();
@@ -928,6 +969,17 @@ public final class RogueliteCarUpgrades {
             bonus += effect.steeringBonus(slip) * effectStrengthMultiplier(effect);
         }
         return Math.max(0.70f, 1f + bonus);
+    }
+
+    public float getSteeringTorqueMultiplier() {
+        float multiplier = 1f;
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            multiplier *= amplifyDeviation(
+                    effect.steeringTorqueMultiplier(),
+                    effectStrengthMultiplier(effect));
+        }
+        return Math.max(0.1f, multiplier);
     }
 
     public float getLapExperienceBankMultiplier() {
@@ -1274,6 +1326,15 @@ public final class RogueliteCarUpgrades {
         return isInvisible();
     }
 
+    public boolean blocksDebuffs() {
+        for (int i = 0; i < effects.size(); i++) {
+            if (effects.get(i).blocksDebuffs()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean isCollisionFieldActive() {
         for (int i = 0; i < effects.size(); i++) {
             if (effects.get(i).carCollisionAreaMultiplier() > 1f) {
@@ -1443,6 +1504,32 @@ public final class RogueliteCarUpgrades {
         return null;
     }
 
+    public boolean isFinalReckoningHuntActive() {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            if (effect instanceof FinalReckoningEffect && effect.isReady()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public RogueliteRevengeStrike tryActivateFinalReckoningRam(
+            int rammerVehicleId,
+            int targetVehicleId,
+            float distance) {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            if (effect instanceof FinalReckoningEffect) {
+                return ((FinalReckoningEffect) effect).tryActivateHuntRam(
+                        rammerVehicleId,
+                        targetVehicleId,
+                        distance);
+            }
+        }
+        return null;
+    }
+
     public void completeOffenderStrike(RogueliteCardId cardId) {
         for (int i = 0; i < effects.size(); i++) {
             effects.get(i).completeOffenderStrike(cardId);
@@ -1496,9 +1583,17 @@ public final class RogueliteCarUpgrades {
         return RogueliteCardCatalog.get(effect.getCardId()).getSlotType();
     }
 
+    private static boolean isAmplifiablePowerup(RogueliteUpgradeEffect effect) {
+        return slotType(effect) == RogueliteSlotType.POWERUP
+                && !isSetScopedBonusEffect(effect);
+    }
+
     private float effectStrengthMultiplier(RogueliteUpgradeEffect effect) {
         if (isBuildEffectSuppressed(effect)) {
             return 0f;
+        }
+        if (isSetScopedBonusEffect(effect)) {
+            return 1f;
         }
         RogueliteSlotType slotType = slotType(effect);
         if (slotType == RogueliteSlotType.TECHNIQUE) {
@@ -1517,6 +1612,47 @@ public final class RogueliteCarUpgrades {
         RogueliteSlotType slotType = slotType(effect);
         return slotType == RogueliteSlotType.TUNING
                 || slotType == RogueliteSlotType.TECHNIQUE;
+    }
+
+    private static boolean matchesSetBonusEffect(
+            RogueliteSetDefinition setBonus,
+            RogueliteUpgradeEffect effect) {
+        if (effect == null) {
+            return false;
+        }
+        if (!setBonus.usesSetScopedBonusEffect()) {
+            return !isSetScopedBonusEffect(effect);
+        }
+        if (setBonus.getId() == RogueliteSetId.IRON_GIANT) {
+            return effect instanceof IronGiantSetEffect;
+        }
+        if (setBonus.getId() == RogueliteSetId.CHAOS_CIRCUIT) {
+            return effect instanceof ChaosCircuitSetEffect;
+        }
+        return effect instanceof ApexAscensionSetEffect;
+    }
+
+    private static RogueliteUpgradeEffect createSetBonusEffect(
+            RogueliteSetDefinition setBonus,
+            float powerupCycleOffset) {
+        if (!setBonus.usesSetScopedBonusEffect()) {
+            return RogueliteEffectFactory.create(
+                    setBonus.getBonusCardId(),
+                    powerupCycleOffset);
+        }
+        if (setBonus.getId() == RogueliteSetId.IRON_GIANT) {
+            return new IronGiantSetEffect();
+        }
+        if (setBonus.getId() == RogueliteSetId.CHAOS_CIRCUIT) {
+            return new ChaosCircuitSetEffect();
+        }
+        return new ApexAscensionSetEffect();
+    }
+
+    private static boolean isSetScopedBonusEffect(RogueliteUpgradeEffect effect) {
+        return effect instanceof ApexAscensionSetEffect
+                || effect instanceof IronGiantSetEffect
+                || effect instanceof ChaosCircuitSetEffect;
     }
 
     private float effectiveTechniqueEffectMultiplier() {

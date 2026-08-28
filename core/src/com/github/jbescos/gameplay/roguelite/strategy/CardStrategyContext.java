@@ -5,6 +5,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
 import com.github.jbescos.gameplay.roguelite.RogueliteLoadout;
 import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -15,7 +16,8 @@ import java.util.Map;
 public final class CardStrategyContext {
     private static final CardStrategyContext EMPTY = new CardStrategyContext(
             0, 0, 0, 0, 0, 0, 0,
-            Collections.<Opponent>emptyList());
+            Collections.<Opponent>emptyList(),
+            Collections.<RogueliteSetId>emptyList());
 
     private final int circuitIndex;
     private final int circuitCount;
@@ -25,6 +27,7 @@ public final class CardStrategyContext {
     private final int championshipPosition;
     private final int remainingCircuits;
     private final List<Opponent> opponents;
+    private final List<RogueliteSetId> enabledSetIds;
 
     public CardStrategyContext(
             int circuitIndex,
@@ -35,6 +38,28 @@ public final class CardStrategyContext {
             int championshipPosition,
             int remainingCircuits,
             List<Opponent> opponents) {
+        this(
+                circuitIndex,
+                circuitCount,
+                lap,
+                lapCount,
+                racePosition,
+                championshipPosition,
+                remainingCircuits,
+                opponents,
+                Collections.<RogueliteSetId>emptyList());
+    }
+
+    public CardStrategyContext(
+            int circuitIndex,
+            int circuitCount,
+            int lap,
+            int lapCount,
+            int racePosition,
+            int championshipPosition,
+            int remainingCircuits,
+            List<Opponent> opponents,
+            List<RogueliteSetId> enabledSetIds) {
         this.circuitIndex = Math.max(0, circuitIndex);
         this.circuitCount = Math.max(0, circuitCount);
         this.lap = Math.max(0, lap);
@@ -45,6 +70,10 @@ public final class CardStrategyContext {
         this.opponents = opponents == null
                 ? Collections.<Opponent>emptyList()
                 : Collections.unmodifiableList(new ArrayList<Opponent>(opponents));
+        this.enabledSetIds = enabledSetIds == null
+                ? Collections.<RogueliteSetId>emptyList()
+                : Collections.unmodifiableList(
+                        new ArrayList<RogueliteSetId>(enabledSetIds));
     }
 
     public static CardStrategyContext empty() {
@@ -81,6 +110,10 @@ public final class CardStrategyContext {
 
     public List<Opponent> getOpponents() {
         return opponents;
+    }
+
+    public List<RogueliteSetId> getEnabledSetIds() {
+        return enabledSetIds;
     }
 
     public float equippedCandidateOverlap(RogueliteCardOffer offer) {

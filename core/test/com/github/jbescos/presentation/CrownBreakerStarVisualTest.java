@@ -25,6 +25,11 @@ public class CrownBreakerStarVisualTest {
                         RogueliteCardId.DRAFT_MAGNET,
                         RogueliteCardId.DRAFT_MAGNET,
                         true));
+        assertTrue(
+                CrownBreakerStarVisual.isVisible(
+                        RogueliteCardId.FINAL_RECKONING,
+                        RogueliteCardId.FINAL_RECKONING,
+                        true));
     }
 
     @Test

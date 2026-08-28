@@ -2,7 +2,7 @@ package com.github.jbescos.presentation;
 
 import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 
-/** Rendering-agnostic state for the Crown Breaker offender link. */
+/** Rendering-agnostic state for persistent Crown Breaker-family offender links. */
 public final class CrownBreakerLinkVisual {
     private CrownBreakerLinkVisual() {
     }
@@ -12,7 +12,8 @@ public final class CrownBreakerLinkVisual {
             boolean armed,
             boolean sourceAvailable,
             boolean targetAvailable) {
-        return revengeCardId == RogueliteCardId.CROWN_ENGINE
+        return (revengeCardId == RogueliteCardId.CROWN_ENGINE
+                        || revengeCardId == RogueliteCardId.FINAL_RECKONING)
                 && armed
                 && sourceAvailable
                 && targetAvailable;

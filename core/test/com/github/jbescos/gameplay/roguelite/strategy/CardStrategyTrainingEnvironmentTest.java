@@ -19,9 +19,10 @@ public final class CardStrategyTrainingEnvironmentTest {
         while (!environment.isDone()) {
             float[][] candidates = environment.getCandidateObservations();
             assertEquals(environment.getActionCount(), candidates.length);
-        assertEquals(environment.getActionCount(), environment.getOfferTiers().length);
-        assertEquals(environment.getActionCount(), environment.getOfferTypes().length);
-        assertEquals(environment.getActionCount(), environment.getTrainingTargetScores().length);
+            assertEquals(environment.getActionCount(), environment.getOfferTiers().length);
+            assertEquals(environment.getActionCount(), environment.getOfferTypes().length);
+            assertEquals(environment.getActionCount(), environment.getTrainingTargetScores().length);
+            assertEquals(environment.getActionCount(), environment.getOfferSetProgressGains().length);
             for (int i = 0; i < candidates.length; i++) {
                 assertEquals(observationSize, candidates[i].length);
             }
@@ -36,6 +37,33 @@ public final class CardStrategyTrainingEnvironmentTest {
         assertTrue(environment.getFinalPosition() >= 1);
         assertTrue(environment.getFinalPosition() <= 10);
         assertFalse(environment.getActionCount() > 0);
+        assertTrue(environment.getBestSetProgress() >= 0);
+        assertTrue(environment.getBestSetProgress() <= 4);
+    }
+
+    @Test
+    public void continuedChampionshipPreservesProgressAndFinishesTwice() {
+        CardStrategyTrainingEnvironment environment = environment("strategy00");
+        environment.setChampionshipRange(2, 2);
+        environment.reset(4831L);
+
+        int decisions = 0;
+        int levelAfterFirst = 0;
+        while (!environment.isDone()) {
+            int completedBefore = environment.getCompletedChampionshipCount();
+            environment.step(environment.getAlgorithmicAction());
+            if (completedBefore == 0 && environment.getCompletedChampionshipCount() == 1) {
+                levelAfterFirst = environment.getLevel();
+            }
+            decisions++;
+            assertTrue("continued strategy episode did not terminate", decisions < 400);
+        }
+
+        assertEquals(2, environment.getCompletedChampionshipCount());
+        assertTrue(environment.getFirstChampionshipPosition() >= 1);
+        assertTrue(environment.getChampionshipPositionSum() >= 2);
+        assertTrue(levelAfterFirst > 1);
+        assertTrue(environment.getLevel() >= levelAfterFirst);
     }
 
     @Test

@@ -254,6 +254,14 @@ public final class RogueliteRevengeStrike {
         return action;
     }
 
+    public boolean appliesDebuff() {
+        return action == Action.DEBUFF
+                || action == Action.FORCE_BRAKE
+                || action == Action.FORCE_THROTTLE
+                || action == Action.HOOK
+                || action == Action.CURSE;
+    }
+
     public float getSpeedMultiplier() {
         return speedMultiplier;
     }

@@ -55,7 +55,7 @@ public final class RogueliteResponsiveCardLayout {
         if (isShortLandscape(width, height)) {
             return Math.min(3, cardCount);
         }
-        return Math.min(5, cardCount);
+        return cardCount;
     }
 
     public static float minimumTouchTarget(float width, float height) {

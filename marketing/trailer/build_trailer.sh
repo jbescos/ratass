@@ -3,10 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-RAW_DIR="${SCRIPT_DIR}/raw"
+RAW_DIR="${SCRIPT_DIR}/raw/current"
 OUTPUT_DIR="${SCRIPT_DIR}/output"
-GT3_CAPTURE="${RAW_DIR}/advanced-gt3.mp4"
-HALLOWEEN_CAPTURE="${RAW_DIR}/advanced-halloween.mp4"
+GT3_CAPTURE="${RAW_DIR}/gt3-current.mp4"
+HALLOWEEN_CAPTURE="${RAW_DIR}/halloween-current.mp4"
 MUSIC="${REPO_ROOT}/assets/theme/gt3/audio/music.ogg"
 END_SLATE="${REPO_ROOT}/assets/game_menu.png"
 FILTER="${SCRIPT_DIR}/trailer.filter"
@@ -30,16 +30,16 @@ done
 mkdir -p "${OUTPUT_DIR}"
 
 ffmpeg -y -hide_banner -loglevel warning \
-    -ss 14 -t 4 -i "${GT3_CAPTURE}" \
-    -ss 30 -t 4 -i "${GT3_CAPTURE}" \
-    -ss 17 -t 4 -i "${HALLOWEEN_CAPTURE}" \
-    -ss 97 -t 4 -i "${GT3_CAPTURE}" \
-    -ss 38 -t 4 -i "${GT3_CAPTURE}" \
-    -ss 58 -t 4 -i "${GT3_CAPTURE}" \
-    -ss 26 -t 4 -i "${HALLOWEEN_CAPTURE}" \
-    -ss 80 -t 4 -i "${GT3_CAPTURE}" \
-    -ss 50 -t 4 -i "${HALLOWEEN_CAPTURE}" \
-    -ss 90 -t 5 -i "${GT3_CAPTURE}" \
+    -ss 20 -t 4 -i "${GT3_CAPTURE}" \
+    -ss 5 -t 4 -i "${GT3_CAPTURE}" \
+    -ss 35 -t 4 -i "${GT3_CAPTURE}" \
+    -ss 30 -t 4 -i "${HALLOWEEN_CAPTURE}" \
+    -ss 90 -t 4 -i "${GT3_CAPTURE}" \
+    -ss 105 -t 4 -i "${GT3_CAPTURE}" \
+    -ss 5 -t 4 -i "${HALLOWEEN_CAPTURE}" \
+    -ss 110 -t 4 -i "${GT3_CAPTURE}" \
+    -ss 100 -t 4 -i "${HALLOWEEN_CAPTURE}" \
+    -ss 115 -t 5 -i "${GT3_CAPTURE}" \
     -stream_loop -1 -i "${MUSIC}" \
     -loop 1 -framerate 60 -t 5 -i "${END_SLATE}" \
     -filter_complex_script "${FILTER}" \

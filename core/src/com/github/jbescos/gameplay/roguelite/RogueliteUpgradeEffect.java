@@ -176,6 +176,10 @@ abstract class RogueliteUpgradeEffect {
         return 0f;
     }
 
+    float steeringTorqueMultiplier() {
+        return 1f;
+    }
+
     float slipstreamRangeMultiplier() {
         return 1f;
     }
@@ -258,6 +262,14 @@ abstract class RogueliteUpgradeEffect {
     }
 
     boolean isInvisible() {
+        return false;
+    }
+
+    boolean blocksHostileEffects() {
+        return false;
+    }
+
+    boolean blocksDebuffs() {
         return false;
     }
 

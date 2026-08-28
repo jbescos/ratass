@@ -10,6 +10,9 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCompetitorProgress;
 import com.github.jbescos.gameplay.roguelite.RogueliteExperienceAwards;
 import com.github.jbescos.gameplay.roguelite.RogueliteRun;
 import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetCatalog;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetDefinition;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetId;
 import com.github.jbescos.gameplay.roguelite.RivalBuildLeechSpec;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -38,6 +41,8 @@ public final class CardStrategyTrainingEnvironment {
     private final float personalityTeacherWeight;
     private final int[] cardSelections = new int[RogueliteCardId.values().length];
     private final int[] cardTypeSelections = new int[RogueliteSlotType.values().length];
+    private final boolean[] completedSets = new boolean[RogueliteSetId.values().length];
+    private final int[] championshipSetCounts = new int[RogueliteSetId.values().length];
 
     private Random random;
     private Random strategyRandom;
@@ -55,6 +60,15 @@ public final class CardStrategyTrainingEnvironment {
     private float transitionReward;
     private int totalExperience;
     private int finalPosition;
+    private int setCompletionCount;
+    private int minimumChampionships = 1;
+    private int maximumChampionships = 1;
+    private int targetChampionships = 1;
+    private int completedChampionshipCount;
+    private int championshipWinCount;
+    private int championshipPositionSum;
+    private int firstChampionshipPosition;
+    private int championshipsWithSet;
     private CardStrategy selfPlayStrategy;
     private boolean selfPlayOpponents;
     private CardStrategyCatalog mixedOpponentCatalog;
@@ -114,6 +128,8 @@ public final class CardStrategyTrainingEnvironment {
         Arrays.fill(championshipPositions, 1);
         Arrays.fill(cardSelections, 0);
         Arrays.fill(cardTypeSelections, 0);
+        Arrays.fill(completedSets, false);
+        Arrays.fill(championshipSetCounts, 0);
         List<Integer> rivalIds = new ArrayList<Integer>();
         for (int vehicleId = 1; vehicleId < fieldSize; vehicleId++) {
             run.getRivalProgress(vehicleId);
@@ -129,8 +145,31 @@ public final class CardStrategyTrainingEnvironment {
         transitionReward = 0f;
         totalExperience = 0;
         finalPosition = 0;
+        setCompletionCount = 0;
+        targetChampionships = championshipTarget(seed);
+        completedChampionshipCount = 0;
+        championshipWinCount = 0;
+        championshipPositionSum = 0;
+        firstChampionshipPosition = 0;
+        championshipsWithSet = 0;
         advanceUntilDecision();
         transitionReward = 0f;
+    }
+
+    public void setChampionshipRange(int minimum, int maximum) {
+        if (minimum < 1 || maximum < minimum) {
+            throw new IllegalArgumentException("Invalid championship training range.");
+        }
+        minimumChampionships = minimum;
+        maximumChampionships = maximum;
+    }
+
+    public int getMinimumChampionships() {
+        return minimumChampionships;
+    }
+
+    public int getMaximumChampionships() {
+        return maximumChampionships;
     }
 
     public void setSelfPlayPolicyJson(String policyJson) {
@@ -182,10 +221,23 @@ public final class CardStrategyTrainingEnvironment {
                 priorSelections,
                 priorTypeSelections,
                 averageTypeSelections(),
-                context.equippedCandidateOverlap(selected));
-        if (selectionReward > 0f && selected != null && !isCompetitiveOffer(actionIndex)) {
+                context.equippedCandidateOverlap(selected),
+                context.getEnabledSetIds());
+        boolean setBuildingSelection = selected != null
+                && !selected.isDriver()
+                && rewards.rewardsSetBuilding()
+                && RogueliteSetCatalog.selectionProgress(
+                        run.getPlayerProgress().getLoadout(),
+                        selected.getCard().getId(),
+                        context.getEnabledSetIds()) > 0;
+        if (selectionReward > 0f
+                && selected != null
+                && !setBuildingSelection
+                && !isCompetitiveOffer(actionIndex)) {
             selectionReward = 0f;
         }
+        RogueliteSetDefinition completedBefore = RogueliteSetCatalog.completedSet(
+                run.getPlayerProgress().getLoadout(), context.getEnabledSetIds());
         boolean applied = selected == null
                 ? run.skipPlayerReward()
                 : run.select(selected);
@@ -197,6 +249,12 @@ public final class CardStrategyTrainingEnvironment {
         }
         if (selected != null) {
             cardTypeSelections[selected.getSlotType().ordinal()]++;
+        }
+        RogueliteSetDefinition completedAfter = RogueliteSetCatalog.completedSet(
+                run.getPlayerProgress().getLoadout(), context.getEnabledSetIds());
+        if (completedAfter != null && completedAfter != completedBefore) {
+            setCompletionCount++;
+            completedSets[completedAfter.getId().ordinal()] = true;
         }
         transitionReward = selectionReward;
         offers = Collections.emptyList();
@@ -230,6 +288,50 @@ public final class CardStrategyTrainingEnvironment {
 
     public int getFinalPosition() {
         return finalPosition;
+    }
+
+    public int getCompletedChampionshipCount() {
+        return completedChampionshipCount;
+    }
+
+    public int getChampionshipWinCount() {
+        return championshipWinCount;
+    }
+
+    public int getChampionshipPositionSum() {
+        return championshipPositionSum;
+    }
+
+    public int getFirstChampionshipPosition() {
+        return firstChampionshipPosition;
+    }
+
+    public int getChampionshipsWithSet() {
+        return championshipsWithSet;
+    }
+
+    public String[] getChampionshipSetIds() {
+        List<String> ids = new ArrayList<String>();
+        for (RogueliteSetId setId : RogueliteSetId.values()) {
+            if (championshipSetCounts[setId.ordinal()] > 0) {
+                ids.add(setId.name());
+            }
+        }
+        return ids.toArray(new String[ids.size()]);
+    }
+
+    public int[] getChampionshipSetCounts() {
+        return Arrays.copyOf(championshipSetCounts, championshipSetCounts.length);
+    }
+
+    public String[] getChampionshipSetOccurrences() {
+        List<String> ids = new ArrayList<String>();
+        for (RogueliteSetId setId : RogueliteSetId.values()) {
+            for (int count = 0; count < championshipSetCounts[setId.ordinal()]; count++) {
+                ids.add(setId.name());
+            }
+        }
+        return ids.toArray(new String[ids.size()]);
     }
 
     public int getLevel() {
@@ -281,6 +383,66 @@ public final class CardStrategyTrainingEnvironment {
             }
         }
         return gains;
+    }
+
+    public int[] getOfferSetProgressGains() {
+        ensureDecision();
+        int[] gains = new int[offers.size() + 1];
+        for (int i = 0; i < offers.size(); i++) {
+            RogueliteCardOffer offer = offers.get(i);
+            if (!offer.isDriver()) {
+                gains[i] = RogueliteSetCatalog.selectionProgress(
+                        run.getPlayerProgress().getLoadout(),
+                        offer.getCard().getId(),
+                        context.getEnabledSetIds());
+            }
+        }
+        return gains;
+    }
+
+    public int[] getOfferSetDepths() {
+        ensureDecision();
+        int[] depths = new int[offers.size() + 1];
+        for (int i = 0; i < offers.size(); i++) {
+            RogueliteCardOffer offer = offers.get(i);
+            if (!offer.isDriver()) {
+                depths[i] = RogueliteSetCatalog.selectionDepth(
+                        run.getPlayerProgress().getLoadout(),
+                        offer.getCard().getId(),
+                        context.getEnabledSetIds());
+            }
+        }
+        return depths;
+    }
+
+    public int getSetCompletionCount() {
+        return setCompletionCount;
+    }
+
+    public String[] getCompletedSetIds() {
+        List<String> ids = new ArrayList<String>();
+        for (RogueliteSetId setId : RogueliteSetId.values()) {
+            if (completedSets[setId.ordinal()]) {
+                ids.add(setId.name());
+            }
+        }
+        return ids.toArray(new String[ids.size()]);
+    }
+
+    public String getCurrentCompletedSetId() {
+        if (run == null) {
+            return "";
+        }
+        RogueliteSetDefinition completed = RogueliteSetCatalog.completedSet(
+                run.getPlayerProgress().getLoadout(), run.getEnabledSetIds());
+        return completed == null ? "" : completed.getId().name();
+    }
+
+    public int getBestSetProgress() {
+        return run == null
+                ? 0
+                : RogueliteSetCatalog.bestMatchingCardCount(
+                        run.getPlayerProgress().getLoadout(), run.getEnabledSetIds());
     }
 
     public int getAlgorithmicAction() {
@@ -353,16 +515,44 @@ public final class CardStrategyTrainingEnvironment {
                             priorSelections,
                             priorTypeSelections,
                             averageTypeSelections(),
-                            context.equippedCandidateOverlap(offer));
-            if (personalityReward > 0f && !isCompetitiveOffer(raceStrengths, i)) {
+                            context.equippedCandidateOverlap(offer),
+                            context.getEnabledSetIds());
+            boolean setBuildingSelection = !offer.isDriver()
+                    && rewards.rewardsSetBuilding()
+                    && RogueliteSetCatalog.selectionProgress(
+                            run.getPlayerProgress().getLoadout(),
+                            offer.getCard().getId(),
+                            context.getEnabledSetIds()) > 0;
+            if (personalityReward > 0f
+                    && !setBuildingSelection
+                    && !isCompetitiveOffer(raceStrengths, i)) {
                 personalityReward = 0f;
             }
             strengths[i] += personalityReward * personalityTeacherWeight;
         }
         strengths[offers.size()] += rewards.selection(
-                        null, run.getPlayerProgress().getLoadout(), 0, 0, 0f, 0f)
+                        null,
+                        run.getPlayerProgress().getLoadout(),
+                        0,
+                        0,
+                        0f,
+                        0f,
+                        context.getEnabledSetIds())
                 * personalityTeacherWeight;
         return strengths;
+    }
+
+    public int getTrainingTargetAction() {
+        float[] strengths = getTrainingTargetScores();
+        int selected = strengths.length - 1;
+        float best = strengths[selected];
+        for (int i = 0; i < strengths.length - 1; i++) {
+            if (strengths[i] > best) {
+                selected = i;
+                best = strengths[i];
+            }
+        }
+        return selected;
     }
 
     private boolean isCompetitiveOffer(int actionIndex) {
@@ -579,7 +769,42 @@ public final class CardStrategyTrainingEnvironment {
         updateChampionshipPositions();
         finalPosition = championshipPositions[0];
         transitionReward += rewards.championship(finalPosition, fieldSize);
-        done = true;
+        completedChampionshipCount++;
+        championshipPositionSum += finalPosition;
+        championshipWinCount += finalPosition == 1 ? 1 : 0;
+        if (completedChampionshipCount == 1) {
+            firstChampionshipPosition = finalPosition;
+        }
+        RogueliteSetDefinition completedSet = RogueliteSetCatalog.completedSet(
+                run.getPlayerProgress().getLoadout(), run.getEnabledSetIds());
+        if (completedSet != null) {
+            championshipsWithSet++;
+            championshipSetCounts[completedSet.getId().ordinal()]++;
+        }
+        if (completedChampionshipCount >= targetChampionships) {
+            done = true;
+            return;
+        }
+        continueChampionship();
+    }
+
+    private void continueChampionship() {
+        run.restartChampionship();
+        Arrays.fill(points, 0);
+        Arrays.fill(racePositions, 1);
+        Arrays.fill(championshipPositions, 1);
+        circuitIndex = 1;
+        nextLap = 1;
+        weatherGripWeight = randomWeatherGripWeight();
+    }
+
+    private int championshipTarget(long seed) {
+        if (minimumChampionships == maximumChampionships) {
+            return minimumChampionships;
+        }
+        Random championshipRandom = new Random(seed ^ 0x43a5c9e27d4b1f60L);
+        return minimumChampionships
+                + championshipRandom.nextInt(maximumChampionships - minimumChampionships + 1);
     }
 
     private AntennaNetworkBonuses buildAntennaNetwork(
@@ -630,7 +855,8 @@ public final class CardStrategyTrainingEnvironment {
                 racePositions[0],
                 championshipPositions[0],
                 Math.max(0, circuitCount - circuitIndex),
-                opponents);
+                opponents,
+                run.getEnabledSetIds());
     }
 
     private void updateRunRaceState() {

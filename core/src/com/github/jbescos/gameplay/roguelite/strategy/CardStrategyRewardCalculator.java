@@ -2,6 +2,8 @@ package com.github.jbescos.gameplay.roguelite.strategy;
 
 import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
 import com.github.jbescos.gameplay.roguelite.RogueliteLoadout;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetCatalog;
+import com.github.jbescos.gameplay.roguelite.RogueliteSetId;
 
 /** Centralizes reward math so profile weights can be adjusted without changing the simulator. */
 final class CardStrategyRewardCalculator {
@@ -20,7 +22,8 @@ final class CardStrategyRewardCalculator {
             int priorSelections,
             int priorTypeSelections,
             float averageTypeSelections,
-            float rivalCardOverlap) {
+            float rivalCardOverlap,
+            Iterable<RogueliteSetId> enabledSetIds) {
         if (offer == null) {
             return -config.getSkipPenalty();
         }
@@ -31,6 +34,16 @@ final class CardStrategyRewardCalculator {
                     * (averageTypeSelections - Math.max(0, priorTypeSelections));
         }
         if (!offer.isDriver()) {
+            int setProgress = RogueliteSetCatalog.selectionDepth(
+                    loadout, offer.getCard().getId(), enabledSetIds);
+            reward += setProgress * config.getSetProgress();
+            if (RogueliteSetCatalog.completesSetAfter(
+                    loadout, offer.getCard().getId(), enabledSetIds)) {
+                reward += config.getSetCompletion();
+            }
+            reward -= RogueliteSetCatalog.selectionRegression(
+                            loadout, offer.getCard().getId(), enabledSetIds)
+                    * config.getSetBreakPenalty();
             reward += CardStrategyChainReward.selection(
                     loadout, offer.getCard().getId(), config);
             reward += config.getCardPreferenceReward(loadout, offer.getCard().getId());
@@ -47,6 +60,10 @@ final class CardStrategyRewardCalculator {
                     / (float) Math.sqrt(1f + Math.max(0, priorSelections));
         }
         return reward;
+    }
+
+    boolean rewardsSetBuilding() {
+        return config.getSetProgress() > 0f || config.getSetCompletion() > 0f;
     }
 
     float experience(int gained, int experienceForLevel, int levelsGained) {

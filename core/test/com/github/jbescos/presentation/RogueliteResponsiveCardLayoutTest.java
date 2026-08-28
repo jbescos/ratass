@@ -53,21 +53,21 @@ public class RogueliteResponsiveCardLayoutTest {
     }
 
     @Test
-    public void equippedLoadoutShowsAllFiveSlotsTogether() {
-        assertEquals(5, RogueliteResponsiveCardLayout.equippedLoadoutPageCapacity(5));
+    public void equippedLoadoutShowsAllSixSlotsTogether() {
+        assertEquals(6, RogueliteResponsiveCardLayout.equippedLoadoutPageCapacity(6));
         assertEquals(0, RogueliteResponsiveCardLayout.equippedLoadoutPageCapacity(0));
         assertEquals(
-                5,
-                RogueliteResponsiveCardLayout.equippedLoadoutColumns(1280f, 720f, 5));
+                6,
+                RogueliteResponsiveCardLayout.equippedLoadoutColumns(1280f, 720f, 6));
         assertEquals(
                 3,
-                RogueliteResponsiveCardLayout.equippedLoadoutColumns(844f, 390f, 5));
+                RogueliteResponsiveCardLayout.equippedLoadoutColumns(844f, 390f, 6));
         assertEquals(
                 1,
-                RogueliteResponsiveCardLayout.equippedLoadoutColumns(390f, 844f, 5));
+                RogueliteResponsiveCardLayout.equippedLoadoutColumns(390f, 844f, 6));
         assertEquals(
                 2,
-                RogueliteResponsiveCardLayout.equippedLoadoutColumns(720f, 1280f, 5));
+                RogueliteResponsiveCardLayout.equippedLoadoutColumns(720f, 1280f, 6));
     }
 
     @Test

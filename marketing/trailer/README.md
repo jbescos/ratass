@@ -5,7 +5,7 @@ trailer are local production artifacts and are intentionally excluded from Git.
 Keep the final video in Steamworks, YouTube, or release storage.
 
 The checked-in filter and build script document how to rebuild the trailer when
-the source recordings are available under `raw/`:
+the current GT3 and Halloween recordings are available under `raw/current/`:
 
 ```bash
 marketing/trailer/build_trailer.sh
