@@ -248,6 +248,7 @@ run_curriculum_phase() {
     phase_route_targets="${RL_LAP_REAL_TARGETS:-5}"
     phase_route_target_fraction="0"
     phase_fixed_full_laps=1
+    phase_evaluate_all_checkpoint_candidates=1
     phase_train_batch_size="${RL_TRAIN_LAP_BATCH_SIZE:-${phase_train_batch_size}}"
     phase_map_ids="${RL_LAP_REAL_MAP_IDS:-auto-game}"
     phase_best_eval_map_ids="${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
@@ -255,6 +256,7 @@ run_curriculum_phase() {
     phase_route_targets="3"
     phase_route_target_fraction="0"
     phase_fixed_full_laps=1
+    phase_evaluate_all_checkpoint_candidates=1
     phase_train_batch_size="${RL_TRAIN_LAP_BATCH_SIZE:-${phase_train_batch_size}}"
     phase_map_ids="${RL_LAP_REAL_MAP_IDS:-auto-game}"
     phase_best_eval_map_ids="${RL_LAP_REAL_BEST_EVAL_MAP_IDS:-${phase_map_ids}}"
@@ -1019,6 +1021,7 @@ lr="${RL_LR:-3e-4}"
 gamma="${RL_GAMMA:-0.995}"
 gae_lambda="${RL_GAE_LAMBDA:-0.95}"
 entropy_coeff="${RL_ENTROPY_COEFF:-0.005}"
+initial_log_std="${RL_INITIAL_LOG_STD:--1.5}"
 clip_param="${RL_CLIP_PARAM:-0.2}"
 kl_coeff="${RL_KL_COEFF:-0.2}"
 kl_target="${RL_KL_TARGET:-0.01}"
@@ -1054,6 +1057,7 @@ best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS:-}"
 best_eval_state="${RL_BEST_EVAL_STATE:-}"
 best_eval_ignore_installed="${RL_BEST_EVAL_IGNORE_INSTALLED:-1}"
 seed="${RL_SEED:-}"
+best_eval_seed="${RL_BEST_EVAL_SEED:-${seed}}"
 route_target_max_action_steps="${RL_ROUTE_TARGET_MAX_ACTION_STEPS:-auto}"
 no_progress_max_action_steps="${RL_NO_PROGRESS_MAX_ACTION_STEPS:-225}"
 stationary_grace_action_steps="${RL_STATIONARY_GRACE_ACTION_STEPS:-15}"
@@ -1173,6 +1177,7 @@ common_args=(
   --gamma "${gamma}"
   --gae-lambda "${gae_lambda}"
   --entropy-coeff "${entropy_coeff}"
+  --initial-log-std "${initial_log_std}"
   --clip-param "${clip_param}"
   --kl-coeff "${kl_coeff}"
   --kl-target "${kl_target}"
@@ -1241,6 +1246,9 @@ if [[ "${best_export}" == "1" || "${best_export}" == "true" ]]; then
   )
   if [[ -n "${best_eval_map_ids}" ]]; then
     common_args+=(--best-eval-map-ids "${best_eval_map_ids}")
+  fi
+  if [[ -n "${best_eval_seed}" ]]; then
+    common_args+=(--best-eval-seed "${best_eval_seed}")
   fi
   if [[ -n "${best_eval_state}" ]]; then
     common_args+=(--best-eval-state "${best_eval_state}")

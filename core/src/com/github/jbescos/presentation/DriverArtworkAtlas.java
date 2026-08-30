@@ -3,8 +3,8 @@ package com.github.jbescos.presentation;
 public final class DriverArtworkAtlas {
     public static final String THEMED_RELATIVE_PATH = "drivers/driver_art_atlas.png";
     public static final int COLUMNS = 5;
-    public static final int ROWS = 2;
-    public static final int DRIVER_COUNT = COLUMNS * ROWS;
+    public static final int ROWS = 3;
+    public static final int DRIVER_COUNT = 11;
 
     private static final String PROFILE_PREFIX = "profile";
 

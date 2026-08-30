@@ -1,0 +1,18 @@
+{
+  "actionRepeat": 2,
+  "averageDriftPercent": 20.36292,
+  "averageFastestLapSeconds": 33.99649,
+  "averageLapSeconds": 34.57193,
+  "averageOffRoadActions": 12.94737,
+  "averageOffRoadPercent": 1.83362,
+  "benchmarkVersion": "lap-game-v2:source=game,maps=19,laps=3,repeat=4,seed=20260531",
+  "consistencyRating": 94.674,
+  "controlRating": 48.211,
+  "finishRate": 1.0,
+  "maximumSpeedKph": 254.391,
+  "paceRating": 76.07,
+  "policySha256": "74f4631d2f20af3a13ea0a23e46556796247b927d009300ac3c1717f196a462d",
+  "profileId": "profile10",
+  "schemaVersion": 3,
+  "tier": 4
+}

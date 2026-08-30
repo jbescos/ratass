@@ -767,7 +767,8 @@ def load_exported_actor_state(policy_file: Path) -> Dict[Tuple[str, ...], np.nda
         payload = json.load(handle)
 
     exported_observation_size = int(payload.get("observationSize", -1))
-    if exported_observation_size <= 0 or int(payload.get("actionSize", -1)) <= 0:
+    exported_action_size = int(payload.get("actionSize", -1))
+    if exported_observation_size <= 0 or exported_action_size <= 0:
         raise ValueError(f"{policy_file} has invalid observation/action dimensions")
 
     layers = payload.get("layers")
@@ -783,6 +784,18 @@ def load_exported_actor_state(policy_file: Path) -> Dict[Tuple[str, ...], np.nda
                 f"{policy_file} actor input size {weights.shape[1]} does not match exported "
                 f"observation size {exported_observation_size}"
             )
+        if layer_index == len(layers) - 1:
+            if weights.shape[0] < exported_action_size:
+                raise ValueError(
+                    f"{policy_file} actor output size {weights.shape[0]} is smaller than "
+                    f"action size {exported_action_size}"
+                )
+            # The game consumes only the first actionSize outputs. PPO's remaining
+            # outputs parameterize exploration and should be initialized fresh;
+            # restoring their stale values makes the first warm-start update take
+            # an extremely large KL step even when the learning rate is tiny.
+            weights = weights[:exported_action_size, :]
+            bias = bias[:exported_action_size]
         actor_state[tuple(f"{prefix}.weight" for prefix in prefixes)] = weights
         actor_state[tuple(f"{prefix}.bias" for prefix in prefixes)] = bias
     return actor_state
@@ -829,7 +842,28 @@ def copy_exported_actor_values(
     raise ValueError(f"{key} unsupported tensor shape: {current.shape}")
 
 
-def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
+def initialize_unexported_exploration_values(
+        key: str,
+        copied_values: np.ndarray,
+        deterministic_output_size: int,
+        initial_log_std: float) -> np.ndarray:
+    if not key.startswith("pi.net.mlp.0."):
+        return copied_values
+    if copied_values.shape[0] <= deterministic_output_size:
+        return copied_values
+
+    updated = copied_values.copy()
+    if key.endswith(".weight"):
+        updated[deterministic_output_size:, :] = 0.0
+    elif key.endswith(".bias"):
+        updated[deterministic_output_size:] = float(initial_log_std)
+    return updated
+
+
+def initialize_actor_from_exported_policy(
+        algorithm,
+        policy_file: Path,
+        initial_log_std: float = -1.5) -> None:
     if not policy_file.exists():
         raise FileNotFoundError(f"{policy_file} does not exist")
 
@@ -847,6 +881,12 @@ def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
             )
         current = np.asarray(policy_weights[key])
         copied_values, partial = copy_exported_actor_values(key, current, values)
+        copied_values = initialize_unexported_exploration_values(
+            key,
+            copied_values,
+            values.shape[0],
+            initial_log_std,
+        )
         partial_initialization = partial_initialization or partial
         policy_weights[key] = copied_values
 
@@ -862,9 +902,16 @@ def initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> None:
     )
 
 
-def try_initialize_actor_from_exported_policy(algorithm, policy_file: Path) -> bool:
+def try_initialize_actor_from_exported_policy(
+        algorithm,
+        policy_file: Path,
+        initial_log_std: float = -1.5) -> bool:
     try:
-        initialize_actor_from_exported_policy(algorithm, policy_file)
+        initialize_actor_from_exported_policy(
+            algorithm,
+            policy_file,
+            initial_log_std,
+        )
     except (FileNotFoundError, OSError, ValueError) as error:
         message = str(error).replace("\n", " ")
         print(
@@ -1027,6 +1074,7 @@ def build_algorithm_with_restore(args, checkpoint_dir: Path):
                 try_initialize_actor_from_exported_policy(
                     algorithm,
                     Path(args.init_policy).resolve(),
+                    args.initial_log_std,
                 )
             if args.free_log_std:
                 initialize_free_log_std(algorithm, args.initial_log_std)
@@ -1038,6 +1086,7 @@ def build_algorithm_with_restore(args, checkpoint_dir: Path):
         try_initialize_actor_from_exported_policy(
             algorithm,
             Path(args.init_policy).resolve(),
+            args.initial_log_std,
         )
     if not args.resume and args.free_log_std:
         initialize_free_log_std(algorithm, args.initial_log_std)

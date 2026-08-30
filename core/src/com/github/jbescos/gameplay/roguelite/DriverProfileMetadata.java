@@ -2,6 +2,7 @@ package com.github.jbescos.gameplay.roguelite;
 
 public final class DriverProfileMetadata {
     public static final int SCHEMA_VERSION = 3;
+    public static final int DEFAULT_ACTION_REPEAT = 4;
     private static final float REFERENCE_TOP_SPEED_KPH = 300f;
 
     private final String profileId;
@@ -17,6 +18,8 @@ public final class DriverProfileMetadata {
     private final float averageOffRoadPercent;
     private final float averageDriftPercent;
     private final float maximumSpeedKph;
+    private final int tier;
+    private final int actionRepeat;
 
     public DriverProfileMetadata(
             String profileId,
@@ -42,7 +45,9 @@ public final class DriverProfileMetadata {
                 averageOffRoadActions,
                 0f,
                 0f,
-                0f);
+                0f,
+                0,
+                DEFAULT_ACTION_REPEAT);
     }
 
     public DriverProfileMetadata(
@@ -70,7 +75,9 @@ public final class DriverProfileMetadata {
                 averageOffRoadActions,
                 0f,
                 averageDriftPercent,
-                0f);
+                0f,
+                0,
+                DEFAULT_ACTION_REPEAT);
     }
 
     public DriverProfileMetadata(
@@ -87,6 +94,40 @@ public final class DriverProfileMetadata {
             float averageOffRoadPercent,
             float averageDriftPercent,
             float maximumSpeedKph) {
+        this(
+                profileId,
+                policySha256,
+                benchmarkVersion,
+                paceRating,
+                controlRating,
+                consistencyRating,
+                finishRate,
+                averageFastestLapSeconds,
+                averageLapSeconds,
+                averageOffRoadActions,
+                averageOffRoadPercent,
+                averageDriftPercent,
+                maximumSpeedKph,
+                0,
+                DEFAULT_ACTION_REPEAT);
+    }
+
+    public DriverProfileMetadata(
+            String profileId,
+            String policySha256,
+            String benchmarkVersion,
+            float paceRating,
+            float controlRating,
+            float consistencyRating,
+            float finishRate,
+            float averageFastestLapSeconds,
+            float averageLapSeconds,
+            float averageOffRoadActions,
+            float averageOffRoadPercent,
+            float averageDriftPercent,
+            float maximumSpeedKph,
+            int tier,
+            int actionRepeat) {
         if (profileId == null || profileId.trim().length() == 0) {
             throw new IllegalArgumentException("Driver profile ID is required.");
         }
@@ -103,6 +144,8 @@ public final class DriverProfileMetadata {
         this.averageOffRoadPercent = clampRating(averageOffRoadPercent);
         this.averageDriftPercent = clampRating(averageDriftPercent);
         this.maximumSpeedKph = Math.max(0f, maximumSpeedKph);
+        this.tier = Math.max(0, tier);
+        this.actionRepeat = actionRepeat > 0 ? actionRepeat : DEFAULT_ACTION_REPEAT;
     }
 
     public String getProfileId() {
@@ -157,6 +200,14 @@ public final class DriverProfileMetadata {
         return maximumSpeedKph;
     }
 
+    public int getTier() {
+        return tier;
+    }
+
+    public int getActionRepeat() {
+        return actionRepeat;
+    }
+
     public float getOffRoadRating() {
         return clampRating(100f - averageOffRoadPercent * 10f);
     }
@@ -189,7 +240,9 @@ public final class DriverProfileMetadata {
                 data.averageOffRoadActions,
                 data.averageOffRoadPercent,
                 data.averageDriftPercent,
-                data.maximumSpeedKph);
+                data.maximumSpeedKph,
+                data.tier,
+                data.actionRepeat);
     }
 
     static DriverProfileMetadata fallback(String profileId, int order) {
@@ -230,5 +283,7 @@ public final class DriverProfileMetadata {
         public float averageOffRoadPercent;
         public float averageDriftPercent;
         public float maximumSpeedKph;
+        public int tier;
+        public int actionRepeat;
     }
 }

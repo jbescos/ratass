@@ -114,6 +114,38 @@ class PpoRuntimeStateTest(unittest.TestCase):
 
 
 class ExportedActorInitializationTest(unittest.TestCase):
+    def test_exported_exploration_outputs_are_not_warm_started(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            policy_file = Path(temp_dir) / "policy.json"
+            policy_file.write_text(
+                json.dumps({
+                    "observationSize": 2,
+                    "actionSize": 1,
+                    "layers": [
+                        {
+                            "inputSize": 2,
+                            "outputSize": 2,
+                            "weights": [1.0, 2.0, 3.0, 4.0],
+                            "bias": [5.0, 6.0],
+                        },
+                        {
+                            "inputSize": 2,
+                            "outputSize": 2,
+                            "weights": [7.0, 8.0, 90.0, 91.0],
+                            "bias": [9.0, 92.0],
+                        },
+                    ],
+                }),
+                encoding="utf-8",
+            )
+
+            state = train_rllib.load_exported_actor_state(policy_file)
+
+        output_weights = state[("pi.net.mlp.0.weight",)]
+        output_bias = state[("pi.net.mlp.0.bias",)]
+        np.testing.assert_array_equal(output_weights, [[7.0, 8.0]])
+        np.testing.assert_array_equal(output_bias, [9.0])
+
     def test_state_dependent_mean_and_log_std_output_can_seed_free_log_std_mean(self):
         current = np.zeros((1, 4), dtype=np.float32)
         exported = np.asarray(
@@ -129,6 +161,28 @@ class ExportedActorInitializationTest(unittest.TestCase):
 
         np.testing.assert_array_equal(copied, exported[:1])
         self.assertTrue(partial)
+
+    def test_unexported_exploration_head_starts_narrow_and_state_independent(self):
+        weights = np.ones((4, 3), dtype=np.float32)
+        bias = np.ones(4, dtype=np.float32)
+
+        initialized_weights = train_rllib.initialize_unexported_exploration_values(
+            "pi.net.mlp.0.weight",
+            weights,
+            deterministic_output_size=2,
+            initial_log_std=-1.5,
+        )
+        initialized_bias = train_rllib.initialize_unexported_exploration_values(
+            "pi.net.mlp.0.bias",
+            bias,
+            deterministic_output_size=2,
+            initial_log_std=-1.5,
+        )
+
+        np.testing.assert_array_equal(initialized_weights[:2], np.ones((2, 3)))
+        np.testing.assert_array_equal(initialized_weights[2:], np.zeros((2, 3)))
+        np.testing.assert_array_equal(initialized_bias[:2], np.ones(2))
+        np.testing.assert_array_equal(initialized_bias[2:], [-1.5, -1.5])
 
     def test_free_log_std_is_initialized_and_synchronized(self):
         learner_group = Mock()

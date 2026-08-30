@@ -16,12 +16,14 @@ public class DriverArtworkAtlasTest {
         assertEquals(4, DriverArtworkAtlas.indexForProfile("profile04"));
         assertEquals(5, DriverArtworkAtlas.indexForProfile("profile05"));
         assertEquals(9, DriverArtworkAtlas.indexForProfile("profile09"));
+        assertEquals(10, DriverArtworkAtlas.indexForProfile("profile10"));
     }
 
     @Test
     public void rejectsProfilesWithoutArtworkCells() {
         assertEquals(-1, DriverArtworkAtlas.indexForProfile(null));
         assertEquals(-1, DriverArtworkAtlas.indexForProfile("profile0"));
+        assertEquals(-1, DriverArtworkAtlas.indexForProfile("profile11"));
         assertEquals(-1, DriverArtworkAtlas.indexForProfile("profile99"));
         assertEquals(-1, DriverArtworkAtlas.indexForProfile("legacy"));
     }

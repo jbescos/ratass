@@ -277,6 +277,7 @@ class DriverMetadataTest(unittest.TestCase):
                 policy,
                 laps=3,
                 action_repeat=4,
+                driver_action_repeat=2,
                 seed=7,
                 map_source="game",
             )
@@ -288,6 +289,8 @@ class DriverMetadataTest(unittest.TestCase):
         self.assertEqual(metadata["averageOffRoadPercent"], 7.5)
         self.assertEqual(metadata["averageDriftPercent"], 9.0)
         self.assertEqual(metadata["maximumSpeedKph"], 263.25)
+        self.assertEqual(metadata["actionRepeat"], 2)
+        self.assertIn("repeat=4", metadata["benchmarkVersion"])
         self.assertEqual(len(metadata["policySha256"]), 64)
         self.assertNotIn("overallRating", metadata)
 

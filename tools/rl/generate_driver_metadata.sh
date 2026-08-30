@@ -27,7 +27,9 @@ exec "${python_bin}" tools/rl/evaluate_lap_times.py \
   --cars default \
   --laps "${RL_DRIVER_BENCHMARK_LAPS:-3}" \
   --steps "${RL_DRIVER_BENCHMARK_STEPS:-6400}" \
-  --action-repeat "${RL_ACTION_REPEAT:-4}" \
+  --action-repeat "${RL_DRIVER_BENCHMARK_ACTION_REPEAT:-4}" \
+  --driver-action-repeat "${RL_ACTION_REPEAT:-4}" \
+  --driver-tier "${RL_DRIVER_TIER:-0}" \
   --seed "${RL_DRIVER_BENCHMARK_SEED:-20260531}" \
   --quiet \
   --metadata-only \

@@ -748,7 +748,7 @@ public final class RogueliteRun {
     private static boolean isOfferTierEligible(int offerTier, int unlockedTier) {
         return offerTier == unlockedTier
                 || (unlockedTier == RogueliteCardCatalog.MAX_CARD_TIER
-                        && offerTier == DriverProfileCatalog.MAX_TIER);
+                        && offerTier == DriverProfileCatalog.MAX_STANDARD_TIER);
     }
 
     private void repairDriver(

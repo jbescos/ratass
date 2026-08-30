@@ -8,7 +8,8 @@ import java.util.List;
 import java.util.Map;
 
 public final class DriverProfileCatalog {
-    public static final int MAX_TIER = 3;
+    public static final int MAX_TIER = 4;
+    public static final int MAX_STANDARD_TIER = 3;
     private static final String[] FALLBACK_PROFILE_IDS = {
             "profile00",
             "profile01",
@@ -104,13 +105,40 @@ public final class DriverProfileCatalog {
         return profiles.get(0);
     }
 
+    public DriverProfileMetadata getBestInTier(int requestedTier) {
+        int tier = Math.max(1, Math.min(MAX_TIER, requestedTier));
+        for (int i = 0; i < profiles.size(); i++) {
+            DriverProfileMetadata profile = profiles.get(i);
+            if (getTier(profile.getProfileId()) == tier) {
+                return profile;
+            }
+        }
+        return null;
+    }
+
     public int getTier(String profileId) {
         for (int i = 0; i < profiles.size(); i++) {
-            if (profiles.get(i).getProfileId().equals(profileId)) {
-                int rankFromWorst = profiles.size() - 1 - i;
+            DriverProfileMetadata profile = profiles.get(i);
+            if (profile.getProfileId().equals(profileId)) {
+                if (profile.getTier() > 0) {
+                    return Math.min(MAX_TIER, profile.getTier());
+                }
+                int automaticCount = 0;
+                int betterAutomaticCount = 0;
+                for (int candidateIndex = 0; candidateIndex < profiles.size(); candidateIndex++) {
+                    DriverProfileMetadata candidate = profiles.get(candidateIndex);
+                    if (candidate.getTier() > 0) {
+                        continue;
+                    }
+                    automaticCount++;
+                    if (candidateIndex < i) {
+                        betterAutomaticCount++;
+                    }
+                }
+                int rankFromWorst = automaticCount - 1 - betterAutomaticCount;
                 return Math.min(
-                        MAX_TIER,
-                        1 + rankFromWorst * MAX_TIER / profiles.size());
+                        MAX_STANDARD_TIER,
+                        1 + rankFromWorst * MAX_STANDARD_TIER / automaticCount);
             }
         }
         return MAX_TIER;

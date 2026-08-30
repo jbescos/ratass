@@ -235,7 +235,8 @@ public class RatassGame extends ApplicationAdapter {
             "profile06",
             "profile07",
             "profile08",
-            "profile09"
+            "profile09",
+            "profile10"
     };
     private static final ThemeChoice[] FALLBACK_THEME_CHOICES = new ThemeChoice[] {
             new ThemeChoice("gt3", "GT3")
@@ -1562,6 +1563,8 @@ public class RatassGame extends ApplicationAdapter {
     private RogueliteSaveRepository rogueliteSaveRepository;
     private RogueliteSaveData pendingContinueSave;
     private final Map<String, RlPolicy> rlPolicies = new LinkedHashMap<String, RlPolicy>();
+    private final Map<RlPolicy, Integer> rlPolicyActionRepeats =
+            new LinkedHashMap<RlPolicy, Integer>();
     private String configuredThemeName = DEFAULT_THEME_NAME;
     private GameLanguage gameLanguage = GameLanguage.ENGLISH;
     private String menuCarSheetThemeName = "";
@@ -2105,6 +2108,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private RlPolicy loadRlEnemyPolicy() {
         rlPolicies.clear();
+        rlPolicyActionRepeats.clear();
         RlPolicy legacyPolicy = loadRlPolicy(RL_ENEMY_POLICY_PATH, RL_LEGACY_POLICY_ID);
         RlPolicy firstProfilePolicy = null;
         List<DriverProfileMetadata> driverMetadata =
@@ -2115,7 +2119,9 @@ public class RatassGame extends ApplicationAdapter {
             RlPolicy policy = loadRlPolicy(buildRlPolicyPath(policyId), policyId);
             if (policy != null) {
                 rlPolicies.put(policyId, policy);
-                driverMetadata.add(loadDriverProfileMetadata(policyId, i));
+                DriverProfileMetadata metadata = loadDriverProfileMetadata(policyId, i);
+                driverMetadata.add(metadata);
+                rlPolicyActionRepeats.put(policy, metadata.getActionRepeat());
                 if (firstProfilePolicy == null) {
                     firstProfilePolicy = policy;
                 }
@@ -2183,6 +2189,16 @@ public class RatassGame extends ApplicationAdapter {
     private RlPolicy getRlPolicyById(String policyId) {
         RlPolicy policy = rlPolicies.get(policyId);
         return policy == null ? rlEnemyPolicy : policy;
+    }
+
+    private float getRlLiveDecisionInterval(RlPolicy policy) {
+        Integer actionRepeat = rlPolicyActionRepeats.get(policy);
+        return Math.max(
+                        1,
+                        actionRepeat == null
+                                ? RL_DEFAULT_ACTION_REPEAT
+                                : actionRepeat.intValue())
+                * PHYSICS_STEP;
     }
 
     private RlPolicy loadRlPolicy(String path, String policyId) {
@@ -4294,8 +4310,9 @@ public class RatassGame extends ApplicationAdapter {
             return true;
         }
         if (clickedSlotIndex >= 0) {
-            openRogueliteCardInspection(GameMode.PLAYING, clickedSlotIndex);
-            return true;
+            return openRogueliteCardInspection(
+                    GameMode.PLAYING,
+                    clickedSlotIndex);
         }
         if (!shortcutPressed && !buttonPressed) {
             return false;
@@ -6897,6 +6914,7 @@ public class RatassGame extends ApplicationAdapter {
         if (!setCameraTargetTemplate(template, animate)) {
             return false;
         }
+        resetCameraZoomToDefault();
         eventCameraSelected = false;
         if (eventCameraDirector != null) {
             eventCameraDirector.reset();
@@ -6905,6 +6923,7 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void selectEventCamera() {
+        resetCameraZoomToDefault();
         eventCameraSelected = true;
         leaveFreeCameraForFollow();
         lastAutoFollowedRaceIncidentSequence = -1L;
@@ -6916,6 +6935,10 @@ public class RatassGame extends ApplicationAdapter {
         } else {
             updateEventCamera(0f);
         }
+    }
+
+    private void resetCameraZoomToDefault() {
+        setCameraZoom(DEFAULT_CAMERA_ZOOM, true);
     }
 
     private void leaveFreeCameraForFollow() {
@@ -9695,9 +9718,9 @@ public class RatassGame extends ApplicationAdapter {
         gameMode = GameMode.ROGUELITE_COLLECTION;
     }
 
-    private void openRogueliteCardInspection(GameMode returnMode, int slotIndex) {
+    private boolean openRogueliteCardInspection(GameMode returnMode, int slotIndex) {
         if (slotIndex < 0 || slotIndex >= ROGUELITE_LOADOUT_SLOT_COUNT) {
-            return;
+            return false;
         }
         Car target = getCameraTargetCar();
         RogueliteLoadout loadout = getRogueliteLoadout(target);
@@ -9725,7 +9748,7 @@ public class RatassGame extends ApplicationAdapter {
                             slotType);
         }
         if (driver == null && cardId == null && set == null) {
-            return;
+            return false;
         }
 
         clearPlayerInput();
@@ -9736,6 +9759,7 @@ public class RatassGame extends ApplicationAdapter {
         rogueliteInspectedDriver = driver;
         rogueliteInspectedSet = set;
         gameMode = GameMode.ROGUELITE_COLLECTION;
+        return true;
     }
 
     private void openRogueliteCardInspection(
@@ -9996,6 +10020,7 @@ public class RatassGame extends ApplicationAdapter {
                                 ? MathUtils.clamp(raceFinishTimer / RACE_FINISH_TIMEOUT, 0f, 1f)
                                 : 1f;
             }
+            RlPolicy drivingPolicy = resolveBestDriverPolicy(car, car.template.rlPolicy);
             car.step(
                     delta,
                     currentMap,
@@ -10014,7 +10039,8 @@ public class RatassGame extends ApplicationAdapter {
                     targetTimeRemaining,
                     cars,
                     mirrorCars,
-                    resolveBestDriverPolicy(car, car.template.rlPolicy),
+                    drivingPolicy,
+                    getRlLiveDecisionInterval(drivingPolicy),
                     rlRecoveryPolicy,
                     rlOvertakingPolicy,
                     surfaceGripMultiplier,
@@ -10196,6 +10222,8 @@ public class RatassGame extends ApplicationAdapter {
             mirror.setTimeDilationActive(
                     mirror.effectiveRogueliteUpgrades().isTimeDilationActive());
             mirror.prepareSlipstreamSnapshot(currentMap);
+            RlPolicy drivingPolicy =
+                    resolveBestDriverPolicy(mirror, mirror.template.rlPolicy);
             mirror.stepMirror(
                     delta,
                     currentMap,
@@ -10203,7 +10231,8 @@ public class RatassGame extends ApplicationAdapter {
                     mirrorCars,
                     allowControl,
                     rlTrainingMode,
-                    resolveBestDriverPolicy(mirror, mirror.template.rlPolicy),
+                    drivingPolicy,
+                    getRlLiveDecisionInterval(drivingPolicy),
                     rlRecoveryPolicy,
                     rlOvertakingPolicy);
         }
@@ -10215,7 +10244,11 @@ public class RatassGame extends ApplicationAdapter {
                 || !car.effectiveRogueliteUpgrades().isBestDriverActive()) {
             return defaultPolicy;
         }
-        DriverProfileMetadata bestDriver = driverProfileCatalog.getBest();
+        DriverProfileMetadata bestDriver =
+                driverProfileCatalog.getBestInTier(DriverProfileCatalog.MAX_TIER);
+        if (bestDriver == null) {
+            bestDriver = driverProfileCatalog.getBest();
+        }
         RlPolicy bestPolicy = rlPolicies.get(bestDriver.getProfileId());
         return bestPolicy == null ? defaultPolicy : bestPolicy;
     }
@@ -27075,6 +27108,7 @@ public class RatassGame extends ApplicationAdapter {
         private boolean passingAssistCommitted;
         private boolean passingAssistRouteSafe;
         private float rlDecisionTimer;
+        private float rlLiveDecisionInterval = RL_LIVE_DECISION_INTERVAL;
         private float overtakingDecisionTimer;
         private float overtakingTurnResidual;
         private float trainingThrottleScale = 1f;
@@ -28270,6 +28304,7 @@ public class RatassGame extends ApplicationAdapter {
                 Array<Car> cars,
                 Array<Car> recoveryMirrorCars,
                 RlPolicy rlPolicy,
+                float rlPolicyDecisionInterval,
                 RlPolicy recoveryPolicy,
                 RlPolicy overtakingPolicy,
                 float surfaceGripMultiplier,
@@ -28304,7 +28339,11 @@ public class RatassGame extends ApplicationAdapter {
                         effectiveRogueliteUpgrades().isBestDriverActive();
                 if ((modelControlled || bestDriverActive) && rlPolicy != null) {
                     AiControlDecision decision =
-                            planWithRlPolicy(delta, rlPolicy, arenaMap);
+                            planWithRlPolicy(
+                                    delta,
+                                    rlPolicy,
+                                    rlPolicyDecisionInterval,
+                                    arenaMap);
                     throttle = decision.throttle;
                     turn = decision.turn;
                 } else if (playerControlled) {
@@ -28459,6 +28498,7 @@ public class RatassGame extends ApplicationAdapter {
                 boolean allowControl,
                 boolean trainingMode,
                 RlPolicy policy,
+                float policyDecisionInterval,
                 RlPolicy recoveryPolicy,
                 RlPolicy overtakingPolicy) {
             if (!active || body == null || mirrorOwner == null || mirrorOwner.body == null) {
@@ -28478,7 +28518,11 @@ public class RatassGame extends ApplicationAdapter {
                         effectiveRogueliteUpgrades().isBestDriverActive();
                 if ((modelControlled || bestDriverActive) && policy != null) {
                     AiControlDecision decision =
-                            planWithRlPolicy(delta, policy, arenaMap);
+                            planWithRlPolicy(
+                                    delta,
+                                    policy,
+                                    policyDecisionInterval,
+                                    arenaMap);
                     throttle = decision.throttle;
                     turn = decision.turn;
                 } else {
@@ -30031,11 +30075,13 @@ public class RatassGame extends ApplicationAdapter {
         private AiControlDecision planWithRlPolicy(
                 float delta,
                 RlPolicy policy,
+                float decisionInterval,
                 ArenaMap arenaMap) {
             if (lastRlPlanningPolicy != policy) {
                 lastRlPlanningPolicy = policy;
                 rlDecisionTimer = 0f;
             }
+            rlLiveDecisionInterval = Math.max(PHYSICS_STEP, decisionInterval);
             rlDecisionTimer -= delta;
             if (rlDecisionTimer <= 0f) {
                 ensureRlScratch(policy);
@@ -30057,7 +30103,7 @@ public class RatassGame extends ApplicationAdapter {
                         rawExternalControlDecision.throttle,
                         rawExternalControlDecision.turn);
                 rlDecisionTimer = TimeDilationDecisionCadence.intervalSeconds(
-                        RL_LIVE_DECISION_INTERVAL,
+                        decisionInterval,
                         timeDilationDecisionAccelerated,
                         TimeDilationPowerupSpec.OWN_TIME_SCALE);
             }
@@ -30067,7 +30113,7 @@ public class RatassGame extends ApplicationAdapter {
         private void setTimeDilationActive(boolean active) {
             rlDecisionTimer = TimeDilationDecisionCadence.transitionTimer(
                     rlDecisionTimer,
-                    RL_LIVE_DECISION_INTERVAL,
+                    rlLiveDecisionInterval,
                     timeDilationDecisionAccelerated,
                     active,
                     TimeDilationPowerupSpec.OWN_TIME_SCALE);
@@ -33685,6 +33731,7 @@ public class RatassGame extends ApplicationAdapter {
             AiControlDecision decision = learner.planWithRlPolicy(
                     Math.max(RL_LIVE_DECISION_INTERVAL, elapsedSeconds),
                     overtakingBasePolicy,
+                    RL_LIVE_DECISION_INTERVAL,
                     game.currentMap);
             overtakingBaseThrottle = decision.throttle;
             overtakingBaseTurn = decision.turn;

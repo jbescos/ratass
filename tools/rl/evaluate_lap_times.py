@@ -123,6 +123,21 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--action-repeat", type=int, default=4)
     parser.add_argument(
+        "--driver-action-repeat",
+        type=int,
+        default=0,
+        help=(
+            "runtime action repeat written to driver metadata; 0 uses the "
+            "benchmark --action-repeat"
+        ),
+    )
+    parser.add_argument(
+        "--driver-tier",
+        type=int,
+        default=0,
+        help="explicit roguelite driver tier; 0 keeps rank-based assignment",
+    )
+    parser.add_argument(
         "--tuning-card",
         default="",
         help="optional RogueliteCardId tuning card for isolated balance benchmarks",
@@ -363,7 +378,9 @@ def make_environment(
         raise ValueError("only one benchmark card can be equipped")
     if tuning_card:
         config.withBenchmarkTuningCard(tuning_card)
-        config.withBenchmarkTuningEffectMultiplier(args.tuning_effect_multiplier)
+        config.withBenchmarkTuningEffectMultiplier(
+            float(getattr(args, "tuning_effect_multiplier", 1.0))
+        )
     if powerup_card:
         config.withBenchmarkPowerupCard(powerup_card)
     if technique_card:
@@ -914,6 +931,8 @@ def driver_metadata(
     action_repeat: int,
     seed: int,
     map_source: str,
+    driver_action_repeat: int = 0,
+    driver_tier: int = 0,
 ) -> dict[str, object]:
     rows = [row for row in profile_rows if not row.is_car_average]
     expected_runs = len(rows)
@@ -994,6 +1013,11 @@ def driver_metadata(
         "averageOffRoadPercent": round(average_off_road_percent, 5),
         "averageDriftPercent": round(average_drift_percent, 5),
         "maximumSpeedKph": round(maximum_speed_kph, 3),
+        "tier": max(0, int(driver_tier)),
+        "actionRepeat": max(
+            1,
+            int(driver_action_repeat if driver_action_repeat > 0 else action_repeat),
+        ),
     }
 
 
@@ -1022,8 +1046,10 @@ def write_driver_metadata(
             policy_path,
             laps=args.laps,
             action_repeat=args.action_repeat,
+            driver_action_repeat=args.driver_action_repeat,
             seed=args.seed,
             map_source=args.map_source,
+            driver_tier=args.driver_tier,
         )
         output.write_text(
             json.dumps(metadata, indent=2, sort_keys=True) + "\n",
