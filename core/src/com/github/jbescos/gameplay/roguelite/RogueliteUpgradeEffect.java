@@ -62,6 +62,17 @@ abstract class RogueliteUpgradeEffect {
     void onLoadedByRandomCard() {
     }
 
+    void setAutomaticPowerupActivationAllowed(boolean allowed) {
+    }
+
+    boolean supportsManualPowerupActivation() {
+        return false;
+    }
+
+    boolean requestManualPowerupActivation() {
+        return false;
+    }
+
     boolean isActive() {
         return false;
     }

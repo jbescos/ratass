@@ -98,6 +98,22 @@ public class RogueliteResponsiveCardLayoutTest {
     }
 
     @Test
+    public void modeControlsUseASeparateFooterBelowCards() {
+        assertEquals(
+                32f,
+                RogueliteResponsiveCardLayout.modeControlHeight(844f, 390f),
+                0.001f);
+        assertEquals(
+                36f,
+                RogueliteResponsiveCardLayout.modeControlHeight(1280f, 720f),
+                0.001f);
+        float bottom =
+                RogueliteResponsiveCardLayout.modeControlBottom(120f, 32f, 4f);
+        assertEquals(84f, bottom, 0.001f);
+        assertTrue(bottom + 32f < 120f);
+    }
+
+    @Test
     public void cardsButtonUsesAnExtraLargeTouchTarget() {
         assertEquals(
                 88f,

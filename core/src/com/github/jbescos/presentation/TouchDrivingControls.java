@@ -7,13 +7,26 @@ public final class TouchDrivingControls {
     public static boolean shouldEnable(
             boolean presentationEnabled,
             boolean touchCapablePlatform,
-            boolean playing) {
+            boolean playing,
+            boolean manualControl) {
         return presentationEnabled
                 && touchCapablePlatform
-                && playing;
+                && playing
+                && manualControl;
     }
 
-    public static boolean shouldShowPedals(boolean sandboxMode, boolean manualControl) {
-        return sandboxMode && manualControl;
+    public static boolean shouldShowPedals(boolean manualControl) {
+        return manualControl;
+    }
+
+    public static boolean shouldEnablePowerup(
+            boolean presentationEnabled,
+            boolean touchCapablePlatform,
+            boolean playing,
+            boolean manualPowerup) {
+        return presentationEnabled
+                && touchCapablePlatform
+                && playing
+                && manualPowerup;
     }
 }

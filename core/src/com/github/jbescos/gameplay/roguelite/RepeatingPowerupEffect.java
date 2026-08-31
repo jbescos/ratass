@@ -12,6 +12,8 @@ abstract class RepeatingPowerupEffect extends RogueliteUpgradeEffect {
     private float cooldownTimer = COOLDOWN_SECONDS;
     private boolean loadedByRandomCard;
     private boolean randomActivationExecuted;
+    private boolean automaticActivationAllowed = true;
+    private boolean manualActivationRequested;
 
     RepeatingPowerupEffect(RogueliteCardId cardId) {
         super(cardId);
@@ -57,22 +59,47 @@ abstract class RepeatingPowerupEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    final void setAutomaticPowerupActivationAllowed(boolean allowed) {
+        automaticActivationAllowed = allowed;
+    }
+
+    @Override
+    final boolean supportsManualPowerupActivation() {
+        return true;
+    }
+
+    @Override
+    final boolean requestManualPowerupActivation() {
+        if (!isReady()) {
+            return false;
+        }
+        manualActivationRequested = true;
+        return true;
+    }
+
+    @Override
     final void update(float delta, float timerDelta, RogueliteDrivingFrame frame) {
         float elapsed = Math.max(0f, timerDelta);
         cooldownTimer = Math.max(0f, cooldownTimer - elapsed);
         if (isActive()) {
             activeTimer = Math.max(0f, activeTimer - elapsed);
-            if (activeTimer <= 0f && cooldownTimer <= 0f && !loadedByRandomCard) {
+            if (activeTimer <= 0f
+                    && cooldownTimer <= 0f
+                    && !loadedByRandomCard
+                    && automaticActivationAllowed) {
                 activeTimer = DURATION_SECONDS;
                 cooldownTimer = COOLDOWN_SECONDS;
             }
             return;
         }
         if (cooldownTimer <= 0f
-                && (!loadedByRandomCard || !randomActivationExecuted)) {
+                && (manualActivationRequested
+                        || automaticActivationAllowed
+                                && (!loadedByRandomCard || !randomActivationExecuted))) {
             activeTimer = DURATION_SECONDS;
             cooldownTimer = COOLDOWN_SECONDS;
             randomActivationExecuted = loadedByRandomCard;
+            manualActivationRequested = false;
         }
     }
 }

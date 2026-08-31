@@ -77,16 +77,19 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
   iterations="${stage_iterations[index]}"
   stage_dir="${checkpoint_root}/${stage}"
   stage_output="${stage_dir}/best_policy.json"
+  final_mixed_stage=0
   stage_min_success_rate="${RL_RECOVERY_MIN_SUCCESS_RATE:-1.00}"
   if [[ "${#stage_min_success_rates[@]}" -gt 0 ]]; then
     stage_min_success_rate="${stage_min_success_rates[index]}"
   fi
   if [[ "${stage}" == "mixed" && "${index}" -eq $((${#stages[@]} - 1)) ]]; then
     stage_output="${output}"
+    final_mixed_stage=1
   fi
   stage_map_ids="${RL_MAP_IDS:-}"
   stage_best_eval_map_ids="${RL_BEST_EVAL_MAP_IDS:-}"
   stage_eval_episodes_per_map="${RL_RECOVERY_EVAL_EPISODES_PER_MAP:-9}"
+  stage_seed=$(( ${RL_RECOVERY_SEED:-20260506} + index * 100003 ))
   if [[ "${#stage_eval_episode_counts[@]}" -gt 0 ]]; then
     stage_eval_episodes_per_map="${stage_eval_episode_counts[index]}"
   fi
@@ -110,7 +113,7 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
     --max-action-steps "${RL_RECOVERY_MAX_ACTION_STEPS:-300}"
     --no-progress-max-action-steps 0
     --off-road-failure-max-action-steps 0
-    --seed "${RL_RECOVERY_SEED:-20260506}"
+    --seed "${stage_seed}"
     --workers "${RL_WORKERS:-4}"
     --ray-num-cpus "${RL_RAY_NUM_CPUS:-0}"
     --train-batch-size "${RL_RECOVERY_TRAIN_BATCH_SIZE:-4096}"
@@ -138,7 +141,6 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
     --best-eval-min-route-targets "${stage_min_success_rate}"
     --best-eval-steps "${RL_RECOVERY_EVAL_STEPS:-300}"
     --best-eval-seed "${RL_RECOVERY_EVAL_SEED:-${RL_RECOVERY_SEED:-20260506}}"
-    --best-eval-ignore-installed
     --reward-step-penalty "${RL_RECOVERY_REWARD_STEP_PENALTY:-0.50}"
     --reward-steering-penalty "${RL_RECOVERY_REWARD_STEERING_PENALTY:-5.0}"
     --reward-off-road-penalty "${RL_RECOVERY_REWARD_OFF_ROAD_PENALTY:-0.25}"
@@ -155,10 +157,20 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
     --recovery-penalty-stationary "${RL_RECOVERY_PENALTY_STATIONARY:-1.0}"
     --recovery-reward-success "${RL_RECOVERY_REWARD_SUCCESS:-3000.0}"
   )
+  if [[ "${final_mixed_stage}" != "1" ]]; then
+    command+=(--best-eval-ignore-installed)
+  fi
   if [[ "${RL_RECOVERY_SKIP_TRAINING_IF_BASELINE_ELIGIBLE:-1}" == "1" ]]; then
     command+=(--skip-training-if-baseline-eligible)
   fi
-  if [[ "${RL_RECOVERY_EVALUATE_ALL_CANDIDATES:-0}" == "1" ]]; then
+  stage_evaluate_all_candidates="${RL_RECOVERY_EVALUATE_ALL_CANDIDATES:-0}"
+  if [[ "${final_mixed_stage}" == "1" ]]; then
+    stage_evaluate_all_candidates="${RL_RECOVERY_FINAL_EVALUATE_ALL_CANDIDATES:-0}"
+    if [[ "${RL_RECOVERY_FINAL_PROMOTE_IF_BETTER_THAN_INSTALLED:-1}" == "1" ]]; then
+      command+=(--best-eval-promote-if-better-than-installed)
+    fi
+  fi
+  if [[ "${stage_evaluate_all_candidates}" == "1" ]]; then
     command+=(--evaluate-all-checkpoint-candidates)
   fi
   if [[ -n "${RL_RECOVERY_EVAL_SCENARIO:-}" ]]; then
@@ -182,7 +194,7 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
     command+=(--resume)
   fi
 
-  echo "recovery_stage=$((index + 1))/${#stages[@]} scenario=${stage} iterations=${iterations} min_success_rate=${stage_min_success_rate}"
+  echo "recovery_stage=$((index + 1))/${#stages[@]} scenario=${stage} iterations=${iterations} min_success_rate=${stage_min_success_rate} seed=${stage_seed}"
   "${command[@]}"
   if [[ ! -f "${stage_output}" ]]; then
     echo "Recovery stage did not produce an eligible policy: ${stage}" >&2

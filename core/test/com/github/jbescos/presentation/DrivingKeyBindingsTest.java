@@ -14,6 +14,7 @@ public final class DrivingKeyBindingsTest {
         assertEquals(Input.Keys.S, bindings.get(DrivingKeyBindings.Action.BACKWARD));
         assertEquals(Input.Keys.A, bindings.get(DrivingKeyBindings.Action.LEFT));
         assertEquals(Input.Keys.D, bindings.get(DrivingKeyBindings.Action.RIGHT));
+        assertEquals(Input.Keys.SPACE, bindings.get(DrivingKeyBindings.Action.POWERUP));
     }
 
     @Test

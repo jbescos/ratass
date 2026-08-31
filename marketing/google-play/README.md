@@ -12,16 +12,17 @@
 
 ### Short Description
 
-Build a five-card racing machine and watch autonomous rivals battle for victory.
+Build a five-card racing machine, trust your driver, or take control yourself.
 
 ### Full Description
 
-You do not control the car. You control the decisions.
+Build the strategy. Let your driver race, or take control yourself.
 
-Rogue Circuit is a racing roguelite where autonomous drivers fight for every
-position while you build the machine and strategy behind the race. Choose a
-car and driver, earn experience on the circuit, and assemble a five-card
-loadout that changes how your contender performs.
+Rogue Circuit is a racing roguelite where drivers fight for every position
+while you build the machine and strategy behind the race. Choose a car and
+driver, earn experience on the circuit, and assemble a five-card loadout that
+changes how your contender performs. Trust your driver or take manual control
+whenever the race demands it.
 
 BUILD YOUR RACE STRATEGY
 
@@ -31,7 +32,7 @@ BUILD YOUR RACE STRATEGY
 
 WATCH EVERY RACE EVOLVE
 
-- Autonomous drivers race, overtake, drift, collide, and recover.
+- Let your driver race autonomously, or take direct control when you want it.
 - Every rival builds a different loadout and becomes more dangerous.
 - Follow any driver or let TV Camera find overtakes, impacts, and revenge.
 - Race through changing weather and distinct GT3 and Halloween themes.

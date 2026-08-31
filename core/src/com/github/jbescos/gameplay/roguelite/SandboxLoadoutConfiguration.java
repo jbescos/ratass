@@ -1,5 +1,6 @@
 package com.github.jbescos.gameplay.roguelite;
 
+import com.github.jbescos.gameplay.PlayerDrivingMode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -7,22 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class SandboxLoadoutConfiguration {
-    public enum ControlMode {
-        MANUAL("Manual"),
-        AUTOMATIC("Automatic");
-
-        private final String displayName;
-
-        ControlMode(String displayName) {
-            this.displayName = displayName;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
-    }
-
-    private ControlMode controlMode;
+    private PlayerDrivingMode controlMode;
     private String initialDriverProfileId;
     private final Map<Integer, RogueliteLoadout> loadoutsByVehicleId =
             new HashMap<Integer, RogueliteLoadout>();
@@ -49,23 +35,29 @@ public final class SandboxLoadoutConfiguration {
             throw new IllegalArgumentException(
                     "Unknown initial driver profile: " + initialDriverProfileId);
         }
-        controlMode = ControlMode.AUTOMATIC;
+        controlMode = PlayerDrivingMode.AUTOMATIC;
         this.initialDriverProfileId = initialDriverProfileId;
         loadoutsByVehicleId.clear();
         getLoadout(0);
         availableChoices = buildAvailableChoices(driverCatalog);
     }
 
-    public ControlMode getControlMode() {
+    public PlayerDrivingMode getControlMode() {
         return controlMode;
     }
 
     public boolean isAutomatic() {
-        return controlMode == ControlMode.AUTOMATIC;
+        return controlMode.isAutomatic();
     }
 
     public void cycleControlMode() {
-        controlMode = isAutomatic() ? ControlMode.MANUAL : ControlMode.AUTOMATIC;
+        controlMode = controlMode.toggle();
+    }
+
+    public void setControlMode(PlayerDrivingMode controlMode) {
+        if (controlMode != null) {
+            this.controlMode = controlMode;
+        }
     }
 
     public RogueliteLoadout getLoadout() {

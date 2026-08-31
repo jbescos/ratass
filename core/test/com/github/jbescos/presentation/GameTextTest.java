@@ -59,6 +59,16 @@ public class GameTextTest {
     }
 
     @Test
+    public void formattedPlayerLabelsDoNotTranslatePlayerNames() {
+        assertEquals(
+                "OVERTAKE - EQUIPAMIENTO ACTIVO",
+                GameText.format(
+                        GameLanguage.SPANISH,
+                        "message.active_loadout",
+                        "OVERTAKE"));
+    }
+
+    @Test
     public void leavesInternalAndEnglishTextStable() {
         assertEquals("map018", GameText.translate(GameLanguage.SPANISH, "map018"));
         assertEquals("New Game", GameText.translate(GameLanguage.ENGLISH, "New Game"));

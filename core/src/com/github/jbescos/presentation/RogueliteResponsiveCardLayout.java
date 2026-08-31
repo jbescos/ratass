@@ -81,6 +81,23 @@ public final class RogueliteResponsiveCardLayout {
         return Math.max(200f, Math.min(260f, Math.max(1f, width) * 0.22f));
     }
 
+    public static float modeControlHeight(float width, float height) {
+        float shortSide = Math.max(1f, Math.min(width, height));
+        return Math.max(32f, Math.min(40f, shortSide * 0.05f));
+    }
+
+    public static float modeControlGap(float width, float height) {
+        float shortSide = Math.max(1f, Math.min(width, height));
+        return Math.max(4f, Math.min(7f, shortSide * 0.01f));
+    }
+
+    public static float modeControlBottom(
+            float cardBottom,
+            float controlHeight,
+            float gap) {
+        return cardBottom - Math.max(0f, gap) - Math.max(0f, controlHeight);
+    }
+
     public static float inspectionCardWidth(
             float width,
             float height,

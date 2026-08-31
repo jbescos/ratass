@@ -108,6 +108,21 @@ public final class RacingHudLayout {
         return clamp(screenHeight * 0.028f, 16f, 22f);
     }
 
+    public static float infoIconVisualSize(
+            float sectionTitleHeight,
+            float hitWidth,
+            float hitHeight) {
+        return Math.max(
+                0f,
+                Math.min(
+                        Math.max(0f, sectionTitleHeight) * 0.80f,
+                        Math.min(Math.max(0f, hitWidth), Math.max(0f, hitHeight))));
+    }
+
+    public static float infoIconVisualOffsetY(float sectionTitleHeight) {
+        return clamp(Math.max(0f, sectionTitleHeight) * 0.10f, 1.5f, 2f);
+    }
+
     public static float bottomPanelCarStatsWidth(float availableWidth) {
         return Math.max(1f, availableWidth * CAR_STATS_SECTION_RATIO);
     }

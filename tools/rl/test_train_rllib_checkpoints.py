@@ -354,6 +354,110 @@ class EstablishStageBaselineTest(unittest.TestCase):
             promote.assert_not_called()
 
 
+class RecoveryFallbackPromotionTest(unittest.TestCase):
+    @staticmethod
+    def args(output_file):
+        return SimpleNamespace(
+            best_export_output=str(output_file),
+            best_export_objective="shared-recovery-v1",
+            objective="recovery",
+            hidden_activation="tanh",
+            best_eval_min_route_targets=0.97,
+            best_eval_promote_if_better_than_installed=True,
+            best_eval_state="",
+            best_eval_ignore_installed=True,
+            fixed_full_laps=False,
+            route_targets=1,
+        )
+
+    @staticmethod
+    def evaluation(score, success_rate):
+        return train_rllib.PolicyEvaluation(
+            score=score,
+            metrics={
+                "avg_targets": str(success_rate),
+                "success_rate": str(success_rate),
+                "score_version": "4",
+            },
+            output_lines=(),
+            return_code=0,
+        )
+
+    @staticmethod
+    def write_candidate(_checkpoint, output_file, *_args, **_kwargs):
+        Path(output_file).write_text("candidate\n", encoding="utf-8")
+
+    def test_below_gate_candidate_replaces_weaker_installed_recovery_policy(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            checkpoint_dir = Path(temp_dir) / "checkpoint"
+            checkpoint_dir.mkdir()
+            output_file = Path(temp_dir) / "installed.json"
+            output_file.write_text("installed\n", encoding="utf-8")
+            args = self.args(output_file)
+
+            with (
+                patch.object(
+                    train_rllib,
+                    "export_checkpoint_policy",
+                    side_effect=self.write_candidate,
+                ),
+                patch.object(
+                    train_rllib,
+                    "run_policy_evaluation",
+                    return_value=self.evaluation(900_000.0, 0.90),
+                ),
+                patch.object(
+                    train_rllib,
+                    "save_algorithm_checkpoint",
+                    return_value=str(checkpoint_dir),
+                ),
+            ):
+                result = train_rllib.maybe_promote_best_policy(
+                    Mock(),
+                    args,
+                    checkpoint_dir,
+                    10,
+                    str(checkpoint_dir),
+                    policy_evaluation=self.evaluation(950_000.0, 0.95),
+                )
+
+            self.assertTrue(result["promoted"])
+            self.assertEqual("candidate\n", output_file.read_text(encoding="utf-8"))
+
+    def test_below_gate_candidate_does_not_replace_stronger_installed_policy(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            checkpoint_dir = Path(temp_dir) / "checkpoint"
+            checkpoint_dir.mkdir()
+            output_file = Path(temp_dir) / "installed.json"
+            output_file.write_text("installed\n", encoding="utf-8")
+            args = self.args(output_file)
+
+            with (
+                patch.object(
+                    train_rllib,
+                    "export_checkpoint_policy",
+                    side_effect=self.write_candidate,
+                ),
+                patch.object(
+                    train_rllib,
+                    "run_policy_evaluation",
+                    return_value=self.evaluation(960_000.0, 0.96),
+                ),
+            ):
+                result = train_rllib.maybe_promote_best_policy(
+                    Mock(),
+                    args,
+                    checkpoint_dir,
+                    10,
+                    str(checkpoint_dir),
+                    policy_evaluation=self.evaluation(950_000.0, 0.95),
+                )
+
+            self.assertFalse(result["accepted"])
+            self.assertFalse(result["promoted"])
+            self.assertEqual("installed\n", output_file.read_text(encoding="utf-8"))
+
+
 def evaluated_candidate(
         iteration,
         score,

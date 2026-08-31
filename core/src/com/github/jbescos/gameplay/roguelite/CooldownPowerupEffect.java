@@ -20,6 +20,8 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
     private boolean loadedByRandomCard;
     private boolean invisibilityExitHeld;
     private boolean deferInvisibilityExit;
+    private boolean automaticActivationAllowed = true;
+    private boolean manualActivationRequested;
 
     CooldownPowerupEffect(RogueliteCardId cardId, float cycleOffset) {
         super(cardId);
@@ -203,6 +205,25 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    void setAutomaticPowerupActivationAllowed(boolean allowed) {
+        automaticActivationAllowed = allowed;
+    }
+
+    @Override
+    boolean supportsManualPowerupActivation() {
+        return true;
+    }
+
+    @Override
+    boolean requestManualPowerupActivation() {
+        if (!isReady()) {
+            return false;
+        }
+        manualActivationRequested = true;
+        return true;
+    }
+
+    @Override
     int activeDisplayPriority() {
         return 3;
     }
@@ -230,9 +251,12 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
         }
         deferInvisibilityExit = false;
         if (cooldownTimer <= 0f
-                && (loadedByRandomCard || shouldActivate(frame))) {
+                && (manualActivationRequested
+                        || automaticActivationAllowed
+                                && (loadedByRandomCard || shouldActivate(frame)))) {
             activeTimer = durationSeconds;
             loadedByRandomCard = false;
+            manualActivationRequested = false;
             cooldownTimer = invisibility ? 0f : cooldownSeconds;
             pendingForwardLaunchSpeedRatio =
                     Math.min(

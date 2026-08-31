@@ -61,12 +61,22 @@ public class TelemetryPeakTrackerTest {
         tracker.update(0.5f, 0f, 0f, 0f, 0f);
         tracker.update(0.497f, 0f, 0f, 0f, 0f);
 
-        assertEquals(0f, tracker.getSpeedRatio(), EPSILON);
-        assertEquals(0f, tracker.getSpeedKph(), EPSILON);
+        assertEquals(0.5f, tracker.getSpeedRatio(), EPSILON);
+        assertEquals(0.5f, tracker.getSpeedKph(), EPSILON);
 
         tracker.update(0.49f, 0f, 0f, 0f, 0f);
 
         assertEquals(0.5f, tracker.getSpeedRatio(), EPSILON);
+    }
+
+    @Test
+    public void displaysTheRisingPeakBeforeAReversalConfirmsIt() {
+        TelemetryPeakTracker tracker = new TelemetryPeakTracker();
+
+        tracker.update(0f, 0f, 0f, 0.02f, 0f);
+        tracker.update(0f, 0f, 0f, 0.09f, 0f);
+
+        assertEquals(0.09f, tracker.getDrift(), EPSILON);
     }
 
     @Test

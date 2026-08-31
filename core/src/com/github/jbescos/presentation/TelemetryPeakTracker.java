@@ -130,11 +130,11 @@ public final class TelemetryPeakTracker {
         }
 
         private float getValue() {
-            return value;
+            return seekingPeak ? peakCandidate : value;
         }
 
         private float getDisplayValue() {
-            return displayValue;
+            return seekingPeak ? peakCandidateDisplayValue : displayValue;
         }
 
         private void reset() {

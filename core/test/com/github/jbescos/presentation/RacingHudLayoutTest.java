@@ -31,6 +31,19 @@ public class RacingHudLayoutTest {
     }
 
     @Test
+    public void infoIconMatchesHeaderHeightInsideLargerTouchTarget() {
+        assertEquals(12.8f, RacingHudLayout.infoIconVisualSize(16f, 24f, 24f), 0.001f);
+        assertEquals(17.6f, RacingHudLayout.infoIconVisualSize(22f, 28f, 28f), 0.001f);
+        assertEquals(14f, RacingHudLayout.infoIconVisualSize(22f, 14f, 24f), 0.001f);
+    }
+
+    @Test
+    public void infoIconMovesUpToMatchTheVisibleHeaderGlyphs() {
+        assertEquals(1.6f, RacingHudLayout.infoIconVisualOffsetY(16f), 0.001f);
+        assertEquals(2f, RacingHudLayout.infoIconVisualOffsetY(22f), 0.001f);
+    }
+
+    @Test
     public void bottomPanelStopsGrowingOnTallDisplays() {
         assertEquals(151.2f, RacingHudLayout.bottomPanelHeight(720f), 0.001f);
         assertEquals(194f, RacingHudLayout.bottomPanelHeight(1080f), 0.001f);

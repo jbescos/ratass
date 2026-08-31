@@ -8,7 +8,8 @@ public final class DrivingKeyBindings {
         FORWARD,
         BACKWARD,
         LEFT,
-        RIGHT
+        RIGHT,
+        POWERUP
     }
 
     private final int[] keycodes = new int[Action.values().length];
@@ -22,6 +23,7 @@ public final class DrivingKeyBindings {
         keycodes[Action.BACKWARD.ordinal()] = Input.Keys.S;
         keycodes[Action.LEFT.ordinal()] = Input.Keys.A;
         keycodes[Action.RIGHT.ordinal()] = Input.Keys.D;
+        keycodes[Action.POWERUP.ordinal()] = Input.Keys.SPACE;
     }
 
     public int get(Action action) {

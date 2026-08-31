@@ -21,6 +21,7 @@
     <lib>z</lib>
   </libs>
   <frameworks>
+    <framework>GameController</framework>
     <framework>UIKit</framework>
     <framework>OpenGLES</framework>
     <framework>QuartzCore</framework>
@@ -29,4 +30,7 @@
     <framework>AudioToolbox</framework>
     <framework>AVFoundation</framework>
   </frameworks>
+  <forceLinkClasses>
+    <pattern>com.badlogic.gdx.controllers.IosControllerManager</pattern>
+  </forceLinkClasses>
 </config>

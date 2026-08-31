@@ -21,6 +21,7 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <gdx.version>1.14.2</gdx.version>
+        <gdx.controllers.version>2.2.4</gdx.controllers.version>
         <robovm.version>2.3.25</robovm.version>
         <gwt.version>2.11.0</gwt.version>
         <jsinterop.version>2.0.2</jsinterop.version>
@@ -74,6 +75,21 @@
                 <groupId>com.badlogicgames.gdx</groupId>
                 <artifactId>gdx-box2d-platform</artifactId>
                 <version>${gdx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.badlogicgames.gdx-controllers</groupId>
+                <artifactId>gdx-controllers-core</artifactId>
+                <version>${gdx.controllers.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.badlogicgames.gdx-controllers</groupId>
+                <artifactId>gdx-controllers-desktop</artifactId>
+                <version>${gdx.controllers.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.badlogicgames.gdx-controllers</groupId>
+                <artifactId>gdx-controllers-ios</artifactId>
+                <version>${gdx.controllers.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.mobidevelop.robovm</groupId>

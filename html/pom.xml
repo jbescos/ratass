@@ -97,6 +97,26 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
+            <groupId>com.badlogicgames.gdx-controllers</groupId>
+            <artifactId>gdx-controllers-core</artifactId>
+            <version>${gdx.controllers.version}</version>
+            <classifier>sources</classifier>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.badlogicgames.gdx-controllers</groupId>
+            <artifactId>gdx-controllers-gwt</artifactId>
+            <version>${gdx.controllers.version}</version>
+            <classifier>sources</classifier>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.badlogicgames.gdx</groupId>
+                    <artifactId>gdx-backend-gwt</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
             <groupId>javax.validation</groupId>
             <artifactId>validation-api</artifactId>
             <version>1.0.0.GA</version>

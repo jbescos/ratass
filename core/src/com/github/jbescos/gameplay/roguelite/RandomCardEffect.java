@@ -18,6 +18,7 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     private RogueliteCardId previousCardId;
     private boolean cycleExecuted;
     private float executionSettleTimer;
+    private boolean automaticPowerupActivationAllowed = true;
 
     RandomCardEffect(RogueliteCardId cardId, float cycleOffset) {
         this(
@@ -139,6 +140,29 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     @Override
     float cooldownTimeRemainingSeconds() {
         return delegate.cooldownTimeRemainingSeconds();
+    }
+
+    @Override
+    void setAutomaticPowerupActivationAllowed(boolean allowed) {
+        automaticPowerupActivationAllowed = allowed;
+        delegate.setAutomaticPowerupActivationAllowed(allowed);
+    }
+
+    @Override
+    boolean supportsManualPowerupActivation() {
+        return slotType == RogueliteSlotType.POWERUP
+                && delegate.supportsManualPowerupActivation();
+    }
+
+    @Override
+    boolean requestManualPowerupActivation() {
+        if (!supportsManualPowerupActivation()) {
+            return false;
+        }
+        boolean wasActive = delegate.isActive();
+        boolean accepted = delegate.requestManualPowerupActivation();
+        observeActivation(wasActive);
+        return accepted;
     }
 
     @Override
@@ -466,6 +490,8 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
         }
         previousCardId = selected;
         delegate = RogueliteEffectFactory.create(selected, cycleOffset);
+        delegate.setAutomaticPowerupActivationAllowed(
+                automaticPowerupActivationAllowed);
         cycleExecuted = false;
         executionSettleTimer = 0f;
         delegate.onLoadedByRandomCard();

@@ -17,17 +17,17 @@ publishing.
 ## Short Description
 
 Build a racing machine one decision at a time. Choose drivers, tuning,
-techniques, powerups, and revenge cards, then watch autonomous rivals turn every
-circuit into a roguelite battle.
+techniques, powerups, and revenge cards, then race through a roguelite battle
+where you can trust your driver or take control yourself.
 
 ## About This Game
 
-**You do not control the car. You control the decisions.**
+**Build the strategy. Let your driver race, or take control yourself.**
 
-Rogue Circuit is a racing roguelite about building a strategy while autonomous
-drivers fight for every position. Choose a car and driver, earn experience
-during the race, and assemble a five-card loadout that changes how your machine
-behaves.
+Rogue Circuit is a racing roguelite about building a strategy while drivers
+fight for every position. Choose a car and driver, earn experience during the
+race, and assemble a five-card loadout that changes how your machine behaves.
+Trust your driver or take manual control whenever the race demands it.
 
 Equip tuning that changes the car itself. Teach it techniques that react to the
 race. Trigger powerups on the right section of track. Turn collisions into
@@ -44,8 +44,7 @@ and capable as the championship continues.
 
 ### Watch The Race Evolve
 
-- Autonomous drivers race, overtake, drift, collide, and recover without direct
-  steering from the player.
+- Let your driver race autonomously, or take direct control when you want it.
 - Rivals choose their own cards and compete with different racing behavior.
 - Follow any driver or let the event camera find overtakes, impacts, and revenge
   moments.
@@ -88,35 +87,35 @@ Validate these values on a clean machine before publishing them.
 ### Windows Minimum
 
 - **OS:** Windows 10 64-bit
-- **Processor:** 4-core 2.5 GHz processor
-- **Memory:** 8 GB RAM
-- **Graphics:** OpenGL 3.2-compatible graphics drivers
-- **Storage:** 1 GB available space
+- **Processor:** Dual-core 2.0 GHz processor
+- **Memory:** 2 GB RAM
+- **Graphics:** OpenGL 3.2-compatible integrated graphics
+- **Storage:** 500 MB available space
 
 ### Windows Recommended
 
 - **OS:** Windows 11 64-bit
-- **Processor:** 6-core 3.0 GHz processor
-- **Memory:** 16 GB RAM
-- **Graphics:** Dedicated or modern integrated OpenGL graphics
-- **Storage:** 1 GB available space
+- **Processor:** Quad-core 2.5 GHz processor
+- **Memory:** 4 GB RAM
+- **Graphics:** Modern integrated or dedicated OpenGL 3.2 graphics
+- **Storage:** 500 MB available space
 
 ### Linux Minimum
 
 - **OS:** Ubuntu 22.04 LTS or equivalent 64-bit Linux
-- **Processor:** 4-core 2.5 GHz processor
-- **Memory:** 8 GB RAM
-- **Graphics:** OpenGL 3.2-compatible graphics
-- **Storage:** 1 GB available space
+- **Processor:** Dual-core 2.0 GHz processor
+- **Memory:** 2 GB RAM
+- **Graphics:** OpenGL 3.2-compatible integrated graphics
+- **Storage:** 500 MB available space
 - **Sound card:** OpenAL-compatible audio
 
 ### Linux Recommended
 
 - **OS:** Ubuntu 24.04 LTS or equivalent 64-bit Linux
-- **Processor:** 6-core 3.0 GHz processor
-- **Memory:** 16 GB RAM
-- **Graphics:** Dedicated or modern integrated OpenGL graphics
-- **Storage:** 1 GB available space
+- **Processor:** Quad-core 2.5 GHz processor
+- **Memory:** 4 GB RAM
+- **Graphics:** Modern integrated or dedicated OpenGL 3.2 graphics
+- **Storage:** 500 MB available space
 
 ## Feature Declarations
 

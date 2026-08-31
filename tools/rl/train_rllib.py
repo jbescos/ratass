@@ -1655,7 +1655,48 @@ def maybe_promote_best_policy(
             flush=True,
         )
         return result
-    if not math.isfinite(avg_targets) or avg_targets < args.best_eval_min_route_targets:
+    below_route_target = (
+        not math.isfinite(avg_targets)
+        or avg_targets < args.best_eval_min_route_targets
+    )
+    fallback_installed_score: Optional[float] = None
+    fallback_comparison_enabled = (
+        below_route_target
+        and getattr(args, "best_eval_promote_if_better_than_installed", False)
+        and output_file.exists()
+    )
+    if fallback_comparison_enabled:
+        installed_evaluation = run_policy_evaluation(
+            args,
+            output_file,
+            emit_output=False,
+        )
+        fallback_installed_score = installed_evaluation.score
+        if (
+                fallback_installed_score is not None
+                and score > fallback_installed_score):
+            print(
+                f"best_policy_fallback_accepted score={score:.3f} "
+                f"installed_score={fallback_installed_score:.3f} "
+                f"avg_targets={avg_targets:.3f} "
+                f"min_route_targets={args.best_eval_min_route_targets:.3f} "
+                "reason=better_than_installed_below_gate",
+                flush=True,
+            )
+            below_route_target = False
+        else:
+            installed_score_label = (
+                "none"
+                if fallback_installed_score is None
+                else f"{fallback_installed_score:.3f}"
+            )
+            print(
+                f"best_policy_fallback_rejected score={score:.3f} "
+                f"installed_score={installed_score_label} "
+                "reason=not_better_than_installed",
+                flush=True,
+            )
+    if below_route_target:
         print(
             f"best_policy_rejected score={score:.3f} "
             f"avg_targets={avg_targets:.3f} "
@@ -1683,6 +1724,18 @@ def maybe_promote_best_policy(
         )
     except (TypeError, ValueError):
         previous_score = float("-inf")
+    if (
+            fallback_installed_score is not None
+            and fallback_installed_score > previous_score):
+        previous_score = fallback_installed_score
+        state = {
+            "best_score": fallback_installed_score,
+            "iteration": 0,
+            "checkpoint": "installed_policy",
+            "policy": os.fspath(output_file),
+            "archived_policy": os.fspath(output_file),
+            "metrics": {},
+        }
     if output_file.exists() and compare_installed and not args.best_eval_ignore_installed:
         installed_evaluation = run_policy_evaluation(args, output_file, emit_output=False)
         installed_score = installed_evaluation.score
@@ -2068,10 +2121,14 @@ def parse_args() -> argparse.Namespace:
             "offroad_shallow",
             "offroad_angled",
             "offroad_hard",
+            "offroad_deep",
             "offroad_reversed",
             "onroad_misaligned",
+            "onroad_edge",
             "map014_inflection",
             "blocked_front",
+            "blocked_angled",
+            "side_contact",
             "nose_to_nose",
         ),
         default="mixed",
@@ -2348,6 +2405,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "compare candidate policies only against the current best-eval state, "
             "not the policy currently installed at --best-export-output"
+        ),
+    )
+    parser.add_argument(
+        "--best-eval-promote-if-better-than-installed",
+        action="store_true",
+        help=(
+            "when a candidate misses the route gate, still promote it if its "
+            "evaluation score is strictly better than the installed output"
         ),
     )
     parser.add_argument(

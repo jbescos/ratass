@@ -7,21 +7,29 @@ import org.junit.Test;
 
 public final class TouchDrivingControlsTest {
     @Test
-    public void enablesTouchDrivingDuringPlay() {
-        assertTrue(TouchDrivingControls.shouldEnable(true, true, true));
-        assertFalse(TouchDrivingControls.shouldEnable(true, true, false));
+    public void enablesTouchDrivingOnlyDuringManualPlay() {
+        assertTrue(TouchDrivingControls.shouldEnable(true, true, true, true));
+        assertFalse(TouchDrivingControls.shouldEnable(true, true, true, false));
+        assertFalse(TouchDrivingControls.shouldEnable(true, true, false, true));
     }
 
     @Test
     public void remainsDisabledWithoutPresentationOrTouchInput() {
-        assertFalse(TouchDrivingControls.shouldEnable(false, true, true));
-        assertFalse(TouchDrivingControls.shouldEnable(true, false, true));
+        assertFalse(TouchDrivingControls.shouldEnable(false, true, true, true));
+        assertFalse(TouchDrivingControls.shouldEnable(true, false, true, true));
     }
 
     @Test
-    public void pedalsRemainExclusiveToManualSandbox() {
-        assertTrue(TouchDrivingControls.shouldShowPedals(true, true));
-        assertFalse(TouchDrivingControls.shouldShowPedals(false, true));
-        assertFalse(TouchDrivingControls.shouldShowPedals(true, false));
+    public void pedalsFollowManualModeOnEveryGameType() {
+        assertTrue(TouchDrivingControls.shouldShowPedals(true));
+        assertFalse(TouchDrivingControls.shouldShowPedals(false));
+    }
+
+    @Test
+    public void manualPowerupHasIndependentTouchControl() {
+        assertTrue(TouchDrivingControls.shouldEnablePowerup(true, true, true, true));
+        assertFalse(TouchDrivingControls.shouldEnablePowerup(true, true, true, false));
+        assertFalse(TouchDrivingControls.shouldEnablePowerup(true, false, true, true));
+        assertFalse(TouchDrivingControls.shouldEnablePowerup(true, true, false, true));
     }
 }

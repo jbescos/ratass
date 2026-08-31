@@ -318,6 +318,47 @@ public final class RogueliteCarUpgrades {
         return false;
     }
 
+    public void setAutomaticPowerupActivationAllowed(boolean allowed) {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            RogueliteCardDefinition definition =
+                    RogueliteCardCatalog.get(effect.getCardId());
+            if (definition != null
+                    && definition.getSlotType() == RogueliteSlotType.POWERUP) {
+                effect.setAutomaticPowerupActivationAllowed(allowed);
+            }
+        }
+    }
+
+    public boolean canManuallyActivatePowerup() {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            RogueliteCardDefinition definition =
+                    RogueliteCardCatalog.get(effect.getCardId());
+            if (definition != null
+                    && definition.getSlotType() == RogueliteSlotType.POWERUP
+                    && effect.supportsManualPowerupActivation()
+                    && effect.isReady()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean requestManualPowerupActivation() {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            RogueliteCardDefinition definition =
+                    RogueliteCardCatalog.get(effect.getCardId());
+            if (definition != null
+                    && definition.getSlotType() == RogueliteSlotType.POWERUP
+                    && effect.requestManualPowerupActivation()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean isBestDriverActive() {
         for (int i = 0; i < effects.size(); i++) {
             if (effects.get(i).usesBestDriver()) {
