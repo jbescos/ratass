@@ -449,7 +449,7 @@ public class RogueliteCarUpgradesTest {
         RogueliteCarUpgrades carbonMonocoque = configured(RogueliteCardId.CARBON_MONOCOQUE);
         RogueliteCarUpgrades grapheneChassis = configured(RogueliteCardId.GRAPHENE_CHASSIS);
 
-        assertEquals(0.96f, lightweight.getMassMultiplier(), EPSILON);
+        assertEquals(0.93f, lightweight.getMassMultiplier(), EPSILON);
         assertEquals(1.06f, heavyweight.getMassMultiplier(), EPSILON);
         assertEquals(1f, heavyweight.getFrontCollisionPushMultiplier(), EPSILON);
         assertEquals(1f, aero.getMassMultiplier(), EPSILON);
@@ -460,7 +460,7 @@ public class RogueliteCarUpgradesTest {
         assertEquals(streamline.getGripMultiplier(0f), streamline.getGripMultiplier(0.50f), EPSILON);
         assertEquals(1f, streamline.getSteeringMultiplier(0f), EPSILON);
         assertEquals(0.96f, carbonPanels.getMassMultiplier(), EPSILON);
-        assertEquals(0.92f, carbonMonocoque.getMassMultiplier(), EPSILON);
+        assertEquals(0.88f, carbonMonocoque.getMassMultiplier(), EPSILON);
         assertEquals(0.97f, grapheneChassis.getMassMultiplier(), EPSILON);
         assertTrue(carbonMonocoque.getAccelerationMultiplier()
                 > carbonPanels.getAccelerationMultiplier());
@@ -480,6 +480,42 @@ public class RogueliteCarUpgradesTest {
         assertEquals(velocity.getDragMultiplier(), vectoring.getDragMultiplier(), EPSILON);
         assertEquals(velocity.getMassMultiplier(), vectoring.getMassMultiplier(), EPSILON);
         assertEquals(velocity.getSteeringMultiplier(0f), vectoring.getSteeringMultiplier(0f), EPSILON);
+    }
+
+    @Test
+    public void strengthenedUnderselectedTuningCardsKeepTheirOriginalStatCombinations() {
+        RogueliteCarUpgrades agile = configured(RogueliteCardId.AGILE_CHASSIS);
+        assertEquals(1.08f, agile.getGripMultiplier(0f), EPSILON);
+        assertEquals(0.93f, agile.getMassMultiplier(), EPSILON);
+        assertEquals(1f / 0.93f, agile.getDragMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades raceTune = configured(RogueliteCardId.RACE_TUNE);
+        assertEquals(1.18f, raceTune.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.08f, raceTune.getGripMultiplier(0f), EPSILON);
+        assertEquals(1f / 0.92f, raceTune.getDragMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades carbon = configured(RogueliteCardId.CARBON_MONOCOQUE);
+        assertEquals(1.19f, carbon.getAccelerationMultiplier(), EPSILON);
+        assertEquals(0.97f, carbon.getGripMultiplier(0f), EPSILON);
+        assertEquals(0.88f, carbon.getMassMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades magnesium = configured(RogueliteCardId.MAGNESIUM_SUSPENSION);
+        assertEquals(0.95f, magnesium.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.12f, magnesium.getGripMultiplier(0f), EPSILON);
+        assertEquals(0.86f, magnesium.getMassMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades aeroAgile = configured(RogueliteCardId.AERO_AGILE_CHASSIS);
+        assertEquals(1.11f, aeroAgile.getGripMultiplier(0f), EPSILON);
+        assertEquals(0.88f, aeroAgile.getMassMultiplier(), EPSILON);
+        assertEquals(1f / 0.95f, aeroAgile.getDragMultiplier(), EPSILON);
+
+        RogueliteCarUpgrades powerMonocoque = configured(RogueliteCardId.TORQUE_VECTORING);
+        assertEquals(1.05f, powerMonocoque.getAccelerationMultiplier(), EPSILON);
+        assertEquals(1.20f, powerMonocoque.getGripMultiplier(0f), EPSILON);
+
+        RogueliteCarUpgrades carbonPrototype = configured(RogueliteCardId.CARBON_PROTOTYPE);
+        assertEquals(1.09f, carbonPrototype.getAccelerationMultiplier(), EPSILON);
+        assertEquals(0.75f, carbonPrototype.getMassMultiplier(), EPSILON);
     }
 
     @Test
@@ -1064,7 +1100,7 @@ public class RogueliteCarUpgradesTest {
         update(drift, 0.1f, 1f, true, 0.24f, 0.7f, 0f, 0.2f, 0.2f, 0.2f, 0f, 0f);
         assertEquals(1.27f, drift.getAccelerationMultiplier(), EPSILON);
         assertEquals(1f, drift.getGripMultiplier(0f), EPSILON);
-        assertEquals(0.46f, drift.getMassMultiplier(), EPSILON);
+        assertEquals(0.25f, drift.getMassMultiplier(), EPSILON);
         assertEquals(1f, drift.getDragMultiplier(), EPSILON);
 
         RogueliteCarUpgrades offRoad = configured(
@@ -1153,7 +1189,7 @@ public class RogueliteCarUpgradesTest {
         update(sprint, 0.1f, 1f, true, 0.02f, 0.7f, 0f, 0f, 1f, 0f, 0f, 0f);
         assertEquals(1.18f, sprint.getAccelerationMultiplier(), EPSILON);
         assertEquals(1f, sprint.getDragMultiplier(), EPSILON);
-        assertEquals(0.64f, sprint.getMassMultiplier(), EPSILON);
+        assertEquals(0.50f, sprint.getMassMultiplier(), EPSILON);
 
         RogueliteCarUpgrades slide = configured(
                 RogueliteCardId.CARBON_PROTOTYPE,
@@ -1162,7 +1198,7 @@ public class RogueliteCarUpgradesTest {
         assertEquals(1.09f, slide.getAccelerationMultiplier(), EPSILON);
         assertEquals(1f, slide.getGripMultiplier(0f), EPSILON);
         assertEquals(1f, slide.getDragMultiplier(), EPSILON);
-        assertEquals(0.46f, slide.getMassMultiplier(), EPSILON);
+        assertEquals(0.25f, slide.getMassMultiplier(), EPSILON);
 
         assertEquals(2f, apex.getActiveTimeRemainingSeconds(RogueliteCardId.APEX_FOCUS), EPSILON);
         assertEquals(4f, sprint.getActiveTimeRemainingSeconds(RogueliteCardId.SPRINT_EXPERT), EPSILON);
@@ -1270,6 +1306,42 @@ public class RogueliteCarUpgradesTest {
         assertNearbyRivalTechnique(RogueliteCardId.CLOSE_QUARTERS, 0.05f);
         assertNearbyRivalTechnique(RogueliteCardId.PACK_RACER, 0.10f);
         assertNearbyRivalTechnique(RogueliteCardId.TRAFFIC_DOMINANCE, 0.20f);
+    }
+
+    @Test
+    public void techniqueCanUseItsWiderNearbyRivalSignalWithoutActivatingPowerup() {
+        RogueliteCarUpgrades upgrades = configured(
+                RogueliteCardId.CLOSE_QUARTERS,
+                RogueliteCardId.GHOST_CLOAK);
+
+        for (int i = 0; i < 20; i++) {
+            upgrades.update(
+                    0.1f,
+                    1f,
+                    true,
+                    false,
+                    false,
+                    0f,
+                    0.5f,
+                    0f,
+                    10f,
+                    100f,
+                    2f,
+                    0f,
+                    1f,
+                    0f,
+                    0f,
+                    0f,
+                    false,
+                    0f,
+                    0f,
+                    false,
+                    0.5f);
+        }
+
+        assertEquals(1.05f, upgrades.getAccelerationMultiplier(), EPSILON);
+        assertTrue(upgrades.getActiveCardIds().contains(RogueliteCardId.CLOSE_QUARTERS));
+        assertFalse(upgrades.getActiveCardIds().contains(RogueliteCardId.GHOST_CLOAK));
     }
 
     @Test

@@ -11,7 +11,7 @@ public final class RacingHudLayout {
     private static final int TELEMETRY_ROWS = 6;
     private static final float CAR_STATS_SECTION_RATIO = 0.27f;
     private static final float TELEMETRY_SECTION_RATIO = 0.40f;
-    private static final float SIDEBAR_TEXT_SCALE = 1.12f;
+    private static final float SIDEBAR_TEXT_SCALE = 1.05f;
     private static final float SIDEBAR_ROW_SCALE = 1.4f;
     private static final float SIDEBAR_TIMING_HEADER_SCALE = 0.82f;
 
@@ -217,6 +217,33 @@ public final class RacingHudLayout {
         return SIDEBAR_TIMING_HEADER_SCALE;
     }
 
+    public static float sidebarContentWidth(
+            float positionWidth,
+            float positionGap,
+            float nameWidth,
+            float columnGap,
+            float bestLapWidth,
+            float currentLapWidth,
+            float championshipChangeWidth,
+            float championshipPointsWidth,
+            float titleWidth) {
+        float raceWidth =
+                positive(positionWidth)
+                        + positive(positionGap)
+                        + positive(nameWidth)
+                        + positive(columnGap) * 2f
+                        + positive(bestLapWidth)
+                        + positive(currentLapWidth);
+        float championshipWidth =
+                positive(positionWidth)
+                        + positive(positionGap)
+                        + positive(nameWidth)
+                        + positive(columnGap) * 2f
+                        + positive(championshipChangeWidth)
+                        + positive(championshipPointsWidth);
+        return Math.max(Math.max(raceWidth, championshipWidth), positive(titleWidth));
+    }
+
     public static float sidebarLineHeight(float unscaledLineHeight) {
         return Math.max(0f, unscaledLineHeight) * SIDEBAR_TEXT_SCALE;
     }
@@ -251,5 +278,9 @@ public final class RacingHudLayout {
 
     private static float clamp(float value, float minimum, float maximum) {
         return Math.max(minimum, Math.min(maximum, value));
+    }
+
+    private static float positive(float value) {
+        return Math.max(0f, value);
     }
 }

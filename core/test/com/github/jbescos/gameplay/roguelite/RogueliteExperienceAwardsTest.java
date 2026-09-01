@@ -53,6 +53,11 @@ public class RogueliteExperienceAwardsTest {
                 RogueliteExperienceAwards.formatNotice(
                         RogueliteExperienceAwards.Reason.FASTEST_LAP,
                         RogueliteExperienceAwards.FASTEST_LAP));
+        assertEquals(
+                "Lap complete +5 XP",
+                RogueliteExperienceAwards.formatNotice(
+                        RogueliteExperienceAwards.Reason.LAP_COMPLETE,
+                        RogueliteExperienceAwards.LAP_COMPLETE));
     }
 
     @Test

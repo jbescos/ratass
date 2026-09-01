@@ -771,6 +771,52 @@ public final class RogueliteCarUpgrades {
             float racePositionFactor,
             float revengeNearbyOpponentProximity,
             boolean longStraight) {
+        update(
+                delta,
+                throttle,
+                onRoad,
+                adverseWeather,
+                recentlyImpacted,
+                slip,
+                speedRatio,
+                slipstreamBoost,
+                routeProgress,
+                routeLength,
+                safeRecoveryRouteGain,
+                cornerSeverity,
+                nextCornerDistance,
+                nextCornerSeverity,
+                opponentAheadProximity,
+                nearbyOpponentProximity,
+                forwardLaneBlocked,
+                racePositionFactor,
+                revengeNearbyOpponentProximity,
+                longStraight,
+                nearbyOpponentProximity);
+    }
+
+    public void update(
+            float delta,
+            float throttle,
+            boolean onRoad,
+            boolean adverseWeather,
+            boolean recentlyImpacted,
+            float slip,
+            float speedRatio,
+            float slipstreamBoost,
+            float routeProgress,
+            float routeLength,
+            float safeRecoveryRouteGain,
+            float cornerSeverity,
+            float nextCornerDistance,
+            float nextCornerSeverity,
+            float opponentAheadProximity,
+            float nearbyOpponentProximity,
+            boolean forwardLaneBlocked,
+            float racePositionFactor,
+            float revengeNearbyOpponentProximity,
+            boolean longStraight,
+            float techniqueNearbyOpponentProximity) {
         if (effects.isEmpty()) {
             return;
         }
@@ -793,7 +839,8 @@ public final class RogueliteCarUpgrades {
                 forwardLaneBlocked,
                 RogueliteEffectMath.clamp(racePositionFactor, 0f, 1f),
                 RogueliteEffectMath.clamp(revengeNearbyOpponentProximity, 0f, 1f),
-                longStraight);
+                longStraight,
+                RogueliteEffectMath.clamp(techniqueNearbyOpponentProximity, 0f, 1f));
         float timerDelta = delta * timedEffectDecay;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);

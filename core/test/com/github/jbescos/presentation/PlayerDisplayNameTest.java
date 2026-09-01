@@ -23,4 +23,10 @@ public class PlayerDisplayNameTest {
         assertEquals("", PlayerDisplayName.editableValue("YOU"));
         assertEquals("RACER", PlayerDisplayName.editableValue("RACER"));
     }
+
+    @Test
+    public void raceLabelKeepsTheNameAndLocalizesOnlyTheLevelPrefix() {
+        assertEquals("DrBolinga (Nv 1)", PlayerDisplayName.raceLabel("DrBolinga", 1, true));
+        assertEquals("Overtake (Lv 3)", PlayerDisplayName.raceLabel("Overtake", 3, false));
+    }
 }

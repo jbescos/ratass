@@ -84,7 +84,7 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
             case LIGHT_COMPOUND:
                 return tuning(-0.04f, 0.05f, 0f, 0.92f);
             case AGILE_CHASSIS:
-                return tuning(0f, 0.05f, -0.07f, 0.96f);
+                return tuning(0f, 0.08f, -0.07f, 0.93f);
             case STREAMLINED_CHASSIS:
                 return tuning(-0.03f, 0f, 0.18f, 0.90f);
             case LOW_DRAG_FEATHERWEIGHT:
@@ -92,7 +92,7 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
 
             // Tier 2: the same combinations with stronger benefits.
             case RACE_TUNE:
-                return tuning(0.14f, 0.05f, -0.08f, 1f);
+                return tuning(0.18f, 0.08f, -0.08f, 1f);
             case HEAVYWEIGHT_TUNE:
                 return tuning(0.16f, 0.06f, 0f, 1.06f);
             case LOW_DRAG_BODY:
@@ -100,7 +100,7 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
             case DRIFT_DIFFERENTIAL:
                 return tuning(0.22f, 0f, 0.24f, 1.05f);
             case CARBON_MONOCOQUE:
-                return tuning(0.15f, -0.03f, 0f, 0.92f);
+                return tuning(0.19f, -0.03f, 0f, 0.88f);
             case TITANIUM_DRIVE:
                 return tuning(0.14f, 0f, -0.05f, 0.96f);
             case DOWNFORCE_PACKAGE:
@@ -108,9 +108,9 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
             case GROUNDED_DOWNFORCE:
                 return tuning(0f, 0.12f, 0.30f, 1.03f);
             case MAGNESIUM_SUSPENSION:
-                return tuning(-0.05f, 0.08f, 0f, 0.90f);
+                return tuning(-0.05f, 0.12f, 0f, 0.86f);
             case AERO_AGILE_CHASSIS:
-                return tuning(0f, 0.07f, -0.05f, 0.92f);
+                return tuning(0f, 0.11f, -0.05f, 0.88f);
             case CARBON_LONGTAIL:
                 return tuning(-0.04f, 0f, 0.32f, 0.82f);
             case VENTURI_MONOCOQUE:
@@ -124,7 +124,7 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
             case VELOCITY_SHELL:
                 return tuning(0.26f, 0.02f, 0f, 1f);
             case TORQUE_VECTORING:
-                return tuning(0.05f, 0.08f, 0f, 1f);
+                return tuning(0.05f, 0.20f, 0f, 1f);
             case GRAPHENE_CHASSIS:
                 return tuning(0f, 0.09f, 0f, 0.97f);
             case TITANIUM_SKELETON:
@@ -134,7 +134,7 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
             case ACTIVE_AERO_SHELL:
                 return tuning(0f, 0f, 0.50f, 0.78f);
             case CARBON_PROTOTYPE:
-                return tuning(0.09f, 0f, 0f, 0.82f);
+                return tuning(0.09f, 0f, 0f, 0.75f);
             case TRACK_VACUUM:
                 return tuning(0f, 0.10f, 0.70f, 1f);
             case WING_CAR:

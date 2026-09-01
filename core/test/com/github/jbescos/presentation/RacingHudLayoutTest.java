@@ -98,12 +98,42 @@ public class RacingHudLayoutTest {
 
     @Test
     public void sidebarUsesCompactTextAndKeepsLargeClickableRows() {
-        assertEquals(1.12f, RacingHudLayout.sidebarTextScale(), 0.001f);
+        assertEquals(1.05f, RacingHudLayout.sidebarTextScale(), 0.001f);
         assertEquals(1.4f, RacingHudLayout.sidebarRowScale(), 0.001f);
         assertEquals(0.82f, RacingHudLayout.sidebarTimingHeaderScale(), 0.001f);
-        assertEquals(13.44f, RacingHudLayout.sidebarLineHeight(12f), 0.001f);
+        assertEquals(12.6f, RacingHudLayout.sidebarLineHeight(12f), 0.001f);
         assertEquals(22f, RacingHudLayout.sidebarTableRowStep(12f), 0.001f);
         assertEquals(30f, RacingHudLayout.sidebarTableRowStep(20f), 0.001f);
+    }
+
+    @Test
+    public void sidebarContentWidthUsesTheWidestMeasuredTable() {
+        assertEquals(
+                170f,
+                RacingHudLayout.sidebarContentWidth(
+                        16f,
+                        4f,
+                        52f,
+                        7f,
+                        42f,
+                        42f,
+                        22f,
+                        22f,
+                        120f),
+                0.001f);
+        assertEquals(
+                190f,
+                RacingHudLayout.sidebarContentWidth(
+                        16f,
+                        4f,
+                        52f,
+                        7f,
+                        42f,
+                        42f,
+                        22f,
+                        22f,
+                        190f),
+                0.001f);
     }
 
     @Test

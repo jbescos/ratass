@@ -207,7 +207,8 @@ final class RaceTechniqueEffect extends RogueliteUpgradeEffect {
     }
 
     private float nearbyRivalBonus() {
-        if (latestFrame == null || latestFrame.nearbyOpponentProximity <= 0.01f) {
+        if (latestFrame == null
+                || latestFrame.techniqueNearbyOpponentProximity <= 0.01f) {
             return 0f;
         }
         switch (getCardId()) {

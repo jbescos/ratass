@@ -81,7 +81,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.AGILE_CHASSIS,
                 "Agile Chassis",
                 "Grip and lower mass trade aerodynamic efficiency.",
-                "Grip +5%\nMass -4%\nAero -7%",
+                "Grip +8%\nMass -7%\nAero -7%",
                 1,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -103,7 +103,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.RACE_TUNE,
                 "Race Tune",
                 "Power and grip trade aerodynamic efficiency.",
-                "Power +14%\nGrip +5%\nAero -8%",
+                "Power +18%\nGrip +8%\nAero -8%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -131,7 +131,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.CARBON_MONOCOQUE,
                 "Carbon Monocoque",
                 "Power and lower mass trade tire grip.",
-                "Power +15%\nMass -8%\nGrip -3%",
+                "Power +19%\nMass -12%\nGrip -3%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -159,14 +159,14 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.MAGNESIUM_SUSPENSION,
                 "Magnesium Suspension",
                 "Grip and lower mass trade engine power.",
-                "Grip +8%\nMass -10%\nPower -5%",
+                "Grip +12%\nMass -14%\nPower -5%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.AERO_AGILE_CHASSIS,
                 "Aero-Agile Chassis",
                 "Grip and lower mass trade aerodynamic efficiency.",
-                "Grip +7%\nMass -8%\nAero -5%",
+                "Grip +11%\nMass -12%\nAero -5%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -209,7 +209,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.TORQUE_VECTORING,
                 "Power Monocoque",
                 "Power and grip improve together.",
-                "Power +5%\nGrip +8%",
+                "Power +5%\nGrip +20%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -244,7 +244,7 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.CARBON_PROTOTYPE,
                 "Carbon Prototype",
                 "Power and lower mass improve together.",
-                "Power +9%\nMass -18%",
+                "Power +9%\nMass -25%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(

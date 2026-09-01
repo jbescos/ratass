@@ -3,6 +3,7 @@ package com.github.jbescos.gameplay.roguelite;
 public final class RogueliteExperienceAwards {
     public static final int PASS_RIVAL = 6;
     public static final int FASTEST_LAP = 6;
+    public static final int LAP_COMPLETE = 5;
     public static final int REVENGE = 4;
     public static final int PUSH_RIVAL_OFF_ROAD = 6;
     public static final int DRIFT_SECOND = 1;
@@ -81,6 +82,7 @@ public final class RogueliteExperienceAwards {
         REVENGE("Revenge", RogueliteExperienceAwards.REVENGE, true),
         PUSH_OFF_ROAD("Push off-road", PUSH_RIVAL_OFF_ROAD, true),
         DRIFT("Drift", DRIFT_SECOND, true),
+        LAP_COMPLETE("Lap complete", RogueliteExperienceAwards.LAP_COMPLETE, true),
         FINISH("Finish", 0, false);
 
         private final String displayName;

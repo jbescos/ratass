@@ -27,4 +27,9 @@ public final class PlayerDisplayName {
         }
         return result.length() == 0 ? DEFAULT : result.toString();
     }
+
+    public static String raceLabel(String name, int level, boolean spanish) {
+        String safeName = name == null ? "" : name;
+        return safeName + (spanish ? " (Nv " : " (Lv ") + Math.max(0, level) + ")";
+    }
 }

@@ -624,7 +624,9 @@ public final class CardStrategyTrainingEnvironment {
                     4,
                     Math.min(
                             RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP,
-                            Math.round(8f + strength * 4f + random.nextInt(7))));
+                            run.getRacecraftXpAward(
+                                            RogueliteExperienceAwards.Reason.LAP_COMPLETE)
+                                    + Math.round(8f + strength * 4f + random.nextInt(7))));
             lapExperience[vehicleId] = amount;
         }
         applyExpectedBuildLeechTransfers(lapExperience);
