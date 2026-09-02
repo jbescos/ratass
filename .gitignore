@@ -127,6 +127,7 @@ __pycache__/
 /marketing/trailer/output/*.mp4
 /marketing/trailer/output/*-contact.png
 /marketing/trailer/output/poster-candidates.png
+/marketing/trailer/output/screenshots/
 
 ## OS Specific
 .DS_Store

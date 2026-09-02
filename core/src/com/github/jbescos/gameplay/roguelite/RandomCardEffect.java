@@ -149,6 +149,13 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    void triggerImmediately() {
+        boolean wasActive = delegate.isActive();
+        delegate.triggerImmediately();
+        observeActivation(wasActive);
+    }
+
+    @Override
     boolean supportsManualPowerupActivation() {
         return slotType == RogueliteSlotType.POWERUP
                 && delegate.supportsManualPowerupActivation();

@@ -1,34 +1,48 @@
 [0:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v0];
-[0:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.28,afade=t=in:st=0:d=0.08,afade=t=out:st=3.92:d=0.08[a0];
+[0:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.45[a0];
 [1:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v1];
-[1:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.28,afade=t=in:st=0:d=0.08,afade=t=out:st=3.92:d=0.08[a1];
+[1:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.42[a1];
 [2:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v2];
-[2:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.28,afade=t=in:st=0:d=0.08,afade=t=out:st=3.92:d=0.08[a2];
+[2:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.48[a2];
 [3:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v3];
-[3:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.28,afade=t=in:st=0:d=0.08,afade=t=out:st=3.92:d=0.08[a3];
-[4:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v4];
-[4:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.28,afade=t=in:st=0:d=0.08,afade=t=out:st=3.92:d=0.08[a4];
-[5:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v5];
-[5:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.28,afade=t=in:st=0:d=0.08,afade=t=out:st=3.92:d=0.08[a5];
-[6:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v6];
-[6:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.28,afade=t=in:st=0:d=0.08,afade=t=out:st=3.92:d=0.08[a6];
-[7:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v7];
-[7:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.28,afade=t=in:st=0:d=0.08,afade=t=out:st=3.92:d=0.08[a7];
-[8:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v8];
-[8:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.28,afade=t=in:st=0:d=0.08,afade=t=out:st=3.92:d=0.08[a8];
-[9:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v9];
-[9:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.28,afade=t=in:st=0:d=0.08,afade=t=out:st=4.92:d=0.08[a9];
-[11:v]trim=duration=5,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080:0:(ih-oh)/2,setsar=1,fps=60,format=yuv420p[v10];
-anullsrc=r=48000:cl=stereo,atrim=duration=5,asetpts=PTS-STARTPTS[a10];
-[v0][a0][v1][a1][v2][a2][v3][a3][v4][a4][v5][a5][v6][a6][v7][a7][v8][a8][v9][a9][v10][a10]concat=n=11:v=1:a=1[basev][gamea];
+[3:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.34[a3];
+[4:v]trim=duration=2,setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v4];
+anullsrc=r=48000:cl=stereo,atrim=duration=2,asetpts=PTS-STARTPTS[a4];
+[5:v]trim=duration=2,setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v5];
+anullsrc=r=48000:cl=stereo,atrim=duration=2,asetpts=PTS-STARTPTS[a5];
+[6:v]trim=duration=2,setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v6];
+anullsrc=r=48000:cl=stereo,atrim=duration=2,asetpts=PTS-STARTPTS[a6];
+[7:v]trim=duration=2,setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v7];
+anullsrc=r=48000:cl=stereo,atrim=duration=2,asetpts=PTS-STARTPTS[a7];
+[8:v]trim=duration=2,setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v8];
+anullsrc=r=48000:cl=stereo,atrim=duration=2,asetpts=PTS-STARTPTS[a8];
+[9:v]trim=duration=2,setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v9];
+anullsrc=r=48000:cl=stereo,atrim=duration=2,asetpts=PTS-STARTPTS[a9];
+[10:v]trim=duration=4,setpts=PTS-STARTPTS,scale=-1:1080,crop=1920:1080:x='min(in_w-out_w,(in_w-out_w)*t/4)':y=0,setsar=1,fps=60,format=yuv420p[v10];
+anullsrc=r=48000:cl=stereo,atrim=duration=4,asetpts=PTS-STARTPTS[a10];
+[11:v]trim=duration=3,setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v11];
+anullsrc=r=48000:cl=stereo,atrim=duration=3,asetpts=PTS-STARTPTS[a11];
+[12:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v12];
+[12:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.58[a12];
+[13:v]trim=duration=2,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=60,format=yuv420p[v13];
+anullsrc=r=48000:cl=stereo,atrim=duration=2,asetpts=PTS-STARTPTS[a13];
+[14:v]trim=duration=2,setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=60,format=yuv420p[v14];
+anullsrc=r=48000:cl=stereo,atrim=duration=2,asetpts=PTS-STARTPTS[a14];
+[15:v]setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v15];
+[15:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.45[a15];
+[16:v]trim=duration=4,setpts=PTS-STARTPTS,scale=1920:1080,setsar=1,fps=60,format=yuv420p[v16];
+anullsrc=r=48000:cl=stereo,atrim=duration=4,asetpts=PTS-STARTPTS[a16];
+[v0][a0][v1][a1][v2][a2][v3][a3][v4][a4][v5][a5][v6][a6][v7][a7][v8][a8][v9][a9][v10][a10][v11][a11][v12][a12][v13][a13][v14][a14][v15][a15][v16][a16]concat=n=17:v=1:a=1[basev][gamea];
 [basev]
-drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='A RACING ROGUELITE':fontcolor=white:fontsize=68:borderw=3:bordercolor=black@0.95:box=1:boxcolor=black@0.58:boxborderw=20:x=(w-text_w)/2:y=54:enable='between(t,0.25,3.55)',
-drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='BUILD THE STRATEGY':fontcolor=white:fontsize=64:borderw=3:bordercolor=black@0.95:box=1:boxcolor=black@0.58:boxborderw=20:x=(w-text_w)/2:y=54:enable='between(t,4.25,7.55)',
-drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='TRUST YOUR DRIVER OR TAKE CONTROL':fontcolor=white:fontsize=54:borderw=3:bordercolor=black@0.95:box=1:boxcolor=black@0.58:boxborderw=20:x=(w-text_w)/2:y=54:enable='between(t,8.25,11.55)',
-drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='RACE THROUGH CHANGING WORLDS':fontcolor=white:fontsize=58:borderw=3:bordercolor=black@0.95:box=1:boxcolor=black@0.58:boxborderw=20:x=(w-text_w)/2:y=54:enable='between(t,12.25,15.55)',
-drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='OVERTAKE. DRIFT. EARN XP.':fontcolor=white:fontsize=64:borderw=3:bordercolor=black@0.95:box=1:boxcolor=black@0.58:boxborderw=20:x=(w-text_w)/2:y=54:enable='between(t,20.25,23.55)',
-drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='POWERUPS. REVENGE. CHAOS.':fontcolor=white:fontsize=64:borderw=3:bordercolor=black@0.95:box=1:boxcolor=black@0.58:boxborderw=20:x=(w-text_w)/2:y=54:enable='between(t,28.25,31.55)',
-drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='EVERY RACE BUILDS A NEW MACHINE':fontcolor=white:fontsize=58:borderw=3:bordercolor=black@0.95:box=1:boxcolor=black@0.58:boxborderw=20:x=(w-text_w)/2:y=54:enable='between(t,36.25,40.55)',
-fade=t=in:st=0:d=0.25,fade=t=out:st=44.8:d=1.2[outv];
-[10:a]atrim=start=0:end=46,asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.56,afade=t=in:st=0:d=0.5,afade=t=out:st=44:d=2[music];
-[gamea][music]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95:attack=5:release=50,loudnorm=I=-14:TP=-1.5:LRA=11[outa]
+drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='HAVE YOU EVER PLAYED':fontcolor=white:fontsize=68:borderw=4:bordercolor=black@0.95:box=1:boxcolor=black@0.62:boxborderw=20:x=(w-text_w)/2:y=250:enable='between(t,0.15,2.85)',
+drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='A RACING ROGUELITE?':fontcolor=#f4d05c:fontsize=82:borderw=4:bordercolor=black@0.95:box=1:boxcolor=black@0.62:boxborderw=20:x=(w-text_w)/2:y=365:enable='between(t,0.15,2.85)',
+drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='LEVEL 25. THE BUILD IS ALREADY OUT OF CONTROL.':fontcolor=white:fontsize=48:borderw=3:bordercolor=black@0.95:box=1:boxcolor=black@0.56:boxborderw=16:x=(w-text_w)/2:y=55:enable='between(t,3.15,7.75)',
+drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GAIN LEVELS. UNLOCK TIERS OF MORE POWERFUL CARDS.':fontcolor=white:fontsize=46:borderw=3:bordercolor=black@0.95:box=1:boxcolor=black@0.56:boxborderw=16:x=(w-text_w)/2:y=55:enable='between(t,8.1,11.8)',
+drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='LEVEL UP. CHOOSE WHAT HAPPENS NEXT.':fontcolor=#f4d05c:fontsize=54:borderw=3:bordercolor=black@0.95:box=1:boxcolor=black@0.58:boxborderw=16:x=(w-text_w)/2:y=45:enable='between(t,12.1,14.85)',
+drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='FOUR CARS. ONE REVENGE STORM.':fontcolor=#f4d05c:fontsize=64:borderw=4:bordercolor=black@0.95:box=1:boxcolor=black@0.58:boxborderw=18:x=(w-text_w)/2:y=55:enable='between(t,34.15,39.8)',
+drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='CHANGE THE WHOLE WORLD':fontcolor=white:fontsize=64:borderw=4:bordercolor=black@0.95:box=1:boxcolor=black@0.60:boxborderw=18:x=(w-text_w)/2:y=65:enable='between(t,40.1,43.9)',
+drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='NEW VISUALS. NEW NIGHTMARES.':fontcolor=#f4d05c:fontsize=58:borderw=4:bordercolor=black@0.95:box=1:boxcolor=black@0.55:boxborderw=18:x=(w-text_w)/2:y=55:enable='between(t,44.1,47.8)',
+fade=t=in:st=0:d=0.15,fade=t=out:st=50.8:d=1.2[outv];
+[17:a]atrim=duration=42,asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.54,afade=t=in:st=0:d=0.4,afade=t=out:st=39:d=3[gt3music];
+[18:a]atrim=duration=13,asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,volume=0.57,afade=t=in:st=0:d=2,afade=t=out:st=10:d=3,adelay=39000|39000[halloweenmusic];
+[gamea][gt3music][halloweenmusic]amix=inputs=3:duration=first:normalize=0,alimiter=limit=0.94:attack=5:release=50,loudnorm=I=-14:TP=-1.5:LRA=10[outa]

@@ -114,6 +114,15 @@ public class RogueliteResponsiveCardLayoutTest {
     }
 
     @Test
+    public void cardBrowserHeaderKeepsTitleClearOfItsDetailText() {
+        float titleY = RogueliteResponsiveCardLayout.collectionHeaderTitleY(390f);
+        float detailY = RogueliteResponsiveCardLayout.collectionHeaderDetailY(390f);
+        assertEquals(346f, titleY, 0.001f);
+        assertEquals(316f, detailY, 0.001f);
+        assertEquals(30f, titleY - detailY, 0.001f);
+    }
+
+    @Test
     public void cardsButtonUsesAnExtraLargeTouchTarget() {
         assertEquals(
                 88f,

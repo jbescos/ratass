@@ -59,6 +59,15 @@ abstract class RepeatingPowerupEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    final void triggerImmediately() {
+        loadedByRandomCard = true;
+        randomActivationExecuted = true;
+        activeTimer = DURATION_SECONDS;
+        cooldownTimer = COOLDOWN_SECONDS;
+        manualActivationRequested = false;
+    }
+
+    @Override
     final void setAutomaticPowerupActivationAllowed(boolean allowed) {
         automaticActivationAllowed = allowed;
     }

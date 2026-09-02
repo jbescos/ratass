@@ -38,7 +38,7 @@ public final class RogueliteSetCatalog {
                 RogueliteCardId.TRAFFIC_DOMINANCE,
                 RogueliteCardId.OVERDRIVE_COIL,
                 RogueliteCardId.HUNTER_STORM,
-                RogueliteCardId.TEMPORAL_DOMINION,
+                RogueliteCardId.POWERUP_NEXUS,
                 false, 2));
         add(set(
                 RogueliteSetId.IRON_GIANT, "Iron Giant", 3,
@@ -81,7 +81,8 @@ public final class RogueliteSetCatalog {
                 RogueliteCardId.TEMPORAL_DOMINION,
                 RogueliteCardId.TOTAL_BLACKOUT,
                 RogueliteCardId.FATES_REVENGE,
-                false, 7));
+                true, 7,
+                "Overtake: execute the rival's Powerup"));
         add(set(
                 RogueliteSetId.CHRONO_APOCALYPSE, "Apex Ascension", 4,
                 RogueliteCardId.TECHNIQUE_SINGULARITY,

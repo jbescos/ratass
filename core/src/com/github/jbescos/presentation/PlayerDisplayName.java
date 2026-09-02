@@ -30,6 +30,10 @@ public final class PlayerDisplayName {
 
     public static String raceLabel(String name, int level, boolean spanish) {
         String safeName = name == null ? "" : name;
-        return safeName + (spanish ? " (Nv " : " (Lv ") + Math.max(0, level) + ")";
+        return safeName + raceLevelSuffix(level, spanish);
+    }
+
+    public static String raceLevelSuffix(int level, boolean spanish) {
+        return (spanish ? " (Nv " : " (Lv ") + Math.max(0, level) + ")";
     }
 }

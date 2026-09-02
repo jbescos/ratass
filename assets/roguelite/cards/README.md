@@ -1,8 +1,9 @@
-# Card Artwork Atlas
+# Card Artwork
 
-Each theme provides a 6 by 23 artwork atlas at
-`assets/theme/<theme>/roguelite/cards/card_art_atlas_v3.png`. Cells are addressed
-in row-major order by `RogueliteCardDefinition.artworkIndex`.
+Each theme provides independently loadable 250 by 250 artwork files under
+`assets/theme/<theme>/roguelite/cards/artwork/`. Files are named with the
+zero-padded `RogueliteCardDefinition.artworkIndex`, such as `003.png` for Nitro
+Pulse. The runtime keeps only the 24 most recently used images in memory.
 
 | Row | Column 1 | Column 2 | Column 3 | Column 4 | Column 5 | Column 6 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -30,8 +31,8 @@ in row-major order by `RogueliteCardDefinition.artworkIndex`.
 | 22 | Apex Key | Lap Dividend | Lap Booster | Lap Doubler | Telemetry Theft | Build Heist |
 | 23 | Apex Plunder | Final Reckoning | Reserved | Reserved | Reserved | Reserved |
 
-Every non-driver card has a unique artwork cell. Artwork must depict the card's
-actual mechanic in that theme; do not reuse another theme's cell with a tint or
+Every non-driver card has a unique artwork file. Artwork must depict the card's
+actual mechanic in that theme; do not reuse another theme's image with a tint or
 decorative overlay.
 
 Keep every cell square and free of text or logos.
@@ -57,8 +58,8 @@ Driver, Tuning, Technique, Powerup, and Revenge. The first row contains filled-c
 shells; the second row contains the corresponding empty-slot artwork. Every
 cell reserves the same header badge sockets, a 196 by 196 square artwork socket,
 information panel, and footer tab so the renderer can keep text and images inside
-safe areas. The square socket matches the cells in each themed
-`card_art_atlas_v3.png` without cropping or stretching them.
+safe areas. The square socket matches each themed 250 by 250 artwork file without
+cropping or stretching it.
 
 `card_type_icon_atlas.png` is the active 6 by 1 icon atlas containing Driver,
 Tuning, Technique, Powerup, Revenge, and Warning in that order. The renderer
@@ -68,9 +69,10 @@ solid category-colored interior so their small in-race indicators remain
 legible over the road. Individual transparent 256 by 256 sources are stored
 under `icons/`.
 
-`card_tier_icon_atlas.png` is the active 3 by 1 rank atlas containing the bronze
-`T1`, silver `T2`, and gold `T3` badges. These replace tier text in the card's
-top-right square. Individual tier icons are also stored under `icons/`.
+`card_tier_icon_atlas.png` is the active 4 by 1 rank atlas containing the bronze
+`T1`, silver `T2`, gold `T3`, and purple `T4` badges. These replace tier text in
+the card's top-right square. Individual tier icons are also stored under
+`icons/`.
 
 Regenerate the shell and icon atlas from their source artwork with:
 
@@ -126,17 +128,6 @@ java -Djava.awt.headless=true -cp /tmp/ratass-visual-tools \
 ```
 
 `BuildOrbitAura` places a family icon around the car before the center mask is
-applied. Replace themed card artwork without rebuilding unrelated cells with:
-
-```bash
-java -Djava.awt.headless=true -cp /tmp/ratass-visual-tools \
-  ReplaceImageAtlasCells \
-  assets/theme/gt3/roguelite/cards/card_art_atlas_v3.png \
-  assets/theme/gt3/roguelite/cards/card_art_atlas_v3.png \
-  6 250 126 tools/art_sources/card_art/gt3/apex_key.png
-java -Djava.awt.headless=true -cp /tmp/ratass-visual-tools \
-  ReplaceImageAtlasCells \
-  assets/theme/halloween/roguelite/cards/card_art_atlas_v3.png \
-  assets/theme/halloween/roguelite/cards/card_art_atlas_v3.png \
-  6 250 126 tools/art_sources/card_art/halloween/apex_key.png
-```
+applied. Replace one themed card artwork file directly at its numbered path; for
+example, artwork index 126 is
+`assets/theme/<theme>/roguelite/cards/artwork/126.png`.

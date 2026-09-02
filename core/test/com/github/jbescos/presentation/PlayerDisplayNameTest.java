@@ -28,5 +28,7 @@ public class PlayerDisplayNameTest {
     public void raceLabelKeepsTheNameAndLocalizesOnlyTheLevelPrefix() {
         assertEquals("DrBolinga (Nv 1)", PlayerDisplayName.raceLabel("DrBolinga", 1, true));
         assertEquals("Overtake (Lv 3)", PlayerDisplayName.raceLabel("Overtake", 3, false));
+        assertEquals(" (Nv 1)", PlayerDisplayName.raceLevelSuffix(1, true));
+        assertEquals(" (Lv 3)", PlayerDisplayName.raceLevelSuffix(3, false));
     }
 }

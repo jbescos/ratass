@@ -1,16 +1,16 @@
 # Rogue Circuit Steam Store Draft
 
-This file is ready to paste into Steamworks. Replace only the marked account or
-commercial fields and verify the system requirements on a clean machine before
+This file mirrors the approved public Steam page and the current release build.
+Verify the system requirements on clean Windows and Linux machines before
 publishing.
 
 ## Basic Information
 
 - **Name:** Rogue Circuit
-- **Developer:** `TODO: Steamworks developer display name`
-- **Publisher:** `TODO: Steamworks publisher display name`
-- **Release date:** `TODO`
-- **Price:** `TODO`
+- **Developer:** Jorge Francisco Bescos Gascon
+- **Publisher:** Jorge Francisco Bescos Gascon
+- **Release date:** September 9, 2026
+- **Price:** $4.99 USD / EUR 4.99 base price
 - **Primary genre:** Racing
 - **Supported players:** Single-player
 
@@ -36,11 +36,12 @@ and capable as the championship continues.
 
 ### Make The Decisions
 
-- Build across five card types: Driver, Tuning, Technique, Powerup, and Revenge.
+- Build across five selectable card types: Driver, Tuning, Technique, Powerup,
+  and Revenge.
 - Choose upgrades as levels arrive and replace cards when a stronger option is
   worth the trade.
-- Combine effects naturally. There are no prescribed synergy bonuses telling
-  you what to build.
+- Complete late-game card sets to unlock an automatic sixth Set card and its
+  powerful build bonus.
 
 ### Watch The Race Evolve
 
@@ -61,24 +62,30 @@ and capable as the championship continues.
 Use the most accurate tags first:
 
 1. Racing
-2. Roguelite
-3. Strategy
+2. Strategy
+3. Roguelite
 4. Auto Battler
-5. Deckbuilding
-6. Automobile Sim
-7. Singleplayer
-8. Replay Value
-9. Choices Matter
-10. Indie
+5. Roguelike Deckbuilder
+6. Indie
+7. Vehicular Combat
+8. Deckbuilding
+9. Card Game
+10. Singleplayer
+11. Choices Matter
+12. Replay Value
+13. Driving
+14. Management
+15. Physics
 
 ## Languages
 
 | Language | Interface | Full audio | Subtitles |
 | --- | --- | --- | --- |
 | English | Yes | No speech | No speech |
-
-Do not list additional languages until all visible UI text has been translated
-and checked at 720p.
+| French | Yes | No speech | No speech |
+| Italian | Yes | No speech | No speech |
+| German | Yes | No speech | No speech |
+| Spanish - Spain | Yes | No speech | No speech |
 
 ## System Requirements
 
@@ -119,10 +126,10 @@ Validate these values on a clean machine before publishing them.
 
 ## Feature Declarations
 
-- **Supported now:** Single-player, keyboard/mouse or touch-oriented UI,
-  fullscreen and windowed display.
+- **Supported now:** Single-player, keyboard and mouse, full Xbox-style
+  controller support, fullscreen and windowed display.
 - **Do not claim yet:** Steam Achievements, Steam Cloud, leaderboards, Workshop,
-  full controller support, or Steam Deck Verified.
+  or Steam Deck Verified.
 - **Content survey note:** The game contains stylized vehicle collisions,
   revenge effects, skull imagery, and a Halloween visual theme. Verify the final
   survey against the current build.

@@ -33,6 +33,7 @@ public final class RogueliteCarUpgrades {
     private RogueliteCardId activeRevengeCardId;
     private long revengeActivationSequence;
     private RogueliteUpgradeEffect amplifiedActiveRevengeEffect;
+    private RogueliteUpgradeEffect borrowedPowerupEffect;
     private RogueliteSetDefinition configuredSetBonus;
 
     public void configure(RogueliteLoadout loadout) {
@@ -51,6 +52,7 @@ public final class RogueliteCarUpgrades {
         activeCardIds.clear();
         activeRevengeCardId = null;
         amplifiedActiveRevengeEffect = null;
+        borrowedPowerupEffect = null;
         buildCardsSuppressed = false;
         reconfigurePreservingCardState(loadout, powerupCycleOffset, setBonus);
     }
@@ -65,8 +67,11 @@ public final class RogueliteCarUpgrades {
             RogueliteLoadout loadout,
             float powerupCycleOffset,
             RogueliteSetDefinition setBonus) {
+        RogueliteUpgradeEffect previousBorrowedPowerup = borrowedPowerupEffect;
+        borrowedPowerupEffect = null;
         List<RogueliteUpgradeEffect> previousEffects =
                 new ArrayList<RogueliteUpgradeEffect>(effects);
+        previousEffects.remove(previousBorrowedPowerup);
         effects.clear();
         frame.clear();
         techniqueObservationFrame.clear();
@@ -103,6 +108,14 @@ public final class RogueliteCarUpgrades {
             effects.add(bonusEffect);
             timedEffectDecay = Math.min(timedEffectDecay, bonusEffect.timedEffectDecay());
             overtakeInjectorEnabled |= bonusEffect.tracksRacePosition();
+        }
+
+        if (setBonus != null
+                && setBonus.getId() == RogueliteSetId.DOOM_RALLY
+                && previousBorrowedPowerup != null
+                && previousBorrowedPowerup.isActive()) {
+            borrowedPowerupEffect = previousBorrowedPowerup;
+            effects.add(borrowedPowerupEffect);
         }
 
         boolean techniqueAlwaysActive = setBonus != null
@@ -206,6 +219,9 @@ public final class RogueliteCarUpgrades {
     }
 
     public RogueliteCardId getActivePowerupCardId() {
+        if (borrowedPowerupEffect != null && borrowedPowerupEffect.isActive()) {
+            return borrowedPowerupEffect.activeDisplayCardId();
+        }
         for (int i = 0; i < effects.size(); i++) {
             RogueliteCardId nestedPowerupCardId = effects.get(i).activePowerupCardId();
             if (nestedPowerupCardId != null) {
@@ -213,6 +229,46 @@ public final class RogueliteCarUpgrades {
             }
         }
         return getActiveCardId(RogueliteSlotType.POWERUP);
+    }
+
+    public RogueliteCardId getCopyablePowerupCardId() {
+        for (int i = 0; i < effects.size(); i++) {
+            RogueliteUpgradeEffect effect = effects.get(i);
+            RogueliteCardDefinition definition =
+                    RogueliteCardCatalog.get(effect.getCardId());
+            if (effect != borrowedPowerupEffect
+                    && definition != null
+                    && definition.getSlotType() == RogueliteSlotType.POWERUP) {
+                RogueliteCardId loaded = effect.loadedDisplayCardId();
+                return loaded == null ? effect.behaviorCardId() : loaded;
+            }
+        }
+        return null;
+    }
+
+    public boolean activateDoomRallyPowerup(RogueliteCardId cardId) {
+        RogueliteCardDefinition definition = RogueliteCardCatalog.get(cardId);
+        if (configuredSetBonus == null
+                || configuredSetBonus.getId() != RogueliteSetId.DOOM_RALLY
+                || definition == null
+                || definition.getSlotType() != RogueliteSlotType.POWERUP) {
+            return false;
+        }
+        if (borrowedPowerupEffect != null) {
+            effects.remove(borrowedPowerupEffect);
+        }
+        RogueliteUpgradeEffect borrowed = RogueliteEffectFactory.create(cardId, 0f);
+        borrowed.setAutomaticPowerupActivationAllowed(true);
+        borrowed.triggerImmediately();
+        if (!borrowed.isActive()) {
+            borrowedPowerupEffect = null;
+            refreshActiveCards();
+            return false;
+        }
+        borrowedPowerupEffect = borrowed;
+        effects.add(borrowedPowerupEffect);
+        refreshActiveCards();
+        return true;
     }
 
     public RogueliteCardId getActiveAntennaCardId() {
@@ -255,6 +311,9 @@ public final class RogueliteCarUpgrades {
     public RogueliteCardId getActiveAbilityCardId() {
         if (isCardEffectActive(RogueliteCardId.REPULSOR_SURGE)) {
             return RogueliteCardId.REPULSOR_SURGE;
+        }
+        if (borrowedPowerupEffect != null && borrowedPowerupEffect.isActive()) {
+            return borrowedPowerupEffect.activeDisplayCardId();
         }
         for (int i = 0; i < activeCardIds.size(); i++) {
             RogueliteCardId cardId = activeCardIds.get(i);
@@ -851,6 +910,10 @@ public final class RogueliteCarUpgrades {
                         : effectivePowerupCooldownRateMultiplier();
             }
             effect.advance(delta, effectTimerDelta, frame);
+        }
+        if (borrowedPowerupEffect != null && !borrowedPowerupEffect.isActive()) {
+            effects.remove(borrowedPowerupEffect);
+            borrowedPowerupEffect = null;
         }
         refreshActiveCards();
     }
@@ -1717,6 +1780,9 @@ public final class RogueliteCarUpgrades {
         if (setBonus.getId() == RogueliteSetId.CHAOS_CIRCUIT) {
             return effect instanceof ChaosCircuitSetEffect;
         }
+        if (setBonus.getId() == RogueliteSetId.DOOM_RALLY) {
+            return effect instanceof DoomRallySetEffect;
+        }
         return effect instanceof ApexAscensionSetEffect;
     }
 
@@ -1734,13 +1800,17 @@ public final class RogueliteCarUpgrades {
         if (setBonus.getId() == RogueliteSetId.CHAOS_CIRCUIT) {
             return new ChaosCircuitSetEffect();
         }
+        if (setBonus.getId() == RogueliteSetId.DOOM_RALLY) {
+            return new DoomRallySetEffect();
+        }
         return new ApexAscensionSetEffect();
     }
 
     private static boolean isSetScopedBonusEffect(RogueliteUpgradeEffect effect) {
         return effect instanceof ApexAscensionSetEffect
                 || effect instanceof IronGiantSetEffect
-                || effect instanceof ChaosCircuitSetEffect;
+                || effect instanceof ChaosCircuitSetEffect
+                || effect instanceof DoomRallySetEffect;
     }
 
     private float effectiveTechniqueEffectMultiplier() {

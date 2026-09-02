@@ -98,6 +98,14 @@ public final class RogueliteResponsiveCardLayout {
         return cardBottom - Math.max(0f, gap) - Math.max(0f, controlHeight);
     }
 
+    public static float collectionHeaderTitleY(float height) {
+        return Math.max(0f, height) - 44f;
+    }
+
+    public static float collectionHeaderDetailY(float height) {
+        return Math.max(0f, height) - 74f;
+    }
+
     public static float inspectionCardWidth(
             float width,
             float height,

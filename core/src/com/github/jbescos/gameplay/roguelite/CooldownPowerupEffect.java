@@ -205,6 +205,22 @@ final class CooldownPowerupEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    void triggerImmediately() {
+        raceStarted = true;
+        loadedByRandomCard = false;
+        activeTimer = durationSeconds;
+        cooldownTimer = cooldownSeconds;
+        manualActivationRequested = false;
+        invisibilityExitHeld = false;
+        deferInvisibilityExit = false;
+        float speedRatio = latestFrame == null ? 0f : latestFrame.speedRatio;
+        pendingForwardLaunchSpeedRatio =
+                Math.min(
+                        forwardLaunchSpeedRatio,
+                        Math.max(0f, launchTargetSpeedRatio - speedRatio));
+    }
+
+    @Override
     void setAutomaticPowerupActivationAllowed(boolean allowed) {
         automaticActivationAllowed = allowed;
     }

@@ -121,15 +121,16 @@ grip devices wait for corners; draft devices wait for a rival ahead; shields
 wait for close traffic; and the Ram Reactor arms only when a rival is close in
 front. Triggering starts the cooldown, so a powerup cannot fire continuously.
 
-There are no explicit card-pair IDs or hidden combination bonuses. Equipped
-effects act on the same car and can combine naturally, making useful loadouts
-emerge from their behavior instead of from maintained pairing rules.
+There are no explicit card-pair IDs or hidden pair bonuses. Equipped effects
+act on the same car and combine naturally. Specific late-game Tuning,
+Technique, Powerup, and Revenge combinations can also complete a visible Set
+card with a defined bonus.
 
 Every modification has dedicated, theme-specific artwork in
-`assets/theme/<theme>/roguelite/cards/card_art_atlas_v3.png`. Each theme depicts
-the card's actual mechanic rather than recoloring another theme's illustration.
-Drivers continue to use their themed portrait. The current theme's atlas is
-loaded lazily by presentation code.
+`assets/theme/<theme>/roguelite/cards/artwork/`. Each theme depicts the card's
+actual mechanic rather than recoloring another theme's illustration. Drivers
+continue to use their themed portrait. Individual card images are loaded lazily
+by presentation code and retained in a bounded cache.
 
 ## Isolation Rules
 
@@ -174,7 +175,8 @@ The implementation is under
 2. Add its title, effect text, tier, slot category, visual style, and unused
    artwork index to
    `RogueliteCardCatalog`.
-3. Add the card image to the matching atlas cell documented beside the asset.
+3. Add the numbered card image to each theme's `roguelite/cards/artwork/`
+   directory.
 4. Extend the matching family effect and factory dispatch.
 5. Add offer, slot, trigger, cooldown, and modifier assertions to the roguelite
    tests.

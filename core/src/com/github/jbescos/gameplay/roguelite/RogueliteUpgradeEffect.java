@@ -62,6 +62,10 @@ abstract class RogueliteUpgradeEffect {
     void onLoadedByRandomCard() {
     }
 
+    void triggerImmediately() {
+        onLoadedByRandomCard();
+    }
+
     void setAutomaticPowerupActivationAllowed(boolean allowed) {
     }
 

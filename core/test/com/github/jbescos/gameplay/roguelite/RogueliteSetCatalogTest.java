@@ -72,6 +72,61 @@ public class RogueliteSetCatalogTest {
     }
 
     @Test
+    public void quantumPackGrantsPowerupNexus() {
+        RogueliteSetDefinition quantumPack =
+                RogueliteSetCatalog.get(RogueliteSetId.QUANTUM_PACK);
+
+        assertFalse(quantumPack.usesSetScopedBonusEffect());
+        assertEquals(RogueliteCardId.POWERUP_NEXUS, quantumPack.getBonusCardId());
+
+        RogueliteLoadout loadout = new RogueliteLoadout("profile00");
+        loadout.equip(quantumPack.getTuningCardId());
+        loadout.equip(quantumPack.getTechniqueCardId());
+        loadout.equip(quantumPack.getPowerupCardId());
+        loadout.equip(quantumPack.getRevengeCardId());
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+        upgrades.configure(loadout, 0f, quantumPack);
+
+        assertTrue(upgrades.isCardEffectActive(RogueliteCardId.POWERUP_NEXUS));
+        assertFalse(upgrades.isCardEffectActive(RogueliteCardId.TEMPORAL_DOMINION));
+    }
+
+    @Test
+    public void doomRallyCopiesThePassedRivalsPowerupOnOvertake() {
+        RogueliteSetDefinition doomRally =
+                RogueliteSetCatalog.get(RogueliteSetId.DOOM_RALLY);
+
+        assertTrue(doomRally.usesSetScopedBonusEffect());
+        assertEquals(
+                "Overtake: execute the rival's Powerup",
+                doomRally.getBonusEffectText());
+
+        RogueliteLoadout loadout = new RogueliteLoadout("profile00");
+        loadout.equip(doomRally.getTuningCardId());
+        loadout.equip(doomRally.getTechniqueCardId());
+        loadout.equip(doomRally.getPowerupCardId());
+        loadout.equip(doomRally.getRevengeCardId());
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+        upgrades.configure(loadout, 0f, doomRally);
+
+        RogueliteLoadout rivalLoadout = new RogueliteLoadout("profile01");
+        rivalLoadout.equip(RogueliteCardId.NITRO_PULSE);
+        RogueliteCarUpgrades rival = new RogueliteCarUpgrades();
+        rival.configure(rivalLoadout);
+
+        assertEquals(
+                RogueliteCardId.NITRO_PULSE,
+                rival.getCopyablePowerupCardId());
+        assertTrue(upgrades.activateDoomRallyPowerup(
+                rival.getCopyablePowerupCardId()));
+        assertEquals(
+                RogueliteCardId.NITRO_PULSE,
+                upgrades.getActivePowerupCardId());
+        assertTrue(upgrades.getAccelerationMultiplier() > 1f);
+        assertNull(rival.getActivePowerupCardId());
+    }
+
+    @Test
     public void selectionGainStronglyRewardsCompletingAnEnabledSet() {
         RogueliteSetDefinition set = RogueliteSetCatalog.tierThreeSets().get(0);
         RogueliteLoadout loadout = new RogueliteLoadout("profile00");
