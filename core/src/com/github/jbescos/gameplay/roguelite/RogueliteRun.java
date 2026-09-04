@@ -224,6 +224,15 @@ public final class RogueliteRun {
         return gameRules.getRacecraftXpPerLapCap();
     }
 
+    public int getRacecraftXpPerLapCap(float multiplier) {
+        float safeMultiplier = Float.isFinite(multiplier)
+                ? Math.max(1f, multiplier)
+                : 1f;
+        return Math.max(
+                getRacecraftXpPerLapCap(),
+                Math.round(getRacecraftXpPerLapCap() * safeMultiplier));
+    }
+
     public int getRacecraftXpAward(RogueliteExperienceAwards.Reason reason) {
         return gameRules.getRacecraftXpAward(reason);
     }
@@ -273,34 +282,62 @@ public final class RogueliteRun {
     }
 
     public int awardPlayerRacecraftExperience(int amount) {
+        return awardPlayerRacecraftExperience(amount, 1f);
+    }
+
+    public int awardPlayerRacecraftExperience(
+            int amount,
+            float lapExperienceMultiplier) {
         return player.awardRacecraftExperience(
                 amount,
-                getRacecraftXpPerLapCap());
+                getRacecraftXpPerLapCap(lapExperienceMultiplier));
     }
 
     public int awardPlayerRacecraftExperience(
             RogueliteExperienceAwards.Reason reason,
             int amount) {
+        return awardPlayerRacecraftExperience(reason, amount, 1f);
+    }
+
+    public int awardPlayerRacecraftExperience(
+            RogueliteExperienceAwards.Reason reason,
+            int amount,
+            float lapExperienceMultiplier) {
         return player.awardRacecraftExperience(
                 reason,
                 amount,
-                getRacecraftXpPerLapCap());
+                getRacecraftXpPerLapCap(lapExperienceMultiplier));
     }
 
     public int awardRivalRacecraftExperience(int vehicleId, int amount) {
+        return awardRivalRacecraftExperience(vehicleId, amount, 1f);
+    }
+
+    public int awardRivalRacecraftExperience(
+            int vehicleId,
+            int amount,
+            float lapExperienceMultiplier) {
         return getRivalProgress(vehicleId).awardRacecraftExperience(
                 amount,
-                getRacecraftXpPerLapCap());
+                getRacecraftXpPerLapCap(lapExperienceMultiplier));
     }
 
     public int awardRivalRacecraftExperience(
             int vehicleId,
             RogueliteExperienceAwards.Reason reason,
             int amount) {
+        return awardRivalRacecraftExperience(vehicleId, reason, amount, 1f);
+    }
+
+    public int awardRivalRacecraftExperience(
+            int vehicleId,
+            RogueliteExperienceAwards.Reason reason,
+            int amount,
+            float lapExperienceMultiplier) {
         return getRivalProgress(vehicleId).awardRacecraftExperience(
                 reason,
                 amount,
-                getRacecraftXpPerLapCap());
+                getRacecraftXpPerLapCap(lapExperienceMultiplier));
     }
 
     public int stealLapExperience(
@@ -308,13 +345,37 @@ public final class RogueliteRun {
             int recipientVehicleId,
             boolean offenderPlayerControlled,
             int offenderVehicleId) {
+        return stealLapExperience(
+                recipientPlayerControlled,
+                recipientVehicleId,
+                offenderPlayerControlled,
+                offenderVehicleId,
+                1f);
+    }
+
+    public int stealLapExperience(
+            boolean recipientPlayerControlled,
+            int recipientVehicleId,
+            boolean offenderPlayerControlled,
+            int offenderVehicleId,
+            float recipientLapExperienceMultiplier) {
         RogueliteCompetitorProgress recipient = recipientPlayerControlled
                 ? player : getRivalProgress(recipientVehicleId);
         RogueliteCompetitorProgress offender = offenderPlayerControlled
                 ? player : getRivalProgress(offenderVehicleId);
         return recipient.stealLapExperienceFrom(
                 offender,
-                getRacecraftXpPerLapCap());
+                getRacecraftXpPerLapCap(recipientLapExperienceMultiplier));
+    }
+
+    public void clampLapExperience(
+            boolean playerControlled,
+            int vehicleId,
+            float lapExperienceMultiplier) {
+        RogueliteCompetitorProgress progress = playerControlled
+                ? player : getRivalProgress(vehicleId);
+        progress.clampLapExperience(
+                getRacecraftXpPerLapCap(lapExperienceMultiplier));
     }
 
     public int bankPlayerLapExperience() {
@@ -702,7 +763,8 @@ public final class RogueliteRun {
                                     RogueliteCardId.TIER_FOUR_SIGNAL));
             progress.restoreLapExperience(
                     snapshot.lapExperience,
-                    getRacecraftXpPerLapCap());
+                    getRacecraftXpPerLapCap(
+                            lapExperienceMultiplier(progress.getLoadout())));
             return progress;
         } catch (RuntimeException exception) {
             return null;
@@ -717,6 +779,12 @@ public final class RogueliteRun {
             cards.add(RogueliteCardCatalog.get(modifications.get(i)));
         }
         return Collections.unmodifiableList(cards);
+    }
+
+    private static float lapExperienceMultiplier(RogueliteLoadout loadout) {
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+        upgrades.configure(loadout);
+        return upgrades.getLapExperienceBankMultiplier();
     }
 
     private RogueliteCompetitorProgress newPlayerProgress() {

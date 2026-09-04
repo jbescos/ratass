@@ -1,6 +1,6 @@
 package com.github.jbescos.gameplay.roguelite;
 
-/** Multiplies capped lap XP only when it is banked into global XP. */
+/** Multiplies both pending lap XP capacity and its transfer into global XP. */
 final class LapExperienceTechniqueEffect extends RogueliteUpgradeEffect {
     private final float bankMultiplier;
 
@@ -22,13 +22,13 @@ final class LapExperienceTechniqueEffect extends RogueliteUpgradeEffect {
 
     static float multiplierFor(RogueliteCardId cardId) {
         if (cardId == RogueliteCardId.LAP_DIVIDEND) {
-            return 1.25f;
+            return 2f;
         }
         if (cardId == RogueliteCardId.LAP_BOOSTER) {
-            return 1.50f;
+            return 3f;
         }
         if (cardId == RogueliteCardId.LAP_DOUBLER) {
-            return 2f;
+            return 4f;
         }
         return 1f;
     }

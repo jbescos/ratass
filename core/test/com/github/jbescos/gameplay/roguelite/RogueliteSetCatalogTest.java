@@ -127,6 +127,27 @@ public class RogueliteSetCatalogTest {
     }
 
     @Test
+    public void doomRallyIgnoresRivalsWithoutAPowerup() {
+        RogueliteSetDefinition doomRally =
+                RogueliteSetCatalog.get(RogueliteSetId.DOOM_RALLY);
+        RogueliteLoadout loadout = new RogueliteLoadout("profile00");
+        loadout.equip(doomRally.getTuningCardId());
+        loadout.equip(doomRally.getTechniqueCardId());
+        loadout.equip(doomRally.getPowerupCardId());
+        loadout.equip(doomRally.getRevengeCardId());
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+        upgrades.configure(loadout, 0f, doomRally);
+
+        RogueliteCarUpgrades rival = new RogueliteCarUpgrades();
+        rival.configure(new RogueliteLoadout("profile01"));
+
+        assertNull(rival.getCopyablePowerupCardId());
+        assertFalse(upgrades.activateDoomRallyPowerup(
+                rival.getCopyablePowerupCardId()));
+        assertNull(upgrades.getActivePowerupCardId());
+    }
+
+    @Test
     public void selectionGainStronglyRewardsCompletingAnEnabledSet() {
         RogueliteSetDefinition set = RogueliteSetCatalog.tierThreeSets().get(0);
         RogueliteLoadout loadout = new RogueliteLoadout("profile00");

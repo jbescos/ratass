@@ -616,35 +616,45 @@ public final class CardStrategyTrainingEnvironment {
         updateRunRaceState();
         AntennaNetworkBonuses network = buildAntennaNetwork(null);
         int[] lapExperience = new int[fieldSize];
+        float[] lapExperienceMultipliers = new float[fieldSize];
+        int[] lapExperienceCaps = new int[fieldSize];
         for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
             RogueliteCompetitorProgress progress = progress(vehicleId);
+            lapExperienceMultipliers[vehicleId] =
+                    lapExperienceMultiplier(vehicleId, network);
+            lapExperienceCaps[vehicleId] = run.getRacecraftXpPerLapCap(
+                    lapExperienceMultipliers[vehicleId]);
             float strength = raceEstimator.estimate(
                     progress, weatherGripWeight, network);
             int amount = Math.max(
                     4,
                     Math.min(
-                            RogueliteExperienceAwards.MAX_RACECRAFT_XP_PER_LAP,
+                            lapExperienceCaps[vehicleId],
                             run.getRacecraftXpAward(
                                             RogueliteExperienceAwards.Reason.LAP_COMPLETE)
                                     + Math.round(8f + strength * 4f + random.nextInt(7))));
             lapExperience[vehicleId] = amount;
         }
-        applyExpectedBuildLeechTransfers(lapExperience);
+        applyExpectedBuildLeechTransfers(lapExperience, lapExperienceCaps);
         for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
-            accumulateLapExperience(vehicleId, lapExperience[vehicleId]);
+            accumulateLapExperience(
+                    vehicleId,
+                    lapExperience[vehicleId],
+                    lapExperienceMultipliers[vehicleId]);
         }
         for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
             bankLapExperience(vehicleId);
         }
     }
 
-    private void applyExpectedBuildLeechTransfers(int[] lapExperience) {
+    private void applyExpectedBuildLeechTransfers(
+            int[] lapExperience,
+            int[] lapExperienceCaps) {
         List<Integer> recipients = new ArrayList<Integer>(fieldSize);
         for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
             recipients.add(Integer.valueOf(vehicleId));
         }
         Collections.shuffle(recipients, random);
-        int lapCap = run.getRacecraftXpPerLapCap();
         for (int i = 0; i < recipients.size(); i++) {
             int recipientId = recipients.get(i).intValue();
             RogueliteCardId revenge = progress(recipientId)
@@ -664,7 +674,10 @@ public final class CardStrategyTrainingEnvironment {
                     requested,
                     Math.min(
                             lapExperience[offenderId],
-                            Math.max(0, lapCap - lapExperience[recipientId])));
+                            Math.max(
+                                    0,
+                                    lapExperienceCaps[recipientId]
+                                            - lapExperience[recipientId])));
             lapExperience[offenderId] -= transferred;
             lapExperience[recipientId] += transferred;
         }
@@ -695,22 +708,36 @@ public final class CardStrategyTrainingEnvironment {
         updateChampionshipPositions();
     }
 
-    private void accumulateLapExperience(int vehicleId, int amount) {
+    private void accumulateLapExperience(
+            int vehicleId,
+            int amount,
+            float lapExperienceMultiplier) {
         if (vehicleId == 0) {
-            run.awardPlayerRacecraftExperience(amount);
+            run.awardPlayerRacecraftExperience(amount, lapExperienceMultiplier);
         } else {
-            run.awardRivalRacecraftExperience(vehicleId, amount);
+            run.awardRivalRacecraftExperience(
+                    vehicleId,
+                    amount,
+                    lapExperienceMultiplier);
         }
+    }
+
+    private float lapExperienceMultiplier(
+            int vehicleId,
+            AntennaNetworkBonuses network) {
+        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
+        upgrades.configure(progress(vehicleId).getLoadout());
+        upgrades.setAntennaNetwork(network);
+        return upgrades.getLapExperienceBankMultiplier();
     }
 
     private void bankLapExperience(int vehicleId) {
         RogueliteCompetitorProgress progress = progress(vehicleId);
         int beforeLevel = progress.getLevel();
         int requirement = progress.getExperienceForNextLevel();
-        RogueliteCarUpgrades upgrades = new RogueliteCarUpgrades();
-        upgrades.configure(progress.getLoadout());
-        upgrades.setAntennaNetwork(buildAntennaNetwork(null));
-        float multiplier = upgrades.getLapExperienceBankMultiplier();
+        float multiplier = lapExperienceMultiplier(
+                vehicleId,
+                buildAntennaNetwork(null));
         int gained = vehicleId == 0
                 ? run.bankPlayerLapExperience(multiplier)
                 : run.bankRivalLapExperience(vehicleId, multiplier);

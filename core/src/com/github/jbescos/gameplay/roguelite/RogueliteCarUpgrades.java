@@ -88,7 +88,7 @@ public final class RogueliteCarUpgrades {
             for (int i = 0; i < cardIds.size(); i++) {
                 RogueliteCardId cardId = cardIds.get(i);
                 RogueliteUpgradeEffect effect =
-                        takePreviousEffect(previousEffects, cardId);
+                        takePreviousCardEffect(previousEffects, cardId);
                 if (effect == null) {
                     effect = RogueliteEffectFactory.create(cardId, powerupCycleOffset);
                 }
@@ -196,6 +196,19 @@ public final class RogueliteCarUpgrades {
         return null;
     }
 
+    private static RogueliteUpgradeEffect takePreviousCardEffect(
+            List<RogueliteUpgradeEffect> previousEffects,
+            RogueliteCardId cardId) {
+        for (int i = 0; i < previousEffects.size(); i++) {
+            RogueliteUpgradeEffect effect = previousEffects.get(i);
+            if (effect.getCardId() == cardId && !isSetScopedBonusEffect(effect)) {
+                previousEffects.remove(i);
+                return effect;
+            }
+        }
+        return null;
+    }
+
     public boolean isEnabled() {
         return !effects.isEmpty();
     }
@@ -247,6 +260,9 @@ public final class RogueliteCarUpgrades {
     }
 
     public boolean activateDoomRallyPowerup(RogueliteCardId cardId) {
+        if (cardId == null) {
+            return false;
+        }
         RogueliteCardDefinition definition = RogueliteCardCatalog.get(cardId);
         if (configuredSetBonus == null
                 || configuredSetBonus.getId() != RogueliteSetId.DOOM_RALLY

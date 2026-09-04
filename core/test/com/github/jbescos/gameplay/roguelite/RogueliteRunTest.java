@@ -1023,6 +1023,38 @@ public class RogueliteRunTest {
     }
 
     @Test
+    public void lapExperienceMultiplierExpandsCapacityAndBankedExperience() {
+        RogueliteRun run = new RogueliteRun(585L);
+
+        assertEquals(80, run.getRacecraftXpPerLapCap(2f));
+        assertEquals(80, run.awardPlayerRacecraftExperience(100, 2f));
+        assertEquals(80, run.getPlayerProgress().getLapExperience());
+        assertEquals(160, run.bankPlayerLapExperience(2f));
+    }
+
+    @Test
+    public void removingLapExperienceMultiplierClampsPendingExperience() {
+        RogueliteRun run = new RogueliteRun(585L);
+
+        assertEquals(160, run.awardPlayerRacecraftExperience(200, 4f));
+        run.clampLapExperience(true, 0, 1f);
+
+        assertEquals(40, run.getPlayerProgress().getLapExperience());
+    }
+
+    @Test
+    public void snapshotRestoresExpandedPendingLapExperience() {
+        RogueliteRun original = new RogueliteRun(585L);
+        assertTrue(original.getPlayerLoadout().equip(RogueliteCardId.LAP_DOUBLER));
+        assertEquals(160, original.awardPlayerRacecraftExperience(200, 4f));
+
+        RogueliteRun restored = new RogueliteRun(586L);
+
+        assertTrue(restored.restore(original.snapshot()));
+        assertEquals(160, restored.getPlayerProgress().getLapExperience());
+    }
+
+    @Test
     public void unfinishedCarsDiscardPendingLapExperienceWithoutBankingIt() {
         RogueliteRun run = new RogueliteRun(586L);
         run.awardPlayerRacecraftExperience(18);

@@ -849,6 +849,45 @@ def championship_discounted_returns(
     return result
 
 
+def pad_candidate_observations(
+    observations: list[torch.Tensor],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if not observations:
+        raise ValueError("At least one candidate observation is required.")
+    max_candidates = max(int(value.shape[0]) for value in observations)
+    observation_size = int(observations[0].shape[1])
+    batch = observations[0].new_zeros(
+        (len(observations), max_candidates, observation_size)
+    )
+    mask = torch.zeros(
+        (len(observations), max_candidates), dtype=torch.bool, device=batch.device
+    )
+    for index, value in enumerate(observations):
+        if value.ndim != 2 or int(value.shape[1]) != observation_size:
+            raise ValueError("Candidate observations have inconsistent shapes.")
+        count = int(value.shape[0])
+        batch[index, :count] = value
+        mask[index, :count] = True
+    return batch, mask
+
+
+def masked_candidate_logits(
+    actor: CandidateScorer,
+    observations: torch.Tensor,
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    logits = actor(observations)
+    return logits.masked_fill(~mask, torch.finfo(logits.dtype).min)
+
+
+def candidate_state_mean(
+    observations: torch.Tensor,
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    weights = mask.unsqueeze(-1).to(observations.dtype)
+    return (observations * weights).sum(dim=1) / weights.sum(dim=1).clamp_min(1.0)
+
+
 def train(
     args: argparse.Namespace,
     environment,
@@ -1047,7 +1086,7 @@ def train(
             elite = sorted(
                 episode_trajectories, key=lambda item: (item[0], -item[1])
             )[:elite_count]
-            elite_observations = torch.stack(
+            elite_observations, elite_mask = pad_candidate_observations(
                 [value for _, _, values, _ in elite for value in values]
             )
             elite_actions = torch.tensor(
@@ -1055,7 +1094,11 @@ def train(
                 dtype=torch.long,
             )
             for _ in range(args.ppo_epochs):
-                distribution = Categorical(logits=actor(elite_observations))
+                distribution = Categorical(
+                    logits=masked_candidate_logits(
+                        actor, elite_observations, elite_mask
+                    )
+                )
                 actor_loss = -distribution.log_prob(elite_actions).mean()
                 entropy = distribution.entropy().mean()
                 value_loss = torch.zeros((), dtype=torch.float32)
@@ -1065,17 +1108,22 @@ def train(
                 nn.utils.clip_grad_norm_(actor.parameters(), args.grad_clip)
                 optimizer.step()
         else:
-            observation_tensor = torch.stack(observations)
+            observation_tensor, candidate_mask = pad_candidate_observations(
+                observations
+            )
+            state_tensor = candidate_state_mean(observation_tensor, candidate_mask)
             action_tensor = torch.tensor(actions, dtype=torch.long)
             old_log_prob_tensor = torch.stack(old_log_probs)
             return_tensor = torch.tensor(all_returns, dtype=torch.float32)
             with torch.no_grad():
-                old_value_tensor = critic(observation_tensor.mean(dim=1))
+                old_value_tensor = critic(state_tensor)
             advantage = return_tensor - old_value_tensor
             if advantage.numel() > 1:
                 advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-6)
             for _ in range(args.ppo_epochs):
-                logits = actor(observation_tensor)
+                logits = masked_candidate_logits(
+                    actor, observation_tensor, candidate_mask
+                )
                 distribution = Categorical(logits=logits)
                 log_prob = distribution.log_prob(action_tensor)
                 ratio = torch.exp(log_prob - old_log_prob_tensor)
@@ -1086,7 +1134,7 @@ def train(
                     ratio * advantage, clipped_ratio * advantage
                 ).mean()
                 entropy = distribution.entropy().mean()
-                value_tensor = critic(observation_tensor.mean(dim=1))
+                value_tensor = critic(state_tensor)
                 value_loss = nn.functional.mse_loss(value_tensor, return_tensor)
                 loss = (
                     actor_loss

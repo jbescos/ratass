@@ -74,14 +74,14 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.LIGHT_COMPOUND,
                 "Light Compound",
                 "Grip and lower mass trade engine power.",
-                "Grip +5%\nMass -8%\nPower -4%",
+                "Grip +4%\nMass -6%\nPower -4%",
                 1,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.AGILE_CHASSIS,
                 "Agile Chassis",
                 "Grip and lower mass trade aerodynamic efficiency.",
-                "Grip +8%\nMass -7%\nAero -7%",
+                "Grip +5%\nMass -4%\nAero -7%",
                 1,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -103,14 +103,14 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.RACE_TUNE,
                 "Race Tune",
                 "Power and grip trade aerodynamic efficiency.",
-                "Power +18%\nGrip +8%\nAero -8%",
+                "Power +12%\nGrip +5%\nAero -8%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.HEAVYWEIGHT_TUNE,
                 "Ballast Powertrain",
                 "Power and grip require extra chassis mass.",
-                "Power +16%\nGrip +6%\nMass +6%",
+                "Power +16%\nGrip +6%\nMass +7%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -124,21 +124,21 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.DRIFT_DIFFERENTIAL,
                 "Reinforced Longtail",
                 "Power and aero efficiency require extra chassis mass.",
-                "Power +22%\nAero +24%\nMass +5%",
+                "Power +24%\nAero +26%\nMass +5%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.CARBON_MONOCOQUE,
                 "Carbon Monocoque",
                 "Power and lower mass trade tire grip.",
-                "Power +19%\nMass -12%\nGrip -3%",
+                "Power +18%\nMass -7%\nGrip -3%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.TITANIUM_DRIVE,
                 "Titanium Drive",
                 "Power and lower mass trade aerodynamic efficiency.",
-                "Power +14%\nMass -4%\nAero -5%",
+                "Power +17%\nMass -6%\nAero -5%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -159,14 +159,14 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.MAGNESIUM_SUSPENSION,
                 "Magnesium Suspension",
                 "Grip and lower mass trade engine power.",
-                "Grip +12%\nMass -14%\nPower -5%",
+                "Grip +10%\nMass -8%\nPower -5%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.AERO_AGILE_CHASSIS,
                 "Aero-Agile Chassis",
                 "Grip and lower mass trade aerodynamic efficiency.",
-                "Grip +11%\nMass -12%\nAero -5%",
+                "Grip +7%\nMass -5%\nAero -5%",
                 2,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -188,14 +188,14 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.CHAMPIONSHIP_TUNE,
                 "Aero Prototype",
                 "Power and aero efficiency improve together.",
-                "Power +28%\nAero +55%",
+                "Power +26%\nAero +48%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.GROUND_EFFECT,
                 "Ground Effect",
                 "Grip and aero efficiency improve together.",
-                "Grip +11%\nAero +18%",
+                "Grip +16%\nAero +8%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -209,63 +209,63 @@ public final class RogueliteCardCatalog {
                 RogueliteCardId.TORQUE_VECTORING,
                 "Power Monocoque",
                 "Power and grip improve together.",
-                "Power +5%\nGrip +20%",
+                "Power +2%\nGrip +14%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.GRAPHENE_CHASSIS,
                 "Graphene Chassis",
                 "Grip and lower mass improve together.",
-                "Grip +9%\nMass -3%",
+                "Grip +12%\nMass -5%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.TITANIUM_SKELETON,
                 "Titanium Skeleton",
                 "Power and lower mass improve together.",
-                "Power +24%\nMass -6%",
+                "Power +25%\nMass -7%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.HYPERCAR_CORE,
                 "Hypercar Core",
                 "Power and aero efficiency improve together.",
-                "Power +32%\nAero +16%",
+                "Power +28%\nAero +16%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.ACTIVE_AERO_SHELL,
                 "Active Aero Shell",
                 "Aero efficiency and lower mass improve together.",
-                "Aero +50%\nMass -22%",
+                "Aero +55%\nMass -22%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.CARBON_PROTOTYPE,
                 "Carbon Prototype",
                 "Power and lower mass improve together.",
-                "Power +9%\nMass -25%",
+                "Power +9%\nMass -23%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.TRACK_VACUUM,
                 "Track Vacuum",
                 "Grip and aero efficiency improve together.",
-                "Grip +10%\nAero +70%",
+                "Grip +12%\nAero +60%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.WING_CAR,
                 "Wing Car",
                 "Aero efficiency and lower mass improve together.",
-                "Aero +30%\nMass -24%",
+                "Aero +18%\nMass -28%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
                 RogueliteCardId.FEATHERWEIGHT_GROUND_EFFECT,
                 "Feather Ground",
                 "Grip and lower mass improve together.",
-                "Grip +5%\nMass -10%",
+                "Grip +7%\nMass -16%",
                 3,
                 RogueliteSlotType.TUNING));
         cards.add(card(
@@ -533,22 +533,22 @@ public final class RogueliteCardCatalog {
         cards.add(card(
                 RogueliteCardId.LAP_DIVIDEND,
                 "Lap Dividend",
-                "Crossing the line converts pending lap experience at a higher rate after the lap cap is applied. Finish XP is unchanged.",
-                "Activation: Lap complete\nBanked lap XP x1.25",
+                "While equipped, doubles both lap XP capacity and the amount transferred at the line. Replacing it clamps pending lap XP to the new capacity. Finish XP is unchanged.",
+                "Activation: Passive\nLap XP capacity x2\nBanked lap XP x2",
                 1,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
                 RogueliteCardId.LAP_BOOSTER,
                 "Lap Booster",
-                "Crossing the line converts pending lap experience at a much higher rate after the lap cap is applied. Finish XP is unchanged.",
-                "Activation: Lap complete\nBanked lap XP x1.5",
+                "While equipped, triples both lap XP capacity and the amount transferred at the line. Replacing it clamps pending lap XP to the new capacity. Finish XP is unchanged.",
+                "Activation: Passive\nLap XP capacity x3\nBanked lap XP x3",
                 2,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
                 RogueliteCardId.LAP_DOUBLER,
                 "Lap Doubler",
-                "Crossing the line doubles pending lap experience after the lap cap is applied. Finish XP is unchanged.",
-                "Activation: Lap complete\nBanked lap XP x2",
+                "While equipped, quadruples both lap XP capacity and the amount transferred at the line. Replacing it clamps pending lap XP to the new capacity. Finish XP is unchanged.",
+                "Activation: Passive\nLap XP capacity x4\nBanked lap XP x4",
                 3,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(

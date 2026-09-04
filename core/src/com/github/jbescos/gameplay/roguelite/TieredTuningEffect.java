@@ -82,9 +82,9 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
             case GROUNDED_AERO:
                 return tuning(0f, 0.06f, 0.18f, 1.02f);
             case LIGHT_COMPOUND:
-                return tuning(-0.04f, 0.05f, 0f, 0.92f);
+                return tuning(-0.04f, 0.04f, 0f, 0.94f);
             case AGILE_CHASSIS:
-                return tuning(0f, 0.08f, -0.07f, 0.93f);
+                return tuning(0f, 0.05f, -0.07f, 0.96f);
             case STREAMLINED_CHASSIS:
                 return tuning(-0.03f, 0f, 0.18f, 0.90f);
             case LOW_DRAG_FEATHERWEIGHT:
@@ -92,25 +92,25 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
 
             // Tier 2: the same combinations with stronger benefits.
             case RACE_TUNE:
-                return tuning(0.18f, 0.08f, -0.08f, 1f);
+                return tuning(0.12f, 0.05f, -0.08f, 1f);
             case HEAVYWEIGHT_TUNE:
-                return tuning(0.16f, 0.06f, 0f, 1.06f);
+                return tuning(0.16f, 0.06f, 0f, 1.07f);
             case LOW_DRAG_BODY:
                 return tuning(0.22f, -0.03f, 0.20f, 1f);
             case DRIFT_DIFFERENTIAL:
-                return tuning(0.22f, 0f, 0.24f, 1.05f);
+                return tuning(0.24f, 0f, 0.26f, 1.05f);
             case CARBON_MONOCOQUE:
-                return tuning(0.19f, -0.03f, 0f, 0.88f);
+                return tuning(0.18f, -0.03f, 0f, 0.93f);
             case TITANIUM_DRIVE:
-                return tuning(0.14f, 0f, -0.05f, 0.96f);
+                return tuning(0.17f, 0f, -0.05f, 0.94f);
             case DOWNFORCE_PACKAGE:
                 return tuning(-0.03f, 0.12f, 0.30f, 1f);
             case GROUNDED_DOWNFORCE:
                 return tuning(0f, 0.12f, 0.30f, 1.03f);
             case MAGNESIUM_SUSPENSION:
-                return tuning(-0.05f, 0.12f, 0f, 0.86f);
+                return tuning(-0.05f, 0.10f, 0f, 0.92f);
             case AERO_AGILE_CHASSIS:
-                return tuning(0f, 0.11f, -0.05f, 0.88f);
+                return tuning(0f, 0.07f, -0.05f, 0.95f);
             case CARBON_LONGTAIL:
                 return tuning(-0.04f, 0f, 0.32f, 0.82f);
             case VENTURI_MONOCOQUE:
@@ -118,29 +118,29 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
 
             // Tier 3: two benefits and no drawback. Each attribute pair has two biases.
             case CHAMPIONSHIP_TUNE:
-                return tuning(0.28f, 0f, 0.55f, 1f);
+                return tuning(0.26f, 0f, 0.48f, 1f);
             case GROUND_EFFECT:
-                return tuning(0f, 0.11f, 0.18f, 1f);
+                return tuning(0f, 0.16f, 0.08f, 1f);
             case VELOCITY_SHELL:
                 return tuning(0.26f, 0.02f, 0f, 1f);
             case TORQUE_VECTORING:
-                return tuning(0.05f, 0.20f, 0f, 1f);
+                return tuning(0.02f, 0.14f, 0f, 1f);
             case GRAPHENE_CHASSIS:
-                return tuning(0f, 0.09f, 0f, 0.97f);
+                return tuning(0f, 0.12f, 0f, 0.95f);
             case TITANIUM_SKELETON:
-                return tuning(0.24f, 0f, 0f, 0.94f);
+                return tuning(0.25f, 0f, 0f, 0.93f);
             case HYPERCAR_CORE:
-                return tuning(0.32f, 0f, 0.16f, 1f);
+                return tuning(0.28f, 0f, 0.16f, 1f);
             case ACTIVE_AERO_SHELL:
-                return tuning(0f, 0f, 0.50f, 0.78f);
+                return tuning(0f, 0f, 0.55f, 0.78f);
             case CARBON_PROTOTYPE:
-                return tuning(0.09f, 0f, 0f, 0.75f);
+                return tuning(0.09f, 0f, 0f, 0.77f);
             case TRACK_VACUUM:
-                return tuning(0f, 0.10f, 0.70f, 1f);
+                return tuning(0f, 0.12f, 0.60f, 1f);
             case WING_CAR:
-                return tuning(0f, 0f, 0.30f, 0.76f);
+                return tuning(0f, 0f, 0.18f, 0.72f);
             case FEATHERWEIGHT_GROUND_EFFECT:
-                return tuning(0f, 0.05f, 0f, 0.90f);
+                return tuning(0f, 0.07f, 0f, 0.84f);
             default:
                 throw new IllegalArgumentException("Unsupported tuning card: " + cardId);
         }

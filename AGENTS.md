@@ -13,6 +13,19 @@
 - Add focused tests for standalone visual-effect state and run an RL smoke test
   after integrating a visual feature.
 
+## Tuning Card Balance
+
+- Benchmark tuning balance across every map with three laps using profile04 for
+  Tier 1 at x1.5, profile02 for Tier 2 at x2, and profile10 for Tier 3 at x3.
+  Verify the final values without amplification and require meaningful gains
+  between consecutive tiers.
+- Tier 1 and Tier 2 tuning cards must each have a unique combination of modified
+  attributes. Prefer different positive-attribute combinations where possible.
+- Tier 3 may contain two cards with the same pair of positive attributes only
+  when each card substantially favors a different attribute in that pair.
+- Retrain card strategies after tuning-card balance changes, with the Winner
+  strategy trained last.
+
 ## Conversation Context
 
 - If a request appears unrelated to this racing game project or the current

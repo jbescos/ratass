@@ -224,6 +224,10 @@ public final class RogueliteCompetitorProgress {
         lapExperience = 0;
     }
 
+    void clampLapExperience(int lapExperienceCap) {
+        lapExperience = Math.min(lapExperience, Math.max(0, lapExperienceCap));
+    }
+
     void resetRaceExperience() {
         lapExperience = 0;
         raceExperience = 0;

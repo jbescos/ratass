@@ -51,6 +51,7 @@ import com.github.jbescos.gameplay.AutomaticRecoveryManeuver;
 import com.github.jbescos.gameplay.ArenaMap;
 import com.github.jbescos.gameplay.CarCollisionLayers;
 import com.github.jbescos.gameplay.CarCollisionMassResponse;
+import com.github.jbescos.gameplay.CarHandlingBalance;
 import com.github.jbescos.gameplay.FaceToFaceDeadlockDetector;
 import com.github.jbescos.gameplay.GamepadInputState;
 import com.github.jbescos.gameplay.HybridPlayerControl;
@@ -833,7 +834,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SIDEBAR_TELEMETRY_PEAK_WIDTH = 50f;
     private static final float SIDEBAR_TELEMETRY_PEAK_GAP = 5f;
     private static final String[] CAR_PANEL_STAT_LABELS = {
-        "POWER", "GRIP", "STEERING", "MASS", "AERO", "LAP XP"
+        "POWER", "GRIP", "MASS", "AERO", "LAP XP"
     };
     private static final float SIDEBAR_LEADERBOARD_COMPACT_ROW_STEP = 15.5f;
     private static final float HUD_FONT_SCALE = 1.14f;
@@ -12087,7 +12088,8 @@ public class RatassGame extends ApplicationAdapter {
                 recipient.template.playerControlled,
                 recipient.template.vehicleId,
                 offender.template.playerControlled,
-                offender.template.vehicleId);
+                offender.template.vehicleId,
+                getLapExperienceMultiplier(recipient.template));
         if (stolen > 0) {
             showRivalXpTransfer(offender.template, recipient.template, stolen);
             invalidateLeaderboard();
@@ -12399,11 +12401,27 @@ public class RatassGame extends ApplicationAdapter {
             return 0;
         }
         return template.playerControlled
-                ? rogueliteRun.awardPlayerRacecraftExperience(reason, amount)
+                ? rogueliteRun.awardPlayerRacecraftExperience(
+                        reason,
+                        amount,
+                        getLapExperienceMultiplier(template))
                 : rogueliteRun.awardRivalRacecraftExperience(
                         template.vehicleId,
                         reason,
-                        amount);
+                        amount,
+                        getLapExperienceMultiplier(template));
+    }
+
+    private float getLapExperienceMultiplier(CarTemplate template) {
+        return template == null || template.currentCar == null
+                ? 1f
+                : template.currentCar.rogueliteUpgrades
+                        .getLapExperienceBankMultiplier();
+    }
+
+    private int getLapExperienceCap(CarTemplate template) {
+        return rogueliteRun.getRacecraftXpPerLapCap(
+                getLapExperienceMultiplier(template));
     }
 
     private CarTemplate findRivalBuildLeechRecipient(int offenderVehicleId) {
@@ -12482,6 +12500,10 @@ public class RatassGame extends ApplicationAdapter {
                 isPresentationEnabled(),
                 rogueliteRun.getCompletedSet(loadout));
         refreshAntennaNetwork();
+        rogueliteRun.clampLapExperience(
+                template.playerControlled,
+                template.vehicleId,
+                getLapExperienceMultiplier(template));
     }
 
     private void applyDraftMagnetRepulsions(float delta) {
@@ -19303,19 +19325,18 @@ public class RatassGame extends ApplicationAdapter {
             return;
         }
         int columns = bounds.width < 300f ? 2 : bounds.width < 620f ? 3 : 6;
-        int rows = (6 + columns - 1) / columns;
+        int rows = (CAR_PANEL_STAT_LABELS.length + columns - 1) / columns;
         float cellWidth = bounds.width / columns;
         float cellHeight = bounds.height / rows;
         float[] values = {
             stats.getAccelerationMultiplier(),
             stats.getGripMultiplier(),
-            stats.getSteeringMultiplier(),
             stats.getMassMultiplier(),
             stats.getAerodynamicEfficiency(),
             stats.getLapExperienceBankMultiplier()
         };
         String[] labels = {
-            "POWER", "GRIP", "STEERING", "MASS", "AERO", "LAP XP"
+            "POWER", "GRIP", "MASS", "AERO", "LAP XP"
         };
 
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
@@ -24069,12 +24090,10 @@ public class RatassGame extends ApplicationAdapter {
             case 1:
                 return stats.getGripMultiplier();
             case 2:
-                return stats.getSteeringMultiplier();
-            case 3:
                 return stats.getMassMultiplier();
-            case 4:
+            case 3:
                 return stats.getAerodynamicEfficiency();
-            case 5:
+            case 4:
                 return stats.getLapExperienceBankMultiplier();
             default:
                 return 1f;
@@ -24685,10 +24704,10 @@ public class RatassGame extends ApplicationAdapter {
                     false,
                     1f,
                     0.68f);
-            setCarPanelStatValueColor(getCarPanelStatValue(stats, i), i == 3);
+            setCarPanelStatValueColor(getCarPanelStatValue(stats, i), i == 2);
             drawRightAlignedText(
                     leaderboardFont,
-                    i == 5
+                    i == 4
                             ? CarStatBonusText.formatMultiplier(
                                     getCarPanelStatValue(stats, i))
                             : CarStatBonusText.format(getCarPanelStatValue(stats, i)),
@@ -25360,7 +25379,7 @@ public class RatassGame extends ApplicationAdapter {
                     0.22f);
             float lapProgressRatio =
                     displayedProgress.getLapExperience()
-                            / (float) Math.max(1, rogueliteRun.getRacecraftXpPerLapCap());
+                            / (float) Math.max(1, getLapExperienceCap(displayedTemplate));
             drawRaceSummaryBar(
                     sidebarLapXpBarBounds,
                     lapProgressRatio,
@@ -25449,7 +25468,10 @@ public class RatassGame extends ApplicationAdapter {
 
         if (displayedProgress != null) {
             drawSidebarXpBarText(displayedProgress, sidebarXpBarBounds);
-            drawSidebarLapXpBarText(displayedProgress, sidebarLapXpBarBounds);
+            drawSidebarLapXpBarText(
+                    displayedProgress,
+                    sidebarLapXpBarBounds,
+                    getLapExperienceCap(displayedTemplate));
         }
     }
 
@@ -25528,12 +25550,13 @@ public class RatassGame extends ApplicationAdapter {
 
     private void drawSidebarLapXpBarText(
             RogueliteCompetitorProgress progress,
-            Rectangle bounds) {
+            Rectangle bounds,
+            int lapExperienceCap) {
         String text = GameText.format(
                 gameLanguage,
                 "message.lap_xp",
                 progress.getLapExperience(),
-                rogueliteRun.getRacecraftXpPerLapCap());
+                lapExperienceCap);
         leaderboardFont.setColor(0.84f, 0.96f, 1f, 1f);
         float textY =
                 bounds.y
@@ -32337,7 +32360,9 @@ public class RatassGame extends ApplicationAdapter {
                             * body.getInertia()
                             * physics.yawGripPerSecond
                             * physics.wheelGrip
-                            * gripMultiplier
+                            * CarHandlingBalance.yawGripMultiplier(
+                                    gripMultiplier,
+                                    lateralSlipSignal)
                             * MathUtils.lerp(0.48f, 1f, slipGrip)
                             * clampedDelta
                             * timeDilationMotionScale;
@@ -32448,7 +32473,8 @@ public class RatassGame extends ApplicationAdapter {
                 turnTorque *= GROWTH_TURN_MULTIPLIER;
             }
             turnTorque *= getSteeringInertiaCompensation()
-                    * drivingUpgrades().getSteeringTorqueMultiplier();
+                    * drivingUpgrades().getSteeringTorqueMultiplier()
+                    * getAdaptiveSteeringTorqueMultiplier();
             steeringStrength *=
                     drivingUpgrades().getSteeringMultiplier(getLateralSlipSignal());
             steeringStrength *= getTemporaryGripMultiplier();
@@ -32523,6 +32549,7 @@ public class RatassGame extends ApplicationAdapter {
                             * (float) Math.tan(turn * maxSteerAngle * steeringStrength)
                             * motionFactor;
             float maxYawRate = MathUtils.lerp(4.8f, 2.4f, speedRatio)
+                    * CarHandlingBalance.yawRateMultiplier(getUpgradeTopSpeedMultiplier())
                     * timeDilationMotionScale;
             desiredAngularVelocity =
                     MathUtils.clamp(desiredAngularVelocity, -maxYawRate, maxYawRate);
@@ -32553,6 +32580,7 @@ public class RatassGame extends ApplicationAdapter {
                             limitLongitudinalForce(
                                     physics.brakeForce
                                             * throttleMagnitude
+                                            * getAdaptiveBrakeMultiplier()
                                             * getTimeDilationForceScale(),
                                     physics,
                                     true),
@@ -32601,7 +32629,10 @@ public class RatassGame extends ApplicationAdapter {
                             * (braking
                                     ? 1f
                                     : drivingUpgrades().getDriveForceLimitMultiplier())
-                            * (braking ? BRAKE_TRACTION_MULTIPLIER : DRIVE_TRACTION_MULTIPLIER)
+                            * (braking
+                                    ? BRAKE_TRACTION_MULTIPLIER
+                                            * getAdaptiveBrakeMultiplier()
+                                    : DRIVE_TRACTION_MULTIPLIER)
                             * getTimeDilationForceScale();
             return MathUtils.clamp(requestedForce, -maxForce, maxForce);
         }
@@ -32812,6 +32843,7 @@ public class RatassGame extends ApplicationAdapter {
             CarPhysics physics = physics();
             float requestedDeceleration =
                     physics.brakeForce
+                            * getAdaptiveBrakeMultiplier()
                             / Math.max(0.001f, body.getMass())
                             * getTimeDilationForceScale();
             float gripLimitedDeceleration =
@@ -32822,6 +32854,7 @@ public class RatassGame extends ApplicationAdapter {
                                     surfaceGripMultiplier,
                                     getTemporaryGripMultiplier())
                             * BRAKE_TRACTION_MULTIPLIER
+                            * getAdaptiveBrakeMultiplier()
                             * getTimeDilationForceScale();
             return Math.max(0f, Math.min(requestedDeceleration, gripLimitedDeceleration));
         }
@@ -32837,6 +32870,44 @@ public class RatassGame extends ApplicationAdapter {
                                     surfaceGripMultiplier,
                                     getTemporaryGripMultiplier())
                             * getTimeDilationForceScale());
+        }
+
+        private float getAdaptiveBrakeMultiplier() {
+            return CarHandlingBalance.brakeMultiplier(
+                    getUpgradeTopSpeedMultiplier());
+        }
+
+        private float getAdaptiveSteeringTorqueMultiplier() {
+            float carGripMultiplier =
+                    drivingUpgrades().getGripMultiplier(
+                            getLateralSlipSignal(),
+                            1f,
+                            getTemporaryGripMultiplier());
+            return CarHandlingBalance.steeringTorqueMultiplier(
+                    getUpgradeTopSpeedMultiplier(),
+                    carGripMultiplier,
+                    getReferenceSteeringInertiaCompensation(),
+                    getSteeringInertiaCompensation());
+        }
+
+        private float getReferenceSteeringInertiaCompensation() {
+            float referenceMassMultiplier = physics().massMultiplier
+                    * (growthBoosted ? GROWTH_MASS_MULTIPLIER : 1f);
+            return MathUtils.lerp(1f, referenceMassMultiplier, 0.45f)
+                    * sizeScale
+                    * sizeScale;
+        }
+
+        private float getUpgradeTopSpeedMultiplier() {
+            float powerMultiplier = revengeSlowMultiplier * getTemporaryPowerMultiplier();
+            if (growthBoosted) {
+                powerMultiplier *= MAX_GROWTH_SPEED_MULTIPLIER
+                        * MAX_GROWTH_SPEED_MULTIPLIER
+                        * MAX_GROWTH_SPEED_MULTIPLIER;
+            }
+            return drivingUpgrades().getMaxSpeedMultiplier(
+                    powerMultiplier,
+                    getTemporaryAerodynamicEfficiencyMultiplier());
         }
 
         private void applyTrackLimitSlowdown(ArenaMap arenaMap) {

@@ -40,16 +40,16 @@ public class AntennaNetworkBonusesTest {
         assertEquals(1.12f, tuningUpgrades.getAccelerationMultiplier(), EPSILON);
         assertEquals(0.98f, tuningUpgrades.getGripMultiplier(0f), EPSILON);
         assertEquals(1.14f, tuningUpgrades.getAerodynamicEfficiencyMultiplier(1f), EPSILON);
-        assertEquals(0.92f, tuningUpgrades.getMassMultiplier(), EPSILON);
+        assertEquals(0.94f, tuningUpgrades.getMassMultiplier(), EPSILON);
 
         // Tier 2 keeps its own grip and mass, then imports aero and power.
         assertEquals(1.12f, techniqueUpgrades.getAccelerationMultiplier(), EPSILON);
-        assertEquals(1.05f, techniqueUpgrades.getGripMultiplier(0f), EPSILON);
+        assertEquals(1.04f, techniqueUpgrades.getGripMultiplier(0f), EPSILON);
         assertEquals(
                 1.14f,
                 techniqueUpgrades.getAerodynamicEfficiencyMultiplier(1f),
                 EPSILON);
-        assertEquals(0.92f, techniqueUpgrades.getMassMultiplier(), EPSILON);
+        assertEquals(0.94f, techniqueUpgrades.getMassMultiplier(), EPSILON);
     }
 
     @Test
@@ -94,13 +94,13 @@ public class AntennaNetworkBonusesTest {
                 .include(receiver)
                 .build();
 
-        assertEquals(2f, network.getLapExperienceBankMultiplier(), EPSILON);
+        assertEquals(4f, network.getLapExperienceBankMultiplier(), EPSILON);
         assertEquals(
-                1.25f,
+                2f,
                 upgrades(source, network).getLapExperienceBankMultiplier(),
                 EPSILON);
         assertEquals(
-                2f,
+                4f,
                 upgrades(receiver, network).getLapExperienceBankMultiplier(),
                 EPSILON);
     }
