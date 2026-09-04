@@ -65,10 +65,14 @@ class Metrics:
     experience_sum: float
     reward_sum: float
     decision_sum: int
+    offer_counts: dict[str, int]
     card_counts: dict[str, int]
+    race_end_equipped_counts: dict[str, int]
+    activation_counts: dict[str, int]
     tier_counts: dict[int, int]
     type_counts: dict[str, int]
     card_tiers: dict[str, int]
+    card_types: dict[str, str]
     cards_by_type: dict[str, dict[str, int]]
     skip_count: int
     stat_synergy_count: int
@@ -146,6 +150,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--policy-root", default=str(DEFAULT_POLICY_ROOT))
     parser.add_argument("--output", required=True)
     parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--card-usage-output", default="")
     parser.add_argument("--init-checkpoint")
     parser.add_argument("--init-policy")
     parser.add_argument("--resume", action="store_true")
@@ -529,10 +534,14 @@ def evaluate(
         experience_sum=0.0,
         reward_sum=0.0,
         decision_sum=0,
+        offer_counts={},
         card_counts={},
+        race_end_equipped_counts={},
+        activation_counts={},
         tier_counts={},
         type_counts={},
         card_tiers={},
+        card_types={},
         cards_by_type={},
         skip_count=0,
         stat_synergy_count=0,
@@ -562,6 +571,17 @@ def evaluate(
                     offer_ids = [str(value) for value in environment.getOfferIds()]
                     offer_tiers = [int(value) for value in environment.getOfferTiers()]
                     offer_types = [str(value) for value in environment.getOfferTypes()]
+                    for offer_index, offered in enumerate(offer_ids):
+                        if offered != "skip":
+                            metrics.offer_counts[offered] = (
+                                metrics.offer_counts.get(offered, 0) + 1
+                            )
+                            metrics.card_tiers.setdefault(
+                                offered, offer_tiers[offer_index]
+                            )
+                            metrics.card_types.setdefault(
+                                offered, offer_types[offer_index]
+                            )
                     stat_synergy_gains = [
                         float(value)
                         for value in environment.getOfferStatSynergyGains()
@@ -631,11 +651,122 @@ def evaluate(
                     metrics.championship_set_counts[normalized_id] = (
                         metrics.championship_set_counts.get(normalized_id, 0) + 1
                     )
+                count_occurrences(
+                    metrics.race_end_equipped_counts,
+                    environment.getRaceEndEquippedCardOccurrences(),
+                )
+                count_occurrences(
+                    metrics.activation_counts,
+                    environment.getActivatedCardOccurrences(),
+                )
     finally:
         environment.setSelfPlayOpponents(False)
         environment.setMixedOpponents(False)
         environment.setChampionshipRange(previous_minimum, previous_maximum)
     return metrics
+
+
+def count_occurrences(target: dict[str, int], values) -> None:
+    for value in values:
+        normalized = str(value)
+        target[normalized] = target.get(normalized, 0) + 1
+
+
+def card_catalog_metadata() -> list[dict[str, object]]:
+    catalog = jpype.JClass(
+        "com.github.jbescos.gameplay.roguelite.RogueliteCardCatalog"
+    )
+    return [
+        {
+            "id": f"card:{definition.getId().name()}",
+            "title": str(definition.getTitle()),
+            "type": str(definition.getSlotType().name()).lower(),
+            "tier": int(definition.getTier()),
+        }
+        for definition in catalog.all()
+    ]
+
+
+def card_usage_payload(
+    profile_id: str,
+    strategy_type: str,
+    metrics: Metrics,
+    catalog_cards: list[dict[str, object]],
+) -> dict[str, object]:
+    metadata_by_id = {
+        str(card["id"]): dict(card)
+        for card in catalog_cards
+    }
+    observed_ids = (
+        set(metrics.offer_counts)
+        | set(metrics.card_counts)
+        | set(metrics.race_end_equipped_counts)
+        | set(metrics.activation_counts)
+    )
+    for card_id in observed_ids:
+        if card_id not in metadata_by_id:
+            metadata_by_id[card_id] = {
+                "id": card_id,
+                "title": card_id.split(":", 1)[-1],
+                "type": metrics.card_types.get(card_id, "driver"),
+                "tier": metrics.card_tiers.get(card_id, 0),
+            }
+
+    cards: list[dict[str, object]] = []
+    for card_id, metadata in metadata_by_id.items():
+        offered = metrics.offer_counts.get(card_id, 0)
+        selected = metrics.card_counts.get(card_id, 0)
+        cards.append(
+            {
+                **metadata,
+                "offered": offered,
+                "selected": selected,
+                "selectionRate": selected / offered if offered > 0 else None,
+                "equippedAtRaceEnd": metrics.race_end_equipped_counts.get(card_id, 0),
+                "activated": metrics.activation_counts.get(card_id, 0),
+            }
+        )
+    cards.sort(
+        key=lambda card: (
+            str(card["type"]),
+            int(card["tier"]),
+            str(card["title"]),
+        )
+    )
+    return {
+        "schemaVersion": 1,
+        "profileId": profile_id,
+        "strategyType": strategy_type,
+        "episodes": metrics.episodes,
+        "championships": metrics.championships,
+        "activationDefinition": (
+            "Card contributed to one simulated lap. The strategy simulator uses "
+            "expected card value and does not reproduce frame-level runtime triggers."
+        ),
+        "cards": cards,
+    }
+
+
+def write_card_usage_report(
+    path: Path,
+    profile_id: str,
+    strategy_type: str,
+    metrics: Metrics,
+) -> None:
+    payload = card_usage_payload(
+        profile_id,
+        strategy_type,
+        metrics,
+        card_catalog_metadata(),
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    unused = sum(
+        1
+        for card in payload["cards"]
+        if int(card["offered"]) > 0 and int(card["selected"]) == 0
+    )
+    print(f"strategy_card_usage output={path} unused_offered_cards={unused}")
 
 
 def format_metrics(name: str, metrics: Metrics) -> str:
@@ -1500,6 +1631,13 @@ def main() -> None:
         if args.evaluate_mode == "model":
             export_policy(actor, Path(args.output), observation_size, args.strategy_type)
             print(f"strategy_policy_exported output={args.output}")
+        if args.card_usage_output:
+            write_card_usage_report(
+                Path(args.card_usage_output),
+                args.profile_id,
+                args.strategy_type,
+                metrics,
+            )
         return
 
     baseline_episodes = min(args.eval_episodes, 500)
@@ -1607,6 +1745,13 @@ def main() -> None:
             f"candidate_win_rate={final_selection.win_rate:.3f} "
             f"baseline_win_rate={promotion_baseline.win_rate:.3f}"
         )
+        if args.card_usage_output:
+            write_card_usage_report(
+                Path(args.card_usage_output),
+                args.profile_id,
+                args.strategy_type,
+                promotion_baseline,
+            )
         return
 
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1654,6 +1799,13 @@ def main() -> None:
         checkpoint_path,
     )
     export_policy(actor, Path(args.output), observation_size, args.strategy_type)
+    if args.card_usage_output:
+        write_card_usage_report(
+            Path(args.card_usage_output),
+            args.profile_id,
+            args.strategy_type,
+            final_selection,
+        )
     print(f"strategy_policy={Path(args.output)}")
     print(f"strategy_checkpoint={checkpoint_path}")
 

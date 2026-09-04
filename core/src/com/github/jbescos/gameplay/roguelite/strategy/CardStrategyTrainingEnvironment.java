@@ -8,6 +8,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteCardId;
 import com.github.jbescos.gameplay.roguelite.RogueliteCardOffer;
 import com.github.jbescos.gameplay.roguelite.RogueliteCompetitorProgress;
 import com.github.jbescos.gameplay.roguelite.RogueliteExperienceAwards;
+import com.github.jbescos.gameplay.roguelite.RogueliteLoadout;
 import com.github.jbescos.gameplay.roguelite.RogueliteRun;
 import com.github.jbescos.gameplay.roguelite.RogueliteSlotType;
 import com.github.jbescos.gameplay.roguelite.RogueliteSetCatalog;
@@ -43,6 +44,8 @@ public final class CardStrategyTrainingEnvironment {
     private final int[] cardTypeSelections = new int[RogueliteSlotType.values().length];
     private final boolean[] completedSets = new boolean[RogueliteSetId.values().length];
     private final int[] championshipSetCounts = new int[RogueliteSetId.values().length];
+    private final List<String> raceEndEquippedCardOccurrences = new ArrayList<String>();
+    private final List<String> activatedCardOccurrences = new ArrayList<String>();
 
     private Random random;
     private Random strategyRandom;
@@ -130,6 +133,8 @@ public final class CardStrategyTrainingEnvironment {
         Arrays.fill(cardTypeSelections, 0);
         Arrays.fill(completedSets, false);
         Arrays.fill(championshipSetCounts, 0);
+        raceEndEquippedCardOccurrences.clear();
+        activatedCardOccurrences.clear();
         List<Integer> rivalIds = new ArrayList<Integer>();
         for (int vehicleId = 1; vehicleId < fieldSize; vehicleId++) {
             run.getRivalProgress(vehicleId);
@@ -340,6 +345,18 @@ public final class CardStrategyTrainingEnvironment {
 
     public int getTotalExperience() {
         return totalExperience;
+    }
+
+    /** Cards equipped by the evaluated player at each simulated race finish. */
+    public String[] getRaceEndEquippedCardOccurrences() {
+        return raceEndEquippedCardOccurrences.toArray(
+                new String[raceEndEquippedCardOccurrences.size()]);
+    }
+
+    /** Cards whose expected contribution was applied for each simulated player lap. */
+    public String[] getActivatedCardOccurrences() {
+        return activatedCardOccurrences.toArray(
+                new String[activatedCardOccurrences.size()]);
     }
 
     public String[] getOfferIds() {
@@ -611,6 +628,7 @@ public final class CardStrategyTrainingEnvironment {
 
     private void simulateLapExperience() {
         run.resetAllLapExperience();
+        recordPlayerLoadout(activatedCardOccurrences);
         rankCompetitors();
         transitionReward += rewards.lapWin(racePositions[0]);
         updateRunRaceState();
@@ -684,6 +702,7 @@ public final class CardStrategyTrainingEnvironment {
     }
 
     private void simulateRaceFinish() {
+        recordPlayerLoadout(raceEndEquippedCardOccurrences);
         rankCompetitors();
         updateRunRaceState();
         for (int vehicleId = 0; vehicleId < fieldSize; vehicleId++) {
@@ -706,6 +725,14 @@ public final class CardStrategyTrainingEnvironment {
             }
         }
         updateChampionshipPositions();
+    }
+
+    private void recordPlayerLoadout(List<String> target) {
+        RogueliteLoadout loadout = run.getPlayerProgress().getLoadout();
+        target.add("driver:" + loadout.getDriverProfileId());
+        for (RogueliteCardId cardId : loadout.getModifications()) {
+            target.add("card:" + cardId.name());
+        }
     }
 
     private void accumulateLapExperience(

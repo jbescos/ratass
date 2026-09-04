@@ -33,6 +33,7 @@ fi
 python_bin="${CARD_STRATEGY_PYTHON:-${repo_root}/.venv-rl/bin/python}"
 output="${CARD_STRATEGY_OUTPUT:-${repo_root}/assets/ai/card-strategies/${profile_id}/rl_card_strategy_policy.json}"
 checkpoint="${CARD_STRATEGY_CHECKPOINT:-${repo_root}/rl-checkpoints/card-strategies/${profile_id}/model.pt}"
+card_usage_output="${CARD_STRATEGY_USAGE_REPORT:-${repo_root}/target/card-strategy-reports/${profile_id}-card-usage.json}"
 resume_args=()
 if [[ "${CARD_STRATEGY_RESUME:-0}" == "1" ]]; then
   resume_args+=(--resume)
@@ -71,6 +72,7 @@ fi
   --policy-root "${CARD_STRATEGY_DRIVER_POLICY_ROOT:-${repo_root}/assets/ai/policies}" \
   --output "${output}" \
   --checkpoint "${checkpoint}" \
+  --card-usage-output "${card_usage_output}" \
   "${resume_args[@]}" \
   --evaluate-mode "${CARD_STRATEGY_EVALUATE_MODE}" \
   --episodes "${CARD_STRATEGY_EPISODES}" \

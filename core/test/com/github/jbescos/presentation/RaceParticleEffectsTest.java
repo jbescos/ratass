@@ -43,6 +43,24 @@ public class RaceParticleEffectsTest {
     }
 
     @Test
+    public void offRoadEmitterThrowsBoundedDebrisOnlyWhileMovingOffRoad() {
+        RaceParticleEffects effects = new RaceParticleEffects();
+
+        updateOffRoad(effects, false, 0.7f);
+        assertEquals(0, effects.getSurfaceDebrisCount());
+
+        updateOffRoad(effects, true, 0.7f);
+        int firstBurst = effects.getSurfaceDebrisCount();
+        assertTrue(firstBurst >= 4);
+
+        updateOffRoad(effects, true, 0.02f);
+        assertEquals(firstBurst, effects.getSurfaceDebrisCount());
+
+        effects.update(2f);
+        assertEquals(0, effects.getSurfaceDebrisCount());
+    }
+
+    @Test
     public void particleStorageStaysBoundedAndResetClearsIt() {
         RaceParticleEffects effects = new RaceParticleEffects();
         for (int i = 0; i < 1000; i++) {
@@ -68,5 +86,23 @@ public class RaceParticleEffectsTest {
                 0f,
                 0.6f,
                 slip);
+    }
+
+    private static void updateOffRoad(
+            RaceParticleEffects effects,
+            boolean offRoad,
+            float speedRatio) {
+        effects.updateOffRoadEmitter(
+                7,
+                0.12f,
+                0f,
+                0f,
+                0f,
+                1.14f,
+                1.58f,
+                3f,
+                0f,
+                speedRatio,
+                offRoad);
     }
 }

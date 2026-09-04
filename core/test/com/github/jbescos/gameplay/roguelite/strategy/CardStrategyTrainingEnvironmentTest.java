@@ -39,6 +39,10 @@ public final class CardStrategyTrainingEnvironmentTest {
         assertFalse(environment.getActionCount() > 0);
         assertTrue(environment.getBestSetProgress() >= 0);
         assertTrue(environment.getBestSetProgress() <= 4);
+        assertTrue(environment.getRaceEndEquippedCardOccurrences().length > 0);
+        assertTrue(environment.getActivatedCardOccurrences().length
+                >= environment.getRaceEndEquippedCardOccurrences().length);
+        assertTrue(environment.getRaceEndEquippedCardOccurrences()[0].startsWith("driver:"));
     }
 
     @Test

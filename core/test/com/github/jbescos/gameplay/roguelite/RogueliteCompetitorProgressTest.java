@@ -2,10 +2,31 @@ package com.github.jbescos.gameplay.roguelite;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
 public class RogueliteCompetitorProgressTest {
+    @Test
+    public void oneExperienceAwardQueuesOneRewardPerLevel() {
+        RogueliteCompetitorProgress progress =
+                new RogueliteCompetitorProgress("profile00");
+
+        assertEquals(250, progress.awardExperience(250));
+
+        assertEquals(4, progress.getLevel());
+        assertEquals(4, progress.getExperience());
+        assertEquals(3, progress.getPendingRewards());
+        assertEquals(86, progress.getExperienceForNextLevel());
+
+        assertTrue(progress.consumePendingReward());
+        assertEquals(2, progress.getPendingRewards());
+        assertTrue(progress.consumePendingReward());
+        assertEquals(1, progress.getPendingRewards());
+        assertTrue(progress.consumePendingReward());
+        assertEquals(0, progress.getPendingRewards());
+    }
+
     @Test
     public void racecraftExperienceRemainsPendingUntilLapIsBanked() {
         RogueliteCompetitorProgress progress =

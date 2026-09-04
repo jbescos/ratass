@@ -512,7 +512,7 @@ public class RogueliteRunTest {
     }
 
     @Test
-    public void unresolvedRewardPausesXpAndLegacyQueuesRestoreAsOneChoice() {
+    public void unresolvedRewardPausesXpAndQueuedRewardsSurviveRestore() {
         RogueliteRun run = new RogueliteRun(48L);
         levelUpPlayer(run);
         RogueliteRun.Snapshot snapshot = run.snapshot();
@@ -521,16 +521,20 @@ public class RogueliteRunTest {
 
         RogueliteRun restored = new RogueliteRun(480L);
         assertTrue(restored.restore(snapshot));
-        assertEquals(1, restored.getPlayerProgress().getPendingRewards());
+        assertEquals(4, restored.getPlayerProgress().getPendingRewards());
         assertTrue(restored.getPlayerProgress().hasOfferableReward());
         assertFalse(restored.createOffers(3).isEmpty());
 
         assertEquals(0, restored.awardPlayerRacePosition(1, 10));
         assertEquals(2, restored.getPlayerProgress().getLevel());
         assertEquals(20, restored.getPlayerProgress().getExperience());
-        assertEquals(1, restored.getPlayerProgress().getPendingRewards());
+        assertEquals(4, restored.getPlayerProgress().getPendingRewards());
 
         assertTrue(restored.select(restored.createOffers(3).get(0)));
+        assertEquals(3, restored.getPlayerProgress().getPendingRewards());
+        assertTrue(restored.skipPlayerReward());
+        assertTrue(restored.skipPlayerReward());
+        assertTrue(restored.skipPlayerReward());
         assertEquals(0, restored.getPlayerProgress().getPendingRewards());
         assertEquals(100, restored.awardPlayerRacePosition(1, 10));
         assertEquals(3, restored.getPlayerProgress().getLevel());

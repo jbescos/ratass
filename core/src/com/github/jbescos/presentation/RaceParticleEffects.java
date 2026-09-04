@@ -12,6 +12,7 @@ public final class RaceParticleEffects {
     private static final int SMOKE = 1;
     private static final int SPARK = 2;
     private static final int FLASH = 3;
+    private static final int SURFACE_DEBRIS = 4;
     private static final float DRIFT_START_SLIP = 0.34f;
     private static final float DRIFT_STOP_SLIP = 0.27f;
     private static final float MIN_DRIFT_SPEED_RATIO = 0.16f;
@@ -71,6 +72,10 @@ public final class RaceParticleEffects {
                 float damping = (float) Math.exp(-3.6f * delta);
                 velocityX[i] *= damping;
                 velocityY[i] *= damping;
+            } else if (kind[i] == SURFACE_DEBRIS) {
+                float damping = (float) Math.exp(-1.6f * delta);
+                velocityX[i] *= damping;
+                velocityY[i] *= damping;
             }
         }
     }
@@ -93,7 +98,7 @@ public final class RaceParticleEffects {
                         ? slip >= DRIFT_STOP_SLIP
                         : slip >= DRIFT_START_SLIP;
         if (!drifting || speedRatio < MIN_DRIFT_SPEED_RATIO) {
-            stopEmitter(emitterId);
+            stopDriftEmitter(emitterId);
             return;
         }
         if (state == null) {
@@ -130,7 +135,50 @@ public final class RaceParticleEffects {
         if (state != null) {
             state.drifting = false;
             state.smokeTimer = 0f;
+            state.surfaceTimer = 0f;
         }
+    }
+
+    public void updateOffRoadEmitter(
+            int emitterId,
+            float deltaSeconds,
+            float centerX,
+            float centerY,
+            float angleRad,
+            float carWidth,
+            float carHeight,
+            float velocityX,
+            float velocityY,
+            float speedRatio,
+            boolean offRoad) {
+        EmitterState state = emitters.get(emitterId);
+        if (!offRoad || speedRatio < 0.08f) {
+            if (state != null) {
+                state.surfaceTimer = 0f;
+            }
+            return;
+        }
+        if (state == null) {
+            state = new EmitterState();
+            emitters.put(emitterId, state);
+        }
+        state.surfaceTimer -= sanitizeDelta(deltaSeconds);
+        if (state.surfaceTimer > 0f) {
+            return;
+        }
+
+        float intensity = MathUtils.clamp((speedRatio - 0.08f) / 0.62f, 0f, 1f);
+        state.surfaceTimer += MathUtils.lerp(0.105f, 0.040f, intensity);
+        emitSurfaceDebris(
+                emitterId,
+                centerX,
+                centerY,
+                angleRad,
+                carWidth,
+                carHeight,
+                velocityX,
+                velocityY,
+                intensity);
     }
 
     public void emitImpact(
@@ -216,7 +264,7 @@ public final class RaceParticleEffects {
 
     public void drawSparks(ShapeRenderer renderer) {
         for (int i = 0; i < active.length; i++) {
-            if (!active[i] || kind[i] == SMOKE) {
+            if (!active[i] || (kind[i] != SPARK && kind[i] != FLASH)) {
                 continue;
             }
             float progress = normalizedAge(i);
@@ -272,6 +320,28 @@ public final class RaceParticleEffects {
         }
     }
 
+    public void drawSurfaceDebris(ShapeRenderer renderer) {
+        for (int i = 0; i < active.length; i++) {
+            if (!active[i] || kind[i] != SURFACE_DEBRIS) {
+                continue;
+            }
+            float progress = normalizedAge(i);
+            float alpha = opacity[i] * (1f - progress) * (1f - progress);
+            float size = MathUtils.lerp(startSize[i], endSize[i], progress);
+            float speed = (float) Math.sqrt(
+                    velocityX[i] * velocityX[i] + velocityY[i] * velocityY[i]);
+            float tail = speed > 0.001f ? Math.min(0.065f, 0.018f + speed * 0.006f) : 0f;
+            renderer.setColor(red[i], green[i], blue[i], alpha);
+            renderer.rectLine(
+                    x[i],
+                    y[i],
+                    x[i] - velocityX[i] * tail,
+                    y[i] - velocityY[i] * tail,
+                    Math.max(0.018f, size));
+            renderer.circle(x[i], y[i], Math.max(0.012f, size * 0.72f), 6);
+        }
+    }
+
     private static void drawRing(
             ShapeRenderer renderer,
             float centerX,
@@ -318,6 +388,10 @@ public final class RaceParticleEffects {
         return countKind(FLASH);
     }
 
+    int getSurfaceDebrisCount() {
+        return countKind(SURFACE_DEBRIS);
+    }
+
     private void emitTireSmoke(
             int emitterId,
             float centerX,
@@ -358,6 +432,64 @@ public final class RaceParticleEffects {
             blue[slot] = shade * 1.04f;
             opacity[slot] = 0.18f + severity * 0.20f;
             variationSequence++;
+        }
+    }
+
+    private void emitSurfaceDebris(
+            int emitterId,
+            float centerX,
+            float centerY,
+            float angleRad,
+            float carWidth,
+            float carHeight,
+            float carVelocityX,
+            float carVelocityY,
+            float intensity) {
+        float forwardX = -MathUtils.sin(angleRad);
+        float forwardY = MathUtils.cos(angleRad);
+        float sideX = MathUtils.cos(angleRad);
+        float sideY = MathUtils.sin(angleRad);
+        float rearX = centerX - forwardX * carHeight * 0.40f;
+        float rearY = centerY - forwardY * carHeight * 0.40f;
+        int countPerWheel = intensity > 0.55f ? 3 : 2;
+        for (int side = -1; side <= 1; side += 2) {
+            for (int piece = 0; piece < countPerWheel; piece++) {
+                int slot = allocate(SURFACE_DEBRIS);
+                int seed = variationSequence + emitterId * 71 + side * 23 + piece * 41;
+                float wheelOffset = side * carWidth * 0.32f;
+                x[slot] = rearX + sideX * (wheelOffset + signedNoise(seed) * carWidth * 0.08f);
+                y[slot] = rearY + sideY * (wheelOffset + signedNoise(seed) * carWidth * 0.08f);
+                float sideBurst = side * (0.35f + intensity * 0.55f)
+                        + signedNoise(seed + 5) * 0.28f;
+                float rearBurst = 0.48f + intensity * 1.15f + noise01(seed + 11) * 0.40f;
+                velocityX[slot] =
+                        carVelocityX * 0.10f - forwardX * rearBurst + sideX * sideBurst;
+                velocityY[slot] =
+                        carVelocityY * 0.10f - forwardY * rearBurst + sideY * sideBurst;
+                lifetime[slot] = 0.32f + intensity * 0.34f + noise01(seed + 17) * 0.18f;
+                startSize[slot] = carWidth * (0.030f + noise01(seed + 29) * 0.025f);
+                endSize[slot] = startSize[slot] * 0.38f;
+                boolean grass = ((seed >>> 1) & 3) == 0;
+                if (grass) {
+                    red[slot] = 0.23f + noise01(seed + 31) * 0.08f;
+                    green[slot] = 0.40f + noise01(seed + 37) * 0.12f;
+                    blue[slot] = 0.12f;
+                } else {
+                    red[slot] = 0.34f + noise01(seed + 31) * 0.12f;
+                    green[slot] = 0.23f + noise01(seed + 37) * 0.09f;
+                    blue[slot] = 0.10f + noise01(seed + 43) * 0.04f;
+                }
+                opacity[slot] = 0.72f + intensity * 0.20f;
+                variationSequence++;
+            }
+        }
+    }
+
+    private void stopDriftEmitter(int emitterId) {
+        EmitterState state = emitters.get(emitterId);
+        if (state != null) {
+            state.drifting = false;
+            state.smokeTimer = 0f;
         }
     }
 
@@ -423,5 +555,6 @@ public final class RaceParticleEffects {
     private static final class EmitterState {
         private boolean drifting;
         private float smokeTimer;
+        private float surfaceTimer;
     }
 }

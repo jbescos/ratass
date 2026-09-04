@@ -156,11 +156,10 @@ public final class RogueliteCompetitorProgress {
         }
         int gained = amount;
         experience += gained;
-        if (experience >= getExperienceForNextLevel()) {
+        while (experience >= getExperienceForNextLevel()) {
             experience -= getExperienceForNextLevel();
             level++;
-            pendingRewards = 1;
-            experience = Math.min(experience, getExperienceForNextLevel() - 1);
+            pendingRewards++;
         }
         return gained;
     }
@@ -249,7 +248,7 @@ public final class RogueliteCompetitorProgress {
         if (pendingRewards <= 0) {
             return false;
         }
-        pendingRewards = 0;
+        pendingRewards--;
         return true;
     }
 
@@ -266,7 +265,7 @@ public final class RogueliteCompetitorProgress {
         }
         level = restoredLevel;
         experience = restoredExperience;
-        pendingRewards = restoredPendingRewards > 0 ? 1 : 0;
+        pendingRewards = restoredPendingRewards;
         tierFourUnlocked = restoredTierFourUnlocked;
     }
 

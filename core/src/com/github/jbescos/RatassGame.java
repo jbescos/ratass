@@ -5444,6 +5444,7 @@ public class RatassGame extends ApplicationAdapter {
         } else if (gameMode == GameMode.CUSTOM_GAME_MENU) {
             handleCustomGameMenuInput();
             handleCustomGameMenuPointerInput();
+            return;
         } else if (gameMode == GameMode.NEW_GAME_CAR_MENU) {
             handleNewGameCarMenuInput();
         } else if (gameMode == GameMode.MAPS_MENU) {
@@ -10371,15 +10372,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private void skipRogueliteReward() {
         rogueliteRun.skipPlayerReward();
-        rogueliteRewardChoices = Collections.emptyList();
-        roguelitePendingOffer = null;
-        if (rogueliteRewardResumesRace) {
-            resumeRaceAfterRogueliteReward();
-            return;
-        }
-        rogueliteRewardResumesRace = false;
-        gameMode = GameMode.PLAYING;
-        advanceAfterRound();
+        finishRogueliteRewardChoice();
     }
 
     private void finishRogueliteRewardChoice() {
@@ -13859,6 +13852,18 @@ public class RatassGame extends ApplicationAdapter {
                     velocity.y,
                     speedRatio,
                     car.getLateralSlipSignal());
+            raceParticleEffects.updateOffRoadEmitter(
+                    car.template.vehicleId,
+                    delta,
+                    position.x,
+                    position.y,
+                    car.body.getAngle(),
+                    car.getWidth(),
+                    car.getHeight(),
+                    velocity.x,
+                    velocity.y,
+                    speedRatio,
+                    !isCarOnRoad(car));
         }
     }
 
@@ -15137,6 +15142,7 @@ public class RatassGame extends ApplicationAdapter {
         drawArenaOverlay(theme);
         skidMarkTrail.draw(shapeRenderer, effectClock);
         raceParticleEffects.drawSmoke(shapeRenderer);
+        raceParticleEffects.drawSurfaceDebris(shapeRenderer);
         if (shouldDrawSandboxDebugGuides()) {
             drawSandboxRouteLine();
         }
