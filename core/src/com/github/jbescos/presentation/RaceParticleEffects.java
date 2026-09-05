@@ -13,6 +13,7 @@ public final class RaceParticleEffects {
     private static final int SPARK = 2;
     private static final int FLASH = 3;
     private static final int SURFACE_DEBRIS = 4;
+    private static final int SURFACE_CLOUD = 5;
     private static final float DRIFT_START_SLIP = 0.34f;
     private static final float DRIFT_STOP_SLIP = 0.27f;
     private static final float MIN_DRIFT_SPEED_RATIO = 0.16f;
@@ -150,7 +151,8 @@ public final class RaceParticleEffects {
             float velocityX,
             float velocityY,
             float speedRatio,
-            boolean offRoad) {
+            boolean offRoad,
+            OffRoadSurface surface) {
         EmitterState state = emitters.get(emitterId);
         if (!offRoad || speedRatio < 0.08f) {
             if (state != null) {
@@ -178,7 +180,8 @@ public final class RaceParticleEffects {
                 carHeight,
                 velocityX,
                 velocityY,
-                intensity);
+                intensity,
+                surface == null ? OffRoadSurface.DRY : surface);
     }
 
     public void emitImpact(
@@ -322,12 +325,21 @@ public final class RaceParticleEffects {
 
     public void drawSurfaceDebris(ShapeRenderer renderer) {
         for (int i = 0; i < active.length; i++) {
-            if (!active[i] || kind[i] != SURFACE_DEBRIS) {
+            if (!active[i]
+                    || (kind[i] != SURFACE_DEBRIS && kind[i] != SURFACE_CLOUD)) {
                 continue;
             }
             float progress = normalizedAge(i);
             float alpha = opacity[i] * (1f - progress) * (1f - progress);
             float size = MathUtils.lerp(startSize[i], endSize[i], progress);
+            if (kind[i] == SURFACE_CLOUD) {
+                float fadeIn = MathUtils.clamp(progress / 0.12f, 0f, 1f);
+                renderer.setColor(red[i], green[i], blue[i], alpha * fadeIn * 0.28f);
+                renderer.circle(x[i], y[i], size * 1.45f, 12);
+                renderer.setColor(red[i], green[i], blue[i], alpha * fadeIn * 0.62f);
+                renderer.circle(x[i], y[i], size, 10);
+                continue;
+            }
             float speed = (float) Math.sqrt(
                     velocityX[i] * velocityX[i] + velocityY[i] * velocityY[i]);
             float tail = speed > 0.001f ? Math.min(0.065f, 0.018f + speed * 0.006f) : 0f;
@@ -392,6 +404,10 @@ public final class RaceParticleEffects {
         return countKind(SURFACE_DEBRIS);
     }
 
+    int getSurfaceCloudCount() {
+        return countKind(SURFACE_CLOUD);
+    }
+
     private void emitTireSmoke(
             int emitterId,
             float centerX,
@@ -444,7 +460,8 @@ public final class RaceParticleEffects {
             float carHeight,
             float carVelocityX,
             float carVelocityY,
-            float intensity) {
+            float intensity,
+            OffRoadSurface surface) {
         float forwardX = -MathUtils.sin(angleRad);
         float forwardY = MathUtils.cos(angleRad);
         float sideX = MathUtils.cos(angleRad);
@@ -453,6 +470,20 @@ public final class RaceParticleEffects {
         float rearY = centerY - forwardY * carHeight * 0.40f;
         int countPerWheel = intensity > 0.55f ? 3 : 2;
         for (int side = -1; side <= 1; side += 2) {
+            emitSurfaceCloud(
+                    emitterId,
+                    rearX,
+                    rearY,
+                    sideX,
+                    sideY,
+                    forwardX,
+                    forwardY,
+                    side,
+                    carWidth,
+                    carVelocityX,
+                    carVelocityY,
+                    intensity,
+                    surface);
             for (int piece = 0; piece < countPerWheel; piece++) {
                 int slot = allocate(SURFACE_DEBRIS);
                 int seed = variationSequence + emitterId * 71 + side * 23 + piece * 41;
@@ -469,19 +500,87 @@ public final class RaceParticleEffects {
                 lifetime[slot] = 0.32f + intensity * 0.34f + noise01(seed + 17) * 0.18f;
                 startSize[slot] = carWidth * (0.030f + noise01(seed + 29) * 0.025f);
                 endSize[slot] = startSize[slot] * 0.38f;
-                boolean grass = ((seed >>> 1) & 3) == 0;
-                if (grass) {
-                    red[slot] = 0.23f + noise01(seed + 31) * 0.08f;
-                    green[slot] = 0.40f + noise01(seed + 37) * 0.12f;
-                    blue[slot] = 0.12f;
-                } else {
-                    red[slot] = 0.34f + noise01(seed + 31) * 0.12f;
-                    green[slot] = 0.23f + noise01(seed + 37) * 0.09f;
-                    blue[slot] = 0.10f + noise01(seed + 43) * 0.04f;
-                }
+                setSurfaceDebrisColor(slot, seed, surface);
                 opacity[slot] = 0.72f + intensity * 0.20f;
                 variationSequence++;
             }
+        }
+    }
+
+    private void emitSurfaceCloud(
+            int emitterId,
+            float rearX,
+            float rearY,
+            float sideX,
+            float sideY,
+            float forwardX,
+            float forwardY,
+            int side,
+            float carWidth,
+            float carVelocityX,
+            float carVelocityY,
+            float intensity,
+            OffRoadSurface surface) {
+        int slot = allocate(SURFACE_CLOUD);
+        int seed = variationSequence + emitterId * 83 + side * 29;
+        float wheelOffset = side * carWidth * 0.32f;
+        x[slot] = rearX + sideX * wheelOffset;
+        y[slot] = rearY + sideY * wheelOffset;
+        float sideBurst = side * (0.18f + intensity * 0.34f);
+        float rearBurst = 0.20f + intensity * 0.42f;
+        velocityX[slot] =
+                carVelocityX * 0.045f - forwardX * rearBurst + sideX * sideBurst;
+        velocityY[slot] =
+                carVelocityY * 0.045f - forwardY * rearBurst + sideY * sideBurst;
+        lifetime[slot] = 0.48f + intensity * 0.40f + noise01(seed + 17) * 0.12f;
+        float surfaceScale = surface == OffRoadSurface.SNOW ? 1.34f : 1f;
+        startSize[slot] = carWidth * (0.085f + intensity * 0.035f) * surfaceScale;
+        endSize[slot] = carWidth * (0.34f + intensity * 0.18f) * surfaceScale;
+        setSurfaceCloudColor(slot, seed, surface);
+        opacity[slot] = surface == OffRoadSurface.SNOW ? 0.86f : 0.66f;
+        variationSequence++;
+    }
+
+    private void setSurfaceDebrisColor(int slot, int seed, OffRoadSurface surface) {
+        if (surface == OffRoadSurface.SNOW) {
+            float shade = 0.84f + noise01(seed + 31) * 0.14f;
+            red[slot] = shade;
+            green[slot] = Math.min(1f, shade + 0.035f);
+            blue[slot] = Math.min(1f, shade + 0.09f);
+            return;
+        }
+        if (surface == OffRoadSurface.MUD) {
+            red[slot] = 0.27f + noise01(seed + 31) * 0.09f;
+            green[slot] = 0.17f + noise01(seed + 37) * 0.06f;
+            blue[slot] = 0.075f;
+            return;
+        }
+        boolean grass = ((seed >>> 1) & 3) == 0;
+        if (grass) {
+            red[slot] = 0.23f + noise01(seed + 31) * 0.08f;
+            green[slot] = 0.40f + noise01(seed + 37) * 0.12f;
+            blue[slot] = 0.12f;
+        } else {
+            red[slot] = 0.40f + noise01(seed + 31) * 0.14f;
+            green[slot] = 0.28f + noise01(seed + 37) * 0.10f;
+            blue[slot] = 0.12f + noise01(seed + 43) * 0.05f;
+        }
+    }
+
+    private void setSurfaceCloudColor(int slot, int seed, OffRoadSurface surface) {
+        if (surface == OffRoadSurface.SNOW) {
+            float shade = 0.86f + noise01(seed + 31) * 0.10f;
+            red[slot] = shade;
+            green[slot] = Math.min(1f, shade + 0.04f);
+            blue[slot] = 1f;
+        } else if (surface == OffRoadSurface.MUD) {
+            red[slot] = 0.29f;
+            green[slot] = 0.19f;
+            blue[slot] = 0.10f;
+        } else {
+            red[slot] = 0.53f;
+            green[slot] = 0.38f;
+            blue[slot] = 0.18f;
         }
     }
 
@@ -556,5 +655,11 @@ public final class RaceParticleEffects {
         private boolean drifting;
         private float smokeTimer;
         private float surfaceTimer;
+    }
+
+    public enum OffRoadSurface {
+        DRY,
+        MUD,
+        SNOW
     }
 }

@@ -165,6 +165,7 @@ import com.github.jbescos.presentation.RogueliteEndArtworkLayout;
 import com.github.jbescos.presentation.RogueliteResponsiveCardLayout;
 import com.github.jbescos.presentation.RaceIncidentPopup;
 import com.github.jbescos.presentation.RaceFinishCamera;
+import com.github.jbescos.presentation.RearVehicleEffectLayout;
 import com.github.jbescos.presentation.RevengeProjectileVisual;
 import com.github.jbescos.presentation.SandboxDebugGuides;
 import com.github.jbescos.presentation.StableCameraState;
@@ -204,6 +205,7 @@ public class RatassGame extends ApplicationAdapter {
     private static final String LANGUAGE_PROPERTY = "language";
     private static final String LANGUAGE_PREF_KEY = LANGUAGE_PROPERTY;
     private static final String DEFAULT_THEME_NAME = "gt3";
+    private static final String F1_THEME_NAME = "f1";
     private static final String HALLOWEEN_THEME_NAME = "halloween";
     private static final String CAMERA_ZOOM_PROPERTY = "camera.zoom";
     private static final String CAMERA_ZOOM_PREF_KEY = CAMERA_ZOOM_PROPERTY;
@@ -3023,7 +3025,7 @@ public class RatassGame extends ApplicationAdapter {
         if (localOverride != null && localOverride.exists()) {
             return localOverride;
         }
-        return resolveThemedAssetHandle(relativePath);
+        return resolveAssetHandle(relativePath);
     }
 
     private static int readPositiveInt(
@@ -3294,7 +3296,7 @@ public class RatassGame extends ApplicationAdapter {
 
     private void loadThemeEnemyNames() {
         themeEnemyNames.clear();
-        FileHandle handle = resolveThemedAssetHandle(THEME_ENEMY_NAMES_PATH);
+        FileHandle handle = resolveAssetHandle(THEME_ENEMY_NAMES_PATH);
         if (handle == null || !handle.exists()) {
             return;
         }
@@ -3322,7 +3324,7 @@ public class RatassGame extends ApplicationAdapter {
         if (!isPresentationEnabled()) {
             return;
         }
-        FileHandle handle = resolveThemedAssetHandle(THEME_DRIVER_NAMES_PATH);
+        FileHandle handle = resolveAssetHandle(THEME_DRIVER_NAMES_PATH);
         if (handle == null || !handle.exists()) {
             return;
         }
@@ -13816,6 +13818,12 @@ public class RatassGame extends ApplicationAdapter {
     }
 
     private void updateSkidMarkEmission(float delta) {
+        RaceParticleEffects.OffRoadSurface offRoadSurface =
+                currentWeather == Weather.SNOW
+                        ? RaceParticleEffects.OffRoadSurface.SNOW
+                        : currentWeather == Weather.RAIN
+                                ? RaceParticleEffects.OffRoadSurface.MUD
+                                : RaceParticleEffects.OffRoadSurface.DRY;
         for (int i = 0; i < cars.size; i++) {
             Car car = cars.get(i);
             if (!car.active || car.body == null) {
@@ -13863,7 +13871,8 @@ public class RatassGame extends ApplicationAdapter {
                     velocity.x,
                     velocity.y,
                     speedRatio,
-                    !isCarOnRoad(car));
+                    !isCarOnRoad(car),
+                    offRoadSurface);
         }
     }
 
@@ -17886,7 +17895,10 @@ public class RatassGame extends ApplicationAdapter {
         float flicker = 0.5f + 0.5f * MathUtils.sin(effectClock * 31f + carIndex * 2.7f);
         float flameLength =
                 carHeight * ThrottleExhaustVisual.flameLengthScale(intensity, flicker);
-        for (int side = -1; side <= 1; side += 2) {
+        boolean centered = isF1Theme();
+        int emitterCount = RearVehicleEffectLayout.emitterCount(centered);
+        for (int emitter = 0; emitter < emitterCount; emitter++) {
+            float side = RearVehicleEffectLayout.lateralSign(centered, emitter);
             float nozzleX = side * carWidth * 0.22f;
             float nozzleY = -carHeight * 0.49f;
             drawOffsetTriangle(
@@ -17933,7 +17945,10 @@ public class RatassGame extends ApplicationAdapter {
         float brake = MathUtils.clamp(car.getBrakeSignal(), 0f, 1f);
         if (brake > 0.04f) {
             float glow = MathUtils.clamp((brake - 0.04f) / 0.40f, 0f, 1f);
-            for (int side = -1; side <= 1; side += 2) {
+            boolean centered = isF1Theme();
+            int emitterCount = RearVehicleEffectLayout.emitterCount(centered);
+            for (int emitter = 0; emitter < emitterCount; emitter++) {
+                float side = RearVehicleEffectLayout.lateralSign(centered, emitter);
                 float offsetX = side * carWidth * 0.30f;
                 float offsetY = -carHeight * 0.39f;
                 drawOffsetCircle(
@@ -24215,7 +24230,6 @@ public class RatassGame extends ApplicationAdapter {
             drawCarPanelInfoIcon(carPanelInfoBounds[i], sectionTitleHeight);
         }
         drawPendingRewardStatus(target, sectionTitleHeight);
-        drawCarPanelTelemetryColumnHeaders(sectionTitleHeight);
         drawCarPanelSlotText(target);
         drawCarPanelDebuffText(target);
         drawCarPanelStatusIcons(target);
@@ -24666,26 +24680,6 @@ public class RatassGame extends ApplicationAdapter {
                 false,
                 1f,
                 0.72f);
-    }
-
-    private void drawCarPanelTelemetryColumnHeaders(float sectionTitleHeight) {
-        float width = carPanelTelemetryBounds.width;
-        float peakWidth = getCarPanelTelemetryPeakWidth(width);
-        float baseline =
-                carPanelTelemetryBounds.y
-                        + carPanelTelemetryBounds.height
-                        + sectionTitleHeight;
-        labelFont.setColor(0.48f, 0.58f, 0.64f, 1f);
-        drawRightAlignedText(
-                labelFont,
-                "NOW",
-                carPanelTelemetryBounds.x + width - peakWidth - 5f,
-                baseline);
-        drawRightAlignedText(
-                labelFont,
-                "PEAK",
-                carPanelTelemetryBounds.x + width - 2f,
-                baseline);
     }
 
     private void drawCarPanelStatRowsText(RogueliteCarStatSnapshot stats) {
@@ -27644,6 +27638,10 @@ public class RatassGame extends ApplicationAdapter {
         return HALLOWEEN_THEME_NAME.equals(toThemeLookupKey(configuredThemeName));
     }
 
+    private boolean isF1Theme() {
+        return F1_THEME_NAME.equals(toThemeLookupKey(configuredThemeName));
+    }
+
     private MapTheme themeForMap(ArenaMap map) {
         if (map == null) {
             return DEFAULT_MAP_THEME;
@@ -28661,7 +28659,7 @@ public class RatassGame extends ApplicationAdapter {
         private static final float MAP_WALL_BOUNCE_COOLDOWN = 0.30f;
         private static final float MAP_WALL_TARGET_OUTWARD_SPEED = HEIGHT * 5.5f;
         private static final float MAP_WALL_MAX_IMPULSE_MULTIPLIER = 2.25f;
-        private static final float AUTO_RECOVERY_TRIGGER_SECONDS = 1.5f;
+        private static final float AUTO_RECOVERY_TRIGGER_SECONDS = 1.0f;
         private static final float AUTO_RECOVERY_FORWARD_THROTTLE = 0.86f;
         private static final float AUTO_RECOVERY_TARGET_REACHED_DISTANCE = HEIGHT * 0.55f;
         private static final float AUTO_RECOVERY_APPROACH_SLOW_DISTANCE = HEIGHT * 4f;

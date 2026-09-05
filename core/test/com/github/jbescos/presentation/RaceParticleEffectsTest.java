@@ -52,12 +52,26 @@ public class RaceParticleEffectsTest {
         updateOffRoad(effects, true, 0.7f);
         int firstBurst = effects.getSurfaceDebrisCount();
         assertTrue(firstBurst >= 4);
+        assertEquals(2, effects.getSurfaceCloudCount());
 
         updateOffRoad(effects, true, 0.02f);
         assertEquals(firstBurst, effects.getSurfaceDebrisCount());
 
         effects.update(2f);
         assertEquals(0, effects.getSurfaceDebrisCount());
+        assertEquals(0, effects.getSurfaceCloudCount());
+    }
+
+    @Test
+    public void offRoadEmitterSupportsDryMudAndSnowSpray() {
+        for (RaceParticleEffects.OffRoadSurface surface
+                : RaceParticleEffects.OffRoadSurface.values()) {
+            RaceParticleEffects effects = new RaceParticleEffects();
+            updateOffRoad(effects, true, 0.7f, surface);
+
+            assertTrue(effects.getSurfaceDebrisCount() >= 4);
+            assertEquals(2, effects.getSurfaceCloudCount());
+        }
     }
 
     @Test
@@ -92,6 +106,18 @@ public class RaceParticleEffectsTest {
             RaceParticleEffects effects,
             boolean offRoad,
             float speedRatio) {
+        updateOffRoad(
+                effects,
+                offRoad,
+                speedRatio,
+                RaceParticleEffects.OffRoadSurface.DRY);
+    }
+
+    private static void updateOffRoad(
+            RaceParticleEffects effects,
+            boolean offRoad,
+            float speedRatio,
+            RaceParticleEffects.OffRoadSurface surface) {
         effects.updateOffRoadEmitter(
                 7,
                 0.12f,
@@ -103,6 +129,7 @@ public class RaceParticleEffectsTest {
                 3f,
                 0f,
                 speedRatio,
-                offRoad);
+                offRoad,
+                surface);
     }
 }

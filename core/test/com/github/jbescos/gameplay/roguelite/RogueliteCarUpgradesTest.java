@@ -2403,9 +2403,9 @@ public class RogueliteCarUpgradesTest {
 
     @Test
     public void offenderCurseTargetsOnlyTheCarThatLandedTheHit() {
-        assertOffenderCurse(RogueliteCardId.SENSOR_JAMMER, 1.05f, 0.95f, 20f);
-        assertOffenderCurse(RogueliteCardId.GRID_BLACKOUT, 1.10f, 0.90f, 30f);
-        assertOffenderCurse(RogueliteCardId.TOTAL_BLACKOUT, 1.20f, 0.80f, 40f);
+        assertOffenderCurse(RogueliteCardId.SENSOR_JAMMER, 1.05f, 0.95f, 10f);
+        assertOffenderCurse(RogueliteCardId.GRID_BLACKOUT, 1.10f, 0.90f, 15f);
+        assertOffenderCurse(RogueliteCardId.TOTAL_BLACKOUT, 1.20f, 0.80f, 20f);
     }
 
     @Test
@@ -2421,7 +2421,7 @@ public class RogueliteCarUpgradesTest {
         assertNotNull(strike);
         assertEquals(1.40f, strike.getMassMultiplier(), EPSILON);
         assertEquals(0.60f, strike.getGripMultiplier(), EPSILON);
-        assertEquals(80f, strike.getDurationSeconds(), EPSILON);
+        assertEquals(40f, strike.getDurationSeconds(), EPSILON);
         assertEquals(2f, strike.getEffectMultiplier(), EPSILON);
     }
 

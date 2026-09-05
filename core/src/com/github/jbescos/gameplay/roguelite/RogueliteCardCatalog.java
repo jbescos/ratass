@@ -835,22 +835,22 @@ public final class RogueliteCardCatalog {
         cards.add(revenge(
                 RogueliteCardId.SENSOR_JAMMER,
                 "Blind Hex",
-                "Blinds and weakens the rival who hit you for 20 seconds.",
-                "Activation: Rival hit\nOffender for 20s: blind, +5% mass, -5% power/grip/aero",
+                "Blinds and weakens the rival who hit you for 10 seconds.",
+                "Activation: Rival hit\nOffender for 10s: blind, +5% mass, -5% power/grip/aero",
                 1,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
                 RogueliteCardId.GRID_BLACKOUT,
                 "Burden Hex",
-                "Chains the rival who hit you to a heavier, weakened and blinded car for 30 seconds.",
-                "Activation: Rival hit\nOffender for 30s: blind, +10% mass, -10% power/grip/aero",
+                "Chains the rival who hit you to a heavier, weakened and blinded car for 15 seconds.",
+                "Activation: Rival hit\nOffender for 15s: blind, +10% mass, -10% power/grip/aero",
                 2,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(
                 RogueliteCardId.TOTAL_BLACKOUT,
                 "Doom Hex",
-                "Crushes the rival who hit you with blindness, extreme weight, and severe performance loss for 40 seconds.",
-                "Activation: Rival hit\nOffender for 40s: blind, +20% mass, -20% power/grip/aero",
+                "Crushes the rival who hit you with blindness, extreme weight, and severe performance loss for 20 seconds.",
+                "Activation: Rival hit\nOffender for 20s: blind, +20% mass, -20% power/grip/aero",
                 3,
                 RogueliteAbilityVisualStyle.SHIELD));
         cards.add(revenge(

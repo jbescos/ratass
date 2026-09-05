@@ -12,17 +12,17 @@ final class OffenderCurseRevengeEffect extends RevengeUpgradeEffect {
             case SENSOR_JAMMER:
                 offenderMassMultiplier = 1.05f;
                 offenderPerformanceMultiplier = 0.95f;
-                durationSeconds = 20f;
+                durationSeconds = 10f;
                 break;
             case GRID_BLACKOUT:
                 offenderMassMultiplier = 1.10f;
                 offenderPerformanceMultiplier = 0.90f;
-                durationSeconds = 30f;
+                durationSeconds = 15f;
                 break;
             case TOTAL_BLACKOUT:
                 offenderMassMultiplier = 1.20f;
                 offenderPerformanceMultiplier = 0.80f;
-                durationSeconds = 40f;
+                durationSeconds = 20f;
                 break;
             default:
                 throw new IllegalArgumentException(
