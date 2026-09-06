@@ -32,7 +32,11 @@ public final class RogueliteResponsiveCardLayout {
             float width,
             float height,
             int maximumCards) {
-        return Math.max(0, Math.min(3, maximumCards));
+        return Math.max(0, Math.min(6, maximumCards));
+    }
+
+    public static int collectionColumns(int cardCount) {
+        return Math.max(0, Math.min(6, cardCount));
     }
 
     public static int equippedLoadoutPageCapacity(int maximumCards) {

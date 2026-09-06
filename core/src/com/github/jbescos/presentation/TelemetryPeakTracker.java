@@ -4,7 +4,7 @@ package com.github.jbescos.presentation;
 public final class TelemetryPeakTracker {
     private static final float PEAK_REVERSAL_THRESHOLD = 0.005f;
 
-    private final LatestPeak speedRatio = new LatestPeak();
+    private final LatestPeak speed = new LatestPeak();
     private final LatestPeak drive = new LatestPeak();
     private final LatestPeak brake = new LatestPeak();
     private final LatestPeak drift = new LatestPeak();
@@ -32,9 +32,9 @@ public final class TelemetryPeakTracker {
             float currentBrake,
             float currentDrift,
             float currentSlipstream) {
-        speedRatio.update(
-                sanitizeUnit(currentSpeedRatio),
-                sanitizeNonNegative(currentSpeedKph));
+        speed.update(
+                sanitizeNonNegative(currentSpeedKph),
+                sanitizeUnit(currentSpeedRatio));
         drive.update(sanitizeUnit(currentDrive));
         brake.update(sanitizeUnit(currentBrake));
         drift.update(sanitizeUnit(currentDrift));
@@ -42,7 +42,7 @@ public final class TelemetryPeakTracker {
     }
 
     public void reset() {
-        speedRatio.reset();
+        speed.reset();
         drive.reset();
         brake.reset();
         drift.reset();
@@ -50,11 +50,11 @@ public final class TelemetryPeakTracker {
     }
 
     public float getSpeedRatio() {
-        return speedRatio.getValue();
+        return speed.getDisplayValue();
     }
 
     public float getSpeedKph() {
-        return speedRatio.getDisplayValue();
+        return speed.getValue();
     }
 
     public float getDrive() {

@@ -217,6 +217,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recovery-reward-launch-throttle", type=float, default=5.0)
     parser.add_argument("--recovery-reward-steering", type=float, default=5.0)
     parser.add_argument("--recovery-penalty-stationary", type=float, default=0.15)
+    parser.add_argument("--recovery-penalty-path-inefficiency", type=float, default=3.0)
+    parser.add_argument("--recovery-penalty-aligned-rotation", type=float, default=2.0)
     parser.add_argument("--recovery-reward-success", type=float, default=2000.0)
     parser.add_argument("--overtaking-reward-gap", type=float, default=4.0)
     parser.add_argument("--overtaking-reward-safety", type=float, default=300.0)
@@ -301,6 +303,7 @@ def make_stats():
         "braking_risk_steps": 0,
         "avg_route_alignment": 0.0,
         "avg_target_alignment": 0.0,
+        "avg_angular_speed": 0.0,
         "avg_route_curvature": 0.0,
         "avg_target_curvature": 0.0,
         "avg_route_left_clearance": 0.0,
@@ -395,6 +398,8 @@ def build_config(
             float(args.recovery_reward_launch_throttle),
             float(args.recovery_reward_steering),
             float(args.recovery_penalty_stationary),
+            float(args.recovery_penalty_path_inefficiency),
+            float(args.recovery_penalty_aligned_rotation),
             float(args.recovery_reward_success),
         )
         .withOvertakingRewards(
@@ -528,6 +533,7 @@ def update_observation_stats(
         stats["avg_edge_clearance"] += edge_clearance
         stats["avg_route_alignment"] += value(offset, "route_fwd")
         stats["avg_target_alignment"] += value(offset, "target_fwd")
+        stats["avg_angular_speed"] += abs(value(offset, "angular_speed"))
         stats["avg_route_curvature"] += abs(value(offset, "route_curvature"))
         stats["avg_target_curvature"] += abs(value(offset, "target_curvature"))
         stats["avg_route_left_clearance"] += left_margin
@@ -778,6 +784,7 @@ def summary_metrics(stats, episodes_override: int = None):
         "braking_risk_fraction": stats["braking_risk_steps"] / observation_samples,
         "avg_route_alignment": stats["avg_route_alignment"] / observation_samples,
         "avg_target_alignment": stats["avg_target_alignment"] / observation_samples,
+        "avg_angular_speed": stats["avg_angular_speed"] / observation_samples,
         "avg_route_curvature": stats["avg_route_curvature"] / observation_samples,
         "avg_target_curvature": stats["avg_target_curvature"] / observation_samples,
         "avg_route_left_clearance": stats["avg_route_left_clearance"] / observation_samples,
@@ -854,6 +861,7 @@ def print_summary(label: str, stats, episodes_override: int = None):
         f"avg_brake_demand={metrics['avg_brake_demand']:.3f} "
         f"avg_route_alignment={metrics['avg_route_alignment']:.3f} "
         f"avg_target_alignment={metrics['avg_target_alignment']:.3f} "
+        f"avg_angular_speed={metrics['avg_angular_speed']:.3f} "
         f"avg_route_curvature={metrics['avg_route_curvature']:.3f} "
         f"avg_target_curvature={metrics['avg_target_curvature']:.3f} "
         f"avg_lateral_slip={metrics['avg_lateral_slip']:.3f} "
@@ -985,6 +993,7 @@ def print_evaluation_tables(
                 format_table_number(metrics["near_edge_fast_fraction"]),
                 format_table_number(metrics["avg_brake_demand"]),
                 format_table_number(metrics["braking_risk_fraction"]),
+                format_table_number(metrics["avg_angular_speed"]),
                 format_table_number(metrics["avg_lateral_slip"]),
             ]
         )
@@ -1037,10 +1046,11 @@ def print_evaluation_tables(
             "edge_fast",
             "brake_d",
             "brake_risk",
+            "angular",
             "lat_slip",
         ],
         driving_rows,
-        right_aligned=set(range(1, 20)),
+        right_aligned=set(range(1, 21)),
     )
     print_table(
         "evaluation_rewards",
@@ -1076,6 +1086,7 @@ def print_evaluation_score(
         f"avg_front_road_clearance={metrics['avg_front_road_clearance']:.3f} "
         f"avg_route_left_clearance={metrics['avg_route_left_clearance']:.3f} "
         f"avg_route_right_clearance={metrics['avg_route_right_clearance']:.3f} "
+        f"avg_angular_speed={metrics['avg_angular_speed']:.3f} "
         f"near_edge_fast_fraction={metrics['near_edge_fast_fraction']:.3f} "
         f"avg_brake_demand={metrics['avg_brake_demand']:.3f} "
         f"braking_risk_fraction={metrics['braking_risk_fraction']:.3f}",

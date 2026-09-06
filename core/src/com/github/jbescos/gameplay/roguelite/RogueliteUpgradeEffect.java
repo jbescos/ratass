@@ -105,6 +105,12 @@ abstract class RogueliteUpgradeEffect {
         return false;
     }
 
+    void captureOffenderBuild(RogueliteLoadout offenderLoadout) {
+    }
+
+    void setBorrowedTechniqueStrength(float multiplier) {
+    }
+
     float revengeTargetAgeSeconds() {
         return Float.POSITIVE_INFINITY;
     }
@@ -257,6 +263,9 @@ abstract class RogueliteUpgradeEffect {
     }
 
     void amplifyActiveRevenge(float multiplier) {
+    }
+
+    void setVenomWebEnabled(boolean enabled) {
     }
 
     void onRacePositionImproved(int positionsGained, float slipstreamBoost) {

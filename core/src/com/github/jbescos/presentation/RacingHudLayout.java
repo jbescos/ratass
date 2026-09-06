@@ -90,6 +90,27 @@ public final class RacingHudLayout {
         return Math.max(1f, (buttonSize - raceSummaryRowGap(buttonSize) * 2f) / 3f);
     }
 
+    public static float raceResultsFooterBaseline(float continueButtonTop, float lineHeight) {
+        return continueButtonTop + clamp(Math.max(0f, lineHeight) * 0.90f, 14f, 22f);
+    }
+
+    public static float sandboxSettingsPanelHeight(
+            boolean expanded,
+            float headerHeight,
+            int rowCount,
+            float rowHeight,
+            float actionHeight,
+            float contentPadding) {
+        float safeHeaderHeight = Math.max(0f, headerHeight);
+        if (!expanded) {
+            return safeHeaderHeight;
+        }
+        return safeHeaderHeight
+                + Math.max(0, rowCount) * Math.max(0f, rowHeight)
+                + Math.max(0f, actionHeight)
+                + Math.max(0f, contentPadding);
+    }
+
     public static float bottomPanelMinimapWidth(
             float screenWidth,
             float preferredSidebarWidth) {

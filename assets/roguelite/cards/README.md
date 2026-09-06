@@ -28,8 +28,8 @@ Pulse. The runtime keeps only the 24 most recently used images in memory.
 | 19 | Traction Focus | Traction Expert | Traction Master | Agility Focus | Agility Expert | Agility Master |
 | 20 | Technique Coupler | Technique Matrix | Technique Singularity | Powerup Link | Powerup Matrix | Powerup Nexus |
 | 21 | Bulk Field | Titan Field | Colossus Field | Tune Link | Dual Link | Grid Link |
-| 22 | Apex Key | Lap Dividend | Lap Booster | Lap Doubler | Telemetry Theft | Build Heist |
-| 23 | Apex Plunder | Final Reckoning | Reserved | Reserved | Reserved | Reserved |
+| 22 | Apex Key | Lap Dividend | Lap Booster | Lap Multiplier | Telemetry Theft | Build Heist |
+| 23 | Apex Plunder | Final Reckoning | Web Barrage | Reserved | Reserved | Reserved |
 
 Every non-driver card has a unique artwork file. Artwork must depict the card's
 actual mechanic in that theme; do not reuse another theme's image with a tint or
@@ -41,11 +41,12 @@ Driver portraits are theme assets at
 `assets/theme/<theme>/drivers/driver_art_atlas.png`. Each sheet is a 5 by 2
 atlas mapped in row-major order from `profile00` through `profile09`.
 
-`ability_effect_atlas.png` is the active 23 by 1 alpha atlas for the centered
+`ability_effect_atlas.png` is the active 24 by 1 alpha atlas for the centered
 powerup and revenge effects. Cells map to Nitro T1, Grip T1, Ram, Draft, Shield,
 Mirror, Cloak, Grudge Spark, Vengeance Core, Nemesis Engine, Nitro T2, Nitro T3,
 Grip T2, Grip T3, Time T1, Time T2, Time T3, Ace Hotline, Priority Hotline,
-Antenna T1, Antenna T2, Antenna T3, and the Apex Key Tier 4 unlock.
+Antenna T1, Antenna T2, Antenna T3, the Apex Key Tier 4 unlock, and Web Barrage's
+spider-web aura.
 Nitro is anchored behind the exhaust. Every other under-car sprite reserves a
 transparent center and carries its readable symbols around the car as an aura.
 The renderer tints the generated artwork by card type and keeps projectiles,
@@ -119,12 +120,14 @@ java -Djava.awt.headless=true -cp /tmp/ratass-visual-tools \
   tools/art_sources/ability_effects/antenna_t2.png \
   tools/art_sources/ability_effects/antenna_t3.png \
   tools/art_sources/ability_effects/tier_four_unlock.png \
+  tools/art_sources/ability_effects/web_barrage.png \
   --hollow-column 1 --hollow-column 2 --hollow-column 3 \
   --hollow-column 4 --hollow-column 7 --hollow-column 8 \
   --hollow-column 9 --hollow-column 12 --hollow-column 13 \
   --hollow-column 14 --hollow-column 15 --hollow-column 16 \
   --hollow-column 17 --hollow-column 18 --hollow-column 19 \
-  --hollow-column 20 --hollow-column 21 --hollow-column 22
+  --hollow-column 20 --hollow-column 21 --hollow-column 22 \
+  --hollow-column 23
 ```
 
 `BuildOrbitAura` places a family icon around the car before the center mask is

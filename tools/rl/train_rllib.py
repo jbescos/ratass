@@ -356,6 +356,8 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             float(env_config.get("recovery_reward_launch_throttle", 0.25)),
             float(env_config.get("recovery_reward_steering", 1.5)),
             float(env_config.get("recovery_penalty_stationary", 0.15)),
+            float(env_config.get("recovery_penalty_path_inefficiency", 3.0)),
+            float(env_config.get("recovery_penalty_aligned_rotation", 2.0)),
             float(env_config.get("recovery_reward_success", 125.0)),
         )
         training_config.withOvertakingRewards(
@@ -655,6 +657,8 @@ def build_algorithm(args):
         "recovery_reward_launch_throttle": args.recovery_reward_launch_throttle,
         "recovery_reward_steering": args.recovery_reward_steering,
         "recovery_penalty_stationary": args.recovery_penalty_stationary,
+        "recovery_penalty_path_inefficiency": args.recovery_penalty_path_inefficiency,
+        "recovery_penalty_aligned_rotation": args.recovery_penalty_aligned_rotation,
         "recovery_reward_success": args.recovery_reward_success,
         "overtaking_reward_gap": args.overtaking_reward_gap,
         "overtaking_reward_position": args.overtaking_reward_position,
@@ -1411,6 +1415,10 @@ def run_policy_evaluation(
         str(args.recovery_reward_steering),
         "--recovery-penalty-stationary",
         str(args.recovery_penalty_stationary),
+        "--recovery-penalty-path-inefficiency",
+        str(args.recovery_penalty_path_inefficiency),
+        "--recovery-penalty-aligned-rotation",
+        str(args.recovery_penalty_aligned_rotation),
         "--recovery-reward-success",
         str(args.recovery_reward_success),
         "--overtaking-reward-gap",
@@ -2185,6 +2193,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recovery-reward-launch-throttle", type=float, default=5.0)
     parser.add_argument("--recovery-reward-steering", type=float, default=5.0)
     parser.add_argument("--recovery-penalty-stationary", type=float, default=0.15)
+    parser.add_argument("--recovery-penalty-path-inefficiency", type=float, default=3.0)
+    parser.add_argument("--recovery-penalty-aligned-rotation", type=float, default=2.0)
     parser.add_argument("--recovery-reward-success", type=float, default=2000.0)
     parser.add_argument("--overtaking-reward-gap", type=float, default=4.0)
     parser.add_argument("--overtaking-reward-safety", type=float, default=300.0)

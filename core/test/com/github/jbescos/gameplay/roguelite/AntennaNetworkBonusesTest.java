@@ -94,13 +94,13 @@ public class AntennaNetworkBonusesTest {
                 .include(receiver)
                 .build();
 
-        assertEquals(4f, network.getLapExperienceBankMultiplier(), EPSILON);
+        assertEquals(2.5f, network.getLapExperienceBankMultiplier(), EPSILON);
         assertEquals(
-                2f,
+                1.5f,
                 upgrades(source, network).getLapExperienceBankMultiplier(),
                 EPSILON);
         assertEquals(
-                4f,
+                2.5f,
                 upgrades(receiver, network).getLapExperienceBankMultiplier(),
                 EPSILON);
     }

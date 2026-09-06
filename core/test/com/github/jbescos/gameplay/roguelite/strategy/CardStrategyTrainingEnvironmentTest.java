@@ -92,6 +92,24 @@ public final class CardStrategyTrainingEnvironmentTest {
     }
 
     @Test
+    public void skippingExpandsTheNextDecisionWithoutChangingObservationShape() {
+        CardStrategyTrainingEnvironment environment = environment("strategy00");
+        environment.reset(992L);
+        int observationSize = environment.getObservationSize();
+
+        assertEquals(4, environment.getActionCount());
+        environment.step(environment.getActionCount() - 1);
+
+        assertEquals(5, environment.getActionCount());
+        for (float[] candidate : environment.getCandidateObservations()) {
+            assertEquals(observationSize, candidate.length);
+        }
+
+        environment.step(0);
+        assertEquals(4, environment.getActionCount());
+    }
+
+    @Test
     public void raceStrengthTeacherAlwaysReturnsALegalAction() {
         CardStrategyTrainingEnvironment environment = environment("strategy00");
         environment.reset(9173L);

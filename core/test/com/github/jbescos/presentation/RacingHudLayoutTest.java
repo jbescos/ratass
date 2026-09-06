@@ -54,6 +54,26 @@ public class RacingHudLayoutTest {
     }
 
     @Test
+    public void raceResultsFooterStaysInTheGapAboveContinueButton() {
+        assertEquals(214.4f, RacingHudLayout.raceResultsFooterBaseline(200f, 16f), 0.001f);
+        assertEquals(222f, RacingHudLayout.raceResultsFooterBaseline(200f, 30f), 0.001f);
+    }
+
+    @Test
+    public void collapsedSandboxSettingsLeaveOnlyTheHeaderVisible() {
+        assertEquals(
+                36f,
+                RacingHudLayout.sandboxSettingsPanelHeight(
+                        false, 36f, 3, 38f, 36f, 16f),
+                0.001f);
+        assertEquals(
+                202f,
+                RacingHudLayout.sandboxSettingsPanelHeight(
+                        true, 36f, 3, 38f, 36f, 16f),
+                0.001f);
+    }
+
+    @Test
     public void bottomPanelReservesTheSidebarWidthForItsMinimap() {
         assertEquals(
                 260f,

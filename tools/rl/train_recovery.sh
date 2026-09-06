@@ -155,6 +155,8 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
     --recovery-reward-launch-throttle "${RL_RECOVERY_REWARD_LAUNCH_THROTTLE:-5.0}"
     --recovery-reward-steering "${RL_RECOVERY_REWARD_STEERING:-5.0}"
     --recovery-penalty-stationary "${RL_RECOVERY_PENALTY_STATIONARY:-1.0}"
+    --recovery-penalty-path-inefficiency "${RL_RECOVERY_PENALTY_PATH_INEFFICIENCY:-3.0}"
+    --recovery-penalty-aligned-rotation "${RL_RECOVERY_PENALTY_ALIGNED_ROTATION:-2.0}"
     --recovery-reward-success "${RL_RECOVERY_REWARD_SUCCESS:-3000.0}"
   )
   if [[ "${final_mixed_stage}" != "1" ]]; then

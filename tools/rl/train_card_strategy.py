@@ -21,6 +21,8 @@ from torch.distributions import Categorical
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = ROOT / "desktop/target/ratass-desktop-1.0.jar"
 DEFAULT_POLICY_ROOT = ROOT / "assets/ai/policies"
+OBSERVATION_FIXED_FEATURE_COUNT = 170
+LOADOUT_CARD_BLOCK_COUNT = 4
 
 
 class CandidateScorer(nn.Module):
@@ -1351,6 +1353,8 @@ def policy_payload(
     model: CandidateScorer,
     observation_size: int,
     strategy_type: str = "",
+    card_feature_count: int | None = None,
+    set_feature_count: int | None = None,
 ) -> dict[str, object]:
     layers: list[dict[str, object]] = []
     linear_layers = [layer for layer in model.network if isinstance(layer, nn.Linear)]
@@ -1372,6 +1376,10 @@ def policy_payload(
     }
     if strategy_type:
         payload["strategyType"] = strategy_type
+    if card_feature_count is not None:
+        payload["cardFeatureCount"] = card_feature_count
+    if set_feature_count is not None:
+        payload["setFeatureCount"] = set_feature_count
     return payload
 
 
@@ -1380,8 +1388,16 @@ def export_policy(
     output_path: Path,
     observation_size: int,
     strategy_type: str,
+    card_feature_count: int,
+    set_feature_count: int,
 ) -> None:
-    payload = policy_payload(model, observation_size, strategy_type)
+    payload = policy_payload(
+        model,
+        observation_size,
+        strategy_type,
+        card_feature_count,
+        set_feature_count,
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
 
@@ -1406,6 +1422,8 @@ def restore_checkpoint(
     path: Path,
     actor: CandidateScorer,
     critic: StateValue,
+    card_feature_count: int,
+    set_feature_count: int,
     restore_critic: bool = True,
 ) -> bool:
     if not path.is_file():
@@ -1424,7 +1442,14 @@ def restore_checkpoint(
         return False
     actor_state = checkpoint["actor"]
     if checkpoint_observation_size < current_observation_size:
-        actor_state = append_zero_input_features(actor_state, current_observation_size)
+        actor_state = migrate_observation_input_features(
+            actor_state,
+            current_observation_size,
+            card_feature_count,
+            set_feature_count,
+            checkpoint.get("card_feature_count"),
+            checkpoint.get("set_feature_count"),
+        )
         print(
             "strategy_checkpoint_migrated "
             f"observation_size={checkpoint_observation_size}->{current_observation_size}"
@@ -1433,15 +1458,25 @@ def restore_checkpoint(
     critic_state = checkpoint.get("critic")
     if restore_critic and critic_state is not None:
         if checkpoint_observation_size < current_observation_size:
-            critic_state = append_zero_input_features(
-                critic_state, current_observation_size
+            critic_state = migrate_observation_input_features(
+                critic_state,
+                current_observation_size,
+                card_feature_count,
+                set_feature_count,
+                checkpoint.get("card_feature_count"),
+                checkpoint.get("set_feature_count"),
             )
         critic.load_state_dict(critic_state)
     print(f"strategy_resumed checkpoint={path}")
     return True
 
 
-def restore_exported_policy(path: Path, actor: CandidateScorer) -> bool:
+def restore_exported_policy(
+    path: Path,
+    actor: CandidateScorer,
+    card_feature_count: int,
+    set_feature_count: int,
+) -> bool:
     if not path.is_file():
         return False
     try:
@@ -1475,8 +1510,13 @@ def restore_exported_policy(path: Path, actor: CandidateScorer) -> bool:
                 raise ValueError(f"Invalid strategy policy bias in layer {index}: {path}")
             restored_weights = weights.reshape(output_size, input_size)
             if can_append_input:
-                restored_weights = nn.functional.pad(
-                    restored_weights, (0, layer.in_features - input_size)
+                restored_weights = migrate_observation_weight_matrix(
+                    restored_weights,
+                    layer.in_features,
+                    card_feature_count,
+                    set_feature_count,
+                    payload.get("cardFeatureCount"),
+                    payload.get("setFeatureCount"),
                 )
             layer.weight.copy_(restored_weights)
             layer.bias.copy_(biases)
@@ -1485,20 +1525,117 @@ def restore_exported_policy(path: Path, actor: CandidateScorer) -> bool:
     return True
 
 
-def append_zero_input_features(
+def migrate_observation_input_features(
     state: dict[str, torch.Tensor],
     observation_size: int,
+    card_feature_count: int,
+    set_feature_count: int,
+    old_card_feature_count: int | None = None,
+    old_set_feature_count: int | None = None,
 ) -> dict[str, torch.Tensor]:
     migrated = copy.deepcopy(state)
     weight = migrated["network.0.weight"]
-    expanded = torch.zeros(
-        (weight.shape[0], observation_size),
-        dtype=weight.dtype,
-        device=weight.device,
+    migrated["network.0.weight"] = migrate_observation_weight_matrix(
+        weight,
+        observation_size,
+        card_feature_count,
+        set_feature_count,
+        old_card_feature_count,
+        old_set_feature_count,
     )
-    expanded[:, : weight.shape[1]] = weight
-    migrated["network.0.weight"] = expanded
     return migrated
+
+
+def migrate_observation_weight_matrix(
+    weight: torch.Tensor,
+    observation_size: int,
+    card_feature_count: int,
+    set_feature_count: int,
+    old_card_feature_count: int | None = None,
+    old_set_feature_count: int | None = None,
+) -> torch.Tensor:
+    old_observation_size = int(weight.shape[1])
+    expected_size = observation_size_for(card_feature_count, set_feature_count)
+    if expected_size != observation_size:
+        raise ValueError(
+            "Card strategy observation layout constants do not match the encoder: "
+            f"expected={expected_size} actual={observation_size}"
+        )
+    if old_card_feature_count is None or old_set_feature_count is None:
+        old_card_feature_count, old_set_feature_count = infer_observation_shape(
+            old_observation_size,
+            card_feature_count,
+            set_feature_count,
+        )
+    old_card_feature_count = int(old_card_feature_count)
+    old_set_feature_count = int(old_set_feature_count)
+    if observation_size_for(old_card_feature_count, old_set_feature_count) \
+            != old_observation_size:
+        raise ValueError("Stored card strategy observation metadata is inconsistent.")
+
+    expanded = weight.new_zeros((weight.shape[0], observation_size))
+    old_cursor = 0
+    new_cursor = 0
+
+    def copy_fixed(length: int) -> None:
+        nonlocal old_cursor, new_cursor
+        expanded[:, new_cursor:new_cursor + length] = \
+            weight[:, old_cursor:old_cursor + length]
+        old_cursor += length
+        new_cursor += length
+
+    def copy_growing_block(old_length: int, new_length: int) -> None:
+        nonlocal old_cursor, new_cursor
+        expanded[:, new_cursor:new_cursor + old_length] = \
+            weight[:, old_cursor:old_cursor + old_length]
+        old_cursor += old_length
+        new_cursor += new_length
+
+    copy_fixed(16)  # Global race state and equipped Driver.
+    for _ in range(LOADOUT_CARD_BLOCK_COUNT):
+        copy_fixed(2)
+        copy_growing_block(old_card_feature_count, card_feature_count)
+    copy_fixed(17)  # Candidate identity before its card one-hot block.
+    copy_growing_block(old_card_feature_count, card_feature_count)
+    copy_fixed(122)  # Candidate stats and the nine opponent summaries.
+    copy_growing_block(old_set_feature_count * 3, set_feature_count * 3)
+    copy_fixed(7)  # Aggregate set state and final candidate features.
+    if old_cursor != old_observation_size or new_cursor != observation_size:
+        raise ValueError("Card strategy observation migration did not consume its layout.")
+    return expanded
+
+
+def observation_size_for(card_feature_count: int, set_feature_count: int) -> int:
+    return (
+        OBSERVATION_FIXED_FEATURE_COUNT
+        + card_feature_count * 5
+        + set_feature_count * 3
+    )
+
+
+def infer_observation_shape(
+    observation_size: int,
+    maximum_card_feature_count: int,
+    maximum_set_feature_count: int,
+) -> tuple[int, int]:
+    candidates: list[tuple[int, int]] = []
+    for card_count in range(maximum_card_feature_count, -1, -1):
+        remaining = (
+            observation_size
+            - OBSERVATION_FIXED_FEATURE_COUNT
+            - card_count * 5
+        )
+        if remaining < 0 or remaining % 3 != 0:
+            continue
+        set_count = remaining // 3
+        if 0 <= set_count <= maximum_set_feature_count:
+            candidates.append((card_count, set_count))
+    if len(candidates) != 1:
+        raise ValueError(
+            "Cannot infer the stored card strategy observation layout: "
+            f"size={observation_size} candidates={candidates}"
+        )
+    return candidates[0]
 
 
 def main() -> None:
@@ -1542,21 +1679,39 @@ def main() -> None:
     environment = create_environment(args)
     environment.reset(args.seed)
     observation_size = int(environment.getObservationSize())
+    card_feature_count = int(environment.getCardFeatureCount())
+    set_feature_count = int(environment.getSetFeatureCount())
     actor = CandidateScorer(observation_size, args.hidden_size, args.hidden_layers)
     critic = StateValue(observation_size, args.hidden_size, args.hidden_layers)
     checkpoint_path = Path(args.checkpoint)
     initialized = bool(
         args.init_policy
-        and restore_exported_policy(Path(args.init_policy), actor)
+        and restore_exported_policy(
+            Path(args.init_policy),
+            actor,
+            card_feature_count,
+            set_feature_count,
+        )
     )
     resumed = (
         not initialized
         and args.resume
-        and restore_checkpoint(checkpoint_path, actor, critic)
+        and restore_checkpoint(
+            checkpoint_path,
+            actor,
+            critic,
+            card_feature_count,
+            set_feature_count,
+        )
     )
     if not resumed and not initialized and args.init_checkpoint:
         initialized = restore_checkpoint(
-            Path(args.init_checkpoint), actor, critic, restore_critic=False
+            Path(args.init_checkpoint),
+            actor,
+            critic,
+            card_feature_count,
+            set_feature_count,
+            restore_critic=False,
         )
     if args.resume and not resumed and not initialized:
         raise ValueError(
@@ -1629,7 +1784,14 @@ def main() -> None:
         print(format_metrics(f"{continued_name}_mixed", continued_mixed))
         print(format_set_preferences(f"{continued_name}_mixed", continued_mixed))
         if args.evaluate_mode == "model":
-            export_policy(actor, Path(args.output), observation_size, args.strategy_type)
+            export_policy(
+                actor,
+                Path(args.output),
+                observation_size,
+                args.strategy_type,
+                card_feature_count,
+                set_feature_count,
+            )
             print(f"strategy_policy_exported output={args.output}")
         if args.card_usage_output:
             write_card_usage_report(
@@ -1760,6 +1922,8 @@ def main() -> None:
             "profile_id": args.profile_id,
             "strategy_type": args.strategy_type,
             "observation_size": observation_size,
+            "card_feature_count": card_feature_count,
+            "set_feature_count": set_feature_count,
             "hidden_size": args.hidden_size,
             "hidden_layers": args.hidden_layers,
             "actor": actor.state_dict(),
@@ -1798,7 +1962,14 @@ def main() -> None:
         },
         checkpoint_path,
     )
-    export_policy(actor, Path(args.output), observation_size, args.strategy_type)
+    export_policy(
+        actor,
+        Path(args.output),
+        observation_size,
+        args.strategy_type,
+        card_feature_count,
+        set_feature_count,
+    )
     if args.card_usage_output:
         write_card_usage_report(
             Path(args.card_usage_output),

@@ -25,5 +25,6 @@ public enum RogueliteAbilityVisualStyle {
     ANTENNA_T2,
     ANTENNA_T3,
     TIER_FOUR_SIGNAL,
+    WEB,
     ICON_ONLY
 }

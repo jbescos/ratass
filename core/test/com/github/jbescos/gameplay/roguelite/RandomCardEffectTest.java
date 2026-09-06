@@ -343,6 +343,20 @@ public class RandomCardEffectTest {
             assertTrue(effect.suppressesOffenderBuildAndTransfersLapExperience());
             return;
         }
+        if (candidateId == RogueliteCardId.CIPHER_SIPHON) {
+            for (int hook = 0; hook < WebBarrageRevengeEffect.BASE_HOOK_COUNT; hook++) {
+                effect.advance(
+                        WebBarrageRevengeEffect.HOOK_INTERVAL_SECONDS,
+                        WebBarrageRevengeEffect.HOOK_INTERVAL_SECONDS,
+                        straightDrivingFrame());
+                RogueliteRevengeStrike strike =
+                        effect.tryActivateOffenderStrike(42, 1000f, false);
+                assertNotNull(candidateId + " missed hook " + (hook + 1), strike);
+                assertEquals(RogueliteRevengeStrike.Action.HOOK, strike.getAction());
+                effect.completeOffenderStrike(candidateId);
+            }
+            return;
+        }
         switch (candidateId) {
             case DRAFT_MAGNET:
             case REPULSOR_WAVE:

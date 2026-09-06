@@ -1,8 +1,9 @@
 # Card strategy training
 
-Card strategies choose among the three card offers, or skip. They do not drive cars and do not
-create a LibGDX world. Training uses the real card/progression rules with a fast headless race
-estimator.
+Card strategies choose among three to six card offers, or skip. Each consecutive skip adds one
+offer to the next reward, up to six; selecting a card resets the next reward to three offers. They
+do not drive cars and do not create a LibGDX world. Training uses the real card/progression rules
+with a fast headless race estimator.
 
 The policy does not receive current weather. Weather remains part of simulated race variability.
 Winner learns combinations through race results; Engineer additionally receives a training-only

@@ -84,6 +84,15 @@ public final class RogueliteSetCatalog {
                 true, 7,
                 "Overtake: execute the rival's Powerup"));
         add(set(
+                RogueliteSetId.CIPHER_SYNDICATE, "Venom Web", 3,
+                RogueliteCardId.CARBON_PROTOTYPE,
+                RogueliteCardId.SPRINT_MASTER,
+                RogueliteCardId.TIER_FOUR_SIGNAL,
+                RogueliteCardId.CIPHER_SIPHON,
+                RogueliteCardId.NEMESIS_ENGINE,
+                true, 9,
+                "Each hook: random native-duration debuff"));
+        add(set(
                 RogueliteSetId.CHRONO_APOCALYPSE, "Apex Ascension", 4,
                 RogueliteCardId.TECHNIQUE_SINGULARITY,
                 RogueliteCardId.POWERUP_NEXUS,

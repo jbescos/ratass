@@ -512,6 +512,25 @@ public class RogueliteRunTest {
     }
 
     @Test
+    public void skippedRewardsExpandTheNextOfferAndSurviveRestore() {
+        RogueliteRun run = new RogueliteRun(472L);
+        levelUpPlayer(run);
+
+        assertEquals(3, run.createOffers().size());
+        assertTrue(run.skipPlayerReward());
+        earnOneReward(run);
+        assertEquals(4, run.createOffers().size());
+
+        RogueliteRun restored = new RogueliteRun(473L);
+        assertTrue(restored.restore(run.snapshot()));
+        assertEquals(4, restored.createOffers().size());
+        assertTrue(restored.select(restored.createOffers().get(0)));
+
+        earnOneReward(restored);
+        assertEquals(3, restored.createOffers().size());
+    }
+
+    @Test
     public void unresolvedRewardPausesXpAndQueuedRewardsSurviveRestore() {
         RogueliteRun run = new RogueliteRun(48L);
         levelUpPlayer(run);
@@ -1050,12 +1069,12 @@ public class RogueliteRunTest {
     public void snapshotRestoresExpandedPendingLapExperience() {
         RogueliteRun original = new RogueliteRun(585L);
         assertTrue(original.getPlayerLoadout().equip(RogueliteCardId.LAP_DOUBLER));
-        assertEquals(160, original.awardPlayerRacecraftExperience(200, 4f));
+        assertEquals(100, original.awardPlayerRacecraftExperience(200, 2.5f));
 
         RogueliteRun restored = new RogueliteRun(586L);
 
         assertTrue(restored.restore(original.snapshot()));
-        assertEquals(160, restored.getPlayerProgress().getLapExperience());
+        assertEquals(100, restored.getPlayerProgress().getLapExperience());
     }
 
     @Test

@@ -54,6 +54,9 @@ final class RogueliteEffectFactory {
         if (RivalBuildLeechRevengeEffect.isSupported(id)) {
             return new RivalBuildLeechRevengeEffect(id);
         }
+        if (id == RogueliteCardId.CIPHER_SIPHON) {
+            return new WebBarrageRevengeEffect();
+        }
         if (id == RogueliteCardId.HUNTER_BARRAGE
                 || id == RogueliteCardId.HUNTER_STORM) {
             return new HunterBarrageRevengeEffect(id);

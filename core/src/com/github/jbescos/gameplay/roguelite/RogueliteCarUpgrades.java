@@ -120,11 +120,14 @@ public final class RogueliteCarUpgrades {
 
         boolean techniqueAlwaysActive = setBonus != null
                 && setBonus.getId() == RogueliteSetId.CHAOS_CIRCUIT;
+        boolean venomWebEnabled = setBonus != null
+                && setBonus.getId() == RogueliteSetId.CIPHER_SYNDICATE;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
             if (effect instanceof RaceTechniqueEffect) {
                 ((RaceTechniqueEffect) effect).setAlwaysActive(techniqueAlwaysActive);
             }
+            effect.setVenomWebEnabled(venomWebEnabled);
         }
 
         for (int i = 0; i < effects.size(); i++) {
@@ -919,6 +922,7 @@ public final class RogueliteCarUpgrades {
         float timerDelta = delta * timedEffectDecay;
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
+            effect.setBorrowedTechniqueStrength(effectiveTechniqueEffectMultiplier());
             float effectTimerDelta = timerDelta;
             if (isAmplifiablePowerup(effect)) {
                 effectTimerDelta *= effect.isActive()
@@ -1454,6 +1458,14 @@ public final class RogueliteCarUpgrades {
     }
 
     public boolean onHitBy(int vehicleId, float impactStrength, boolean canArmRevenge) {
+        return onHitBy(vehicleId, impactStrength, canArmRevenge, null);
+    }
+
+    public boolean onHitBy(
+            int vehicleId,
+            float impactStrength,
+            boolean canArmRevenge,
+            RogueliteLoadout offenderLoadout) {
         if (!canArmRevenge) {
             return false;
         }
@@ -1462,6 +1474,9 @@ public final class RogueliteCarUpgrades {
         for (int i = 0; i < effects.size(); i++) {
             RogueliteUpgradeEffect effect = effects.get(i);
             boolean effectAccepted = effect.onHitBy(vehicleId, impactStrength);
+            if (effectAccepted) {
+                effect.captureOffenderBuild(offenderLoadout);
+            }
             accepted |= effectAccepted;
             resetAmplifier |= effectAccepted && effect == amplifiedActiveRevengeEffect;
         }
@@ -1799,6 +1814,9 @@ public final class RogueliteCarUpgrades {
         if (setBonus.getId() == RogueliteSetId.DOOM_RALLY) {
             return effect instanceof DoomRallySetEffect;
         }
+        if (setBonus.getId() == RogueliteSetId.CIPHER_SYNDICATE) {
+            return effect instanceof VenomWebSetEffect;
+        }
         return effect instanceof ApexAscensionSetEffect;
     }
 
@@ -1819,6 +1837,9 @@ public final class RogueliteCarUpgrades {
         if (setBonus.getId() == RogueliteSetId.DOOM_RALLY) {
             return new DoomRallySetEffect();
         }
+        if (setBonus.getId() == RogueliteSetId.CIPHER_SYNDICATE) {
+            return new VenomWebSetEffect();
+        }
         return new ApexAscensionSetEffect();
     }
 
@@ -1826,7 +1847,8 @@ public final class RogueliteCarUpgrades {
         return effect instanceof ApexAscensionSetEffect
                 || effect instanceof IronGiantSetEffect
                 || effect instanceof ChaosCircuitSetEffect
-                || effect instanceof DoomRallySetEffect;
+                || effect instanceof DoomRallySetEffect
+                || effect instanceof VenomWebSetEffect;
     }
 
     private float effectiveTechniqueEffectMultiplier() {

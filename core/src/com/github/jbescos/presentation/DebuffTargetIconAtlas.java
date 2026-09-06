@@ -39,6 +39,8 @@ public final class DebuffTargetIconAtlas {
                 return 9;
             case FINAL_RECKONING:
                 return 10;
+            case CIPHER_SIPHON:
+                return 11;
             default:
                 return -1;
         }

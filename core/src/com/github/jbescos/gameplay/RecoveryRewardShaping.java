@@ -24,4 +24,26 @@ public final class RecoveryRewardShaping {
                 * Math.abs(clampedTurn)
                 * -clampedAlignment;
     }
+
+    public static float pathInefficiency(
+            float beforeX,
+            float beforeY,
+            float afterX,
+            float afterY,
+            float targetDistanceGain) {
+        float dx = afterX - beforeX;
+        float dy = afterY - beforeY;
+        float travelledDistance = (float) Math.sqrt(dx * dx + dy * dy);
+        return Math.max(0f, travelledDistance - Math.max(0f, targetDistanceGain));
+    }
+
+    public static float alignedRotation(
+            float angularSpeed,
+            float targetAlignment,
+            float routeAlignment,
+            boolean onRoad) {
+        float desiredAlignment = onRoad ? routeAlignment : targetAlignment;
+        float alignedFraction = MathUtils.clamp((desiredAlignment - 0.35f) / 0.65f, 0f, 1f);
+        return Math.abs(angularSpeed) * alignedFraction;
+    }
 }

@@ -4,7 +4,7 @@ import com.github.jbescos.gameplay.roguelite.RogueliteAbilityVisualStyle;
 
 /** Maps presentation-only ability styles to cells in the generated effect atlas. */
 public final class RogueliteAbilityEffectAtlas {
-    public static final int COLUMNS = 23;
+    public static final int COLUMNS = 24;
     public static final int ROWS = 1;
 
     private RogueliteAbilityEffectAtlas() {
@@ -61,6 +61,8 @@ public final class RogueliteAbilityEffectAtlas {
                 return 21;
             case TIER_FOUR_SIGNAL:
                 return 22;
+            case WEB:
+                return 23;
             case ICON_ONLY:
             default:
                 return -1;
@@ -111,6 +113,8 @@ public final class RogueliteAbilityEffectAtlas {
                 return 2.05f;
             case TIER_FOUR_SIGNAL:
                 return 2.40f;
+            case WEB:
+                return 2.12f;
             case DRAFT:
             case SHIELD:
             case CLOAK:

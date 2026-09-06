@@ -16,6 +16,9 @@ public class RogueliteResponsiveCardLayoutTest {
                 5,
                 RogueliteResponsiveCardLayout.rewardSectionColumns(1280f, 720f, 5, 5));
         assertEquals(
+                6,
+                RogueliteResponsiveCardLayout.rewardSectionColumns(1280f, 720f, 6, 6));
+        assertEquals(
                 3,
                 RogueliteResponsiveCardLayout.rewardSectionColumns(390f, 844f, 3, 3));
         assertEquals(
@@ -25,31 +28,41 @@ public class RogueliteResponsiveCardLayoutTest {
                 3,
                 RogueliteResponsiveCardLayout.rewardSectionColumns(844f, 390f, 5, 5));
         assertEquals(
+                3,
+                RogueliteResponsiveCardLayout.rewardSectionColumns(844f, 390f, 6, 6));
+        assertEquals(
                 0,
                 RogueliteResponsiveCardLayout.rewardSectionColumns(1280f, 720f, 0, 5));
     }
 
     @Test
-    public void cardBrowserShowsThreeOffersPerPageOnPhones() {
+    public void sandboxCardBrowserShowsSixOffersPerPageOnPhones() {
         assertEquals(
-                3,
-                RogueliteResponsiveCardLayout.collectionPageCapacity(390f, 844f, 5));
+                6,
+                RogueliteResponsiveCardLayout.collectionPageCapacity(390f, 844f, 6));
         assertEquals(
-                3,
-                RogueliteResponsiveCardLayout.collectionPageCapacity(844f, 390f, 5));
+                6,
+                RogueliteResponsiveCardLayout.collectionPageCapacity(844f, 390f, 6));
     }
 
     @Test
-    public void cardBrowserShowsAtMostThreeOffersPerPage() {
+    public void sandboxCardBrowserShowsAtMostSixOffersPerPage() {
         assertEquals(
-                3,
-                RogueliteResponsiveCardLayout.collectionPageCapacity(1280f, 720f, 5));
+                6,
+                RogueliteResponsiveCardLayout.collectionPageCapacity(1280f, 720f, 8));
         assertEquals(
                 2,
                 RogueliteResponsiveCardLayout.collectionPageCapacity(720f, 1280f, 2));
         assertEquals(
                 0,
                 RogueliteResponsiveCardLayout.collectionPageCapacity(720f, 1280f, 0));
+    }
+
+    @Test
+    public void sandboxCardBrowserShowsSixOffersInOneRow() {
+        assertEquals(6, RogueliteResponsiveCardLayout.collectionColumns(6));
+        assertEquals(4, RogueliteResponsiveCardLayout.collectionColumns(4));
+        assertEquals(0, RogueliteResponsiveCardLayout.collectionColumns(0));
     }
 
     @Test

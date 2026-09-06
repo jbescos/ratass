@@ -46,4 +46,18 @@ public class OffenderCurseStateTest {
         assertEquals(0.50f, curse.getAerodynamicEfficiencyMultiplier(), EPSILON);
         assertEquals(60f, curse.getRemainingSeconds(), EPSILON);
     }
+
+    @Test
+    public void weakerCurseDoesNotExtendAnExpiringStrongerCurse() {
+        OffenderCurseState curse = new OffenderCurseState();
+        curse.apply(1.20f, 0.80f, 2f);
+        curse.advance(1f);
+        curse.apply(1.05f, 0.95f, 10f);
+
+        assertTrue(curse.advance(1f));
+        assertTrue(curse.isActive());
+        assertEquals(1.05f, curse.getMassMultiplier(), EPSILON);
+        assertEquals(0.95f, curse.getPowerMultiplier(), EPSILON);
+        assertEquals(9f, curse.getRemainingSeconds(), EPSILON);
+    }
 }

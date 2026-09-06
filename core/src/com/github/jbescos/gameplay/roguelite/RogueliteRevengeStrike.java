@@ -25,6 +25,7 @@ public final class RogueliteRevengeStrike {
     private final int secondaryTargetVehicleId;
     private final int strikeIndex;
     private final float effectMultiplier;
+    private final RogueliteCardId secondaryDebuffCardId;
 
     RogueliteRevengeStrike(
             RogueliteCardId cardId,
@@ -88,6 +89,34 @@ public final class RogueliteRevengeStrike {
             int secondaryTargetVehicleId,
             int strikeIndex,
             float effectMultiplier) {
+        this(
+                cardId,
+                action,
+                speedMultiplier,
+                gripMultiplier,
+                durationSeconds,
+                attackerLaunchSpeedRatio,
+                targetPushSpeedRatio,
+                massMultiplier,
+                secondaryTargetVehicleId,
+                strikeIndex,
+                effectMultiplier,
+                null);
+    }
+
+    private RogueliteRevengeStrike(
+            RogueliteCardId cardId,
+            Action action,
+            float speedMultiplier,
+            float gripMultiplier,
+            float durationSeconds,
+            float attackerLaunchSpeedRatio,
+            float targetPushSpeedRatio,
+            float massMultiplier,
+            int secondaryTargetVehicleId,
+            int strikeIndex,
+            float effectMultiplier,
+            RogueliteCardId secondaryDebuffCardId) {
         this.cardId = cardId;
         this.action = action;
         this.speedMultiplier = speedMultiplier;
@@ -99,6 +128,7 @@ public final class RogueliteRevengeStrike {
         this.secondaryTargetVehicleId = secondaryTargetVehicleId;
         this.strikeIndex = strikeIndex;
         this.effectMultiplier = Math.max(1f, effectMultiplier);
+        this.secondaryDebuffCardId = secondaryDebuffCardId;
     }
 
     static RogueliteRevengeStrike hardImpact(
@@ -199,6 +229,13 @@ public final class RogueliteRevengeStrike {
     }
 
     static RogueliteRevengeStrike hook(RogueliteCardId cardId) {
+        return hook(cardId, 1, null);
+    }
+
+    static RogueliteRevengeStrike hook(
+            RogueliteCardId cardId,
+            int strikeIndex,
+            RogueliteCardId secondaryDebuffCardId) {
         return new RogueliteRevengeStrike(
                 cardId,
                 Action.HOOK,
@@ -209,7 +246,9 @@ public final class RogueliteRevengeStrike {
                 0f,
                 1f,
                 -1,
-                1);
+                Math.max(1, strikeIndex),
+                1f,
+                secondaryDebuffCardId);
     }
 
     static RogueliteRevengeStrike curse(
@@ -302,6 +341,44 @@ public final class RogueliteRevengeStrike {
         return effectMultiplier;
     }
 
+    public RogueliteCardId getSecondaryDebuffCardId() {
+        return secondaryDebuffCardId;
+    }
+
+    public RogueliteRevengeStrike createSecondaryDebuffStrike() {
+        RogueliteRevengeStrike strike;
+        if (secondaryDebuffCardId == null) {
+            return null;
+        }
+        switch (secondaryDebuffCardId) {
+            case DRAFT_VENDETTA:
+                strike = forceThrottle(secondaryDebuffCardId, 5f);
+                break;
+            case TAR_TETHER:
+                strike = debuff(secondaryDebuffCardId, 1f, 0f, 2f);
+                break;
+            case EMP_SNARE:
+                strike = forceBrake(secondaryDebuffCardId, 2f);
+                break;
+            case VOID_ANCHOR:
+                strike = forceBrake(secondaryDebuffCardId, 3f);
+                break;
+            case SENSOR_JAMMER:
+                strike = curse(secondaryDebuffCardId, 1.05f, 0.95f, 10f);
+                break;
+            case GRID_BLACKOUT:
+                strike = curse(secondaryDebuffCardId, 1.10f, 0.90f, 15f);
+                break;
+            case TOTAL_BLACKOUT:
+                strike = curse(secondaryDebuffCardId, 1.20f, 0.80f, 20f);
+                break;
+            default:
+                throw new IllegalStateException(
+                        "Unsupported Web Barrage debuff: " + secondaryDebuffCardId);
+        }
+        return strike.amplified(effectMultiplier);
+    }
+
     RogueliteRevengeStrike amplified(float multiplier) {
         float safeMultiplier = Float.isFinite(multiplier)
                 ? Math.max(1f, multiplier)
@@ -320,7 +397,8 @@ public final class RogueliteRevengeStrike {
                 amplifyDeviation(massMultiplier, safeMultiplier),
                 secondaryTargetVehicleId,
                 strikeIndex,
-                effectMultiplier * safeMultiplier);
+                effectMultiplier * safeMultiplier,
+                secondaryDebuffCardId);
     }
 
     private static float amplifyDeviation(float value, float multiplier) {

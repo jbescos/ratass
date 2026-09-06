@@ -42,6 +42,14 @@ public final class CardStrategyObservationEncoder {
         return OBSERVATION_SIZE;
     }
 
+    public int getCardFeatureCount() {
+        return CARD_COUNT;
+    }
+
+    public int getSetFeatureCount() {
+        return RogueliteSetId.values().length;
+    }
+
     public float[] encode(
             CardStrategyDecision decision,
             RogueliteCardOffer candidate) {

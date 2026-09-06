@@ -12,6 +12,7 @@ from train_card_strategy import (
     card_usage_payload,
     candidate_state_mean,
     count_occurrences,
+    migrate_observation_weight_matrix,
     masked_candidate_logits,
     pad_candidate_observations,
 )
@@ -45,6 +46,21 @@ class CandidateBatchTest(unittest.TestCase):
 
         self.assertEqual(0.0, probabilities[0, 2].item())
         self.assertGreater(probabilities[0, :2].sum().item(), 0.999)
+
+    def test_migrates_each_growing_observation_block_without_shifting_features(self):
+        old_weights = torch.arange(1, 868, dtype=torch.float32).reshape(1, 867)
+
+        migrated = migrate_observation_weight_matrix(
+            old_weights,
+            observation_size=875,
+            card_feature_count=135,
+            set_feature_count=10,
+        )
+
+        self.assertEqual((1, 875), tuple(migrated.shape))
+        retained = migrated[migrated != 0]
+        torch.testing.assert_close(retained, old_weights.reshape(-1))
+        self.assertEqual(8, int((migrated == 0).sum().item()))
 
 
 class CardUsageReportTest(unittest.TestCase):

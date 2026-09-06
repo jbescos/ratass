@@ -22,13 +22,13 @@ final class LapExperienceTechniqueEffect extends RogueliteUpgradeEffect {
 
     static float multiplierFor(RogueliteCardId cardId) {
         if (cardId == RogueliteCardId.LAP_DIVIDEND) {
-            return 2f;
+            return 1.5f;
         }
         if (cardId == RogueliteCardId.LAP_BOOSTER) {
-            return 3f;
+            return 2f;
         }
         if (cardId == RogueliteCardId.LAP_DOUBLER) {
-            return 4f;
+            return 2.5f;
         }
         return 1f;
     }

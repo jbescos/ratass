@@ -431,12 +431,16 @@ public final class RogueliteRun {
         return createOffersFor(player, count);
     }
 
+    public List<RogueliteCardOffer> createOffers() {
+        return createOffers(player.getNextRewardOfferCount());
+    }
+
     public boolean select(RogueliteCardOffer offer) {
         return applyOffer(player, offer);
     }
 
     public boolean skipPlayerReward() {
-        return player.consumePendingReward();
+        return player.skipPendingReward();
     }
 
     public void resolveRivalRewards(Iterable<Integer> vehicleIds) {
@@ -454,13 +458,16 @@ public final class RogueliteRun {
     public void resolveRivalReward(int vehicleId) {
         RogueliteCompetitorProgress rival = getRivalProgress(vehicleId);
         while (rival.hasPendingReward()) {
-            List<RogueliteCardOffer> offers = createOffersFor(rival, 3);
+            List<RogueliteCardOffer> offers =
+                    createOffersFor(rival, rival.getNextRewardOfferCount());
             if (offers.isEmpty()) {
                 rival.consumePendingReward();
                 continue;
             }
             RogueliteCardOffer offer = chooseRivalOffer(vehicleId, rival, offers);
-            if (!applyOffer(rival, offer)) {
+            if (offer == null) {
+                rival.skipPendingReward();
+            } else if (!applyOffer(rival, offer)) {
                 rival.consumePendingReward();
             }
         }
@@ -625,7 +632,7 @@ public final class RogueliteRun {
                 }
             }
         }
-        return applied && progress.consumePendingReward();
+        return applied && progress.selectPendingReward();
     }
 
     private boolean isEligible(
@@ -700,6 +707,7 @@ public final class RogueliteRun {
         snapshot.experience = progress.getExperience();
         snapshot.lapExperience = progress.getLapExperience();
         snapshot.pendingRewards = progress.getPendingRewards();
+        snapshot.nextRewardOfferCount = progress.getNextRewardOfferCount();
         snapshot.tierFourUnlocked = progress.isTierFourUnlocked();
         snapshot.acquiredDriverProfileIds.addAll(
                 progress.getAcquiredDriverProfileIds());
@@ -754,13 +762,17 @@ public final class RogueliteRun {
                 progress.getLoadout().restoreModification(cardId);
                 progress.recordAcquiredModification(cardId);
             }
+            int nextRewardOfferCount = snapshot.nextRewardOfferCount == 0
+                    ? RogueliteCompetitorProgress.DEFAULT_REWARD_OFFER_COUNT
+                    : snapshot.nextRewardOfferCount;
             progress.restore(
                     snapshot.level,
                     snapshot.experience,
                     snapshot.pendingRewards,
                     snapshot.tierFourUnlocked
                             || progress.hasAcquiredModification(
-                                    RogueliteCardId.TIER_FOUR_SIGNAL));
+                                    RogueliteCardId.TIER_FOUR_SIGNAL),
+                    nextRewardOfferCount);
             progress.restoreLapExperience(
                     snapshot.lapExperience,
                     getRacecraftXpPerLapCap(
@@ -1015,6 +1027,8 @@ public final class RogueliteRun {
         public int experience;
         public int lapExperience;
         public int pendingRewards;
+        public int nextRewardOfferCount =
+                RogueliteCompetitorProgress.DEFAULT_REWARD_OFFER_COUNT;
         public boolean tierFourUnlocked;
         // Retained only to normalize saves written by the former postpone system.
         public int rewardDeferredUntilLevel;

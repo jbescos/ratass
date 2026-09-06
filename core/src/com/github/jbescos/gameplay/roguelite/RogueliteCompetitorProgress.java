@@ -5,6 +5,8 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 public final class RogueliteCompetitorProgress {
+    public static final int DEFAULT_REWARD_OFFER_COUNT = 3;
+    public static final int MAXIMUM_REWARD_OFFER_COUNT = 6;
     private static final int BASE_LEVEL_XP = 80;
     private static final int LAST_PLACE_XP = 30;
     private static final int FIRST_PLACE_XP = 100;
@@ -28,6 +30,7 @@ public final class RogueliteCompetitorProgress {
     private RogueliteExperienceAwards.Reason lastExperienceReason;
     private int lastExperienceAmount;
     private int pendingRewards;
+    private int nextRewardOfferCount = DEFAULT_REWARD_OFFER_COUNT;
     private boolean tierFourUnlocked;
 
     RogueliteCompetitorProgress(String defaultDriverProfileId) {
@@ -114,6 +117,10 @@ public final class RogueliteCompetitorProgress {
 
     public int getPendingRewards() {
         return pendingRewards;
+    }
+
+    public int getNextRewardOfferCount() {
+        return nextRewardOfferCount;
     }
 
     public boolean isTierFourUnlocked() {
@@ -252,20 +259,55 @@ public final class RogueliteCompetitorProgress {
         return true;
     }
 
+    boolean selectPendingReward() {
+        if (!consumePendingReward()) {
+            return false;
+        }
+        nextRewardOfferCount = DEFAULT_REWARD_OFFER_COUNT;
+        return true;
+    }
+
+    boolean skipPendingReward() {
+        if (!consumePendingReward()) {
+            return false;
+        }
+        nextRewardOfferCount = Math.min(
+                MAXIMUM_REWARD_OFFER_COUNT,
+                nextRewardOfferCount + 1);
+        return true;
+    }
+
     void restore(
             int restoredLevel,
             int restoredExperience,
             int restoredPendingRewards,
             boolean restoredTierFourUnlocked) {
+        restore(
+                restoredLevel,
+                restoredExperience,
+                restoredPendingRewards,
+                restoredTierFourUnlocked,
+                DEFAULT_REWARD_OFFER_COUNT);
+    }
+
+    void restore(
+            int restoredLevel,
+            int restoredExperience,
+            int restoredPendingRewards,
+            boolean restoredTierFourUnlocked,
+            int restoredNextRewardOfferCount) {
         if (restoredLevel < 1
                 || restoredExperience < 0
                 || restoredExperience >= experienceForLevel(restoredLevel)
-                || restoredPendingRewards < 0) {
+                || restoredPendingRewards < 0
+                || restoredNextRewardOfferCount < DEFAULT_REWARD_OFFER_COUNT
+                || restoredNextRewardOfferCount > MAXIMUM_REWARD_OFFER_COUNT) {
             throw new IllegalArgumentException("Invalid roguelite competitor progress.");
         }
         level = restoredLevel;
         experience = restoredExperience;
         pendingRewards = restoredPendingRewards;
+        nextRewardOfferCount = restoredNextRewardOfferCount;
         tierFourUnlocked = restoredTierFourUnlocked;
     }
 

@@ -55,6 +55,18 @@ public class TelemetryPeakTrackerTest {
     }
 
     @Test
+    public void speedPeakUsesKphWhenTheCarsMaximumSpeedChanges() {
+        TelemetryPeakTracker tracker = new TelemetryPeakTracker();
+
+        tracker.update(0.85f, 121f, 0f, 0f, 0f, 0f);
+        tracker.update(0.60f, 100f, 0f, 0f, 0f, 0f);
+        tracker.update(0.65f, 131f, 0f, 0f, 0f, 0f);
+
+        assertEquals(131f, tracker.getSpeedKph(), EPSILON);
+        assertEquals(0.65f, tracker.getSpeedRatio(), EPSILON);
+    }
+
+    @Test
     public void ignoresSmallSignalNoiseWhenDetectingReversals() {
         TelemetryPeakTracker tracker = new TelemetryPeakTracker();
 

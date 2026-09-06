@@ -777,11 +777,11 @@ public class RogueliteCarUpgradesTest {
                 RogueliteCardId.TECHNIQUE_SINGULARITY,
                 RogueliteCardId.LAP_DOUBLER);
 
-        assertEquals(2f, tierOne.getLapExperienceBankMultiplier(), EPSILON);
-        assertEquals(3f, tierTwo.getLapExperienceBankMultiplier(), EPSILON);
-        assertEquals(8f, amplified.getLapExperienceBankMultiplier(), EPSILON);
+        assertEquals(1.5f, tierOne.getLapExperienceBankMultiplier(), EPSILON);
+        assertEquals(2f, tierTwo.getLapExperienceBankMultiplier(), EPSILON);
+        assertEquals(5f, amplified.getLapExperienceBankMultiplier(), EPSILON);
         assertEquals(
-                4f,
+                2.5f,
                 RogueliteCarStatSnapshot.from(
                                 loadout(RogueliteCardId.LAP_DOUBLER),
                                 null)

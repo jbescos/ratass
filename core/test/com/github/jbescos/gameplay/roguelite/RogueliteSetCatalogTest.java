@@ -28,9 +28,9 @@ public class RogueliteSetCatalogTest {
             }
         }
 
-        assertEquals(9, recipeCount);
-        assertEquals(36, components.size());
-        assertEquals(8, RogueliteSetCatalog.tierThreeSets().size());
+        assertEquals(10, recipeCount);
+        assertEquals(40, components.size());
+        assertEquals(9, RogueliteSetCatalog.tierThreeSets().size());
         assertEquals(4, RogueliteSetCatalog.tierFourSet().getTier());
     }
 
@@ -124,6 +124,23 @@ public class RogueliteSetCatalogTest {
                 upgrades.getActivePowerupCardId());
         assertTrue(upgrades.getAccelerationMultiplier() > 1f);
         assertNull(rival.getActivePowerupCardId());
+    }
+
+    @Test
+    public void venomWebUsesPreviouslyUnselectedBuildCardsAndPoisonsEachHook() {
+        RogueliteSetDefinition cipherSyndicate =
+                RogueliteSetCatalog.get(RogueliteSetId.CIPHER_SYNDICATE);
+
+        assertEquals(RogueliteCardId.CARBON_PROTOTYPE, cipherSyndicate.getTuningCardId());
+        assertEquals(RogueliteCardId.SPRINT_MASTER, cipherSyndicate.getTechniqueCardId());
+        assertEquals(RogueliteCardId.TIER_FOUR_SIGNAL, cipherSyndicate.getPowerupCardId());
+        assertEquals(RogueliteCardId.CIPHER_SIPHON, cipherSyndicate.getRevengeCardId());
+        assertEquals(RogueliteCardId.NEMESIS_ENGINE, cipherSyndicate.getBonusCardId());
+        assertEquals("Venom Web", cipherSyndicate.getDisplayName());
+        assertTrue(cipherSyndicate.usesSetScopedBonusEffect());
+        assertEquals(
+                "Each hook: random native-duration debuff",
+                cipherSyndicate.getBonusEffectText());
     }
 
     @Test

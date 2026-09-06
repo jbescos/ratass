@@ -28,6 +28,27 @@ public class RogueliteCompetitorProgressTest {
     }
 
     @Test
+    public void consecutiveSkipsIncreaseOffersUntilASelectionResetsThem() {
+        RogueliteCompetitorProgress progress =
+                new RogueliteCompetitorProgress("profile00");
+        progress.restore(5, 0, 5, false);
+
+        assertEquals(3, progress.getNextRewardOfferCount());
+        assertTrue(progress.skipPendingReward());
+        assertEquals(4, progress.getNextRewardOfferCount());
+        assertTrue(progress.skipPendingReward());
+        assertEquals(5, progress.getNextRewardOfferCount());
+        assertTrue(progress.skipPendingReward());
+        assertEquals(6, progress.getNextRewardOfferCount());
+        assertTrue(progress.skipPendingReward());
+        assertEquals(6, progress.getNextRewardOfferCount());
+
+        assertTrue(progress.selectPendingReward());
+        assertEquals(3, progress.getNextRewardOfferCount());
+        assertEquals(0, progress.getPendingRewards());
+    }
+
+    @Test
     public void racecraftExperienceRemainsPendingUntilLapIsBanked() {
         RogueliteCompetitorProgress progress =
                 new RogueliteCompetitorProgress("profile00");

@@ -133,6 +133,16 @@ final class RandomCardEffect extends RogueliteUpgradeEffect {
     }
 
     @Override
+    void captureOffenderBuild(RogueliteLoadout offenderLoadout) {
+        delegate.captureOffenderBuild(offenderLoadout);
+    }
+
+    @Override
+    void setBorrowedTechniqueStrength(float multiplier) {
+        delegate.setBorrowedTechniqueStrength(multiplier);
+    }
+
+    @Override
     float revengeTargetAgeSeconds() {
         return delegate.revengeTargetAgeSeconds();
     }

@@ -143,5 +143,7 @@ public enum RogueliteCardId {
     BUILD_HEIST,
     APEX_PLUNDER,
 
-    FINAL_RECKONING
+    FINAL_RECKONING,
+
+    CIPHER_SIPHON
 }

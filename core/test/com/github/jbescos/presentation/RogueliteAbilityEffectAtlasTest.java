@@ -227,6 +227,18 @@ public class RogueliteAbilityEffectAtlasTest {
     }
 
     @Test
+    public void webBarrageUsesItsOwnWebAura() {
+        assertEquals(
+                RogueliteAbilityVisualStyle.WEB,
+                RogueliteCardCatalog.get(RogueliteCardId.CIPHER_SIPHON)
+                        .getAbilityVisualStyle());
+        assertEquals(
+                23,
+                RogueliteAbilityEffectAtlas.indexFor(
+                        RogueliteAbilityVisualStyle.WEB));
+    }
+
+    @Test
     public void draftFieldUsesItsGameplayDiameter() {
         assertEquals(
                 12f,

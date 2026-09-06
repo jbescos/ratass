@@ -533,22 +533,22 @@ public final class RogueliteCardCatalog {
         cards.add(card(
                 RogueliteCardId.LAP_DIVIDEND,
                 "Lap Dividend",
-                "While equipped, doubles both lap XP capacity and the amount transferred at the line. Replacing it clamps pending lap XP to the new capacity. Finish XP is unchanged.",
-                "Activation: Passive\nLap XP capacity x2\nBanked lap XP x2",
+                "While equipped, multiplies both lap XP capacity and the amount transferred at the line by 1.5. Replacing it clamps pending lap XP to the new capacity. Finish XP is unchanged.",
+                "Activation: Passive\nLap XP capacity x1.5\nBanked lap XP x1.5",
                 1,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
                 RogueliteCardId.LAP_BOOSTER,
                 "Lap Booster",
-                "While equipped, triples both lap XP capacity and the amount transferred at the line. Replacing it clamps pending lap XP to the new capacity. Finish XP is unchanged.",
-                "Activation: Passive\nLap XP capacity x3\nBanked lap XP x3",
+                "While equipped, doubles both lap XP capacity and the amount transferred at the line. Replacing it clamps pending lap XP to the new capacity. Finish XP is unchanged.",
+                "Activation: Passive\nLap XP capacity x2\nBanked lap XP x2",
                 2,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
                 RogueliteCardId.LAP_DOUBLER,
-                "Lap Doubler",
-                "While equipped, quadruples both lap XP capacity and the amount transferred at the line. Replacing it clamps pending lap XP to the new capacity. Finish XP is unchanged.",
-                "Activation: Passive\nLap XP capacity x4\nBanked lap XP x4",
+                "Lap Multiplier",
+                "While equipped, multiplies both lap XP capacity and the amount transferred at the line by 2.5. Replacing it clamps pending lap XP to the new capacity. Finish XP is unchanged.",
+                "Activation: Passive\nLap XP capacity x2.5\nBanked lap XP x2.5",
                 3,
                 RogueliteSlotType.TECHNIQUE));
         cards.add(card(
@@ -902,6 +902,13 @@ public final class RogueliteCardCatalog {
                 "Activation: Rival hit\nDisable Tuning + Technique | Steal lap XP | 15s",
                 3,
                 RogueliteAbilityVisualStyle.SHIELD));
+        cards.add(revenge(
+                RogueliteCardId.CIPHER_SIPHON,
+                "Web Barrage",
+                "A rival hit traps its offender in a spider web, pulling them back to you every three seconds, three times.",
+                "Activation: Rival hit\nHook every 3s | 3 hooks | 9s",
+                3,
+                RogueliteAbilityVisualStyle.WEB));
         cards.add(revenge(
                 RogueliteCardId.FINAL_RECKONING,
                 "Final Reckoning",
@@ -1384,6 +1391,8 @@ public final class RogueliteCardCatalog {
                 return 132;
             case FINAL_RECKONING:
                 return 133;
+            case CIPHER_SIPHON:
+                return 134;
             case TECHNIQUE_COUPLER:
                 return 114;
             case TECHNIQUE_MATRIX:

@@ -1,75 +1,125 @@
 package com.github.jbescos.gameplay.roguelite;
 
-/** Timed blindness and performance curse applied to an offender. */
+/** Independently timed blindness curses whose strongest active penalties apply together. */
 public final class OffenderCurseState {
-    private boolean active;
-    private float massMultiplier = 1f;
-    private float performanceMultiplier = 1f;
-    private float remainingSeconds;
+    private static final int MAX_STACKED_CURSES = 3;
+
+    private final float[] massMultipliers = new float[MAX_STACKED_CURSES];
+    private final float[] performanceMultipliers = new float[MAX_STACKED_CURSES];
+    private final float[] remainingSeconds = new float[MAX_STACKED_CURSES];
+
+    public OffenderCurseState() {
+        reset();
+    }
 
     public boolean apply(
             float nextMassMultiplier,
             float nextPerformanceMultiplier,
             float durationSeconds) {
-        float previousMassMultiplier = massMultiplier;
-        remainingSeconds = Math.max(
-                remainingSeconds,
-                Float.isFinite(durationSeconds) ? Math.max(0f, durationSeconds) : 0f);
-        active = remainingSeconds > 0f;
-        massMultiplier = Math.max(
-                massMultiplier,
-                RogueliteEffectMath.clamp(nextMassMultiplier, 1f, 2f));
-        performanceMultiplier = Math.min(
-                performanceMultiplier,
-                RogueliteEffectMath.clamp(nextPerformanceMultiplier, 0f, 1f));
-        return Math.abs(previousMassMultiplier - massMultiplier) > 0.0001f;
+        float previousMassMultiplier = getMassMultiplier();
+        float safeMass = RogueliteEffectMath.clamp(nextMassMultiplier, 1f, 2f);
+        float safePerformance = RogueliteEffectMath.clamp(nextPerformanceMultiplier, 0f, 1f);
+        float safeDuration = Float.isFinite(durationSeconds)
+                ? Math.max(0f, durationSeconds)
+                : 0f;
+        int slot = findMatchingOrEmptySlot(safeMass, safePerformance);
+        massMultipliers[slot] = safeMass;
+        performanceMultipliers[slot] = safePerformance;
+        remainingSeconds[slot] = Math.max(remainingSeconds[slot], safeDuration);
+        return Math.abs(previousMassMultiplier - getMassMultiplier()) > 0.0001f;
     }
 
+    /** Returns true when expiry changes the effective collision mass. */
     public boolean advance(float deltaSeconds) {
-        if (!active) {
-            return false;
-        }
+        float previousMassMultiplier = getMassMultiplier();
         float safeDelta = Float.isFinite(deltaSeconds) ? Math.max(0f, deltaSeconds) : 0f;
-        remainingSeconds = Math.max(0f, remainingSeconds - safeDelta);
-        if (remainingSeconds > 0f) {
-            return false;
+        for (int index = 0; index < remainingSeconds.length; index++) {
+            remainingSeconds[index] = Math.max(0f, remainingSeconds[index] - safeDelta);
         }
-        reset();
-        return true;
+        return Math.abs(previousMassMultiplier - getMassMultiplier()) > 0.0001f;
     }
 
     public void reset() {
-        active = false;
-        massMultiplier = 1f;
-        performanceMultiplier = 1f;
-        remainingSeconds = 0f;
+        for (int index = 0; index < remainingSeconds.length; index++) {
+            massMultipliers[index] = 1f;
+            performanceMultipliers[index] = 1f;
+            remainingSeconds[index] = 0f;
+        }
     }
 
     public boolean isActive() {
-        return active;
+        for (int index = 0; index < remainingSeconds.length; index++) {
+            if (remainingSeconds[index] > 0f) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean isBlind() {
-        return active;
+        return isActive();
     }
 
     public float getMassMultiplier() {
-        return massMultiplier;
+        float multiplier = 1f;
+        for (int index = 0; index < remainingSeconds.length; index++) {
+            if (remainingSeconds[index] > 0f) {
+                multiplier = Math.max(multiplier, massMultipliers[index]);
+            }
+        }
+        return multiplier;
     }
 
     public float getGripMultiplier() {
-        return performanceMultiplier;
+        return getPerformanceMultiplier();
     }
 
     public float getPowerMultiplier() {
-        return performanceMultiplier;
+        return getPerformanceMultiplier();
     }
 
     public float getAerodynamicEfficiencyMultiplier() {
-        return performanceMultiplier;
+        return getPerformanceMultiplier();
     }
 
     public float getRemainingSeconds() {
-        return remainingSeconds;
+        float maximum = 0f;
+        for (int index = 0; index < remainingSeconds.length; index++) {
+            maximum = Math.max(maximum, remainingSeconds[index]);
+        }
+        return maximum;
+    }
+
+    private float getPerformanceMultiplier() {
+        float multiplier = 1f;
+        for (int index = 0; index < remainingSeconds.length; index++) {
+            if (remainingSeconds[index] > 0f) {
+                multiplier = Math.min(multiplier, performanceMultipliers[index]);
+            }
+        }
+        return multiplier;
+    }
+
+    private int findMatchingOrEmptySlot(float mass, float performance) {
+        int emptySlot = -1;
+        for (int index = 0; index < remainingSeconds.length; index++) {
+            if (Math.abs(massMultipliers[index] - mass) < 0.0001f
+                    && Math.abs(performanceMultipliers[index] - performance) < 0.0001f) {
+                return index;
+            }
+            if (emptySlot < 0 && remainingSeconds[index] <= 0f) {
+                emptySlot = index;
+            }
+        }
+        if (emptySlot >= 0) {
+            return emptySlot;
+        }
+        int shortestSlot = 0;
+        for (int index = 1; index < remainingSeconds.length; index++) {
+            if (remainingSeconds[index] < remainingSeconds[shortestSlot]) {
+                shortestSlot = index;
+            }
+        }
+        return shortestSlot;
     }
 }

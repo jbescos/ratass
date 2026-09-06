@@ -1,3 +1,4 @@
+import java.awt.AlphaComposite;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -50,6 +51,9 @@ public final class ReplaceImageAtlasCells {
             BufferedImage replacement = requireImage(new File(args[index + 1]));
             int targetX = cellIndex % columns * cellSize;
             int targetY = cellIndex / columns * cellSize;
+            graphics.setComposite(AlphaComposite.Clear);
+            graphics.fillRect(targetX, targetY, cellSize, cellSize);
+            graphics.setComposite(AlphaComposite.SrcOver);
             graphics.drawImage(
                     replacement,
                     targetX,

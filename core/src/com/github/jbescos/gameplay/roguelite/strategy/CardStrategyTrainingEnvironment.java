@@ -28,7 +28,6 @@ import java.util.Random;
  */
 public final class CardStrategyTrainingEnvironment {
     private static final int[] POSITION_POINTS = {25, 18, 15, 12, 10, 8, 6, 4, 2, 1};
-    private static final int OFFER_COUNT = 3;
     private static final float STRATEGY_TEACHER_GRIP_WEIGHT = 1.45f;
     private static final float DEFAULT_PERSONALITY_TEACHER_WEIGHT = 0.0035f;
 
@@ -281,6 +280,14 @@ public final class CardStrategyTrainingEnvironment {
 
     public int getObservationSize() {
         return encoder.getObservationSize();
+    }
+
+    public int getCardFeatureCount() {
+        return encoder.getCardFeatureCount();
+    }
+
+    public int getSetFeatureCount() {
+        return encoder.getSetFeatureCount();
     }
 
     public int getActionCount() {
@@ -617,7 +624,7 @@ public final class CardStrategyTrainingEnvironment {
             offers = Collections.emptyList();
             return;
         }
-        offers = run.createOffers(OFFER_COUNT);
+        offers = run.createOffers();
         if (offers.isEmpty()) {
             run.skipPlayerReward();
             advanceUntilDecision();
