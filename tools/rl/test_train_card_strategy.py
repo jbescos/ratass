@@ -1,4 +1,5 @@
 import unittest
+import tempfile
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -9,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from train_card_strategy import (
     CandidateScorer,
+    StateValue,
+    restore_checkpoint,
     card_usage_payload,
     candidate_state_mean,
     count_occurrences,
@@ -19,6 +22,28 @@ from train_card_strategy import (
 
 
 class CandidateBatchTest(unittest.TestCase):
+    def test_resumes_actor_but_not_critic_with_incompatible_reward_scale(self):
+        actor = CandidateScorer(2, 4, 1)
+        critic = StateValue(2, 4, 1)
+        old_actor = CandidateScorer(2, 4, 1)
+        old_critic = StateValue(2, 4, 1)
+        critic_before = {key: value.clone() for key, value in critic.state_dict().items()}
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "model.pt"
+            payload = {"observation_size": 2, "hidden_size": 4, "hidden_layers": 1,
+                       "actor": old_actor.state_dict(), "critic": old_critic.state_dict()}
+            torch.save(payload, checkpoint)
+            self.assertTrue(restore_checkpoint(checkpoint, actor, critic, 0, 0, value_reward_scale=0.001))
+            for key, value in actor.state_dict().items():
+                torch.testing.assert_close(value, old_actor.state_dict()[key])
+            for key, value in critic.state_dict().items():
+                torch.testing.assert_close(value, critic_before[key])
+            payload["value_reward_scale"] = 0.001
+            torch.save(payload, checkpoint)
+            self.assertTrue(restore_checkpoint(checkpoint, actor, critic, 0, 0, value_reward_scale=0.001))
+            for key, value in critic.state_dict().items():
+                torch.testing.assert_close(value, old_critic.state_dict()[key])
+
     def test_pads_variable_candidate_counts_without_changing_state_mean(self):
         observations = [
             torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]),

@@ -5,13 +5,30 @@ public final class CarHandlingBalance {
     private CarHandlingBalance() {
     }
 
+    public static float driveTractionMultiplier(float multiplier) {
+        // Soften compounded power/lightweight traction, without weakening penalties.
+        float traction = sanitizePositive(multiplier);
+        return traction > 1f ? (float) Math.sqrt(traction) : traction;
+    }
+
+    public static float lateralCorrectionGripMultiplier(float gripMultiplier) {
+        // Extra grip raises the tire-force limit, not the velocity-correction gain.
+        return Math.min(1f, sanitizePositive(gripMultiplier));
+    }
+
     public static float brakeMultiplier(float maxSpeedMultiplier) {
-        float speed = sanitizeAtLeastOne(maxSpeedMultiplier);
-        return speed * speed;
+        // Linear growth keeps braking lookahead from collapsing at high card bonuses.
+        return sanitizeAtLeastOne(maxSpeedMultiplier);
     }
 
     public static float yawRateMultiplier(float maxSpeedMultiplier) {
-        return sanitizeAtLeastOne(maxSpeedMultiplier);
+        return yawRateMultiplier(maxSpeedMultiplier, 1f);
+    }
+
+    public static float yawRateMultiplier(float maxSpeedMultiplier, float gripMultiplier) {
+        // At the same radius, corner speed and yaw rate grow with sqrt(tire grip).
+        return Math.max(sanitizeAtLeastOne(maxSpeedMultiplier),
+                (float) Math.sqrt(sanitizeAtLeastOne(gripMultiplier)));
     }
 
     public static float yawGripMultiplier(float gripMultiplier, float lateralSlip) {

@@ -284,7 +284,8 @@ run_curriculum_phase() {
       best_eval_min_route_targets="1"
     fi
   fi
-  if phase_state_completed "${phase}" && ! is_true "${RL_RETRAIN_COMPLETED:-0}"; then
+  if phase_state_completed "${phase}" && ! is_true "${RL_RETRAIN_COMPLETED:-0}" \
+      && "${python_bin}" "${script_dir}/curriculum_gate.py" "${best_eval_state}" "${best_eval_min_route_targets}"; then
     echo "curriculum_phase_skip_completed policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} phase=${phase} state=${RL_POLICY_TRAINING_STATE}"
     return
   fi
@@ -374,7 +375,15 @@ run_curriculum_phase() {
   echo "CURRENT_TRAINING_DETAILS preset=${preset} iterations=${iterations} train_batch_size=${phase_train_batch_size} cars=${phase_controlled_agents} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} seed_file=${phase_spawn_seed_file:-none} seed_run=${RL_ROUTE_SPAWN_RUN_ID:-none}"
   echo "============================================================"
   echo "curriculum_phase=${phase} policy=${RL_POLICY_ID:-legacy} profile=${RL_POLICY_INDEX:-?}/${RL_POLICY_TOTAL:-?} preset=${preset} iterations=${iterations} train_batch_size=${phase_train_batch_size} max_cycles=${max_cycles} route_targets=${phase_route_targets} route_target_fraction=${phase_route_target_fraction} maps=${phase_map_ids:-all} spawn_mode=${phase_spawn_mode} seed=${phase_seed} checkpoint_dir=${checkpoint_dir} best_eval_state=${best_eval_state} best_output=${phase_best_output} init_policy=${init_policy:-none}"
-  env \
+  local phase_attempt=0
+  local phase_max_attempts="${RL_CURRICULUM_MAX_STAGE_ATTEMPTS:-3}"
+  if ! is_positive_integer "${phase_max_attempts}"; then
+    echo "invalid_curriculum_max_stage_attempts=${phase_max_attempts}" >&2
+    return 2
+  fi
+  while true; do
+    phase_attempt=$((phase_attempt + 1))
+    env \
     RL_CHECKPOINT_DIR="${checkpoint_dir}" \
     RL_FOREVER_ITERATIONS="${iterations}" \
     RL_TRAIN_BATCH_SIZE="${phase_train_batch_size}" \
@@ -398,6 +407,16 @@ run_curriculum_phase() {
     RL_FORCE_FRESH_START=0 \
     RL_FRESH_START=0 \
     bash "${script_dir}/train_forever.sh" "${preset}"
+    if "${python_bin}" "${script_dir}/curriculum_gate.py" "${best_eval_state}" "${best_eval_min_route_targets}"; then
+      break
+    fi
+    if [[ "${phase_attempt}" -ge "${phase_max_attempts}" ]]; then
+      append_phase_state "status=incomplete" "completed_profile=0" "current_phase=${phase}"
+      echo "curriculum_phase_incomplete phase=${phase} attempts=${phase_attempt} checkpoint=${checkpoint_dir}" >&2
+      return 3
+    fi
+    echo "curriculum_phase_retry phase=${phase} attempt=$((phase_attempt + 1))/${phase_max_attempts} reason=evaluation_failed"
+  done
   local phase_key
   phase_key="$(phase_state_key "${phase}")"
   append_phase_state \
@@ -1017,6 +1036,7 @@ num_epochs="${RL_NUM_EPOCHS:-30}"
 grad_clip="${RL_GRAD_CLIP:-40.0}"
 vf_clip_param="${RL_VF_CLIP_PARAM:-100000000.0}"
 vf_loss_coeff="${RL_VF_LOSS_COEFF:-0.001}"
+learner_reward_scale="${RL_LEARNER_REWARD_SCALE:-1.0}"
 lr="${RL_LR:-3e-4}"
 gamma="${RL_GAMMA:-0.995}"
 gae_lambda="${RL_GAE_LAMBDA:-0.95}"
@@ -1175,6 +1195,7 @@ common_args=(
   --grad-clip "${grad_clip}"
   --vf-clip-param "${vf_clip_param}"
   --vf-loss-coeff "${vf_loss_coeff}"
+  --learner-reward-scale "${learner_reward_scale}"
   --lr "${lr}"
   --gamma "${gamma}"
   --gae-lambda "${gae_lambda}"
@@ -1214,6 +1235,9 @@ common_args=(
 
 if [[ -n "${map_ids}" ]]; then
   common_args+=(--map-ids "${map_ids}")
+fi
+if is_true "${RL_SEPARATE_VALUE_NETWORK:-0}"; then
+  common_args+=(--separate-value-network)
 fi
 if is_true "${random_race_spawns}"; then
   common_args+=(--random-race-spawns)

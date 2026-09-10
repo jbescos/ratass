@@ -1,11 +1,35 @@
 package com.github.jbescos.gameplay;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
 public class CarHandlingBalanceTest {
     private static final float EPSILON = 0.0001f;
+
+    @Test
+    public void boostedGripDoesNotAmplifySidewaysCorrectionGain() {
+        assertEquals(0.1f, CarHandlingBalance.lateralCorrectionGripMultiplier(0.1f), 0f);
+        assertEquals(1f, CarHandlingBalance.lateralCorrectionGripMultiplier(1f), 0f);
+        assertEquals(1f, CarHandlingBalance.lateralCorrectionGripMultiplier(5f), 0f);
+        assertEquals(1f, CarHandlingBalance.lateralCorrectionGripMultiplier(Float.NaN), 0f);
+    }
+
+    @Test
+    public void tractionBonusesGrowWithoutMultiplyingExtremePowerAndLightweightLinearly() {
+        assertEquals(0.7f, CarHandlingBalance.driveTractionMultiplier(0.7f), 0f);
+        assertEquals(1f, CarHandlingBalance.driveTractionMultiplier(1f), 0f);
+        assertEquals(2f, CarHandlingBalance.driveTractionMultiplier(4f), EPSILON);
+        assertEquals((float) Math.sqrt(50), CarHandlingBalance.driveTractionMultiplier(50f), EPSILON);
+        assertEquals(1f, CarHandlingBalance.driveTractionMultiplier(Float.NaN), 0f);
+        float previous = 0f;
+        for (float value = 0.1f; value <= 50f; value += 0.1f) {
+            float result = CarHandlingBalance.driveTractionMultiplier(value);
+            assertTrue(result >= previous);
+            previous = result;
+        }
+    }
 
     @Test
     public void baselineAndDebuffedStatsDoNotChangeHandling() {
@@ -18,9 +42,17 @@ public class CarHandlingBalanceTest {
     }
 
     @Test
-    public void brakingTracksTheSquaredSpeedEnvelope() {
-        assertEquals(1.96f, CarHandlingBalance.brakeMultiplier(1.4f), EPSILON);
+    public void brakingTracksTheSpeedEnvelopeWithoutSquaringIt() {
+        assertEquals(1.4f, CarHandlingBalance.brakeMultiplier(1.4f), EPSILON);
         assertEquals(1.4f, CarHandlingBalance.yawRateMultiplier(1.4f), EPSILON);
+    }
+
+    @Test
+    public void gripCanRaiseTheTurnRateLimitWithoutPowerOrAeroBonuses() {
+        assertEquals(2f, CarHandlingBalance.yawRateMultiplier(1f, 4f), EPSILON);
+        assertEquals(3f, CarHandlingBalance.yawRateMultiplier(3f, 4f), EPSILON);
+        assertEquals(1f, CarHandlingBalance.yawRateMultiplier(0.1f, 0.1f), 0f);
+        assertEquals(1f, CarHandlingBalance.yawRateMultiplier(Float.NaN, Float.NaN), 0f);
     }
 
     @Test

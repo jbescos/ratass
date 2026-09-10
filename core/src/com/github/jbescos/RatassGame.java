@@ -45,6 +45,7 @@ import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.github.jbescos.ai.AiControlDecision;
+import com.github.jbescos.ai.rl.RlDecisionClock;
 import com.github.jbescos.ai.rl.RlPolicy;
 import com.github.jbescos.gameplay.AutomaticRecoveryExplosion;
 import com.github.jbescos.gameplay.AutomaticRecoveryManeuver;
@@ -769,7 +770,6 @@ public class RatassGame extends ApplicationAdapter {
     private static final float SANDBOX_ROUTE_ARROW_LENGTH = 1.15f;
     private static final float SANDBOX_ROUTE_ARROW_WIDTH = 0.11f;
     private static final float SANDBOX_SENSOR_WORLD_LABEL_OFFSET = 0.24f;
-    private static final float RL_CONTROL_DEADZONE = 0.06f;
     private static final float RL_ACTION_FLIP_DEADZONE = 0.18f;
     private static final float RL_STEP_PENALTY = 0.006f;
     private static final float RL_PROGRESS_REWARD = 0.25f;
@@ -11487,7 +11487,7 @@ public class RatassGame extends ApplicationAdapter {
             mirror.configureMirrorAbilityPresentation(owner);
         }
         // A mirror has its own policy state and must decide immediately from its own sensors.
-        mirror.rlDecisionTimer = 0f;
+        mirror.rlDecisionClock.reset();
         mirror.setMirrorCollisionGroupIndex(collisionGroup);
         body.setUserData(mirror);
         return mirror;
@@ -29194,7 +29194,7 @@ public class RatassGame extends ApplicationAdapter {
         private float surfaceGripMultiplier = 1f;
         private boolean passingAssistCommitted;
         private boolean passingAssistRouteSafe;
-        private float rlDecisionTimer;
+        private final RlDecisionClock rlDecisionClock = new RlDecisionClock(PHYSICS_STEP);
         private float rlLiveDecisionInterval = RL_LIVE_DECISION_INTERVAL;
         private float overtakingDecisionTimer;
         private float overtakingTurnResidual;
@@ -29243,9 +29243,9 @@ public class RatassGame extends ApplicationAdapter {
             modelControlled = template.modelControlled;
             color = template.color;
             if (modelControlled) {
-                rlDecisionTimer =
+                rlDecisionClock.schedule(
                         ((template.vehicleId % MAX_CAR_COUNT) + 1)
-                                * (RL_INITIAL_DECISION_STAGGER / MAX_CAR_COUNT);
+                                * (RL_INITIAL_DECISION_STAGGER / MAX_CAR_COUNT));
             }
             rebuildCollisionFixture();
             if (stableMotion != null) {
@@ -32090,10 +32090,9 @@ public class RatassGame extends ApplicationAdapter {
                 float requestedTurn) {
             if (lastRlPlanningPolicy != policy) {
                 lastRlPlanningPolicy = policy;
-                rlDecisionTimer = 0f;
+                rlDecisionClock.reset();
             }
-            rlDecisionTimer -= delta;
-            if (rlDecisionTimer <= 0f) {
+            if (rlDecisionClock.advance(delta)) {
                 ensureRlScratch(policy);
                 fillRecoveryObservation(
                         rlObservation,
@@ -32117,7 +32116,7 @@ public class RatassGame extends ApplicationAdapter {
                 setDirectRlControl(
                         rawExternalControlDecision.throttle,
                         rawExternalControlDecision.turn);
-                rlDecisionTimer = RL_LIVE_DECISION_INTERVAL;
+                rlDecisionClock.schedule(RL_LIVE_DECISION_INTERVAL);
             }
             return externalControlDecision;
         }
@@ -32375,11 +32374,10 @@ public class RatassGame extends ApplicationAdapter {
                 ArenaMap arenaMap) {
             if (lastRlPlanningPolicy != policy) {
                 lastRlPlanningPolicy = policy;
-                rlDecisionTimer = 0f;
+                rlDecisionClock.reset();
             }
             rlLiveDecisionInterval = Math.max(PHYSICS_STEP, decisionInterval);
-            rlDecisionTimer -= delta;
-            if (rlDecisionTimer <= 0f) {
+            if (rlDecisionClock.advance(delta)) {
                 ensureRlScratch(policy);
                 fillRlObservation(
                         rlObservation,
@@ -32398,21 +32396,21 @@ public class RatassGame extends ApplicationAdapter {
                 setDirectRlControl(
                         rawExternalControlDecision.throttle,
                         rawExternalControlDecision.turn);
-                rlDecisionTimer = TimeDilationDecisionCadence.intervalSeconds(
+                rlDecisionClock.schedule(TimeDilationDecisionCadence.intervalSeconds(
                         decisionInterval,
                         timeDilationDecisionAccelerated,
-                        TimeDilationPowerupSpec.OWN_TIME_SCALE);
+                        TimeDilationPowerupSpec.OWN_TIME_SCALE));
             }
             return externalControlDecision;
         }
 
         private void setTimeDilationActive(boolean active) {
-            rlDecisionTimer = TimeDilationDecisionCadence.transitionTimer(
-                    rlDecisionTimer,
-                    rlLiveDecisionInterval,
-                    timeDilationDecisionAccelerated,
-                    active,
-                    TimeDilationPowerupSpec.OWN_TIME_SCALE);
+            if (timeDilationDecisionAccelerated != active) {
+                rlDecisionClock.limitDelay(TimeDilationDecisionCadence.intervalSeconds(
+                        rlLiveDecisionInterval,
+                        active,
+                        TimeDilationPowerupSpec.OWN_TIME_SCALE));
+            }
             timeDilationDecisionAccelerated = active;
 
             float nextMotionScale = TimeDilationMotionScale.scale(
@@ -32449,12 +32447,8 @@ public class RatassGame extends ApplicationAdapter {
 
         private void setDirectRlControl(float throttle, float turn) {
             externalControlDecision.set(
-                    applyRlControlDeadzone(MathUtils.clamp(throttle, -1f, 1f)),
-                    applyRlControlDeadzone(MathUtils.clamp(turn, -1f, 1f)));
-        }
-
-        private float applyRlControlDeadzone(float value) {
-            return Math.abs(value) < RL_CONTROL_DEADZONE ? 0f : value;
+                    MathUtils.clamp(throttle, -1f, 1f),
+                    MathUtils.clamp(turn, -1f, 1f));
         }
 
         private void updateAxes() {
@@ -32727,7 +32721,7 @@ public class RatassGame extends ApplicationAdapter {
                     -lateralSpeed
                             * body.getMass()
                             * physics.wheelGrip
-                            * gripMultiplier
+                            * CarHandlingBalance.lateralCorrectionGripMultiplier(gripMultiplier)
                             * MathUtils.lerp(TIRE_SLIDE_GRIP_FRACTION, 1f, slipGrip)
                             * timeDilationMotionScale;
             float maxLateralImpulse =
@@ -32960,7 +32954,10 @@ public class RatassGame extends ApplicationAdapter {
                             * (float) Math.tan(turn * maxSteerAngle * steeringStrength)
                             * motionFactor;
             float maxYawRate = MathUtils.lerp(4.8f, 2.4f, speedRatio)
-                    * CarHandlingBalance.yawRateMultiplier(getUpgradeTopSpeedMultiplier())
+                    * CarHandlingBalance.yawRateMultiplier(
+                            getUpgradeTopSpeedMultiplier(),
+                            drivingUpgrades().getGripMultiplier(
+                                    getLateralSlipSignal(), 1f, getTemporaryGripMultiplier()))
                     * timeDilationMotionScale;
             desiredAngularVelocity =
                     MathUtils.clamp(desiredAngularVelocity, -maxYawRate, maxYawRate);
@@ -33029,17 +33026,17 @@ public class RatassGame extends ApplicationAdapter {
                 float requestedForce,
                 CarPhysics physics,
                 boolean braking) {
+            float grip = drivingUpgrades().getGripMultiplier(
+                    getLateralSlipSignal(), surfaceGripMultiplier, getTemporaryGripMultiplier());
             float maxForce =
                     body.getMass()
                             * physics.lateralGripPerSecond
                             * physics.wheelGrip
-                            * drivingUpgrades().getGripMultiplier(
-                                    getLateralSlipSignal(),
-                                    surfaceGripMultiplier,
-                                    getTemporaryGripMultiplier())
+                            * grip
                             * (braking
                                     ? 1f
-                                    : drivingUpgrades().getDriveForceLimitMultiplier())
+                                    : CarHandlingBalance.driveTractionMultiplier(
+                                            drivingUpgrades().getDriveForceLimitMultiplier()))
                             * (braking
                                     ? BRAKE_TRACTION_MULTIPLIER
                                             * getAdaptiveBrakeMultiplier()
@@ -35042,6 +35039,7 @@ public class RatassGame extends ApplicationAdapter {
         public int carPerformanceIndex = -1;
         public RogueliteCardId benchmarkCard;
         public float benchmarkTuningEffectMultiplier = 1f;
+        private float[] benchmarkStats;
         public float routeTargetFraction;
         public long seed = 1L;
         public boolean skipCountdown = true;
@@ -35161,6 +35159,17 @@ public class RatassGame extends ApplicationAdapter {
         /** Applies one tuning card for headless lap benchmarking only. */
         public RlTrainingConfig withBenchmarkTuningCard(String cardId) {
             return withBenchmarkCard(cardId, RogueliteSlotType.TUNING);
+        }
+
+        public RlTrainingConfig withBenchmarkStats(float power, float grip, float aero, float mass) {
+            float[] values = {power, grip, aero, mass};
+            for (float value : values) {
+                if (!Float.isFinite(value) || value < 0.1f) {
+                    throw new IllegalArgumentException("Benchmark stats must be finite and at least 0.1.");
+                }
+            }
+            benchmarkStats = values;
+            return this;
         }
 
         /** Scales the selected Tuning card for headless balance benchmarks only. */
@@ -36343,6 +36352,18 @@ public class RatassGame extends ApplicationAdapter {
         }
 
         private void configureBenchmarkCard() {
+            if (config.benchmarkStats != null) {
+                if (config.benchmarkCard != null) {
+                    throw new IllegalArgumentException("Use either benchmark stats or a benchmark card.");
+                }
+                for (int i = 0; i < getControlledAgentCount(); i++) {
+                    Car car = getControlledCar(i);
+                    float[] stats = config.benchmarkStats;
+                    car.rogueliteUpgrades.setBenchmarkStats(stats[0], stats[1], stats[2], stats[3]);
+                    car.rebuildCollisionFixture();
+                }
+                return;
+            }
             if (config.benchmarkCard == null) {
                 return;
             }

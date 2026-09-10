@@ -174,6 +174,18 @@ public final class RogueliteCarUpgrades {
         benchmarkTuningEffectMultiplier = Math.max(0f, multiplier);
     }
 
+    /** Replaces the loadout with isolated stat multipliers for headless physics benchmarks. */
+    public void setBenchmarkStats(float power, float grip, float aero, float mass) {
+        for (float value : new float[] {power, grip, aero, mass}) {
+            if (!Float.isFinite(value) || value < MIN_EFFECTIVE_STAT_MULTIPLIER) {
+                throw new IllegalArgumentException("Benchmark stats must be finite and at least 0.1.");
+            }
+        }
+        reconfigurePreservingCardState(null, 0f);
+        benchmarkTuningEffectMultiplier = 1f;
+        effects.add(new TieredTuningEffect(power, grip, aero, mass));
+    }
+
     public void setBuildCardsSuppressed(boolean suppressed) {
         if (buildCardsSuppressed == suppressed) {
             return;

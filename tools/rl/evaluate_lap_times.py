@@ -389,6 +389,9 @@ def make_environment(
     if technique_card:
         config.withBenchmarkTechniqueCard(technique_card)
     config.addMap(arena_map)
+    benchmark_stats = getattr(args, "benchmark_stats", None)
+    if benchmark_stats is not None:
+        config.withBenchmarkStats(*benchmark_stats)
     return ratass_game.RlTrainingEnvironment(config)
 
 

@@ -131,7 +131,8 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
     --num-epochs "${RL_RECOVERY_NUM_EPOCHS:-5}"
     --grad-clip "${RL_RECOVERY_GRAD_CLIP:-1.0}"
     --vf-clip-param "${RL_RECOVERY_VF_CLIP_PARAM:-100000000.0}"
-    --vf-loss-coeff "${RL_RECOVERY_VF_LOSS_COEFF:-0.001}"
+    --vf-loss-coeff "${RL_RECOVERY_VF_LOSS_COEFF:-1.0}"
+    --learner-reward-scale "${RL_RECOVERY_LEARNER_REWARD_SCALE:-0.001}"
     --checkpoint-dir "${stage_dir}/checkpoint"
     --checkpoint-every "${RL_RECOVERY_CHECKPOINT_EVERY:-20}"
     --checkpoint-selection "${RL_RECOVERY_CHECKPOINT_SELECTION:-latest}"
@@ -159,6 +160,9 @@ for ((index = 0; index < ${#stages[@]}; index++)); do
     --recovery-penalty-aligned-rotation "${RL_RECOVERY_PENALTY_ALIGNED_ROTATION:-2.0}"
     --recovery-reward-success "${RL_RECOVERY_REWARD_SUCCESS:-3000.0}"
   )
+  if [[ "${RL_RECOVERY_SEPARATE_VALUE_NETWORK:-1}" == "1" ]]; then
+    command+=(--separate-value-network)
+  fi
   if [[ "${final_mixed_stage}" != "1" ]]; then
     command+=(--best-eval-ignore-installed)
   fi

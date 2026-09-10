@@ -368,6 +368,20 @@ output from the other candidates is suppressed; the log prints the tables only
 for the selected candidate. Other stages preselect one candidate by
 `reward_mean` and evaluate only that candidate.
 
+Driver profiles use separate actor and critic encoders
+(`RL_SEPARATE_VALUE_NETWORK=1`). Only the actor is exported, so this does not
+increase the in-game network size or add sensors. PPO receives rewards multiplied
+by `RL_LEARNER_REWARD_SCALE=0.01`, with `RL_VF_LOSS_COEFF=1`. Training
+`reward_mean` is therefore scaled; Java reward breakdowns and `best_eval` scores
+remain in original units. Keep the scale unchanged when resuming a full RLlib
+checkpoint, because it includes a critic trained for that scale. Starting from
+an exported actor (`RL_FORCE_FRESH_START=0`) initializes a new critic.
+
+A curriculum stage advances only after an archived policy completes every
+evaluation case and meets that stage's route target. Failed stages resume their
+checkpoint up to `RL_CURRICULUM_MAX_STAGE_ATTEMPTS` times (default 3), then stop
+with an incomplete status instead of silently moving to harder routes.
+
 Regenerate the synthetic training maps and prebuild their caches:
 
 ```bash

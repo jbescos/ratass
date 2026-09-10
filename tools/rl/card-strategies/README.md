@@ -1,5 +1,28 @@
 # Card strategy training
 
+## Network health
+
+The actor and critic have independent parameters and gradient clipping. Critic
+targets use `CARD_STRATEGY_VALUE_REWARD_SCALE=0.001` to avoid saturating tanh
+layers with raw championship returns. Game rewards and reported evaluation
+rewards are unchanged. When resuming a checkpoint trained at a different scale,
+the actor is preserved and only the critic is initialized again.
+
+Training logs `strategy_network_health` (per-layer saturation, activation
+variation, derivatives and post-clipping gradients) and `strategy_value_health`.
+For a read-only check on existing checkpoints using real selection observations:
+
+```bash
+CARD_STRATEGY_DIAGNOSE_ONLY=1 CARD_STRATEGY_EVAL_EPISODES=8 \
+  tools/rl/train_card_strategy.sh strategy00
+```
+
+Diagnostics sample activations at `abs(tanh) >= 0.99`; occasional saturated
+activations do not imply a broken network. Whole layers that remain saturated
+across decisions, with almost constant outputs, require investigation.
+
+## Training setup
+
 Card strategies choose among three to six card offers, or skip. Each consecutive skip adds one
 offer to the next reward, up to six; selecting a card resets the next reward to three offers. They
 do not drive cars and do not create a LibGDX world. Training uses the real card/progression rules

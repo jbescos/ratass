@@ -47,6 +47,9 @@ fi
 if [[ "${CARD_STRATEGY_EVALUATE_ONLY:-0}" == "1" ]]; then
   resume_args+=(--evaluate-only)
 fi
+if [[ "${CARD_STRATEGY_DIAGNOSE_ONLY:-0}" == "1" ]]; then
+  resume_args+=(--diagnose-only)
+fi
 if [[ "${CARD_STRATEGY_FORCE_EXPORT:-0}" == "1" ]]; then
   resume_args+=(--force-export)
 fi
@@ -97,6 +100,7 @@ fi
   --ppo-epochs "${CARD_STRATEGY_PPO_EPOCHS}" \
   --elite-fraction "${CARD_STRATEGY_ELITE_FRACTION}" \
   --value-coefficient "${CARD_STRATEGY_VALUE_COEFFICIENT}" \
+  --value-reward-scale "${CARD_STRATEGY_VALUE_REWARD_SCALE}" \
   --grad-clip "${CARD_STRATEGY_GRAD_CLIP}" \
   --self-play-ratio "${CARD_STRATEGY_SELF_PLAY_RATIO}" \
   --mixed-training-ratio "${CARD_STRATEGY_MIXED_TRAINING_RATIO}" \

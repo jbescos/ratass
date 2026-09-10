@@ -8,8 +8,15 @@ final class TieredTuningEffect extends RogueliteUpgradeEffect {
     private final float gripBonus;
 
     TieredTuningEffect(RogueliteCardId cardId) {
+        this(cardId, setup(cardId));
+    }
+
+    TieredTuningEffect(float power, float grip, float aero, float mass) {
+        this(RogueliteCardId.CLUB_TUNE, tuning(power - 1f, grip - 1f, aero - 1f, mass));
+    }
+
+    private TieredTuningEffect(RogueliteCardId cardId, TuningSetup setup) {
         super(cardId);
-        TuningSetup setup = setup(cardId);
         accelerationBonus = setup.powerBonus;
         dragMultiplier = 1f / (1f + setup.aeroBonus);
         massMultiplier = setup.massMultiplier;

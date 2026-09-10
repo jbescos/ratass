@@ -8,7 +8,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -119,6 +119,23 @@ class ProfileCadenceTest(unittest.TestCase):
 
 
 class LapTimingEnvironmentTest(unittest.TestCase):
+    def test_arbitrary_benchmark_stats_are_forwarded_in_attribute_order(self):
+        config = MagicMock()
+        for method in ("withControlledAgentCount", "withFieldSize", "withActionRepeat",
+                       "withMaxActionSteps", "withNoProgressMaxActionSteps",
+                       "withOffRoadFailureMaxActionSteps", "withRouteTargets", "withRaceMode",
+                       "withRandomRaceSpawns", "withRewardBreakdownEnabled", "withStepDetailsEnabled",
+                       "withDebugTraceEnabled", "withSeed"):
+            getattr(config, method).return_value = config
+        game = MagicMock()
+        game.RlTrainingConfig.return_value = config
+        args = SimpleNamespace(steps=9000, action_repeat=4, random_race_spawns=False,
+                               seed=1, benchmark_stats=[5.0, 0.1, 2.2, 0.4])
+        make_environment(args, game, object(), 3, None)
+        config.withBenchmarkStats.assert_called_once_with(5.0, 0.1, 2.2, 0.4)
+        config.withDebugTraceEnabled.assert_called_once_with(False)
+        config.withBenchmarkTuningCard.assert_not_called()
+
     def test_disables_training_only_episode_failures(self):
         class FakeConfig:
             def __init__(self):

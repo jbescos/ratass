@@ -17,6 +17,8 @@ import torch
 from torch import nn
 from torch.distributions import Categorical
 
+from strategy_network_health import network_health
+
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JAR = ROOT / "desktop/target/ratass-desktop-1.0.jar"
@@ -159,6 +161,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--refresh-imitation", action="store_true")
     parser.add_argument("--preserve-first-championship-policy", action="store_true")
     parser.add_argument("--evaluate-only", action="store_true")
+    parser.add_argument("--diagnose-only", action="store_true")
+    parser.add_argument("--value-reward-scale", type=float, default=0.001)
     parser.add_argument(
         "--evaluate-mode",
         choices=(
@@ -1247,7 +1251,9 @@ def train(
             state_tensor = candidate_state_mean(observation_tensor, candidate_mask)
             action_tensor = torch.tensor(actions, dtype=torch.long)
             old_log_prob_tensor = torch.stack(old_log_probs)
-            return_tensor = torch.tensor(all_returns, dtype=torch.float32)
+            # Keep championship-scale rewards out of the critic's tanh saturation
+            # range. This fixed scale affects learning only, not game/eval rewards.
+            return_tensor = torch.tensor(all_returns, dtype=torch.float32) * args.value_reward_scale
             with torch.no_grad():
                 old_value_tensor = critic(state_tensor)
             advantage = return_tensor - old_value_tensor
@@ -1285,6 +1291,26 @@ def train(
                 optimizer.step()
 
         completed = batch_end
+        if batch_start == 0 or completed % args.validation_every == 0 or completed == args.episodes:
+            health_observations, health_mask = pad_candidate_observations(observations)
+            print("strategy_network_health " + json.dumps({
+                "profile": args.profile_id, "episodes": completed,
+                "actor": network_health(actor, health_observations[health_mask]),
+                "critic": network_health(critic, candidate_state_mean(health_observations, health_mask)),
+            }))
+            if args.elite_fraction <= 0:
+                with torch.no_grad():
+                    predicted = critic(state_tensor)
+                    target_variance = return_tensor.var(unbiased=False)
+                    explained = 1 - (return_tensor - predicted).var(unbiased=False) / target_variance.clamp_min(1e-8)
+                    print("strategy_value_health " + json.dumps({
+                        "episodes": completed,
+                        "reward_scale": args.value_reward_scale,
+                        "target_mean": return_tensor.mean().item(),
+                        "target_std": return_tensor.std(unbiased=False).item(),
+                        "prediction_std": predicted.std(unbiased=False).item(),
+                        "explained_variance": explained.item(),
+                    }))
         if completed % args.validation_every == 0 or completed == args.episodes:
             current = evaluate(
                 environment,
@@ -1425,6 +1451,7 @@ def restore_checkpoint(
     card_feature_count: int,
     set_feature_count: int,
     restore_critic: bool = True,
+    value_reward_scale: float | None = None,
 ) -> bool:
     if not path.is_file():
         return False
@@ -1456,6 +1483,9 @@ def restore_checkpoint(
         )
     actor.load_state_dict(actor_state)
     critic_state = checkpoint.get("critic")
+    if value_reward_scale is not None and float(checkpoint.get("value_reward_scale", 1.0)) != value_reward_scale:
+        restore_critic = False
+        print("strategy_critic_reset reason=value_reward_scale_changed actor_preserved=1")
     if restore_critic and critic_state is not None:
         if checkpoint_observation_size < current_observation_size:
             critic_state = migrate_observation_input_features(
@@ -1640,6 +1670,8 @@ def infer_observation_shape(
 
 def main() -> None:
     args = parse_args()
+    if not np.isfinite(args.value_reward_scale) or args.value_reward_scale <= 0:
+        raise ValueError("Value reward scale must be finite and positive")
     if args.episodes <= 0 or args.batch_episodes <= 0 or args.eval_episodes <= 0:
         raise ValueError("Training and evaluation episode counts must be positive")
     if args.selection_eval_episodes <= 0 or args.validation_every <= 0:
@@ -1702,6 +1734,7 @@ def main() -> None:
             critic,
             card_feature_count,
             set_feature_count,
+            value_reward_scale=None if args.diagnose_only else args.value_reward_scale,
         )
     )
     if not resumed and not initialized and args.init_checkpoint:
@@ -1720,6 +1753,26 @@ def main() -> None:
         )
     warm_started = resumed or initialized
     installed_state = copy.deepcopy(actor.state_dict()) if warm_started else None
+
+    if args.diagnose_only:
+        if not warm_started:
+            raise ValueError("Network diagnostics require an existing policy.")
+        samples = []
+        environment.setMixedOpponents(True)
+        with torch.no_grad():
+            for episode in range(args.eval_episodes):
+                environment.reset(args.seed + 930000 + episode)
+                while not environment.isDone():
+                    candidates = candidate_tensor(environment)
+                    samples.append(candidates)
+                    environment.step(int(actor(candidates).argmax().item()))
+        batch, mask = pad_candidate_observations(samples)
+        print("strategy_network_health " + json.dumps({
+            "profile": args.profile_id,
+            "actor": network_health(actor, batch[mask]),
+            "critic": network_health(critic, candidate_state_mean(batch, mask)),
+        }))
+        return
 
     if args.evaluate_only:
         if args.evaluate_mode == "model" and not warm_started:
@@ -1928,6 +1981,7 @@ def main() -> None:
             "hidden_layers": args.hidden_layers,
             "actor": actor.state_dict(),
             "critic": critic.state_dict(),
+            "value_reward_scale": args.value_reward_scale,
             "metrics": {
                 "win_rate": final_selection.win_rate,
                 "average_position": final_selection.average_position,

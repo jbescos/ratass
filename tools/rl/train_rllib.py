@@ -309,6 +309,9 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             float(env_config.get("overtaking_opponent_throttle_scale", 0.90))
         )
         training_config.withRandomRaceSpawns(bool(env_config.get("random_race_spawns", False)))
+        self._learner_reward_scale = float(env_config.get("learner_reward_scale", 1.0))
+        if not math.isfinite(self._learner_reward_scale) or self._learner_reward_scale <= 0:
+            raise ValueError("learner_reward_scale must be finite and positive")
         base_seed = int(env_config.get("seed", 1))
         worker_index = int(getattr(env_config, "worker_index", 0) or 0)
         vector_index = int(getattr(env_config, "vector_index", 0) or 0)
@@ -521,7 +524,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             self.agents = list(self._agents)
         return (
             self._observations(result, current_agents),
-            rewards,
+            {agent: reward * self._learner_reward_scale for agent, reward in rewards.items()},
             terminateds,
             truncateds,
             infos,
@@ -620,6 +623,7 @@ def build_algorithm(args):
 
     env_config = {
         "jar_path": str(Path(args.jar).resolve()),
+        "learner_reward_scale": getattr(args, "learner_reward_scale", 1.0),
         "training_tuning_cards": args.training_tuning_cards,
         "training_tuning_probability": args.training_tuning_probability,
         "controlled_agents": args.controlled_agents,
@@ -688,6 +692,7 @@ def build_algorithm(args):
                 fcnet_hiddens=[args.hidden_size] * args.hidden_layers,
                 fcnet_activation=args.hidden_activation,
                 free_log_std=args.free_log_std,
+                vf_share_layers=not getattr(args, "separate_value_network", False),
             )
         )
     )
@@ -2241,6 +2246,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--grad-clip", type=float, default=40.0)
     parser.add_argument("--vf-clip-param", type=float, default=100000000.0)
     parser.add_argument("--vf-loss-coeff", type=float, default=0.001)
+    parser.add_argument("--separate-value-network", action="store_true",
+                        help="isolate critic gradients from the exported driving network")
+    parser.add_argument("--learner-reward-scale", type=float, default=1.0,
+                        help="positive reward scale for PPO only; evaluation uses raw game rewards")
     parser.add_argument("--train-batch-size", type=int, default=8192)
     parser.add_argument("--minibatch-size", type=int, default=512)
     parser.add_argument(
@@ -2446,6 +2455,8 @@ def parse_args() -> argparse.Namespace:
         help="finish the stage when its initialized policy already passes best-eval gates",
     )
     args = parser.parse_args()
+    if not math.isfinite(args.learner_reward_scale) or args.learner_reward_scale <= 0:
+        parser.error("--learner-reward-scale must be finite and positive")
     if not math.isfinite(args.training_tuning_probability) or not 0 <= args.training_tuning_probability <= 1:
         parser.error("--training-tuning-probability must be between zero and one")
     if args.training_tuning_cards.strip() and args.objective != "race":
@@ -2503,6 +2514,8 @@ def validate_spawn_configuration(args: argparse.Namespace, parser: argparse.Argu
 
 def main() -> None:
     args = parse_args()
+    print(f"ppo_network separate_value_network={args.separate_value_network} "
+          f"learner_reward_scale={args.learner_reward_scale} evaluation_rewards=unscaled", flush=True)
     checkpoint_dir = Path(args.checkpoint_dir).resolve()
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     configure_ray_output(checkpoint_dir)
@@ -2534,7 +2547,9 @@ def main() -> None:
             for iteration in range(1, args.iterations + 1):
                 current_iteration = iteration
                 summary_mark = REWARD_SUMMARY.mark()
+                train_started = time.perf_counter()
                 result = algorithm.train()
+                train_seconds = time.perf_counter() - train_started
                 reward_mean = read_metric(
                     result,
                     ("episode_reward_mean",),
@@ -2606,7 +2621,8 @@ def main() -> None:
                     f"episode_len_mean={format_metric(length_mean, 1)} "
                     f"episodes={format_count_metric(episodes)} "
                     f"metric_status={metric_status} "
-                    f"env_steps_sampled={format_count_metric(env_steps_sampled)}",
+                    f"env_steps_sampled={format_count_metric(env_steps_sampled)} "
+                    f"train_seconds={train_seconds:.3f}",
                     flush=True,
                 )
                 print(
