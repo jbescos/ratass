@@ -148,9 +148,16 @@ public class AutomaticRecoveryManeuverTest {
 
     @Test
     public void deliberateDebuffStopDisablesAutomaticRecovery() {
-        assertFalse(AutomaticRecoveryManeuver.isControlAllowed(true, true));
-        assertTrue(AutomaticRecoveryManeuver.isControlAllowed(true, false));
-        assertFalse(AutomaticRecoveryManeuver.isControlAllowed(false, false));
+        assertFalse(AutomaticRecoveryManeuver.isControlAllowed(true, true, true));
+        assertTrue(AutomaticRecoveryManeuver.isControlAllowed(true, true, false));
+        assertFalse(AutomaticRecoveryManeuver.isControlAllowed(true, false, false));
+    }
+
+    @Test
+    public void disabledAssistanceCannotTakeControl() {
+        assertFalse(AutomaticRecoveryManeuver.isControlAllowed(false, true, false));
+        assertFalse(AutomaticRecoveryManeuver.isControlAllowed(false, true, true));
+        assertFalse(AutomaticRecoveryManeuver.isControlAllowed(false, false, false));
     }
 
     @Test

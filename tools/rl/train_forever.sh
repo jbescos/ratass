@@ -1167,6 +1167,8 @@ common_args=(
   --route-targets "${route_targets}"
   --route-target-fraction "${route_target_fraction}"
   --seed "${seed}"
+  --training-tuning-cards "${RL_TRAIN_TUNING_CARDS:-}"
+  --training-tuning-probability "${RL_TRAIN_TUNING_PROBABILITY:-0.35}"
   --train-batch-size "${train_batch_size}"
   --minibatch-size "${minibatch_size}"
   --num-epochs "${num_epochs}"

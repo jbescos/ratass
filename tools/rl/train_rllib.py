@@ -41,6 +41,7 @@ from checkpoint_candidates import (
     should_capture_checkpoint_candidate,
 )
 from export_policy import export_policy as export_checkpoint_policy
+from training_tuning import TrainingTuning
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -312,6 +313,13 @@ class RatassMultiAgentEnv(MultiAgentEnv):
         worker_index = int(getattr(env_config, "worker_index", 0) or 0)
         vector_index = int(getattr(env_config, "vector_index", 0) or 0)
         training_config.withSeed(base_seed + worker_index * 1_000_003 + vector_index * 10_007)
+        tuning_cards = env_config.get("training_tuning_cards", "")
+        if tuning_cards and env_config.get("objective", "race") != "race":
+            raise ValueError("Training tuning cards are only supported for driver training")
+        self._training_tuning = TrainingTuning(
+            training_config, tuning_cards,
+            float(env_config.get("training_tuning_probability", 0.35)),
+            base_seed + worker_index * 1_000_003 + vector_index * 10_007)
         training_config.withStepPenalty(float(env_config.get("reward_step_penalty", 0.006)))
         training_config.withProgressReward(float(env_config.get("reward_progress", 0.25)))
         training_config.withDriftReward(float(env_config.get("reward_drift", 0.0)))
@@ -429,6 +437,7 @@ class RatassMultiAgentEnv(MultiAgentEnv):
             training_config.addMap(selected_by_id[map_id])
 
     def reset(self, *, seed=None, options=None):
+        self._training_tuning.next_episode()
         result = (
             self._env.reset()
             if self._reward_summary_enabled
@@ -611,6 +620,8 @@ def build_algorithm(args):
 
     env_config = {
         "jar_path": str(Path(args.jar).resolve()),
+        "training_tuning_cards": args.training_tuning_cards,
+        "training_tuning_probability": args.training_tuning_probability,
         "controlled_agents": args.controlled_agents,
         "field_size": args.field_size,
         "action_repeat": args.action_repeat,
@@ -2115,6 +2126,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--num-gpus", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--training-tuning-cards", default="",
+                        help="optional comma-separated tuning card IDs sampled during driver training only")
+    parser.add_argument("--training-tuning-probability", type=float, default=0.35,
+                        help="probability of equipping a sampled tuning card per training episode")
     parser.add_argument(
         "--objective",
         choices=("race", "recovery", "overtaking"),
@@ -2431,6 +2446,10 @@ def parse_args() -> argparse.Namespace:
         help="finish the stage when its initialized policy already passes best-eval gates",
     )
     args = parser.parse_args()
+    if not math.isfinite(args.training_tuning_probability) or not 0 <= args.training_tuning_probability <= 1:
+        parser.error("--training-tuning-probability must be between zero and one")
+    if args.training_tuning_cards.strip() and args.objective != "race":
+        parser.error("--training-tuning-cards is only supported for driver training")
     apply_objective_defaults(args)
     validate_spawn_configuration(args, parser)
     return args

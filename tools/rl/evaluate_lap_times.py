@@ -121,14 +121,17 @@ def parse_args() -> argparse.Namespace:
         default=6400,
         help="maximum RL actions per map/profile; 0 means no practical step limit",
     )
-    parser.add_argument("--action-repeat", type=int, default=4)
+    parser.add_argument(
+        "--action-repeat", type=int, default=0,
+        help="physics frames per decision; 0 uses each profile's RL_ACTION_REPEAT (default)",
+    )
     parser.add_argument(
         "--driver-action-repeat",
         type=int,
         default=0,
         help=(
-            "runtime action repeat written to driver metadata; 0 uses the "
-            "benchmark --action-repeat"
+            "runtime action repeat override for metadata generation; 0 preserves "
+            "the driver's configured cadence"
         ),
     )
     parser.add_argument(
@@ -1025,6 +1028,29 @@ def clamp_rating(value: float) -> float:
     return max(0.0, min(100.0, value))
 
 
+def profile_timing_args(
+    args: argparse.Namespace, profile_root: Path, profile: str,
+) -> argparse.Namespace:
+    """Read simulation cadence from profile configuration, never cached benchmark results."""
+    resolved = argparse.Namespace(**vars(args))
+    if args.action_repeat < 0 or args.driver_action_repeat < 0:
+        raise ValueError("action repeats must be nonnegative")
+    runtime_repeat = args.driver_action_repeat
+    if runtime_repeat == 0:
+        runtime_repeat = 4
+        for path in (profile_root / "default.properties", profile_root / profile / "profile.properties"):
+            if not path.exists():
+                continue
+            properties = configparser.ConfigParser(interpolation=None, strict=False)
+            properties.read_string("[profile]\n" + path.read_text(encoding="utf-8"))
+            runtime_repeat = properties.getint("profile", "RL_ACTION_REPEAT", fallback=runtime_repeat)
+        if runtime_repeat < 1:
+            raise ValueError(f"RL_ACTION_REPEAT must be positive for {profile}")
+    resolved.action_repeat = args.action_repeat or runtime_repeat
+    resolved.driver_action_repeat = runtime_repeat
+    return resolved
+
+
 def write_driver_metadata(
     rows: Iterable[TimedRun],
     profiles: Iterable[str],
@@ -1039,14 +1065,15 @@ def write_driver_metadata(
         policy_path = policy_root / profile / POLICY_FILE_NAME
         if not policy_path.exists():
             continue
+        profile_args = profile_timing_args(args, Path(args.profile_root), profile)
         output = policy_path.parent / DRIVER_METADATA_FILE_NAME
         metadata = driver_metadata(
             profile,
             rows_by_profile.get(profile, []),
             policy_path,
             laps=args.laps,
-            action_repeat=args.action_repeat,
-            driver_action_repeat=args.driver_action_repeat,
+            action_repeat=profile_args.action_repeat,
+            driver_action_repeat=profile_args.driver_action_repeat,
             seed=args.seed,
             map_source=args.map_source,
             driver_tier=args.driver_tier,
@@ -1182,6 +1209,11 @@ def main() -> None:
         if not profiles:
             print("driver_metadata_up_to_date=1", file=sys.stderr)
             return
+    timing_args = {profile: profile_timing_args(args, Path(args.profile_root), profile)
+                   for profile in profiles}
+    for profile, profile_args in timing_args.items():
+        print(f"benchmark_cadence profile={profile} action_repeat={profile_args.action_repeat} "
+              f"runtime_action_repeat={profile_args.driver_action_repeat}", file=sys.stderr)
     maps = selected_maps(args.map_source, args.map_ids)
     car_count = int(ratass_game.getCarPerformanceCount())
     car_names = load_car_names(Path(args.car_properties_root), car_count)
@@ -1241,7 +1273,7 @@ def main() -> None:
                         try:
                             profile_rows.append(
                                 run_lap_timing(
-                                    args,
+                                    timing_args[profile],
                                     arena_map,
                                     profile,
                                     car,

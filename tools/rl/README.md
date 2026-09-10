@@ -150,6 +150,111 @@ Profile08 fine-tunes the same stable 33-input observation contract directly on
 the real three-lap objective. Do not set `RL_FORCE_FRESH_START=1` unless a
 completely random start is intentional.
 
+Driver PPO can optionally sample a tuning card at each episode reset, so it
+practices different handling conditions without changing observations or the
+network shape. Unmodified cars remain in the training mix:
+
+```bash
+RL_STAGE_ROUTE_TARGETS=lap_real5 \
+RL_TRAIN_TUNING_CARDS=AGILE_CHASSIS,CARBON_MONOCOQUE,CARBON_PROTOTYPE,HYPERCAR_CORE,CHAMPIONSHIP_TUNE,GROUND_EFFECT \
+RL_TRAIN_TUNING_PROBABILITY=0.35 \
+tools/rl/train.sh profile10
+```
+
+The card list defaults to empty (disabled); probability defaults to `0.35`.
+Each selected card is sampled uniformly, applies only to that episode, and is
+cleared when the next episode samples an unmodified car. This option is for
+driver training only. A separate seeded RNG makes the selection reproducible
+without consuming the simulation's random sequence. Five-lap episodes expose
+failures that three-lap training may never reach. Evaluate unmodified and
+tuned cars separately before replacing an installed policy; the trainer's
+normal lap evaluation does not certify every tuning combination.
+
+Exported JSON preserves checkpoint float32 weights without decimal rounding.
+This avoids changing deterministic driving trajectories simply by exporting
+an otherwise unchanged checkpoint.
+
+An exported driver can also be refined directly against lap times. This searches
+the existing neural-network weights using the headless game's inference and
+physics, preserving its observation contract and network size:
+
+```bash
+.venv-rl/bin/python tools/rl/refine_driver_policy.py \
+  --policy assets/ai/policies/profile10/rl_enemy_policy.json \
+  --output-dir target/profile10-refinement --repeat 4 \
+  --rounds 4 --input-rounds 3 --weight-rounds 1 --hidden-rounds 1
+```
+
+Candidates must finish all 19 maps over three and five laps, improve the
+three-lap average, and satisfy map-time/off-road regression limits. Potential
+improvements also have to pass six representative tuning builds and Carbon
+Prototype/Hypercar Core/Ground Effect amplified x3. Use
+`--guard-amplified-tuning` to change the amplified acceptance builds. If the
+baseline already fails a tuning/map combination, the candidate must preserve
+every map it did finish. Time and off-road comparisons use that same subset,
+so fixing one failed map cannot hide a new failure or slower completed maps.
+`--hidden-rounds` searches individual hidden-neuron gains and biases; its
+initial adjustment is controlled by `--hidden-step` (default `0.02`).
+`--blend-with` optionally tests interpolation with compatible exported policies.
+Results stay in the output directory, with each accepted policy archived under
+`accepted/`. Nothing is installed automatically. Validate a candidate against
+the original before promoting it:
+
+```bash
+.venv-rl/bin/python tools/rl/refine_driver_policy.py \
+  --policy target/profile10-refinement/rl_enemy_policy.json \
+  --validate-against assets/ai/policies/profile10/rl_enemy_policy.json \
+  --output-dir target/profile10-validation --repeat 4
+```
+
+Validation includes longer races, alternate spawn seeds, every car, and tuning
+cards. Random-spawn runs measure route-target completion, not full-lap records.
+The off-road metric is the fraction of actions receiving an off-road penalty,
+not the fraction of car geometry outside the road. Failed runs include the time
+limit in their average; compare completion counts before interpreting times.
+Use the driver's actual action repeat (`4` for all current drivers, including profile10)
+for both policies, and rebuild the desktop JAR before benchmarking code changes.
+These are isolated driver rollouts, without live-race recovery/straight-throttle
+assistance, traffic or weather; they are not exact live championship times.
+
+An experimental imitation-learning tool can also learn from the fastest
+existing driver on each map while preserving the student's network shape:
+
+```bash
+.venv-rl/bin/python tools/rl/distill_driver_policy.py \
+  --policy assets/ai/policies/profile10/rl_enemy_policy.json \
+  --output-dir target/profile10-distillation --repeat 4 --epochs 60
+```
+
+Teachers retain their configured decision intervals while samples use the
+student's interval. Teacher intervals must be divisible by the student's.
+Map-specific teacher selection is only for collecting training examples, not
+for runtime driving. Lower imitation loss does not imply better lap times:
+only candidates passing simulated lap/tuning checks are retained. The initial
+profile10 experiment did not improve lap times; weight refinement did.
+
+The lap-time evaluator and `evaluate_lap_times_all.sh` run fresh simulations.
+They read `RL_ACTION_REPEAT` from `tools/rl/policies/default.properties` and each
+profile's `profile.properties`, not from driver metadata or cached lap records.
+All current drivers use repeat 4. Profile10 previously used repeat 2, but was
+switched after the current policy ran faster at repeat 4. The script prints each
+profile's resolved cadence before running.
+The switch passed three laps on all 19 maps, but the ten-lap solo test stalled
+on map017 after four laps. Repeat 2 completed that longer test. Do not treat the
+faster three-lap average as proof of equivalent long-race reliability.
+
+```bash
+./tools/rl/evaluate_lap_times_all.sh
+./tools/rl/evaluate_lap_times_all.sh profile10
+```
+
+Use a nonzero `--action-repeat` only to deliberately override the in-game cadence
+for an experiment; `--action-repeat 0` restores automatic selection. Profile10's
+old 34.572-second record used repeat 4 while its runtime used repeat 2 at that
+time. Current metadata is regenerated with both intervals set to 4.
+These are isolated, unmodified-car lap benchmarks, not full
+championship races with traffic, weather, cards, or recovery assistance.
+
 Check whether loaded checkpoint centers, checkpoint gates, and first route
 targets sit on playable road:
 

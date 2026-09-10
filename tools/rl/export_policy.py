@@ -29,7 +29,9 @@ SUPPORTED_ACTIVATIONS = ("tanh", "relu", "silu", "swish", "linear")
 
 
 def flatten(values: np.ndarray) -> Iterable[float]:
-    return (round(float(value), 6) for value in values.reshape(-1))
+    # Preserve checkpoint values through JSON and the game's float32 loader.
+    # Decimal quantization can change trajectories even before any PPO update.
+    return (float(value) for value in values.reshape(-1))
 
 
 def resolve_layer_prefix(state: Dict[str, np.ndarray], prefixes: Iterable[str]) -> str:

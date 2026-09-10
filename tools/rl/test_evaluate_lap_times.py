@@ -24,12 +24,98 @@ from evaluate_lap_times import (
     make_environment,
     overall_car_averages,
     overall_profile_averages,
+    parse_args,
+    profile_timing_args,
     print_overall_car_averages,
     print_overall_profile_averages,
     print_table,
     run_lap_timing,
     selected_cars,
+    write_driver_metadata,
 )
+
+
+class ProfileCadenceTest(unittest.TestCase):
+    def test_default_uses_runtime_cadence(self):
+        with patch.object(sys, "argv", ["evaluate_lap_times.py"]):
+            self.assertEqual(parse_args().action_repeat, 0)
+
+    def test_profiles_resolve_independently_without_changing_shared_args(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "profile10").mkdir()
+            (root / "default.properties").write_text("RL_ACTION_REPEAT=4\n")
+            (root / "profile10" / "profile.properties").write_text("RL_ACTION_REPEAT=2\n")
+            # Poisoned cached results must never affect simulation configuration.
+            (root / "profile10" / "driver_metadata.json").write_text(
+                '{"actionRepeat": 99, "averageLapSeconds": 0.001}')
+            args = SimpleNamespace(action_repeat=0, driver_action_repeat=0)
+            fast = profile_timing_args(args, root, "profile10")
+            normal = profile_timing_args(args, root, "profile08")
+            self.assertEqual((fast.action_repeat, fast.driver_action_repeat), (2, 2))
+            self.assertEqual((normal.action_repeat, normal.driver_action_repeat), (4, 4))
+            self.assertEqual(args.action_repeat, 0)
+            self.assertEqual(args.driver_action_repeat, 0)
+
+    def test_explicit_benchmark_override_preserves_runtime_cadence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "profile10").mkdir()
+            (root / "profile10" / "profile.properties").write_text("RL_ACTION_REPEAT=2\n")
+            args = SimpleNamespace(action_repeat=4, driver_action_repeat=0)
+            resolved = profile_timing_args(args, root, "profile10")
+            self.assertEqual((resolved.action_repeat, resolved.driver_action_repeat), (4, 2))
+
+    def test_new_driver_runtime_override_also_sets_benchmark(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(action_repeat=0, driver_action_repeat=2)
+            resolved = profile_timing_args(args, Path(directory), "new")
+            self.assertEqual((resolved.action_repeat, resolved.driver_action_repeat), (2, 2))
+
+    def test_inherits_default_profile_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "profile10").mkdir()
+            args = SimpleNamespace(action_repeat=0, driver_action_repeat=0)
+            (root / "default.properties").write_text("RL_ACTION_REPEAT=3\n")
+            (root / "profile10" / "profile.properties").write_text("RL_DRIVER_TIER=4\n")
+            self.assertEqual(profile_timing_args(args, root, "profile10").action_repeat, 3)
+
+    def test_invalid_profile_cadence_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "default.properties"
+            args = SimpleNamespace(action_repeat=0, driver_action_repeat=0)
+            for value in ("0", "-2", "invalid"):
+                path.write_text(f"RL_ACTION_REPEAT={value}\n")
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    profile_timing_args(args, root, "profile10")
+
+    def test_negative_override_rejected(self):
+        for benchmark, runtime in ((-1, 0), (0, -1)):
+            with self.assertRaises(ValueError):
+                profile_timing_args(SimpleNamespace(action_repeat=benchmark,
+                    driver_action_repeat=runtime), Path("unused"), "profile10")
+
+    def test_metadata_records_resolved_benchmark_and_runtime_cadence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for profile, repeat in (("profile08", 4), ("profile10", 2)):
+                folder = root / profile
+                folder.mkdir()
+                (folder / "rl_enemy_policy.json").write_text("{}")
+                (folder / "profile.properties").write_text(f"RL_ACTION_REPEAT={repeat}\n")
+            args = SimpleNamespace(action_repeat=0, driver_action_repeat=0,
+                                   laps=3, seed=1, map_source="game", driver_tier=0,
+                                   profile_root=str(root))
+            rows = [TimedRun("map000", profile, "default", 33, 34, 102, 3, 3)
+                    for profile in ("profile08", "profile10")]
+            with patch("sys.stderr", new_callable=io.StringIO):
+                write_driver_metadata(rows, ("profile08", "profile10"), root, args)
+            for profile, repeat in (("profile08", 4), ("profile10", 2)):
+                metadata = json.loads((root / profile / "driver_metadata.json").read_text())
+                self.assertEqual(metadata["actionRepeat"], repeat)
+                self.assertIn(f"repeat={repeat}", metadata["benchmarkVersion"])
 
 
 class LapTimingEnvironmentTest(unittest.TestCase):

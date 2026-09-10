@@ -228,9 +228,10 @@ public final class AutomaticRecoveryManeuver {
     }
 
     public static boolean isControlAllowed(
+            boolean enabled,
             boolean requested,
             boolean stoppedByDebuff) {
-        return requested && !stoppedByDebuff;
+        return enabled && requested && !stoppedByDebuff;
     }
 
     public ModelHandoffResult updateModelHandoff(

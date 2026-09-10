@@ -231,6 +231,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final String SANDBOX_MAP_PREF_KEY = "sandbox.map.index";
     private static final String SANDBOX_CAR_COUNT_PREF_KEY = "sandbox.cars.count";
     private static final String SANDBOX_DEBUG_GUIDES_PREF_KEY = "sandbox.debug.guides";
+    // Keep the existing sandbox toggle preference when expanding its scope.
+    private static final String SANDBOX_ASSISTANCES_PREF_KEY = "sandbox.stuck.assistance";
     private static final String THEME_DIRECTORY = "theme";
     private static final String THEME_MANIFEST_PATH = "themes.txt";
     private static final String THEME_CAR_SHEET_PATH = "cars/cars.png";
@@ -542,7 +544,8 @@ public class RatassGame extends ApplicationAdapter {
     private static final int SANDBOX_SETTINGS_CARS_ROW = 1;
     private static final int SANDBOX_SETTINGS_CHOICE_ROW_COUNT = 2;
     private static final int SANDBOX_SETTINGS_DEBUG_GUIDES_ROW = 2;
-    private static final int SANDBOX_SETTINGS_ROW_COUNT = 3;
+    private static final int SANDBOX_SETTINGS_ASSISTANCES_ROW = 3;
+    private static final int SANDBOX_SETTINGS_ROW_COUNT = 4;
     private static final float SANDBOX_SETTINGS_WIDTH = 360f;
     private static final float SANDBOX_SETTINGS_HEADER_HEIGHT = 36f;
     private static final float SANDBOX_SETTINGS_ROW_HEIGHT = 38f;
@@ -1342,6 +1345,7 @@ public class RatassGame extends ApplicationAdapter {
     private final Rectangle[] rogueliteInspectionCardBounds =
             createRectangleArray(1);
     private final Rectangle sandboxSettingsBounds = new Rectangle();
+    private final Rectangle sandboxAssistancesBounds = new Rectangle();
     private final Rectangle sandboxSettingsToggleBounds = new Rectangle();
     private final Rectangle sandboxSettingsToggleIconBounds = new Rectangle();
     private final Rectangle sandboxMapsButtonBounds = new Rectangle();
@@ -1576,6 +1580,7 @@ public class RatassGame extends ApplicationAdapter {
     private PlayerDrivingMode playerDrivingMode = PlayerDrivingMode.AUTOMATIC;
     private PlayerPowerupMode playerPowerupMode = PlayerPowerupMode.AUTOMATIC;
     private boolean sandboxDebugGuidesVisible = true;
+    private boolean sandboxAssistancesEnabled = true;
     private boolean sandboxSettingsExpanded = true;
     private boolean cardsDiscoverySeen;
     private boolean cardsButtonDiscoveryPending;
@@ -2482,6 +2487,7 @@ public class RatassGame extends ApplicationAdapter {
         windowedMode = loadConfiguredBooleanProperty(DISPLAY_WINDOWED_PROPERTY, false);
         selectedSandboxMapIndex = 0;
         sandboxDebugGuidesVisible = true;
+        sandboxAssistancesEnabled = true;
 
         Preferences preferences = loadPreferences();
         if (preferences != null) {
@@ -2552,6 +2558,10 @@ public class RatassGame extends ApplicationAdapter {
                     preferences.getBoolean(
                             SANDBOX_DEBUG_GUIDES_PREF_KEY,
                             sandboxDebugGuidesVisible);
+            sandboxAssistancesEnabled =
+                    preferences.getBoolean(
+                            SANDBOX_ASSISTANCES_PREF_KEY,
+                            sandboxAssistancesEnabled);
         }
 
         refreshSandboxMenuMaps();
@@ -2618,6 +2628,9 @@ public class RatassGame extends ApplicationAdapter {
         preferences.putBoolean(
                 SANDBOX_DEBUG_GUIDES_PREF_KEY,
                 sandboxDebugGuidesVisible);
+        preferences.putBoolean(
+                SANDBOX_ASSISTANCES_PREF_KEY,
+                sandboxAssistancesEnabled);
         preferences.flush();
     }
 
@@ -5305,6 +5318,11 @@ public class RatassGame extends ApplicationAdapter {
             saveMenuSettings();
             return;
         }
+        if (sandboxAssistancesBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
+            sandboxAssistancesEnabled = !sandboxAssistancesEnabled;
+            saveMenuSettings();
+            return;
+        }
 
         if (sandboxWeatherPrevBounds.contains(hudTouchPoint.x, hudTouchPoint.y)) {
             cycleSandboxWeather(-1);
@@ -5365,6 +5383,7 @@ public class RatassGame extends ApplicationAdapter {
             sandboxCarsPrevBounds.set(0f, 0f, 0f, 0f);
             sandboxCarsNextBounds.set(0f, 0f, 0f, 0f);
             sandboxDebugGuidesBounds.set(0f, 0f, 0f, 0f);
+            sandboxAssistancesBounds.set(0f, 0f, 0f, 0f);
             sandboxRestartBounds.set(0f, 0f, 0f, 0f);
             return;
         }
@@ -5419,6 +5438,12 @@ public class RatassGame extends ApplicationAdapter {
         sandboxDebugGuidesBounds.set(
                 x + 7f,
                 debugGuidesRowY + 2f,
+                width - 14f,
+                SANDBOX_SETTINGS_ROW_HEIGHT - 4f);
+        sandboxAssistancesBounds.set(
+                x + 7f,
+                rowTop - (SANDBOX_SETTINGS_ASSISTANCES_ROW + 1)
+                        * SANDBOX_SETTINGS_ROW_HEIGHT + 2f,
                 width - 14f,
                 SANDBOX_SETTINGS_ROW_HEIGHT - 4f);
         sandboxRestartBounds.set(
@@ -11138,7 +11163,8 @@ public class RatassGame extends ApplicationAdapter {
                     rlOvertakingPolicy,
                     surfaceGripMultiplier,
                     rlTrainingMode,
-                    rlBenchmarkCardsEnabled);
+                    rlBenchmarkCardsEnabled,
+                    !sandboxMode || sandboxAssistancesEnabled);
         }
         if (!rlTrainingMode || rlBenchmarkCardsEnabled) {
             refreshAntennaNetwork();
@@ -11327,7 +11353,8 @@ public class RatassGame extends ApplicationAdapter {
                     drivingPolicy,
                     getRlLiveDecisionInterval(drivingPolicy),
                     rlRecoveryPolicy,
-                    rlOvertakingPolicy);
+                    rlOvertakingPolicy,
+                    !sandboxMode || sandboxAssistancesEnabled);
         }
     }
 
@@ -23569,6 +23596,10 @@ public class RatassGame extends ApplicationAdapter {
                 sandboxDebugGuidesBounds,
                 ui("sensors & route"),
                 sandboxDebugGuidesVisible);
+        drawCustomToggle(
+                sandboxAssistancesBounds,
+                ui("assistances"),
+                sandboxAssistancesEnabled);
     }
 
     private Rectangle getSandboxSettingsPreviousBounds(int row) {
@@ -28735,12 +28766,16 @@ public class RatassGame extends ApplicationAdapter {
                 return true;
             }
             if (carA != null && wallB) {
-                if (carA.queueMapWallBounce(-normal.x, -normal.y)
+                if (carA.queueMapWallBounce(
+                            -normal.x, -normal.y,
+                            !sandboxMode || sandboxAssistancesEnabled)
                         && isPresentationEnabled()) {
                     carA.automaticRecoveryExplosionVisualPending = true;
                 }
             } else {
-                if (carB.queueMapWallBounce(normal.x, normal.y)
+                if (carB.queueMapWallBounce(
+                            normal.x, normal.y,
+                            !sandboxMode || sandboxAssistancesEnabled)
                         && isPresentationEnabled()) {
                     carB.automaticRecoveryExplosionVisualPending = true;
                 }
@@ -30455,7 +30490,8 @@ public class RatassGame extends ApplicationAdapter {
                 RlPolicy overtakingPolicy,
                 float surfaceGripMultiplier,
                 boolean trainingMode,
-                boolean benchmarkCardsEnabled) {
+                boolean benchmarkCardsEnabled,
+                boolean drivingAssistancesEnabled) {
             manualControlActive = playerControlled && playerManualControl;
             playerSteeringTakeoverApplied = false;
             if (!active || body == null) {
@@ -30503,9 +30539,11 @@ public class RatassGame extends ApplicationAdapter {
             if (trainingMode && throttle > 0f) {
                 throttle *= trainingThrottleScale;
             }
-            boolean automaticControlAssistanceAllowed = !isManuallyControlled();
+            boolean automaticControlAssistanceAllowed =
+                    drivingAssistancesEnabled && !isManuallyControlled();
             boolean automaticRecoveryAllowed =
                     AutomaticRecoveryManeuver.isControlAllowed(
+                            drivingAssistancesEnabled,
                             automaticControlAssistanceAllowed
                                     && !trainingMode
                                     && allowControl
@@ -30636,7 +30674,8 @@ public class RatassGame extends ApplicationAdapter {
                 RlPolicy policy,
                 float policyDecisionInterval,
                 RlPolicy recoveryPolicy,
-                RlPolicy overtakingPolicy) {
+                RlPolicy overtakingPolicy,
+                boolean drivingAssistancesEnabled) {
             if (!active || body == null || mirrorOwner == null || mirrorOwner.body == null) {
                 return;
             }
@@ -30680,6 +30719,7 @@ public class RatassGame extends ApplicationAdapter {
             }
             boolean automaticRecoveryAllowed =
                     AutomaticRecoveryManeuver.isControlAllowed(
+                            drivingAssistancesEnabled,
                             !isManuallyControlled()
                                     && !trainingMode
                                     && allowControl
@@ -30714,6 +30754,7 @@ public class RatassGame extends ApplicationAdapter {
             if (!automaticRecoveryApplied
                     && !automaticRecoveryModelHandoff
                     && !trainingMode
+                    && drivingAssistancesEnabled
                     && !isManuallyControlled()) {
                 if (overtakingPolicy != null) {
                     turn = applyOvertakingPolicy(
@@ -30750,6 +30791,7 @@ public class RatassGame extends ApplicationAdapter {
                             && isForwardPassingContact(passingAssistTarget);
             if (!automaticRecoveryApplied
                     && !automaticRecoveryModelHandoff
+                    && drivingAssistancesEnabled
                     && !isManuallyControlled()
                     && !passingCarBlocksThrottle
                     && shouldForceFullThrottleOnLongStraight(arenaMap, trainingMode)) {
@@ -32607,12 +32649,13 @@ public class RatassGame extends ApplicationAdapter {
             return arenaWallContactTimer > 0f;
         }
 
-        private boolean queueMapWallBounce(float normalX, float normalY) {
+        private boolean queueMapWallBounce(
+                float normalX, float normalY, boolean drivingAssistancesEnabled) {
             if (!active || body == null) {
                 return false;
             }
             unstoppableWallContactThisStep = true;
-            if (mapWallBounceCooldown > 0f) {
+            if (!drivingAssistancesEnabled || mapWallBounceCooldown > 0f) {
                 return false;
             }
             arenaWallCorrection.set(normalX, normalY);
